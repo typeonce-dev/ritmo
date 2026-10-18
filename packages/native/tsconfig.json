@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/cli.ts",
+    "src/compiler/**"
+  ],
+  "references": [
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../browser"
+    },
+    {
+      "path": "../render"
+    }
+  ]
+}

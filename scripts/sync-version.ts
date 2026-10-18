@@ -13,3 +13,16 @@ const target = new URL("src/internal/version.ts", root)
 const source = readFileSync(target, "utf8").replace(/export const libraryVersion = "[^"]*"/, `export const libraryVersion = "${version}"`)
 writeFileSync(target, source)
 console.log(`devtools libraryVersion = ${version}`)
+
+const nativeABI = version.split(".").slice(0, 2).join(".")
+for (const file of [
+  "packages/core/src/internal/native.ts",
+  "packages/native/src/internal/kernels.ts",
+  "packages/core/test/Runtime.native.test.ts",
+  "ARCHITECTURE.md"
+]) {
+  const target = new URL(`../${file}`, import.meta.url)
+  const source = readFileSync(target, "utf8").replaceAll(/@typeonce\/ritmo\/native@\d+\.\d+/g, `@typeonce/ritmo/native@${nativeABI}`)
+  writeFileSync(target, source)
+}
+console.log(`native ABI = ${nativeABI}`)

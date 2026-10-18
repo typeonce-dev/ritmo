@@ -14,6 +14,7 @@
  * Matches are always returned in ascending entity id order, which is spawn
  * order, so iteration is deterministic.
  */
+import { nativeSymbol } from "./native.ts"
 import type { Descriptor } from "../Descriptor.ts"
 import * as DescriptorModule from "../Descriptor.ts"
 import type * as Entity from "../Entity.ts"
@@ -124,6 +125,7 @@ export type QueryEngine = ReturnType<typeof makeQueryEngine>
 export const makeQueryEngine = (world: World) => {
   const states = new WeakMap<AnyQuery, QueryState>()
   let nextOrdinal = 0
+  const nativeSlotCache = new WeakMap<QueryState, { records: readonly EntityRecord[]; slots: Int32Array }>()
 
   /**
    * The ordinal of a selected component, checking that the descriptor the
@@ -522,5 +524,29 @@ export const makeQueryEngine = (world: World) => {
     return Result.success(matchFor(state, record))
   }
 
-  return { each, get }
+  const view = (query: AnyQuery) => {
+    const native = world[nativeSymbol]
+    if (!native?.available()) return undefined
+    const state = stateOf(query)
+    if (state.filters.length || state.slots.some((s) => s.mode !== "read" && s.mode !== "write")) return undefined
+    refresh(state)
+    const columns: Float64Array[] = [], marks: Int32Array[] = [], writes: number[] = [], layout: Array<{ slot: string; name: string; fields: readonly string[] | null; write: boolean }> = []
+    for (const selected of state.slots) {
+      if (!("ordinal" in selected)) return undefined
+      const column = native.columns.components.get(selected.ordinal)
+      if (!column) return undefined
+      columns.push(...column.values)
+      layout.push({ slot: selected.slot, name: column.name, fields: column.fields, write: selected.mode === "write" })
+      if (selected.mode === "write") { marks.push(column.marks); writes.push(selected.ordinal) }
+    }
+    let cached = nativeSlotCache.get(state)
+    if (!cached || cached.records !== state.records) {
+      cached = { records: state.records, slots: Int32Array.from(state.records, (r) => native.columns.slots.get(r)!) }
+      nativeSlotCache.set(state, cached)
+    }
+    return { count: state.records.length, slots: cached.slots, columns, marks, layout, tick: world.currentTick(),
+      prepare: () => native.invalidate(writes),
+      journal: (entry: import("./native.ts").NativeJournal) => native.journal(entry, writes) }
+  }
+  return { each, get, [nativeSymbol]: { view } }
 }

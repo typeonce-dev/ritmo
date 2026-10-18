@@ -12,6 +12,7 @@
     "**/vitest.config.ts",
     "vitest.shared.ts"
   ],
+  "exclude": ["**/node_modules/**", "**/.ritmo-native/**"],
   "compilerOptions": {
     "rootDir": ".",
     "noEmit": true,
@@ -30,7 +31,9 @@
       "@typeonce/ritmo-math": ["./packages/math/src/index.ts"],
       "@typeonce/ritmo-math/*": ["./packages/math/src/*"],
       "@typeonce/ritmo-devtools": ["./packages/devtools/src/index.ts"],
-      "@typeonce/ritmo-devtools/*": ["./packages/devtools/src/*"]
+      "@typeonce/ritmo-devtools/*": ["./packages/devtools/src/*"],
+      "@typeonce/ritmo-native": ["./packages/native/src/index.ts"],
+      "@typeonce/ritmo-native/*": ["./packages/native/src/*"]
     }
   }
 }

@@ -9,7 +9,8 @@
       "@typeonce/ritmo-render",
       "@typeonce/ritmo-pixi",
       "@typeonce/ritmo-math",
-      "@typeonce/ritmo-devtools"
+      "@typeonce/ritmo-devtools",
+      "@typeonce/ritmo-native"
     ]
   ],
   "linked": [],

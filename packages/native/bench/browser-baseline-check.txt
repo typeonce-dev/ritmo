@@ -1,0 +1,49 @@
+
+> @ bench:check /workspace/ritmo
+> node --expose-gc --import tsx scripts/bench.ts --check
+
+Runtime suite (AMD EPYC 9V74 80-Core Processor / node v24.19.0 / linux)
+case                               min ms  median ms  score  baseline   delta
+clock/advance-1000                  0.413      0.485  0.111     0.087  +27.4%
+spawn/10k-3c                         10.8       11.8  2.898     2.017  +43.7%
+despawn/10k                          17.1       19.1  4.580     4.199   +9.1%
+query/iterate-read-10k-of-20k       0.157      0.162  0.042     0.034  +26.0%
+query/iterate-write-10k             0.558      0.653  0.150     0.127  +17.7%
+query/single-in-20k-x1000           0.453      0.507  0.122     0.091  +33.3%
+query/changed-100-of-10k-x20        0.303      0.320  0.081     0.090  -10.0%
+structural/insert-remove-1k         0.196      0.224  0.053     0.057   -7.9%
+schedule/100-systems-x10            0.287      0.302  0.077     0.052  +47.2%
+schedule/150-systems-thistick-x10   0.471      0.492  0.126     0.087  +45.6%
+lookup/get-10k                      0.707      0.737  0.190     0.183   +3.6%
+events/emit-read-10k                0.114      0.120  0.031     0.032   -5.5%
+relations/descendants-100x100       0.236      0.264  0.063     0.100  -36.2%
+snapshot/json-roundtrip-10k          32.2       38.4  8.649     7.445  +16.2%
+frame/50-systems-5k                 3.566      3.926  0.957     0.906   +5.6%
+math/vector2-move-10k               0.169      0.173  0.045     0.052  -12.9%
+math/vector2-validate-10k           0.134      0.164  0.036     0.044  -18.0%
+math/scalar-approach-clamp-10k      0.033      0.033  0.009     0.012  -24.7%
+math/aabb-intersects-200x200        0.082      0.094  0.022     0.023   -2.6%
+math/input-axis-10k                 0.152      0.200  0.041     0.046  -11.3%
+math/spatial-grid-1k                0.217      0.250  0.058     0.093  -37.3%
+math/flow-field-search              0.169      0.212  0.045     0.052  -12.7%
+math/flow-field-way-1k              0.058      0.062  0.016     0.022  -29.0%
+math/collide-move-circle-1k         0.630      0.667  0.169     0.195  -13.1%
+math/random-next-100k               0.598      0.626  0.161     0.267  -39.9%
+math/random-draw-resource-100k      3.939      4.119  1.057         -       -
+render/sync-1k-changed-of-10k       0.435      0.472  0.117     0.142  -17.9%
+render/sync-spawn-despawn-500       2.434      3.679  0.653     0.798  -18.1%
+render/interpolate-10k              0.342      0.351  0.092     0.105  -12.5%
+calibration: 3.725 ms
+
+Type suite (Version 7.0.2)
+types                125849  baseline 121748  +3.4%
+instantiations      1456715  baseline 1428626  +2.0%
+
+Performance regressions:
+  - runtime clock/advance-1000: score 0.111 exceeds baseline 0.087 by +27.4%
+  - runtime spawn/10k-3c: score 2.898 exceeds baseline 2.017 by +43.7%
+  - runtime query/iterate-read-10k-of-20k: score 0.042 exceeds baseline 0.034 by +26.0%
+  - runtime query/single-in-20k-x1000: score 0.122 exceeds baseline 0.091 by +33.3%
+  - runtime schedule/100-systems-x10: score 0.077 exceeds baseline 0.052 by +47.2%
+  - runtime schedule/150-systems-thistick-x10: score 0.126 exceeds baseline 0.087 by +45.6%
+ ELIFECYCLE  Command failed with exit code 1.

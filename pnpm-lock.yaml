@@ -156,6 +156,24 @@ importers:
         specifier: workspace:^
         version: link:../core
 
+  packages/native:
+    dependencies:
+      '@typeonce/ritmo':
+        specifier: workspace:^
+        version: link:../core
+      '@typeonce/ritmo-browser':
+        specifier: workspace:^
+        version: link:../browser
+      '@typeonce/ritmo-render':
+        specifier: workspace:^
+        version: link:../render
+      esbuild:
+        specifier: 0.27.4
+        version: 0.27.4
+      typescript6:
+        specifier: npm:@typescript/typescript6@6.0.2
+        version: '@typescript/typescript6@6.0.2'
+
   packages/pixi:
     dependencies:
       '@typeonce/ritmo-render':

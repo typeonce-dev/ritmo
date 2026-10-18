@@ -1,0 +1,129 @@
+name: Native
+on:
+  pull_request:
+  push:
+    branches: [main]
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: linux }
+          - { os: macos-latest, target: macos }
+          - { os: windows-latest, target: windows }
+    runs-on: ${{ matrix.os }}
+    env:
+      RITMO_NATIVE_HEADLESS: '1'
+      RITMO_NATIVE_STATS: '1'
+      FETCHCONTENT_SOURCE_DIR_SDL3: ${{ github.workspace }}/.ritmo-native/sdl/SDL3-3.2.28
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: pnpm }
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/.ritmo-native/sdl
+          key: ${{ runner.os }}-sdl-3.2.28-13306712
+      - run: cmake -DRN_CACHE="${{ github.workspace }}/.ritmo-native/sdl" -P scripts/native-dependencies.cmake
+      - run: pnpm build
+      - run: pnpm test:native-columns
+      - run: pnpm native check --config examples/top-down/ritmo-native.config.ts --frames 600
+      - run: pnpm native check --config packages/native/test/fixtures/ritmo-native.config.ts --frames 60
+      - run: cmake --build examples/top-down/.ritmo-native/${{ matrix.target }}/build --target rn_kernel_test rn_gfx_test --config Release --parallel 4
+      - run: ctest --test-dir examples/top-down/.ritmo-native/${{ matrix.target }}/build -C Release --output-on-failure
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: native-${{ matrix.target }}
+          path: |
+            examples/top-down/.ritmo-native/report.json
+            examples/top-down/.ritmo-native/${{ matrix.target }}/build/scene.bmp
+  fuzz-and-sanitizers:
+    runs-on: ubuntu-latest
+    env:
+      RITMO_NATIVE_HEADLESS: '1'
+      RITMO_NATIVE_SANITIZE: '1'
+      RITMO_NATIVE_STATS: '1'
+      ASAN_OPTIONS: detect_leaks=1
+      UBSAN_OPTIONS: halt_on_error=1
+      FETCHCONTENT_SOURCE_DIR_SDL3: ${{ github.workspace }}/.ritmo-native/sdl/SDL3-3.2.28
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: cmake -DRN_CACHE="${{ github.workspace }}/.ritmo-native/sdl" -P scripts/native-dependencies.cmake
+      - run: pnpm build
+      - run: node --import tsx scripts/native-fuzz.ts
+      - run: pnpm native check --config examples/top-down/ritmo-native.config.ts --frames 600
+  android:
+    runs-on: ubuntu-latest
+    env:
+      FETCHCONTENT_SOURCE_DIR_SDL3: ${{ github.workspace }}/.ritmo-native/sdl/SDL3-3.2.28
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: pnpm }
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: sdkmanager 'platforms;android-35' 'ndk;27.2.12479018' 'cmake;3.31.6'
+      - run: pnpm install --frozen-lockfile
+      - run: cmake -DRN_CACHE="${{ github.workspace }}/.ritmo-native/sdl" -P scripts/native-dependencies.cmake
+      - run: pnpm build
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          disable-animations: true
+          script: pnpm native check --config examples/top-down/ritmo-native.config.ts --target android --frames 600
+      - uses: actions/upload-artifact@v6
+        with:
+          name: native-android-apk
+          path: examples/top-down/native/android/app/build/outputs/apk/debug/app-debug.apk
+  ios:
+    runs-on: macos-latest
+    env:
+      FETCHCONTENT_SOURCE_DIR_SDL3: ${{ github.workspace }}/.ritmo-native/sdl/SDL3-3.2.28
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: cmake -DRN_CACHE="${{ github.workspace }}/.ritmo-native/sdl" -P scripts/native-dependencies.cmake
+      - run: pnpm build
+      - name: Boot an available iPhone simulator
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; print(next(d["udid"] for ds in json.load(sys.stdin)["devices"].values() for d in ds if "iPhone" in d["name"]))')
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+      - run: pnpm native check --config examples/top-down/ritmo-native.config.ts --target ios --frames 600
+  jitless:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: mkdir -p .bench && pnpm bench:jitless --json .bench/jitless.json
+      - uses: actions/upload-artifact@v6
+        with: { name: jitless-benchmarks, path: .bench/jitless.json }

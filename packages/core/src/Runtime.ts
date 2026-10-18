@@ -66,6 +66,7 @@ import type * as Inspector from "./Inspector.ts"
 import * as Cells from "./internal/cells.ts"
 import { sameValue } from "./internal/equal.ts"
 import * as DebugInternal from "./internal/debug.ts"
+import { nativeSymbol } from "./internal/native.ts"
 import { makeQueryEngine } from "./internal/queries.ts"
 import { requirementIndex } from "./internal/requirements.ts"
 import * as Streams from "./internal/streams.ts"
@@ -1229,7 +1230,7 @@ const makeValidatedRuntime = <
       }
       return matches
     }
-    return {
+    const handle: QueryIteration<S, Q> & QueryLookups<S, Q> = {
       each,
       get(target) {
         return resolve(target, query, reader)
@@ -1263,6 +1264,8 @@ const makeValidatedRuntime = <
         return Result.success(matches[0])
       }
     }
+    if (world[nativeSymbol]) Object.defineProperty(handle, nativeSymbol, { value: { view: () => queries[nativeSymbol].view(query) } })
+    return handle
   }
 
   /**

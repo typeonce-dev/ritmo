@@ -1,5 +1,12 @@
 # Migration guide
 
+## Native hosts
+
+`@typeonce/ritmo-native` is an optional host package. Existing browser games need no
+migration. Add a native entry, native drawing and config; simulation APIs are
+unchanged. Native source dependencies and the core package must use matching
+versions. Unsupported systems run interpreted and are listed in the compile report.
+
 ## Upgrading to 0.9.0
 
 0.9.0 rejects several calls that compiled before but were always wrong.

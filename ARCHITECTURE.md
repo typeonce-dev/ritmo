@@ -117,3 +117,23 @@ If yes, add one nominal requirement token and teach the runtime how to validate 
 ## Verification
 
 `pnpm run check` runs the TypeScript 7 compiler (`typescript`), type assertions through TSTyche on the TypeScript 6 JavaScript API (`typescript6`, which TypeScript 7 no longer ships; the docs generator uses it too), and runtime tests. `pnpm pack:check` type-checks the published packages from a consumer project with both TypeScript 7 and 6. `packages/core/dtslint/Architecture.tst.ts` composes a wide schedule to guard against the dependency-depth failures that stopped earlier development. `pnpm bench:check` guards runtime and checker performance.
+
+## Native seams
+
+The private `Symbol.for("@typeonce/ritmo/native@0.8")` on bound games registers
+numeric layouts before runtime construction. The symbol is absent from public
+types. Unregistered worlds keep ordinary arrays and the existing read/write path.
+Registered worlds install numeric-column accessors into those arrays; snapshots,
+restore, cells, debug dumps, membership and transaction journals share that storage.
+Columns double on growth and reuse entity slots after despawn. Record-local presence
+keeps stale reads invalid when a slot is reused. Numeric object reads are fresh,
+frozen objects; scalar and object field shapes are checked on writes.
+
+Query handles expose the same symbol only for registered worlds. Its view provides
+cached entity slots, raw Float64 columns, Int32 marks, layout descriptors and the
+current system tick. Kernels journal old double values natively; core's transaction
+commit/rollback owns the native journal. Native writes invalidate sparse change
+logs, making filtered readers scan authoritative marks. Exit phases and debug
+traces use the original callback, preserving their ordered rollback and trace
+contracts. Kernels check buffer types, extents and layout hashes before entering C.
+`pnpm test:native-columns` runs the core suite with numeric layouts enabled.

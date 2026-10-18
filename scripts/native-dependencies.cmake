@@ -1,0 +1,10 @@
+cmake_minimum_required(VERSION 3.24)
+if(NOT RN_CACHE)
+  message(FATAL_ERROR "Pass -DRN_CACHE=<directory>")
+endif()
+file(MAKE_DIRECTORY "${RN_CACHE}")
+if(NOT EXISTS "${RN_CACHE}/SDL3-3.2.28/CMakeLists.txt")
+  file(DOWNLOAD "https://www.libsdl.org/release/SDL3-3.2.28.tar.gz" "${RN_CACHE}/sdl.tar.gz"
+    EXPECTED_HASH SHA256=1330671214d146f8aeb1ed399fc3e081873cdb38b5189d1f8bb6ab15bbc04211 TLS_VERIFY ON)
+  file(ARCHIVE_EXTRACT INPUT "${RN_CACHE}/sdl.tar.gz" DESTINATION "${RN_CACHE}")
+endif()

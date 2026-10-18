@@ -17,13 +17,16 @@
     "example:pixi": "vite --open /examples/pixi/",
     "example:platformer": "vite --open /examples/platformer/",
     "example:top-down": "vite --open /examples/top-down/",
-    "build": "rm -rf packages/*/dist packages/*/tsconfig.tsbuildinfo && tsc -b tsconfig.packages.json --pretty false",
+    "build": "rm -rf packages/*/dist packages/*/tsconfig*.tsbuildinfo && tsc -b tsconfig.packages.json --pretty false",
     "pack:check": "node --import tsx scripts/pack-check.ts",
     "changeset": "changeset",
     "version-packages": "changeset version && node --import tsx scripts/sync-version.ts && pnpm install --lockfile-only",
     "release": "pnpm build && changeset publish",
     "example:algorithms": "node --import tsx examples/algorithms/main.ts",
-    "bench:math": "node --import tsx packages/math/bench/helpers.ts"
+    "bench:math": "node --import tsx packages/math/bench/helpers.ts",
+    "bench:jitless": "node --jitless --expose-gc --import tsx scripts/bench.ts",
+    "native": "node --import tsx packages/native/src/cli.ts",
+    "test:native-columns": "vitest run --config vitest.native.config.ts"
   },
   "devDependencies": {
     "@changesets/cli": "2.31.1",

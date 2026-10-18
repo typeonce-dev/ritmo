@@ -42,6 +42,7 @@ version from 5.9 up, and the packages build with TypeScript 7.
 | `@typeonce/ritmo-browser` | Animation-frame tick source, keyboard, pointer, and touch input, input capture |
 | `@typeonce/ritmo-render` | Entity to renderer node sync, for any renderer |
 | `@typeonce/ritmo-pixi` | Pixi container adapter (`PixiNodeRegistry.make`) |
+| `@typeonce/ritmo-native` | Native QuickJS-ng/SDL3 hosts and numeric C kernels ([README](./packages/native/README.md)) |
 | `@typeonce/ritmo-devtools` | Headless debug sessions and trace reports ([README](./packages/devtools/README.md)) |
 
 All packages are released together with the same version.

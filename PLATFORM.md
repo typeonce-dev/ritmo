@@ -72,6 +72,14 @@ Own debugging infrastructure over the core `Debug` handle:
 
 This package reads the world; it must not mutate it or require games to change their runtime shape beyond `debug: { hostClock }`.
 
+### `@typeonce/ritmo-native`
+
+A native host injects clock, frames, structural input targets and a retained SDL3
+scene into the game. `NativeHostClock`, `NativeTickSource` and `NativeNodeRegistry`
+implement the existing core/render contracts. The build-time CLI bundles TypeScript
+for QuickJS-ng, emits eligible numeric systems as C11, and reports every fallback.
+Drawing and gameplay stay in games. See [setup and contracts](packages/native/README.md).
+
 ## Bad Packages
 
 These do not belong as public platform packages:

@@ -514,3 +514,13 @@ physics engine, networking stack, or save format. Those integrations should be
 small packages built from services, systems, lifecycle readers, and inspectors.
 The next renderer package should be based on at least two real games so its API
 captures a repeated pattern instead of one demo's object model.
+
+## Run natively
+
+Add `@typeonce/ritmo-native`, a `native.ts` exporting `NativeHost.main`, and a
+`ritmo-native.config.ts`. The host is injected into the entry. Reuse the same
+simulation schema and schedules, existing structural input modules, and
+`FixedLoop` through `NativeTickSource`. Native drawing is a separate game-owned
+layer over `host.gfx`; `NativeNodeRegistry` keeps its nodes aligned with entities.
+`ritmo-native check` compares headless frame output against interpreted Node.
+See [native package setup](packages/native/README.md).

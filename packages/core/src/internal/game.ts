@@ -4,6 +4,7 @@
  * Every constructor here is a thin, schema-aware wrapper over the unbound
  * module functions; the precise public types live on `Schema.Game`.
  */
+import { nativeSymbol, registerLayouts } from "./native.ts"
 import * as Command from "../Command.ts"
 import type * as Debug from "../Debug.ts"
 import type * as Snapshot from "../Snapshot.ts"
@@ -93,6 +94,7 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
   }
 
   const game = {
+    [nativeSymbol]: { layouts: (layouts: import("./native.ts").Layouts) => registerLayouts(schema, layouts) },
     schema,
     EntityScope: defineScope,
     Inspector: (name: string, spec: object, read: (context: any) => unknown) =>

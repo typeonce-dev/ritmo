@@ -12,6 +12,7 @@
 - [`packages/pixi`](./packages/pixi/): Pixi container adapter (`PixiNodeRegistry.make`) for the render package's registry contract.
 - [`packages/math`](./packages/math/): validated math values (Scalar, Vector2, Size2, Aabb, InputAxis) and hot-path game helpers (Vec2, Box2, Collide2, SpatialGrid, FlowField, Random).
 - [`packages/devtools`](./packages/devtools/): debug sessions, trace history, and text reports over the core `Debug` handle.
+- [`packages/native`](./packages/native/): QuickJS-ng/SDL3 native hosts, numeric C kernels, and desktop/mobile builds.
 - [`examples`](./examples/): workspace example apps that consume packages by package name.
 
 ## Package Scope

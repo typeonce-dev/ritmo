@@ -20,7 +20,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 const root = fileURLToPath(new URL("..", import.meta.url))
-const packages = ["core", "math", "browser", "render", "pixi", "devtools"] as const
+const packages = ["core", "math", "browser", "render", "pixi", "devtools", "native"] as const
 
 const run = (command: string, args: ReadonlyArray<string>, cwd: string): string =>
   execFileSync(command, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] })
@@ -50,6 +50,9 @@ for (const directory of packages) {
   }
   if (listing.some((file) => file.includes("/test/") || file.includes("tsbuildinfo"))) {
     throw new Error(`${manifest.name} tarball contains test or build-info files`)
+  }
+  if (directory === "native") for (const required of ["package/CMakeLists.txt", "package/runtime/rn_engine_qjs.c", "package/vendor/quickjs/quickjs.c", "package/vendor/quickjs/LICENSE", "package/vendor/stb_image.h", "package/dist/cli.js"]) {
+    if (!listing.includes(required)) throw new Error(`Native package is missing ${required}`)
   }
   if (directory === "pixi" && listing.some((file) => /\/(NodeRegistry|RenderSync)\.(ts|js|d\.ts)$/.test(file))) {
     throw new Error("Pixi tarball contains removed compatibility modules")
@@ -102,8 +105,10 @@ import * as Browser from "@typeonce/ritmo-browser"
 import { NodeRegistry } from "@typeonce/ritmo-render"
 import { PixiNodeRegistry } from "@typeonce/ritmo-pixi"
 import * as Pixi from "@typeonce/ritmo-pixi"
+import { NativeHostClock, NativeTickSource, NativeNodeRegistry } from "@typeonce/ritmo-native"
 import { Determinism, Session } from "@typeonce/ritmo-devtools"
 
+if (NativeHostClock.make({ clock: { now: () => 9 } }).now() !== 9) throw new Error("NativeHostClock misbehaves when packed")
 const step = Clock.hz(60)
 const Time = Clock.resource("Consumer/Time", step)
 const Sim = Schema.bind(Schema.fragment({ resources: { Time } }))
@@ -179,6 +184,12 @@ step("run the published devtools CLI")
 writeFileSync(path.join(consumer, "lint.mjs"), `import { HostClock, Schema } from "@typeonce/ritmo"; const Game = Schema.bind(Schema.fragment({})); export const lintTarget = () => ({ runtime: Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value, schedules: { update: Game.Schedule() } });\n`)
 const lintOutput = run(path.join(consumer, "node_modules", ".bin", "ritmo-devtools"), ["lint", "lint.mjs"], consumer)
 if (!lintOutput.includes("0 warnings")) throw new Error(`published lint CLI failed: ${lintOutput}`)
+
+step("run the published native CLI")
+writeFileSync(path.join(consumer, "native.mjs"), `export default () => {}\n`)
+writeFileSync(path.join(consumer, "ritmo-native.config.ts"), `export default { entry: "./native.mjs", app: { name: "Consumer", id: "dev.test.consumer", version: "0.1.0" }, targets: ["linux", "macos", "windows"] }\n`)
+const nativeHelp = run(path.join(consumer, "node_modules", ".bin", "ritmo-native"), ["--help"], consumer)
+if (!nativeHelp.includes("ritmo-native doctor")) throw new Error(`published native CLI failed: ${nativeHelp}`)
 
 step("internal modules are not exported")
 writeFileSync(path.join(consumer, "internal.mjs"), `import("@typeonce/ritmo/internal/world").then(() => process.exit(1), (error) => { if (error.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") process.exit(2) })\n`)

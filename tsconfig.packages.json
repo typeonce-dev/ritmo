@@ -8,6 +8,8 @@
     { "path": "packages/render" },
     { "path": "packages/pixi" },
     { "path": "packages/math" },
-    { "path": "packages/devtools" }
+    { "path": "packages/devtools" },
+    { "path": "packages/native" },
+    { "path": "packages/native/tsconfig.cli.json" }
   ]
 }

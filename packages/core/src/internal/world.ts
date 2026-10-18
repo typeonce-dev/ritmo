@@ -17,6 +17,7 @@
  * identity is the descriptor key, which is derived from `(kind, name)`; a bound
  * schema guarantees those names are unique.
  */
+import { makeColumns, nativeSymbol, type NativeJournal } from "./native.ts"
 import type { Descriptor } from "../Descriptor.ts"
 import * as Entity from "../Entity.ts"
 import * as Relation from "../Relation.ts"
@@ -158,6 +159,8 @@ export interface WorldHooks {
  * `Runtime.streamCapacity` caps event streams.
  */
 export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: number) => {
+  const columns = makeColumns(schema, ABSENT)
+  const nativeJournals: NativeJournal[] = []
   let nextEntity = 1
   const records = new Map<number, EntityRecord>()
 
@@ -354,6 +357,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
         nameAt,
         alive: true
       }
+      columns?.attach(record, components.map(([descriptor, value]) => [ordinalOf(descriptor), value] as const))
       records.set(record.id, record)
       entitiesVersion += 1
     }
@@ -421,6 +425,8 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
    * Keeps the journaled writes and records them as lifecycle changes.
    */
   const commitTransaction = (): void => {
+    for (const journal of nativeJournals) { journal.commit(); journal.release() }
+    nativeJournals.length = 0
     inTransaction = false
     for (let index = 0; index < journalRecords.length; index++) {
       const record = journalRecords[index]!
@@ -442,6 +448,8 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
    * Restores every journaled slot to its value before the transaction.
    */
   const rollbackTransaction = (): void => {
+    for (const journal of nativeJournals.reverse()) { journal.rollback(); journal.release() }
+    nativeJournals.length = 0
     inTransaction = false
     for (let index = 0; index < journalRecords.length; index++) {
       journalRecords[index]!.values[journalOrdinals[index]!] = journalValues[index]
@@ -714,6 +722,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     appendLog(despawnedLog, id, tick)
     record.alive = false
     records.delete(id)
+    columns?.release(record)
     entitiesVersion += 1
     if (hooks !== undefined) hookDepth -= 1
   }
@@ -828,6 +837,16 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   }
 
   return {
+    [nativeSymbol]: columns === undefined ? undefined : {
+      columns,
+      available: () => !inPhase && hooks === undefined,
+      invalidate: (ordinals: readonly number[]) => { for (const ordinal of ordinals) changedLogFrom[ordinal] = undefined },
+      journal: (entry: NativeJournal, ordinals: readonly number[]) => {
+        if (!inTransaction || inPhase) throw new Error("Native kernels require an active system transaction outside an exit phase")
+        for (const ordinal of ordinals) changedLogFrom[ordinal] = undefined
+        nativeJournals.push(entry)
+      }
+    },
     records,
     relationDefinitions,
     ordinalOf,

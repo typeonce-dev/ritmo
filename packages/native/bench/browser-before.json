@@ -1,0 +1,271 @@
+{
+  "environment": "AMD EPYC 9V74 80-Core Processor / node v24.19.0 / linux",
+  "calibrationMs": 3.647581999999943,
+  "runtime": {
+    "clock/advance-1000": {
+      "name": "clock/advance-1000",
+      "description": "Advance the validated simulation clock through 1000 fixed steps",
+      "medianMs": 0.5505012500000058,
+      "minMs": 0.3840543333333433,
+      "samples": 74,
+      "runsPerSample": 6,
+      "score": 0.10529011639309255
+    },
+    "spawn/10k-3c": {
+      "name": "spawn/10k-3c",
+      "description": "Spawn 10k entities with 3 components through commands + applyDeferred",
+      "medianMs": 11.968969500000014,
+      "minMs": 10.971339999999941,
+      "samples": 30,
+      "runsPerSample": 1,
+      "score": 3.007839165781636
+    },
+    "despawn/10k": {
+      "name": "despawn/10k",
+      "description": "Despawn 10k entities through commands + applyDeferred",
+      "medianMs": 22.600876999999798,
+      "minMs": 14.007078999999976,
+      "samples": 30,
+      "runsPerSample": 1,
+      "score": 3.8400998250348297
+    },
+    "query/iterate-read-10k-of-20k": {
+      "name": "query/iterate-read-10k-of-20k",
+      "description": "Read 2 components on 10k matching entities in a 20k-entity world",
+      "medianMs": 0.1520131538461468,
+      "minMs": 0.14827207692307043,
+      "samples": 131,
+      "runsPerSample": 13,
+      "score": 0.04064941567401987
+    },
+    "query/iterate-write-10k": {
+      "name": "query/iterate-write-10k",
+      "description": "Integrate velocity into position on 10k entities",
+      "medianMs": 0.5611564999999814,
+      "minMs": 0.5077835000000164,
+      "samples": 101,
+      "runsPerSample": 4,
+      "score": 0.1392109896364288
+    },
+    "query/single-in-20k-x1000": {
+      "name": "query/single-in-20k-x1000",
+      "description": "Resolve a single player entity among 20k entities, 1000 schedule runs",
+      "medianMs": 0.4808252500000094,
+      "minMs": 0.43296049999997877,
+      "samples": 117,
+      "runsPerSample": 4,
+      "score": 0.11869794839430217
+    },
+    "query/changed-100-of-10k-x20": {
+      "name": "query/changed-100-of-10k-x20",
+      "description": "Write 100 of 10k positions and read the changed set from another system, 20 runs",
+      "medianMs": 0.31783521428571604,
+      "minMs": 0.29739014285714155,
+      "samples": 116,
+      "runsPerSample": 7,
+      "score": 0.0815307628059208
+    },
+    "structural/insert-remove-1k": {
+      "name": "structural/insert-remove-1k",
+      "description": "Toggle a marker component on 1k of 10k entities per run",
+      "medianMs": 0.2368116666666664,
+      "minMs": 0.19184044444445034,
+      "samples": 124,
+      "runsPerSample": 9,
+      "score": 0.05259386751125906
+    },
+    "schedule/100-systems-x10": {
+      "name": "schedule/100-systems-x10",
+      "description": "Run a schedule of 100 small systems (one resource read each) 10 times",
+      "medianMs": 0.26786837499999905,
+      "minMs": 0.25886549999999886,
+      "samples": 96,
+      "runsPerSample": 8,
+      "score": 0.07096906937253307
+    },
+    "schedule/150-systems-thistick-x10": {
+      "name": "schedule/150-systems-thistick-x10",
+      "description": "tryTick a 150-system schedule (12 groups of 10 command writers, each followed by applyDeferred(), and 30 thisTick query and event readers) 10 times: the runtime order check plus the run",
+      "medianMs": 0.43564210000000686,
+      "minMs": 0.4145371999999952,
+      "samples": 100,
+      "runsPerSample": 5,
+      "score": 0.11364712294336404
+    },
+    "lookup/get-10k": {
+      "name": "lookup/get-10k",
+      "description": "Resolve 10k stored entity ids through a declared 2-component query's get",
+      "medianMs": 0.6260856250000018,
+      "minMs": 0.6002004999999997,
+      "samples": 110,
+      "runsPerSample": 4,
+      "score": 0.16454750023440434
+    },
+    "events/emit-read-10k": {
+      "name": "events/emit-read-10k",
+      "description": "Emit 10k events, advance the event buffer, read them back",
+      "medianMs": 0.12485730000000217,
+      "minMs": 0.11071200000000089,
+      "samples": 79,
+      "runsPerSample": 20,
+      "score": 0.03035216206243002
+    },
+    "relations/descendants-100x100": {
+      "name": "relations/descendants-100x100",
+      "description": "Traverse descendants of 100 roots with 100 children each",
+      "medianMs": 0.25654638888888964,
+      "minMs": 0.21274755555555203,
+      "samples": 140,
+      "runsPerSample": 9,
+      "score": 0.05832564026128963
+    },
+    "snapshot/json-roundtrip-10k": {
+      "name": "snapshot/json-roundtrip-10k",
+      "description": "Snapshot 10k entities, JSON stringify/parse, and restore",
+      "medianMs": 36.81063499999982,
+      "minMs": 28.886502999999948,
+      "samples": 15,
+      "runsPerSample": 1,
+      "score": 7.919356713570908
+    },
+    "frame/50-systems-5k": {
+      "name": "frame/50-systems-5k",
+      "description": "A game-like frame: 50 systems, 5k entities, 100 spawns and despawns per frame",
+      "medianMs": 4.1162989999999695,
+      "minMs": 3.6681330000000116,
+      "samples": 18,
+      "runsPerSample": 1,
+      "score": 1.0056341433859661
+    },
+    "math/vector2-move-10k": {
+      "name": "math/vector2-move-10k",
+      "description": "Steer, normalize, scale, and integrate 10k positions, as in a movement system",
+      "medianMs": 0.1712391249999996,
+      "minMs": 0.16851091666667153,
+      "samples": 170,
+      "runsPerSample": 12,
+      "score": 0.04619797900819616
+    },
+    "math/vector2-validate-10k": {
+      "name": "math/vector2-validate-10k",
+      "description": "Validate 10k raw vectors (1 in 100 invalid) through the result constructor",
+      "medianMs": 0.15757237500000087,
+      "minMs": 0.13183199999999928,
+      "samples": 140,
+      "runsPerSample": 16,
+      "score": 0.03614229919985386
+    },
+    "math/scalar-approach-clamp-10k": {
+      "name": "math/scalar-approach-clamp-10k",
+      "description": "Approach a target speed and clamp it for 10k values, as in acceleration code",
+      "medianMs": 0.03308138805970151,
+      "minMs": 0.032784671641790206,
+      "samples": 158,
+      "runsPerSample": 67,
+      "score": 0.008988056099024153
+    },
+    "math/aabb-intersects-200x200": {
+      "name": "math/aabb-intersects-200x200",
+      "description": "All-pairs intersection tests between 200 movers and 200 obstacles, plus translation",
+      "medianMs": 0.08364786111111282,
+      "minMs": 0.08191749999999981,
+      "samples": 226,
+      "runsPerSample": 18,
+      "score": 0.022458028359609486
+    },
+    "math/input-axis-10k": {
+      "name": "math/input-axis-10k",
+      "description": "Turn 10k directional key states into normalized movement vectors",
+      "medianMs": 0.20398085714285635,
+      "minMs": 0.1510464285714274,
+      "samples": 106,
+      "runsPerSample": 14,
+      "score": 0.04141001588762905
+    },
+    "math/spatial-grid-1k": {
+      "name": "math/spatial-grid-1k",
+      "description": "Rebuild a spatial grid over 1,000 bodies and query a 96 × 96 box around each",
+      "medianMs": 0.2551128000000006,
+      "minMs": 0.2167069000000083,
+      "samples": 132,
+      "runsPerSample": 10,
+      "score": 0.05941111125123758
+    },
+    "math/flow-field-search": {
+      "name": "math/flow-field-search",
+      "description": "Search a 2,800-cell flow field around 40 walls after the goal moves",
+      "medianMs": 0.2127963750000011,
+      "minMs": 0.1679307500000012,
+      "samples": 142,
+      "runsPerSample": 12,
+      "score": 0.04603892386792232
+    },
+    "math/flow-field-way-1k": {
+      "name": "math/flow-field-way-1k",
+      "description": "Read the flow field direction for 1,000 bodies",
+      "medianMs": 0.06132478571428562,
+      "minMs": 0.05867051428571293,
+      "samples": 150,
+      "runsPerSample": 35,
+      "score": 0.016084769111623494
+    },
+    "math/collide-move-circle-1k": {
+      "name": "math/collide-move-circle-1k",
+      "description": "Move 1,000 circles through 40 walls, sliding along them",
+      "medianMs": 0.6676597499999843,
+      "minMs": 0.6385657499999979,
+      "samples": 131,
+      "runsPerSample": 4,
+      "score": 0.17506549544328487
+    },
+    "math/random-next-100k": {
+      "name": "math/random-next-100k",
+      "description": "Draw 100,000 random numbers",
+      "medianMs": 0.6207237500000105,
+      "minMs": 0.598399999999998,
+      "samples": 140,
+      "runsPerSample": 4,
+      "score": 0.16405388556035405
+    },
+    "math/random-draw-resource-100k": {
+      "name": "math/random-draw-resource-100k",
+      "description": "Draw 100,000 random numbers from a resource in one system",
+      "medianMs": 4.085121999999956,
+      "minMs": 3.87055799999996,
+      "samples": 49,
+      "runsPerSample": 1,
+      "score": 1.0611298114751142
+    },
+    "render/sync-1k-changed-of-10k": {
+      "name": "render/sync-1k-changed-of-10k",
+      "description": "Sync 10k rendered entities after 1k of them moved",
+      "medianMs": 0.4719580000000178,
+      "minMs": 0.43441119999999955,
+      "samples": 145,
+      "runsPerSample": 5,
+      "score": 0.11909566392201912
+    },
+    "render/sync-spawn-despawn-500": {
+      "name": "render/sync-spawn-despawn-500",
+      "description": "Sync nodes for 500 spawns and 500 despawns in a world of 5k rendered entities",
+      "medianMs": 3.4420920000000024,
+      "minMs": 2.6651600000000144,
+      "samples": 43,
+      "runsPerSample": 1,
+      "score": 0.7306648623663721
+    },
+    "render/interpolate-10k": {
+      "name": "render/interpolate-10k",
+      "description": "Place 10k nodes between their previous and current positions",
+      "medianMs": 0.3619376666666578,
+      "minMs": 0.324789833333341,
+      "samples": 159,
+      "runsPerSample": 6,
+      "score": 0.08904250359096685
+    }
+  },
+  "types": {
+    "types": 124750,
+    "instantiations": 1455654
+  }
+}
