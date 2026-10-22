@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { Descriptor, Result, Schema } from "@typeonce/ritmo"
+import { worldOf } from "./world-of.ts"
 
 const Phase = Descriptor.EntityState("State/Phase", ["ready", "windup", "active"] as const, {
   transitions: { ready: ["windup"], windup: ["active", "ready"], active: ["ready"] }
@@ -99,7 +100,7 @@ describe("Descriptor.EntityState", () => {
     runtime.tick(Game.Schedule(Raw))
     expect(results).toEqual([true, false])
 
-    const snapshot = runtime.snapshot()
+    const snapshot = worldOf(runtime.snapshot())
     const entity = snapshot.entities[0]!
     const restored = runtime.restore({
       ...snapshot,

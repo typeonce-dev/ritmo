@@ -116,6 +116,30 @@ export interface Decoder<Value> {
 }
 
 /**
+ * Turns a value of the world into the form a snapshot saves, the inverse of
+ * `decode`. Optional: without one, `runtime.snapshot()` saves the value as it
+ * is, which is right for plain data (numbers, strings, plain objects and
+ * arrays). Give one when the value holds what `JSON.stringify` cannot carry
+ * or `decode` does not read back: a `Map`, a `Set`, a class instance, or a
+ * value a schema library transforms (Effect's `Schema.encodeResult(schema)`
+ * is one as it is).
+ *
+ * @example
+ * ```ts
+ * const Visited = Descriptor.ConstructedComponent({
+ *   result: (raw: ReadonlySet<string>) => Result.succeed(raw),
+ *   decode: (raw: unknown) => Array.isArray(raw) && raw.every((x) => typeof x === "string")
+ *     ? Result.succeed(new Set(raw) as ReadonlySet<string>)
+ *     : Result.fail({ _tag: "InvalidVisited" as const }),
+ *   encode: (value: ReadonlySet<string>) => Result.succeed([...value])
+ * })("Game/Visited")
+ * ```
+ */
+export interface Encoder<Value> {
+  readonly encode: (value: Value) => import("./Result.ts").Result<unknown, unknown>
+}
+
+/**
  * Descriptor that also carries explicit raw-construction metadata.
  *
  * Outside raw-aware APIs this behaves like a normal descriptor. The extra
@@ -341,7 +365,7 @@ export const Component = <Value>(): CheckedValue<"component", Value, <const Name
  * ```
  */
 export const ConstructedComponent = <Value, Raw, Error, Constructor extends {} = {}>(
-  constructor: ResultConstructor<Value, Raw, Error> & Constructor
+  constructor: ResultConstructor<Value, Raw, Error> & Partial<Encoder<NoInfer<Value>>> & Constructor
 ) => <const Name extends string, const Options extends ComponentOptions = {}>(
   name: Name,
   options?: Options
@@ -482,7 +506,7 @@ export const Resource = <Value>(): CheckedValue<"resource", Value, <const Name e
  * Defines a resource descriptor that also knows how to validate raw values.
  */
 export const ConstructedResource = <Value, Raw, Error, Constructor extends {} = {}>(
-  constructor: ResultConstructor<Value, Raw, Error> & Constructor
+  constructor: ResultConstructor<Value, Raw, Error> & Partial<Encoder<NoInfer<Value>>> & Constructor
 ) => <const Name extends string>(
   name: Name
 ): ConstructedFor<"resource", Name, Value, Raw, Error, Constructor> =>
@@ -599,6 +623,10 @@ const asyncValidationIssue: StandardSchemaIssues = {
  * resources. Validation must be synchronous; a schema that returns a promise
  * fails with an issue instead.
  *
+ * Standard Schema only validates, so a value the schema transforms (into a
+ * `Date`, a `Map`, a class) needs `options.encode` to be saved by
+ * `runtime.snapshot()` in a form it reads back (see `Encoder`).
+ *
  * @example
  * ```ts
  * const Position = Descriptor.ConstructedComponent(
@@ -607,8 +635,9 @@ const asyncValidationIssue: StandardSchemaIssues = {
  * ```
  */
 export const fromStandardSchema = <Input, Output>(
-  schema: StandardSchema<Input, Output>
-): ResultConstructor<Output, Input, StandardSchemaIssues> & Decoder<Output> => {
+  schema: StandardSchema<Input, Output>,
+  options?: Partial<Encoder<NoInfer<Output>>>
+): ResultConstructor<Output, Input, StandardSchemaIssues> & Decoder<Output> & Partial<Encoder<Output>> => {
   const validate = (raw: unknown) => {
     const outcome = schema["~standard"].validate(raw)
     if (outcome instanceof Promise) {
@@ -620,7 +649,7 @@ export const fromStandardSchema = <Input, Output>(
       ? ResultModule.succeed(outcome.value)
       : ResultModule.fail<StandardSchemaIssues>({ _tag: "StandardSchemaIssues", issues: outcome.issues })
   }
-  return { result: validate, decode: validate }
+  return options?.encode === undefined ? { result: validate, decode: validate } : { result: validate, decode: validate, encode: options.encode }
 }
 
 /**
@@ -632,6 +661,17 @@ export const fromStandardSchema = <Input, Output>(
 export const decoderOf = (descriptor: Descriptor.AnyConstructed): (raw: unknown) => import("./Result.ts").Result<unknown, unknown> => {
   const constructor = descriptor[descriptorConstruction] as ResultConstructor<unknown, unknown, unknown> & Partial<Decoder<unknown>>
   return typeof constructor.decode === "function" ? constructor.decode : constructor.result
+}
+
+/**
+ * Returns the function that turns a value of a constructed descriptor into
+ * its saved form: its constructor's `encode`, or `undefined` when it has none
+ * (the value is saved as it is).
+ */
+export const encoderOf = (descriptor: Descriptor.Any): ((value: unknown) => import("./Result.ts").Result<unknown, unknown>) | undefined => {
+  if (!hasConstructor(descriptor)) return undefined
+  const constructor = descriptor[descriptorConstruction] as ResultConstructor<unknown, unknown, unknown> & Partial<Encoder<unknown>>
+  return typeof constructor.encode === "function" ? constructor.encode : undefined
 }
 
 /**

@@ -337,7 +337,7 @@ describe("Runtime snapshots", () => {
   it("exposes snapshot and restore only when every value can be validated on load", () => {
     const Valid = Schema.bind(Schema.fragment({ components: { Place, Sprite }, resources: { Frame } }), Root)
     const valid = Valid.Runtime.make({ services: Valid.Runtime.services(), resources: { Frame: 0 } }).success
-    expect(valid.snapshot()).type.toBe<import("@typeonce/ritmo/Snapshot").WorldSnapshot>()
+    expect(valid.snapshot()).type.toBe<Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError>>()
     expect(valid.restore(null)).type.toBe<Result.Result<void, import("@typeonce/ritmo/Snapshot").RestoreError>>()
 
     const Invalid = Schema.bind(Schema.fragment({ components: { Place, Label }, resources: { Score } }), Root)
@@ -362,7 +362,7 @@ describe("Runtime snapshots", () => {
 
     const Loadable = Schema.bind(Schema.fragment({ components: { Unknown, Decoded, Place } }), Root)
     const loadable = Loadable.Runtime.make({ services: Loadable.Runtime.services() }).success
-    expect(loadable.snapshot()).type.toBe<import("@typeonce/ritmo/Snapshot").WorldSnapshot>()
+    expect(loadable.snapshot()).type.toBe<Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError>>()
 
     const Unloadable = Schema.bind(Schema.fragment({ components: { Typed } }), Root)
     const unloadable = Unloadable.Runtime.make({ services: Unloadable.Runtime.services() }).success
@@ -397,7 +397,7 @@ describe("Decode", () => {
     const Root = Schema.defineRoot("DecodeTypes")
     const Game = Schema.bind(Schema.fragment({ components: { Stats, Team, Player } }), Root)
     const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).success
-    expect(runtime.snapshot()).type.toBe<import("@typeonce/ritmo/Snapshot").WorldSnapshot>()
+    expect(runtime.snapshot()).type.toBe<Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError>>()
   })
 })
 
@@ -431,5 +431,47 @@ describe("Snapshot.migrations", () => {
     Snapshot.migrations(Snapshot.migration(1, (save) => save), Snapshot.migration(3, (save) => save))
     // @ts-expect-error migration 2 is listed where migration 1 belongs
     Snapshot.migrations(Snapshot.migration(2, (save) => save))
+  })
+})
+
+describe("Encoding", () => {
+  it("checks an encoder against the descriptor's value", () => {
+    const Visited = Descriptor.ConstructedComponent({
+      result: (raw: ReadonlySet<string>) => Result.succeed(raw),
+      decode: (raw: unknown) => Array.isArray(raw) ? Result.succeed(new Set(raw.map(String)) as ReadonlySet<string>) : Result.fail("not a list" as const),
+      encode: (value: ReadonlySet<string>) => Result.succeed([...value])
+    })("EncodeTypes/Visited")
+    expect<Descriptor.Descriptor.Value<typeof Visited>>().type.toBe<ReadonlySet<string>>()
+
+    Descriptor.ConstructedComponent({
+      result: (raw: ReadonlySet<string>) => Result.succeed(raw),
+      decode: (raw: unknown) => Result.succeed(new Set([String(raw)]) as ReadonlySet<string>),
+      // @ts-expect-error Type 'ReadonlySet<string>' is not assignable to type 'number'
+      encode: (value: number) => Result.succeed(value)
+    })("EncodeTypes/Wrong")
+  })
+
+  it("carries a field's encoder through Decode codecs", () => {
+    const Inner: Decode.Codec<ReadonlySet<string>> = {
+      result: (raw) => Result.succeed(raw),
+      decode: () => Result.succeed(new Set<string>()),
+      encode: (value) => Result.succeed([...value])
+    }
+    const Codec = Decode.struct({ visited: Inner, level: Decode.integer })
+    expect(Codec.encode).type.toBe<((value: { readonly visited: ReadonlySet<string>; readonly level: number }) => Result.Result<unknown, Decode.DecodeError>) | undefined>()
+  })
+
+  it("takes an encoder for a Standard Schema that transforms", () => {
+    const DateSchema: Descriptor.StandardSchema<string, Date> = {
+      "~standard": {
+        version: 1,
+        vendor: "test",
+        validate: (value: unknown) => typeof value === "string" ? { value: new Date(value) } : { issues: [{ message: "not a date" }] }
+      }
+    }
+    const When = Descriptor.fromStandardSchema(DateSchema, { encode: (value) => Result.succeed(value.toISOString()) })
+    expect(When.encode).type.toBe<((value: Date) => Result.Result<unknown, unknown>) | undefined>()
+    // @ts-expect-error Type 'Date' is not assignable to type 'string'
+    Descriptor.fromStandardSchema(DateSchema, { encode: (value: string) => Result.succeed(value) })
   })
 })

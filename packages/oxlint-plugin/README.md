@@ -60,7 +60,7 @@ const started = performance.now()
 | [`use-ops-for-math`](#ritmouse-ops-for-math) | simulation | `Math.sin`, `Math.hypot`, `a ** b`, ... | `Ops` |
 | [`keep-simulation-headless`](#ritmokeep-simulation-headless) | simulation | page globals, host I/O, renderer imports | input and data from the host, drawing in a render schedule |
 | [`no-infinity-in-simulation-data`](#ritmono-infinity-in-simulation-data) | simulation | `Infinity` / `NaN` in object literals | `null` |
-| [`handle-tick-result`](#ritmohandle-tick-result) | everywhere | a dropped `runtime.tick(...)` / `restore(...)` result | check its `_tag` |
+| [`handle-tick-result`](#ritmohandle-tick-result) | everywhere | a dropped `runtime.tick(...)` / `restore(...)` result, or `runtime.snapshot()` serialized unchecked | check its `_tag` |
 | [`prefix-descriptor-and-system-names`](#ritmoprefix-descriptor-and-system-names) | everywhere | `"Position"`, `Game.System("Move", ...)` | `"Game/Position"` |
 | [`use-cell-value`](#ritmouse-cell-value) | everywhere | `cell.present ? cell.get() : undefined` | `cell.value()` |
 
@@ -147,7 +147,7 @@ Catches `Infinity`, `-Infinity`, `NaN`, and `Number.POSITIVE_INFINITY` / `NEGATI
 
 ### `ritmo/handle-tick-result`
 
-`runtime.tick(...)` returns a `Result`: a system that fails stops the tick, and the failure comes back here. `runtime.restore(...)` returns one too: an invalid save leaves the previous world in place. Dropping either hides the failure.
+`runtime.tick(...)` returns a `Result`: a system that fails stops the tick, and the failure comes back here. `runtime.restore(...)` returns one too: an invalid save leaves the previous world in place. Dropping either hides the failure. `runtime.snapshot()` returns one as well (an `encode` can reject a value), so `JSON.stringify(runtime.snapshot())` saves the wrapper, not the world.
 
 ```ts
 runtime.tick(update)                                             // reported
@@ -159,9 +159,13 @@ if (ran._tag === "Failure") console.error(ran.failure)          // names the sys
 const restored = runtime.restore(save)
 if (restored._tag === "Failure") showLoadError(restored.failure)
 void runtime.tick(render)                                        // ignored on purpose
+
+JSON.stringify(runtime.snapshot())                               // reported
+const saved = runtime.snapshot()
+if (saved._tag === "Success") store(JSON.stringify(saved.success))
 ```
 
-Catches `tick(...)`, `tryTick(...)`, and `restore(...)` used as a statement on a receiver named like a runtime (`runtime`, `game.runtime`, `worldRuntime`). Game wrappers with other names (`town.restore(...)`) are not reported. Option: `{ "runtimePattern": "^(runtime|world)$" }` (a case-insensitive regular expression for the receiver's name; default `runtime$`).
+Catches `tick(...)`, `tryTick(...)`, and `restore(...)` used as a statement, and `snapshot()` passed straight to `JSON.stringify` or `structuredClone`, on a receiver named like a runtime (`runtime`, `game.runtime`, `worldRuntime`). Game wrappers with other names (`town.restore(...)`) are not reported. Option: `{ "runtimePattern": "^(runtime|world)$" }` (a case-insensitive regular expression for the receiver's name; default `runtime$`).
 
 ### `ritmo/prefix-descriptor-and-system-names`
 

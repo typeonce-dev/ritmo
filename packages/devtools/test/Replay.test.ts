@@ -68,8 +68,8 @@ const record = (dxs: ReadonlyArray<number>, options: { readonly keep?: number; r
   return { runtime, sink, recorder }
 }
 
-const positionOf = (snapshot: { readonly entities: ReadonlyArray<{ readonly components: Readonly<Record<string, unknown>> }> }) =>
-  snapshot.entities[0]?.components[Position.name]
+const positionOf = (saved: Result.Result<{ readonly entities: ReadonlyArray<{ readonly components: Readonly<Record<string, unknown>> }> }, unknown>) =>
+  saved._tag === "Success" ? saved.success.entities[0]?.components[Position.name] : undefined
 
 describe("Replay", () => {
   it("records the window and replays it to the same world", () => {
@@ -140,7 +140,7 @@ describe("Replay", () => {
     const extracted = Replay.extract(make, file, { from: 4, to: 5 })
     if (extracted._tag === "Failure") throw new Error("extract")
     expect(extracted.success.start.tick).toBe(3)
-    expect(positionOf(extracted.success.start.snapshot)).toEqual({ x: (1 + 2 + 3) * 2 })
+    expect(positionOf(Result.succeed(extracted.success.start.snapshot))).toEqual({ x: (1 + 2 + 3) * 2 })
     expect(extracted.success.ticks.map((record) => record.tick)).toEqual([4, 5])
     const opened = Replay.session(make, JSON.parse(JSON.stringify(extracted.success)))
     if (opened._tag === "Failure") throw new Error("open extract")

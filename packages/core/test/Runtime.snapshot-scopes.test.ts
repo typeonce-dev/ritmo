@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { Decode, Descriptor, Schema } from "@typeonce/ritmo"
+import { worldOf } from "./world-of.ts"
 
 const Name = Descriptor.ConstructedComponent(Decode.string)("SnapshotScopes/Name")
 const { relation: ChildOf } = Descriptor.Hierarchy("SnapshotScopes/ChildOf", "SnapshotScopes/Children")
@@ -21,7 +22,7 @@ const despawn = (runtime: Runtime, scope: typeof Level | typeof Menu) =>
 
 const roundTrip = (runtime: Runtime): Runtime => {
   const restored = makeRuntime()
-  const result = restored.restore(JSON.parse(JSON.stringify(runtime.snapshot())))
+  const result = restored.restore(JSON.parse(JSON.stringify(worldOf(runtime.snapshot()))))
   if (result._tag === "Failure") throw new Error(JSON.stringify(result.failure))
   return restored
 }
@@ -51,7 +52,7 @@ describe("snapshots keep entity scopes", () => {
     }), Game.Schedule.applyDeferred()))
 
     const restored = roundTrip(runtime)
-    expect(restored.snapshot().scopes).toEqual(runtime.snapshot().scopes)
+    expect(worldOf(restored.snapshot()).scopes).toEqual(worldOf(runtime.snapshot()).scopes)
     despawn(restored, Menu)
     expect(restored.inspect(Names)).toEqual(["free", "level"])
     despawn(restored, Level)
@@ -63,7 +64,7 @@ describe("snapshots keep entity scopes", () => {
     runtime.tick(Game.Schedule(Game.System("SnapshotScopes/SpawnOne", { commands: Game.System.commands(Game.System.spawns(Name)) }, ({ commands }) => {
       commands.spawnIn(Level, Game.Command.spawn([Name, "wall"]))
     }), Game.Schedule.applyDeferred()))
-    const saved = runtime.snapshot()
+    const saved = worldOf(runtime.snapshot())
     const id = saved.entities[0]!.id
     const target = makeRuntime()
     expect(target.restore({ ...saved, scopes: { [Level.name]: [id + 100] } })).toEqual({
@@ -81,7 +82,7 @@ describe("snapshots keep entity scopes", () => {
     runtime.tick(Game.Schedule(Game.System("SnapshotScopes/SpawnUnknown", { commands: Game.System.commands(Game.System.spawns(Name)) }, ({ commands }) => {
       commands.spawnIn(Level, Game.Command.spawn([Name, "wall"]))
     }), Game.Schedule.applyDeferred()))
-    const saved = runtime.snapshot()
+    const saved = worldOf(runtime.snapshot())
     const id = saved.entities[0]!.id
     const target = makeRuntime()
     expect(target.restore({ ...saved, scopes: { "SnapshotScopes/Levl": [id] } })).toEqual({
@@ -95,7 +96,7 @@ describe("snapshots keep entity scopes", () => {
 
   it("rejects version 1 snapshots, which have no scopes, instead of restoring them without", () => {
     const runtime = makeRuntime()
-    const { scopes: _scopes, ...rest } = runtime.snapshot()
+    const { scopes: _scopes, ...rest } = worldOf(runtime.snapshot())
     expect(makeRuntime().restore({ ...rest, version: 1 })).toEqual({
       _tag: "Failure",
       failure: { _tag: "UnsupportedVersion", version: 1 }

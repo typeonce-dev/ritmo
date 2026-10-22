@@ -14,7 +14,11 @@ tester.run("handle-tick-result", rule, {
     "town.restore(snapshot)",
     "run.tick(60)",
     "app.ticker.tick()",
-    "runtime.tick()"
+    "runtime.tick()",
+    "const saved = runtime.snapshot(); if (saved._tag === \"Success\") save(JSON.stringify(saved.success))",
+    // Input sources have a snapshot() of plain data.
+    "JSON.stringify(keyboard.snapshot())",
+    "const JSON = { stringify: (x) => x }; JSON.stringify(runtime.snapshot())"
   ],
   invalid: [
     {
@@ -37,6 +41,14 @@ tester.run("handle-tick-result", rule, {
       code: "world.tick(update)",
       options: [{ runtimePattern: "^world$" }],
       errors: [{ messageId: "tick", data: { call: "world.tick" } }]
+    },
+    {
+      code: "localStorage.setItem(\"save\", JSON.stringify(runtime.snapshot()))",
+      errors: [{ messageId: "snapshot", data: { call: "runtime.snapshot", save: "JSON.stringify(...)", save_fixed: "JSON.stringify(saved.success)" } }]
+    },
+    {
+      code: "const copy = structuredClone(game.runtime.snapshot())",
+      errors: [{ messageId: "snapshot", data: { call: "game.runtime.snapshot", save: "structuredClone(...)", save_fixed: "structuredClone(saved.success)" } }]
     }
   ]
 })

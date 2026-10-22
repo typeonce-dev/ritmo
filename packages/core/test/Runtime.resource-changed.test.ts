@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { Decode, Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
 import * as Runtime from "@typeonce/ritmo/Runtime"
+import { worldOf } from "./world-of.ts"
 
 const hostClock = HostClock.test()
 
@@ -132,7 +133,7 @@ describe("Game.System.changedResource", () => {
     const runtime = makeRuntime()
     runtime.tick(Game.Schedule(w.system, r.system))
     runtime.tick(Game.Schedule(r.system))
-    const saved = runtime.snapshot()
+    const saved = worldOf(runtime.snapshot())
     const restored = runtime.restore(JSON.parse(JSON.stringify(saved)))
     expect(restored).toEqual({ _tag: "Success", success: undefined })
     runtime.tick(Game.Schedule(r.system))

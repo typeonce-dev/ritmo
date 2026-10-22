@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { Decode, Descriptor, Schema, Snapshot } from "@typeonce/ritmo"
+import { worldOf } from "./world-of.ts"
 
 const Gold = Descriptor.ConstructedResource(Decode.number)("Migrations/Gold")
 const Game = Schema.bind(Schema.fragment({ resources: { Gold } }))
@@ -26,14 +27,14 @@ describe("save migrations", () => {
     const runtime = unwrap(makeRuntime())
     expect(runtime.restore(old)).toEqual({ _tag: "Success", success: undefined })
     expect(runtime.inspect(Coins)).toBe(10)
-    expect(runtime.snapshot().gameVersion).toBe(2)
+    expect(worldOf(runtime.snapshot()).gameVersion).toBe(2)
 
     const fromOne = { ...old, gameVersion: 1, resources: { "Migrations/Gold": 4 } }
     expect(runtime.restore(fromOne)).toEqual({ _tag: "Success", success: undefined })
     expect(runtime.inspect(Coins)).toBe(8)
 
     // A current save restores unchanged.
-    const current = runtime.snapshot()
+    const current = worldOf(runtime.snapshot())
     expect(runtime.restore(JSON.parse(JSON.stringify(current)))).toEqual({ _tag: "Success", success: undefined })
     expect(runtime.inspect(Coins)).toBe(8)
   })

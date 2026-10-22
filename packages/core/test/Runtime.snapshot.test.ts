@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { Decode, Descriptor, Entity, Result, Schema, Snapshot } from "@typeonce/ritmo"
 import * as Vector2 from "@typeonce/ritmo-math/Vector2"
+import { worldOf } from "./world-of.ts"
 
 const Root = Schema.defineRoot("SnapshotTest")
 const Position = Descriptor.ConstructedComponent(Vector2)("Snapshot/Position")
@@ -65,7 +66,7 @@ describe("Runtime snapshots", () => {
   it("rejects object-shaped handles without changing the world", () => {
     const source = makeRuntime(0)
     populate(source)
-    const saved = source.snapshot()
+    const saved = worldOf(source.snapshot())
     const invalid = {
       ...saved,
       entities: saved.entities.map((entity) => entity.components[Target.name] === undefined ? entity : {
@@ -74,17 +75,17 @@ describe("Runtime snapshots", () => {
       })
     }
     const target = makeRuntime(0)
-    const before = target.snapshot()
+    const before = worldOf(target.snapshot())
     const restored = target.restore(JSON.parse(JSON.stringify(invalid)))
     expect(restored._tag).toBe("Failure")
     if (restored._tag === "Failure") expect(restored.failure._tag).toBe("InvalidComponent")
-    expect(target.snapshot()).toEqual(before)
+    expect(worldOf(target.snapshot())).toEqual(before)
     expect(saved.entities.find((entity) => Target.name in entity.components)?.components[Target.name]).toEqual({ handle: 2 })
   })
   it("round-trips entities, relations, resources, and machines through JSON", () => {
     const source = makeRuntime(0)
     populate(source)
-    const json = JSON.stringify(source.snapshot())
+    const json = JSON.stringify(worldOf(source.snapshot()))
 
     const target = makeRuntime(7)
     const restored = target.restore(JSON.parse(json))
@@ -117,7 +118,7 @@ describe("Runtime snapshots", () => {
     const source = makeRuntime(0)
     populate(source)
     const target = makeRuntime(0)
-    target.restore(JSON.parse(JSON.stringify(source.snapshot())))
+    target.restore(JSON.parse(JSON.stringify(worldOf(source.snapshot()))))
 
     const Spawn = Game.System("Snapshot/SpawnMore", {
       commands: Game.System.commands(Game.System.spawns(Name))
@@ -134,7 +135,7 @@ describe("Runtime snapshots", () => {
     const runtime = makeRuntime(5)
     populate(runtime)
     const before = readWorld(runtime)
-    const good = runtime.snapshot()
+    const good = worldOf(runtime.snapshot())
     const firstId = good.entities[0]!.id
 
     const cases: ReadonlyArray<readonly [unknown, Snapshot.RestoreError["_tag"]]> = [
@@ -173,7 +174,7 @@ describe("Runtime snapshots", () => {
       seen.push({ added: queries.added.each().length, despawned: despawned.entities.all().length })
     })
     runtime.tick(Game.Schedule(Observe))
-    runtime.restore(runtime.snapshot())
+    runtime.restore(worldOf(runtime.snapshot()))
     runtime.tick(Game.Schedule(Observe))
 
     expect(seen).toEqual([{ added: 3, despawned: 0 }, { added: 3, despawned: 4 }])
@@ -182,7 +183,7 @@ describe("Runtime snapshots", () => {
   it("skips transient components and resources", () => {
     const source = makeRuntime(0, 9)
     populate(source)
-    const saved = source.snapshot()
+    const saved = worldOf(source.snapshot())
     expect(saved.resources).toEqual({ "Snapshot/Score": 42 })
     expect(saved.entities.some((entity) => "Snapshot/Sprite" in entity.components)).toBe(false)
 

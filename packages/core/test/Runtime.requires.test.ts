@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { Debug, Decode, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
+import { worldOf } from "./world-of.ts"
 
 const Position = Descriptor.ConstructedComponent(Decode.struct({ x: Decode.number }))("Requires/Position")
 const Velocity = Descriptor.ConstructedComponent(Decode.struct({ x: Decode.number }))("Requires/Velocity")
@@ -111,7 +112,7 @@ describe("Schema.requires at runtime", () => {
   it("restores entities that keep their requirements, and rejects one that does not", () => {
     const runtime = makeRuntime()
     runtime.tick(Game.Schedule(SpawnMover, Game.Schedule.applyDeferred(), Promote, Game.Schedule.applyDeferred()))
-    const saved = JSON.parse(JSON.stringify(runtime.snapshot()))
+    const saved = JSON.parse(JSON.stringify(worldOf(runtime.snapshot())))
     expect(runtime.restore(saved)).toEqual({ _tag: "Success", success: undefined })
 
     delete saved.entities[0].components["Requires/Velocity"]
@@ -128,7 +129,7 @@ describe("Schema.requires at runtime", () => {
     }, ({ commands }) => {
       commands.spawn(Game.Command.spawn([Ghost, {}], [Trail, 0]))
     }), Game.Schedule.applyDeferred()))
-    const saved = JSON.parse(JSON.stringify(runtime.snapshot()))
+    const saved = JSON.parse(JSON.stringify(worldOf(runtime.snapshot())))
     expect(runtime.restore(saved)).toEqual({ _tag: "Success", success: undefined })
   })
 

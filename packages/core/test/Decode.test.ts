@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { Decode, Descriptor, Entity, Result, Schema } from "@typeonce/ritmo"
+import { worldOf } from "./world-of.ts"
 
 const Root = Schema.defineRoot("DecodeTest")
 
@@ -49,7 +50,7 @@ describe("Decode", () => {
       commands.spawn(Game.Command.spawn([Player, {}]))
     }), Game.Schedule.applyDeferred()))
 
-    const saved = JSON.parse(JSON.stringify(runtime.snapshot()))
+    const saved = JSON.parse(JSON.stringify(worldOf(runtime.snapshot())))
     expect(runtime.restore(saved)._tag).toBe("Success")
     const broken = { ...saved, entities: [{ id: saved.entities[0].id, components: { "DecodeTest/Player": 1 } }] }
     const restored = runtime.restore(broken)

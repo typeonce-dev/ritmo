@@ -6,6 +6,7 @@
  */
 import { Decode, Descriptor, Result, Schema } from "@typeonce/ritmo"
 import type { Query } from "@typeonce/ritmo/Query"
+import { worldOf } from "./world-of.ts"
 
 // 1. Descriptors name the data a world can hold. Constructed descriptors carry
 //    a validator, so values loaded from a save are checked; transient ones are
@@ -173,7 +174,7 @@ export const runConcepts = (frames: number): { readonly log: ReadonlyArray<strin
     }
   }
 
-  const saved = JSON.stringify(runtime.snapshot())
+  const saved = JSON.stringify(worldOf(runtime.snapshot()))
   const restored = runtime.restore(JSON.parse(saved))
   return { log, failure: restored._tag === "Success" ? undefined : restored.failure._tag }
 }

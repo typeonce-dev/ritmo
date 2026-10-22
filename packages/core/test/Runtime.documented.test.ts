@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { Decode, Descriptor, Schema } from "@typeonce/ritmo"
+import { worldOf } from "./world-of.ts"
 
 const Count = Descriptor.ConstructedComponent(Decode.number)("Documented/Count")
 const Ping = Descriptor.Event<number>()("Documented/Ping")
@@ -60,7 +61,7 @@ describe("documented semantics", () => {
     const Gems2 = Game.System("Documented/Gems", { resources: { gems: Game.System.writeResource(Gems) } }, ({ resources }) => {
       resources.gems.set(7)
     })
-    const saved = JSON.parse(JSON.stringify(runtime.snapshot()))
+    const saved = JSON.parse(JSON.stringify(worldOf(runtime.snapshot())))
     delete saved.resources["Documented/Gems"]
     runtime.tick(Game.Schedule(Gems2))
     expect(runtime.restore(saved)).toEqual({ _tag: "Success", success: undefined })

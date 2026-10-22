@@ -451,7 +451,9 @@ const snapshotRoundTrip: BenchCase = {
     populate(runtime, N, 0)
     return {
       run: () => {
-        const restored = runtime.restore(JSON.parse(JSON.stringify(runtime.snapshot())))
+        const saved = runtime.snapshot()
+        if (saved._tag === "Failure") throw new Error("snapshot failed")
+        const restored = runtime.restore(JSON.parse(JSON.stringify(saved.success)))
         if (restored._tag === "Failure") throw new Error("snapshot round-trip failed")
       }
     }

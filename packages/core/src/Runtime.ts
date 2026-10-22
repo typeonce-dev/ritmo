@@ -651,16 +651,17 @@ export interface Runtime<
    * Captures the world as plain data: entities with their ids, components,
    * relation edges, resources, and committed machine values.
    *
-   * Values are shared with the world, not copied; serialize the snapshot
+   * A value whose constructor has an `encode` is saved encoded; a value
+   * without one is shared with the world, not copied: serialize the snapshot
    * (for example with `JSON.stringify`) to detach it. Transient components and
-   * resources are skipped.
+   * resources are skipped. Fails only when an `encode` rejects a value.
    *
    * Callable only when every component and resource is constructed or
    * transient; see the `Snapshot` module. Take it between ticks: calling it
    * while a schedule is running (from a system, a service, or a trace
    * callback) throws.
    */
-  readonly snapshot: Snapshot.Gate<S, () => Snapshot.WorldSnapshot>
+  readonly snapshot: Snapshot.Gate<S, () => Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError>>
   /**
    * Replaces the world with a snapshot after validating it against the
    * schema. On failure nothing changes. See the `Snapshot` module. Restore
@@ -2440,12 +2441,45 @@ const makeValidatedRuntime = <
   for (const machine of options.machineDefinitions) machinesByName.set(machine.name, machine)
   for (const provision of machineEntries) machinesByName.set(provision.machine.name, provision.machine)
 
-  const snapshot = (): Snapshot.WorldSnapshot => {
+  // Each saved descriptor's `encode`, found once: a snapshot of a schema
+  // without encoders copies its values as before.
+  const resourceEncoders = new Map<string, (value: unknown) => Result.Result<unknown, unknown>>()
+  for (const [name, descriptor] of resourcesByName) {
+    const encode = DescriptorModule.encoderOf(descriptor)
+    if (encode !== undefined) resourceEncoders.set(name, encode)
+  }
+  const componentEncoders = new Map<string, (value: unknown) => Result.Result<unknown, unknown>>()
+  for (const descriptor of Object.values(options.schema.components) as ReadonlyArray<Descriptor.Any>) {
+    const encode = DescriptorModule.encoderOf(descriptor)
+    if (encode !== undefined) componentEncoders.set(descriptor.name, encode)
+  }
+
+  const snapshot = (): Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError> => {
     if (inTick) throw new Error("runtime.snapshot was called while a schedule is running: it would capture writes a failing system rolls back; take it between ticks")
     const savedResources: Record<string, unknown> = {}
     for (const [name, descriptor] of resourcesByName) {
       if (!DescriptorModule.isTransient(descriptor) && resources.has(descriptor.key)) {
-        savedResources[name] = resources.get(descriptor.key)
+        const value = resources.get(descriptor.key)
+        const encode = resourceEncoders.get(name)
+        if (encode === undefined) {
+          savedResources[name] = value
+          continue
+        }
+        const encoded = encode(value)
+        if (encoded._tag === "Failure") return Result.fail({ _tag: "UnencodableResource", name, error: encoded.failure })
+        savedResources[name] = encoded.success
+      }
+    }
+    const entities = world.exportEntities(DescriptorModule.isTransient)
+    if (componentEncoders.size > 0) {
+      for (const entity of entities) {
+        for (const name in entity.components) {
+          const encode = componentEncoders.get(name)
+          if (encode === undefined) continue
+          const encoded = encode(entity.components[name])
+          if (encoded._tag === "Failure") return Result.fail({ _tag: "UnencodableComponent", entityId: entity.id, name, error: encoded.failure })
+          entity.components[name] = encoded.success
+        }
       }
     }
     const savedMachines: Record<string, Machine.StateValue> = {}
@@ -2458,16 +2492,16 @@ const makeValidatedRuntime = <
       const name = EntityScopeModule.nameOf(key)
       if (name !== undefined) savedScopes[name] = members
     }
-    return {
+    return Result.succeed({
       version: Snapshot.version,
       gameVersion: options.saves?.latest ?? 0,
       nextEntity: world.nextEntityValue(),
-      entities: world.exportEntities(DescriptorModule.isTransient),
+      entities,
       relations: world.exportRelations(),
       resources: savedResources,
       machines: savedMachines,
       scopes: savedScopes
-    }
+    })
   }
 
   // The public type only exposes `restore` when every saved descriptor has a

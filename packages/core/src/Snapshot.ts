@@ -4,8 +4,12 @@
  * `runtime.snapshot()` captures entities (with their ids), component values,
  * relation edges, resources, and committed state-machine values, keyed by
  * descriptor, relation, and machine names. A bound schema guarantees those
- * names are unique, so they are stable save keys. The snapshot is plain data:
- * store it with `JSON.stringify` or `structuredClone`.
+ * names are unique, so they are stable save keys. It returns a `Result`: a
+ * component or resource whose constructor has an `encode` (see
+ * `Descriptor.Encoder`) is saved encoded, and an encoder that rejects a value
+ * fails the snapshot. Values without an encoder are saved as they are. The
+ * snapshot is plain data when the values are: store it with `JSON.stringify`
+ * or `structuredClone`.
  *
  * `runtime.restore(data)` accepts `unknown`, because saved data comes from
  * outside the program, and validates it before touching the world: shape,
@@ -33,14 +37,16 @@
  * When the game's save format changes, give the runtime its migrations
  * (`Game.Runtime.make({ saves: Snapshot.migrations(...) })`): saves carry a
  * `gameVersion`, and `restore` upgrades older ones step by step before
- * validating them.
+ * validating them. Migrations see values as saved (encoded), and `decode`
+ * reads what they return.
  *
  * @module Snapshot
  * @docGroup runtime
  *
  * @example
  * ```ts
- * localStorage.setItem("save", JSON.stringify(runtime.snapshot()))
+ * const saved = runtime.snapshot()
+ * if (saved._tag === "Success") localStorage.setItem("save", JSON.stringify(saved.success))
  *
  * const restored = runtime.restore(JSON.parse(localStorage.getItem("save") ?? "null"))
  * if (restored._tag === "Failure") {
@@ -119,6 +125,14 @@ export interface WorldSnapshot {
    */
   readonly scopes: Readonly<Record<string, ReadonlyArray<number>>>
 }
+
+/**
+ * Why `runtime.snapshot()` could not save the world: a component's or
+ * resource's `encode` rejected its value (`error` is what it returned).
+ */
+export type SnapshotError =
+  | { readonly _tag: "UnencodableComponent"; readonly entityId: number; readonly name: string; readonly error: unknown }
+  | { readonly _tag: "UnencodableResource"; readonly name: string; readonly error: unknown }
 
 /**
  * Why a snapshot could not be restored.
