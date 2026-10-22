@@ -6,7 +6,7 @@ const finiteBrand = Brand.refine<Scalar.Finite, number, Scalar.Error>((value) =>
   Number.isFinite(value)
     ? Result.succeed(value as Scalar.Finite)
     : Result.fail({
-        tag: "Scalar/NotFinite",
+        _tag: "Scalar/NotFinite",
         value
       })
 )
@@ -20,7 +20,7 @@ const nonNegativeBrand = Brand.refine<Scalar.NonNegative, number, Scalar.Error>(
   return value >= 0
     ? Result.succeed(value as Scalar.NonNegative)
     : Result.fail({
-        tag: "Scalar/Negative",
+        _tag: "Scalar/Negative",
         value
       })
 })
@@ -34,7 +34,7 @@ const positiveBrand = Brand.refine<Scalar.Positive, number, Scalar.Error>((value
   return value > 0
     ? Result.succeed(value as Scalar.Positive)
     : Result.fail({
-        tag: "Scalar/NonPositive",
+        _tag: "Scalar/NonPositive",
         value
       })
 })
@@ -68,7 +68,7 @@ export const inverseLerp = (
 ): Result.Result<Scalar.Finite, Scalar.InterpolationError> => {
   if (start === end) {
     return Result.fail({
-      tag: "Scalar/ZeroRange",
+      _tag: "Scalar/ZeroRange",
       start,
       end
     })

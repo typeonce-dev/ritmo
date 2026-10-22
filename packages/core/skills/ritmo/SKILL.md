@@ -26,6 +26,7 @@ Read the playbook for the change before writing code. A change that spans severa
 | Something behaves wrong | [`playbooks/bug-fix.md`](playbooks/bug-fix.md) |
 | Moving or splitting code without changing behaviour | [`playbooks/refactor.md`](playbooks/refactor.md) |
 | New state, saves, or a Ritmo upgrade | [`playbooks/state-and-upgrades.md`](playbooks/state-and-upgrades.md) |
+| Effect in the host: schemas, Results, services, scopes | [`playbooks/effect.md`](playbooks/effect.md) |
 
 ## Principles
 

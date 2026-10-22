@@ -13,7 +13,7 @@ export const result = (raw: Aabb.Raw): Result.Result<Aabb.Aabb, Aabb.Error> => {
   const position = Vector2.result(raw.position)
   if (position._tag === "Failure") {
     return Result.fail({
-      tag: "Aabb/InvalidPosition",
+      _tag: "Aabb/InvalidPosition",
       error: position.failure,
       input: raw
     })
@@ -22,7 +22,7 @@ export const result = (raw: Aabb.Raw): Result.Result<Aabb.Aabb, Aabb.Error> => {
   const size = Size2.result(raw.size)
   if (size._tag === "Failure") {
     return Result.fail({
-      tag: "Aabb/InvalidSize",
+      _tag: "Aabb/InvalidSize",
       error: size.failure,
       input: raw
     })
@@ -67,9 +67,9 @@ export const translate = (aabb: Aabb.Aabb, delta: Vector2.Vector2): Aabb.Aabb =>
   make(Vector2.add(aabb.position, delta), aabb.size)
 
 export const decode = (raw: unknown): Result.Result<Aabb.Aabb, Aabb.Error | Aabb.DecodeError> => {
-  if (typeof raw !== "object" || raw === null) return Result.fail({ tag: "Aabb/Malformed", input: raw })
+  if (typeof raw !== "object" || raw === null) return Result.fail({ _tag: "Aabb/Malformed", input: raw })
   const { position, size } = raw as Record<string, unknown>
   return isVector2Shape(position) && isSize2Shape(size)
     ? result({ position, size })
-    : Result.fail({ tag: "Aabb/Malformed", input: raw })
+    : Result.fail({ _tag: "Aabb/Malformed", input: raw })
 }

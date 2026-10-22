@@ -62,7 +62,7 @@ export interface Options {
 
 /** Configuration error returned before a loop subscribes to its host. */
 export interface InvalidOptions {
-  readonly kind: "InvalidFixedLoopOptions"
+  readonly _tag: "InvalidFixedLoopOptions"
   readonly field: keyof Options
   readonly reason: "mustBeFiniteAndPositive" | "mustBePositiveInteger"
   readonly value: number
@@ -83,11 +83,11 @@ export interface Frame {
 /** Failure delivered by an active loop before it stops itself. */
 export type Failure<UpdateError> =
   | {
-      readonly kind: "InvalidTickDelta"
+      readonly _tag: "InvalidTickDelta"
       readonly deltaMS: number
     }
   | {
-      readonly kind: "UpdateFailure"
+      readonly _tag: "UpdateFailure"
       readonly error: UpdateError
     }
 
@@ -115,7 +115,7 @@ const validate = (options: Options): Result.Result<void, InvalidOptions> => {
     const value = options[field]
     if (!Number.isFinite(value) || value <= 0) {
       return Result.fail({
-        kind: "InvalidFixedLoopOptions",
+        _tag: "InvalidFixedLoopOptions",
         field,
         reason: "mustBeFiniteAndPositive",
         value
@@ -124,7 +124,7 @@ const validate = (options: Options): Result.Result<void, InvalidOptions> => {
   }
   if (!Number.isInteger(options.maxStepsPerFrame) || options.maxStepsPerFrame <= 0) {
     return Result.fail({
-      kind: "InvalidFixedLoopOptions",
+      _tag: "InvalidFixedLoopOptions",
       field: "maxStepsPerFrame",
       reason: "mustBePositiveInteger",
       value: options.maxStepsPerFrame
@@ -170,7 +170,7 @@ export const start = <TTick extends Tick, UpdateError>(
       return
     }
     if (!Number.isFinite(tick.deltaMS) || tick.deltaMS < 0) {
-      fail({ kind: "InvalidTickDelta", deltaMS: tick.deltaMS })
+      fail({ _tag: "InvalidTickDelta", deltaMS: tick.deltaMS })
       return
     }
 
@@ -183,7 +183,7 @@ export const start = <TTick extends Tick, UpdateError>(
     while (accumulator >= options.step.dt && fixedSteps < options.maxStepsPerFrame) {
       const update = options.update(options.step.dt)
       if (update._tag === "Failure") {
-        fail({ kind: "UpdateFailure", error: update.failure })
+        fail({ _tag: "UpdateFailure", error: update.failure })
         return
       }
       accumulator -= options.step.dt

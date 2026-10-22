@@ -61,7 +61,7 @@ export type Size2 = Brand.Branded<{
  * @category Size Types
  */
 export type Error = {
-  readonly tag: "Size2/Invalid"
+  readonly _tag: "Size2/Invalid"
   readonly width: Scalar.Error | null
   readonly height: Scalar.Error | null
   readonly input: Raw
@@ -73,7 +73,7 @@ export type Error = {
  * @category Size Types
  */
 export type DecodeError = {
-  readonly tag: "Size2/Malformed"
+  readonly _tag: "Size2/Malformed"
   readonly input: unknown
 }
 

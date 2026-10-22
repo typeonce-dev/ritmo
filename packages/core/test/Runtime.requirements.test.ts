@@ -26,7 +26,7 @@ describe("Runtime dynamic requirements", () => {
     expect(incomplete.tryTick(schedule)).toEqual({
       _tag: "Failure",
       failure: {
-        kind: "MissingRuntimeRequirements",
+        _tag: "MissingRuntimeRequirements",
         requirements: [
           { kind: "service", name: "RuntimeRequirements/Logger" },
           { kind: "resource", name: "RuntimeRequirements/Counter" },

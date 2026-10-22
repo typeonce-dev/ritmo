@@ -10,7 +10,7 @@ export const result = (raw: Size2.Raw): Result.Result<Size2.Size2, Size2.Error> 
   const height = Scalar.NonNegative.result(raw.height)
   if (width._tag === "Failure" || height._tag === "Failure") {
     return Result.fail({
-      tag: "Size2/Invalid",
+      _tag: "Size2/Invalid",
       width: width._tag === "Success" ? null : width.failure,
       height: height._tag === "Success" ? null : height.failure,
       input: {
@@ -45,4 +45,4 @@ export const isRawShape = (raw: unknown): raw is Size2.Raw =>
   typeof raw === "object" && raw !== null && typeof (raw as Record<string, unknown>)["width"] === "number" && typeof (raw as Record<string, unknown>)["height"] === "number"
 
 export const decode = (raw: unknown): Result.Result<Size2.Size2, Size2.Error | Size2.DecodeError> =>
-  isRawShape(raw) ? result(raw) : Result.fail({ tag: "Size2/Malformed", input: raw })
+  isRawShape(raw) ? result(raw) : Result.fail({ _tag: "Size2/Malformed", input: raw })

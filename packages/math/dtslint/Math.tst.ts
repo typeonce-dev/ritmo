@@ -26,10 +26,10 @@ describe("helpers", () => {
   it("result match infers handler inputs", () => {
     const matched = Result.match(Vector2.result({ x: 1, y: 2 }), {
       onSuccess: (value) => Vector2.length(value),
-      onFailure: (error) => error.tag
+      onFailure: (error) => error._tag
     })
 
-    expect(matched).type.toBe<Scalar.NonNegative | Vector2.Error["tag"]>()
+    expect(matched).type.toBe<Scalar.NonNegative | Vector2.Error["_tag"]>()
   })
 
   it("constructors accept raw structural values", () => {

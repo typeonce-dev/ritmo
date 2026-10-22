@@ -494,13 +494,13 @@ export interface MissingRuntimeRequirement {
  * runs after it in the schedule. Nothing ran.
  */
 export interface TickOrderViolation {
-  readonly kind: "TickOrderViolation"
+  readonly _tag: "TickOrderViolation"
   readonly issues: ReadonlyArray<Schedule.OrderIssue>
 }
 
 /** Explicit failure returned by the dynamic schedule execution path. */
 export interface MissingRuntimeRequirements {
-  readonly kind: "MissingRuntimeRequirements"
+  readonly _tag: "MissingRuntimeRequirements"
   readonly requirements: ReadonlyArray<MissingRuntimeRequirement>
 }
 
@@ -2388,14 +2388,14 @@ const makeValidatedRuntime = <
 
     if (missing.length > 0) {
       return watchResult(Result.fail({
-        kind: "MissingRuntimeRequirements" as const,
+        _tag: "MissingRuntimeRequirements" as const,
         requirements: missing
       }), [schedule])
     }
 
     const issues = OrderInternal.tickOrderIssues(schedule.steps)
     if (issues.length > 0) {
-      return watchResult(Result.fail({ kind: "TickOrderViolation" as const, issues }), [schedule])
+      return watchResult(Result.fail({ _tag: "TickOrderViolation" as const, issues }), [schedule])
     }
 
     if (inTick) throw new Error("runtime.tryTick cannot run inside another tick")

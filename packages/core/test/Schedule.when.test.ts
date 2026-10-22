@@ -105,7 +105,7 @@ describe("Schedule.when", () => {
     const withoutMachines = Game.Runtime.make({ services: Runtime.services(), resources: { Log: [] } }).success
     expect(withoutMachines.tryTick(schedule)).toEqual({
       _tag: "Failure",
-      failure: { kind: "MissingRuntimeRequirements", requirements: [{ kind: "stateMachine", name: "ScheduleWhen/Mode" }] }
+      failure: { _tag: "MissingRuntimeRequirements", requirements: [{ kind: "stateMachine", name: "ScheduleWhen/Mode" }] }
     })
   })
 })

@@ -21,7 +21,7 @@
  * const Port = Brand.refine((raw: number) =>
  *   raw > 0
  *     ? Result.succeed(raw as Brand.Branded<number, "Port">)
- *     : Result.fail({ tag: "InvalidPort", value: raw })
+ *     : Result.fail({ _tag: "InvalidPort", value: raw })
  * )
  * ```
  *

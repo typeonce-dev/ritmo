@@ -65,7 +65,7 @@ export type Vector2 = Brand.Branded<{
  * @category Vector Types
  */
 export type Error = {
-  readonly tag: "Vector2/Invalid"
+  readonly _tag: "Vector2/Invalid"
   readonly x: Scalar.Error | null
   readonly y: Scalar.Error | null
   readonly input: Raw
@@ -77,7 +77,7 @@ export type Error = {
  * @category Vector Types
  */
 export type DecodeError = {
-  readonly tag: "Vector2/Malformed"
+  readonly _tag: "Vector2/Malformed"
   readonly input: unknown
 }
 
@@ -87,7 +87,7 @@ export type DecodeError = {
  * @category Vector Types
  */
 export type NormalizeError = {
-  readonly tag: "Vector2/ZeroLength"
+  readonly _tag: "Vector2/ZeroLength"
 }
 
 /**

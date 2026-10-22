@@ -23,8 +23,11 @@
   ```
 
   `Result.isSuccess`, `isFailure`, `match`, and `all` keep their names and behavior. A hand-written result type (`{ readonly ok: true; readonly value: A }`) becomes `{ readonly _tag: "Success"; readonly success: A }`.
-- **Breaking: a failed tick's `SystemFailure` is tagged `_tag: "SystemFailure"`** in place of `kind: "SystemFailure"` (`failure.kind` becomes `failure._tag`; `system` and `error` are unchanged).
+- **Breaking: failures are tagged with `_tag`** in place of `kind`: a failed tick's `SystemFailure`, `MissingRuntimeRequirements`, and `TickOrderViolation`, and `FixedLoop`'s `InvalidFixedLoopOptions`, `InvalidTickDelta`, and `UpdateFailure` (`failure.kind` becomes `failure._tag`; the other fields are unchanged). Effect's `catchTag` handles each by name.
+- **Breaking: `ritmo-math`'s errors are tagged with `_tag`** in place of `tag` (`error.tag === "Vector2/Invalid"` becomes `error._tag === "Vector2/Invalid"`, the same for `Scalar`, `Size2`, and `Aabb`).
 - **`Game.Runtime.make`'s failure is tagged `_tag: "RuntimeConstructionError"`**, beside its `resources`.
 - **Breaking: `Descriptor.fromStandardSchema` fails with `{ _tag: "StandardSchemaIssues", issues }`** in place of the bare issues array (`error` becomes `failure.issues`).
+- **A constructed descriptor's `decode` is checked against its value**, and a constructor whose `result`, `decode`, and `encode` are written inline as generic calls (`Schema.decodeResult(schema)`) infers its value instead of failing to compile.
+- The `ritmo` skill has an Effect playbook: schemas as descriptors, Results in Effects, services, and scopes.
 - Debug runtimes: a failed tick result counts as read when its `_tag` is read (it was `ok`).
 - `oxlint-plugin-ritmo`: `handle-tick-result`'s messages show the new check (`if (ran._tag === "Failure")`).

@@ -69,9 +69,9 @@ export type Positive = Brand.Branded<number, "Scalar/Positive">
  * @category Scalar Types
  */
 export type Error =
-  | { readonly tag: "Scalar/NotFinite"; readonly value: number }
-  | { readonly tag: "Scalar/Negative"; readonly value: number }
-  | { readonly tag: "Scalar/NonPositive"; readonly value: number }
+  | { readonly _tag: "Scalar/NotFinite"; readonly value: number }
+  | { readonly _tag: "Scalar/Negative"; readonly value: number }
+  | { readonly _tag: "Scalar/NonPositive"; readonly value: number }
 
 /**
  * Structured interpolation failure.
@@ -79,7 +79,7 @@ export type Error =
  * @category Scalar Types
  */
 export type InterpolationError = {
-  readonly tag: "Scalar/ZeroRange"
+  readonly _tag: "Scalar/ZeroRange"
   readonly start: number
   readonly end: number
 }

@@ -93,7 +93,7 @@ describe("helpers", () => {
     }
 
     const error = {
-      tag: "Scalar/ZeroRange" as const,
+      _tag: "Scalar/ZeroRange" as const,
       start: 5,
       end: 5
     }
@@ -126,7 +126,7 @@ describe("helpers", () => {
     const normalized = Vector2.normalize(zero)
 
     expect(normalized).toEqual(Result.fail({
-      tag: "Vector2/ZeroLength"
+      _tag: "Vector2/ZeroLength"
     }))
     expect(Vector2.normalizeOrZero(zero)).toEqual(zero)
   })
@@ -178,12 +178,12 @@ describe("helpers", () => {
     expect(Aabb.decode({ position: { x: 0, y: 0 }, size: { width: 1, height: 1 } })._tag).toBe("Success")
     for (const raw of [null, 3, "x", [], { x: "1", y: 2 }]) {
       const decoded = Vector2.decode(raw)
-      expect(decoded._tag === "Success" ? undefined : decoded.failure.tag).toBe("Vector2/Malformed")
+      expect(decoded._tag === "Success" ? undefined : decoded.failure._tag).toBe("Vector2/Malformed")
     }
     const invalid = Vector2.decode({ x: Number.NaN, y: 0 })
-    expect(invalid._tag === "Success" ? undefined : invalid.failure.tag).toBe("Vector2/Invalid")
+    expect(invalid._tag === "Success" ? undefined : invalid.failure._tag).toBe("Vector2/Invalid")
     const box = Aabb.decode({ position: null, size: { width: 1, height: 1 } })
-    expect(box._tag === "Success" ? undefined : box.failure.tag).toBe("Aabb/Malformed")
+    expect(box._tag === "Success" ? undefined : box.failure._tag).toBe("Aabb/Malformed")
     expect(Size2.decode({ width: 1 })._tag).toBe("Failure")
   })
 })

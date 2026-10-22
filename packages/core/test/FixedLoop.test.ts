@@ -73,7 +73,7 @@ describe("FixedLoop.start", () => {
     expect(frames[0]?.droppedSeconds).toBeCloseTo(0.07)
 
     tick?.({ deltaMS: 10 })
-    expect(failures).toEqual([{ kind: "UpdateFailure", error: "Paused" }])
+    expect(failures).toEqual([{ _tag: "UpdateFailure", error: "Paused" }])
     expect(stopCount).toBe(1)
     expect(frames).toHaveLength(1)
   })
@@ -96,7 +96,7 @@ describe("FixedLoop.start", () => {
     expect(result).toEqual({
       _tag: "Failure",
       failure: {
-        kind: "InvalidFixedLoopOptions",
+        _tag: "InvalidFixedLoopOptions",
         field: "maxFrameSeconds",
         reason: "mustBeFiniteAndPositive",
         value: 0

@@ -45,7 +45,7 @@ describe("thisTick on queries at runtime", () => {
     expect(runtime.tryTick(erased(Game.Schedule(SpawnWave, Aim)))).toEqual({
       _tag: "Failure",
       failure: {
-        kind: "TickOrderViolation",
+        _tag: "TickOrderViolation",
         issues: [{ kind: "unflushedWriter", reader: "TickQuery/Aim", data: "queries.enemies", writer: "TickQuery/SpawnWave", message: unflushed }]
       }
     })
@@ -55,14 +55,14 @@ describe("thisTick on queries at runtime", () => {
   it("makes tryTick fail for a writer after the reader", () => {
     const runtime = make()
     const result = runtime.tryTick(erased(Game.Schedule(Aim, Game.Schedule.applyDeferred(), SpawnWave)))
-    expect(result._tag === "Success" ? [] : result.failure.kind === "TickOrderViolation" ? result.failure.issues.map((issue) => issue.message) : []).toEqual([late])
+    expect(result._tag === "Success" ? [] : result.failure._tag === "TickOrderViolation" ? result.failure.issues.map((issue) => issue.message) : []).toEqual([late])
   })
 
   it("counts a transition bundle at its marker: its flush, then its schedules", () => {
     const runtime = make()
     const spawnOnEnter = Game.Schedule.transitions(Game.Schedule.onEnter(Flow, "Playing", [SpawnWave]))
     const result = runtime.tryTick(erased(Game.Schedule(Game.Schedule.applyStateTransitions(spawnOnEnter), Aim)))
-    expect(result._tag === "Success" ? [] : result.failure.kind === "TickOrderViolation" ? result.failure.issues.map((issue) => issue.message) : []).toEqual([unflushed])
+    expect(result._tag === "Success" ? [] : result.failure._tag === "TickOrderViolation" ? result.failure.issues.map((issue) => issue.message) : []).toEqual([unflushed])
     const aimOnEnter = Game.Schedule.transitions(Game.Schedule.onEnter(Flow, "Playing", [Aim]))
     expect(runtime.tryTick(erased(Game.Schedule(SpawnWave, Game.Schedule.applyStateTransitions(aimOnEnter))))._tag).toBe("Success")
   })

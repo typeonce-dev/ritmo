@@ -1,4 +1,4 @@
-import { Result } from "@typeonce/ritmo"
+import { Descriptor, Result } from "@typeonce/ritmo"
 import { describe, expect, it } from "tstyche"
 
 // A result shaped like Effect's `Result`: the same fields plus members of its
@@ -19,6 +19,12 @@ interface EffectFailure<A, E> {
   pipe(): unknown
 }
 type EffectResult<A, E> = EffectSuccess<A, E> | EffectFailure<A, E>
+
+// Shaped like Effect's `Schema.decodeResult(schema)`: a generic call that
+// returns the function, written inline in a descriptor's constructor.
+declare const decodeResult: <T>(schema: T) => (input: T, options?: { readonly errors?: "all" }) => EffectResult<T, "SchemaError">
+declare const decodeUnknownResult: <T>(schema: T) => (input: unknown, options?: { readonly errors?: "all" }) => EffectResult<T, "SchemaError">
+declare const encodeResult: <T>(schema: T) => (input: T, options?: { readonly errors?: "all" }) => EffectResult<unknown, "SchemaError">
 
 describe("Result", () => {
   it("types the constructors as their branch", () => {
@@ -47,5 +53,20 @@ describe("Result", () => {
     const result = {} as Result.Result<number, string>
     expect(Result.match(result, { onSuccess: (n) => n + 1, onFailure: (e) => e.length })).type.toBe<number>()
     expect(Result.all([Result.succeed(1), Result.fail("no" as const)])).type.toBe<Result.Result<readonly [number, never], "no">>()
+  })
+
+  it("infers a descriptor from a schema's functions written inline", () => {
+    const schema = { hp: 1 }
+    const Health = Descriptor.ConstructedResource({
+      result: decodeResult(schema),
+      decode: decodeUnknownResult(schema),
+      encode: encodeResult(schema)
+    })("Result/Health")
+    expect<Descriptor.Descriptor.Value<typeof Health>>().type.toBe<{ hp: number }>()
+    expect<Descriptor.Descriptor.ConstructionError<typeof Health>>().type.toBe<"SchemaError">()
+    expect(Descriptor.ConstructedResource).type.not.toBeCallableWith({
+      result: decodeResult(schema),
+      decode: decodeUnknownResult("text")
+    })
   })
 })

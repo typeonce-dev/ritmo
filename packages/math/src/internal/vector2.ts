@@ -10,7 +10,7 @@ export const result = (raw: Vector2.Raw): Result.Result<Vector2.Vector2, Vector2
   const y = Scalar.Finite.result(raw.y)
   if (x._tag === "Failure" || y._tag === "Failure") {
     return Result.fail({
-      tag: "Vector2/Invalid",
+      _tag: "Vector2/Invalid",
       x: x._tag === "Success" ? null : x.failure,
       y: y._tag === "Success" ? null : y.failure,
       input: {
@@ -66,7 +66,7 @@ export const normalize = (
   const magnitudeSquared = lengthSquared(vector)
   if (magnitudeSquared === 0) {
     return Result.fail({
-      tag: "Vector2/ZeroLength"
+      _tag: "Vector2/ZeroLength"
     })
   }
 
@@ -112,4 +112,4 @@ export const isRawShape = (raw: unknown): raw is Vector2.Raw =>
   typeof raw === "object" && raw !== null && typeof (raw as Record<string, unknown>)["x"] === "number" && typeof (raw as Record<string, unknown>)["y"] === "number"
 
 export const decode = (raw: unknown): Result.Result<Vector2.Vector2, Vector2.Error | Vector2.DecodeError> =>
-  isRawShape(raw) ? result(raw) : Result.fail({ tag: "Vector2/Malformed", input: raw })
+  isRawShape(raw) ? result(raw) : Result.fail({ _tag: "Vector2/Malformed", input: raw })

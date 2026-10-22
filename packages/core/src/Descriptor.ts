@@ -365,7 +365,7 @@ export const Component = <Value>(): CheckedValue<"component", Value, <const Name
  * ```
  */
 export const ConstructedComponent = <Value, Raw, Error, Constructor extends {} = {}>(
-  constructor: ResultConstructor<Value, Raw, Error> & Partial<Encoder<NoInfer<Value>>> & Constructor
+  constructor: ResultConstructor<Value, Raw, Error> & Partial<Decoder<NoInfer<Value>>> & Partial<Encoder<NoInfer<Value>>> & Constructor
 ) => <const Name extends string, const Options extends ComponentOptions = {}>(
   name: Name,
   options?: Options
@@ -506,7 +506,7 @@ export const Resource = <Value>(): CheckedValue<"resource", Value, <const Name e
  * Defines a resource descriptor that also knows how to validate raw values.
  */
 export const ConstructedResource = <Value, Raw, Error, Constructor extends {} = {}>(
-  constructor: ResultConstructor<Value, Raw, Error> & Partial<Encoder<NoInfer<Value>>> & Constructor
+  constructor: ResultConstructor<Value, Raw, Error> & Partial<Decoder<NoInfer<Value>>> & Partial<Encoder<NoInfer<Value>>> & Constructor
 ) => <const Name extends string>(
   name: Name
 ): ConstructedFor<"resource", Name, Value, Raw, Error, Constructor> =>

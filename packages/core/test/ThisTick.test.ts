@@ -36,7 +36,7 @@ describe("thisTick at runtime", () => {
     expect(result).toEqual({
       _tag: "Failure",
       failure: {
-        kind: "TickOrderViolation",
+        _tag: "TickOrderViolation",
         issues: [{
           kind: "lateWriter",
           reader: "ThisTickRuntime/Apply",

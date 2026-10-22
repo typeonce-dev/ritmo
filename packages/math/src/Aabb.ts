@@ -66,8 +66,8 @@ export type Aabb = Brand.Branded<{
  * @category AABB Types
  */
 export type Error =
-  | { readonly tag: "Aabb/InvalidPosition"; readonly error: Vector2.Error; readonly input: Raw }
-  | { readonly tag: "Aabb/InvalidSize"; readonly error: Size2.Error; readonly input: Raw }
+  | { readonly _tag: "Aabb/InvalidPosition"; readonly error: Vector2.Error; readonly input: Raw }
+  | { readonly _tag: "Aabb/InvalidSize"; readonly error: Size2.Error; readonly input: Raw }
 
 /**
  * Failure produced by `decode` when the input does not have the raw shape.
@@ -75,7 +75,7 @@ export type Error =
  * @category AABB Types
  */
 export type DecodeError = {
-  readonly tag: "Aabb/Malformed"
+  readonly _tag: "Aabb/Malformed"
   readonly input: unknown
 }
 

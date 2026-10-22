@@ -313,7 +313,7 @@ const growsSteadily = (samples: ReadonlyArray<number>): boolean => {
   return true
 }
 
-const describeError = (error: unknown): { readonly kind?: unknown; readonly system?: unknown; readonly error?: unknown; readonly requirements?: unknown; readonly issues?: ReadonlyArray<{ readonly message: string }> } =>
+const describeError = (error: unknown): { readonly _tag?: unknown; readonly system?: unknown; readonly error?: unknown; readonly requirements?: unknown; readonly issues?: ReadonlyArray<{ readonly message: string }> } =>
   typeof error === "object" && error !== null ? error : {}
 
 export const make = <
@@ -539,9 +539,9 @@ export const make = <
       }
       if (result._tag === "Failure") {
         const error = describeError(result.failure)
-        stop = error.kind === "MissingRuntimeRequirements"
+        stop = error._tag === "MissingRuntimeRequirements"
           ? { reason: "missingRequirements", frame, requirements: error.requirements }
-          : error.kind === "TickOrderViolation"
+          : error._tag === "TickOrderViolation"
             ? { reason: "tickOrder", frame, issues: (error.issues ?? []).map((issue) => issue.message) }
             : { reason: "failure", frame, system: typeof error.system === "string" ? error.system : "(unknown)", error: error.error }
         break

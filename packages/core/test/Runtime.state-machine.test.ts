@@ -655,7 +655,7 @@ describe("Runtime state machine", () => {
     const erasedTryTick = runtime.tryTick as (schedule: unknown) => unknown
     expect(erasedTryTick(LocalGame.Schedule(LocalGame.Schedule.applyStateTransitions(bundle)))).toEqual({
       _tag: "Failure",
-      failure: { kind: "MissingRuntimeRequirements", requirements: [{ kind: "stateMachine", name: "LocalAppStateMissing" }] }
+      failure: { _tag: "MissingRuntimeRequirements", requirements: [{ kind: "stateMachine", name: "LocalAppStateMissing" }] }
     })
   })
 

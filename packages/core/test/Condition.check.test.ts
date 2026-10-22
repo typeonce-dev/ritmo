@@ -121,7 +121,7 @@ describe("Condition.check", () => {
     }).success
     expect(withoutFreeze.tryTick(Game.Schedule.when([Game.Condition.not(frozen)], logs("a")))).toEqual({
       _tag: "Failure",
-      failure: { kind: "MissingRuntimeRequirements", requirements: [{ kind: "resource", name: "Check/Freeze" }] }
+      failure: { _tag: "MissingRuntimeRequirements", requirements: [{ kind: "resource", name: "Check/Freeze" }] }
     })
   })
 
