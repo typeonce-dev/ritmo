@@ -67,10 +67,10 @@ describe("lookups through a filtered query", () => {
     Game.System("QueryShape/Follow", { queries: { moved: Moved, positions: Positions } }, ({ queries }) => {
       for (const match of queries.moved.each()) {
         const again = queries.positions.get(match.entity.id)
-        expect(again.ok).type.toBe<boolean>()
+        expect(again._tag).type.toBe<"Success" | "Failure">()
       }
-      expect(queries.moved.singleOptional().ok).type.toBe<boolean>()
-      expect(queries.positions.single().ok).type.toBe<boolean>()
+      expect(queries.moved.singleOptional()._tag).type.toBe<"Success" | "Failure">()
+      expect(queries.positions.single()._tag).type.toBe<"Success" | "Failure">()
     })
   })
 

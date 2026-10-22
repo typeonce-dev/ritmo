@@ -38,13 +38,13 @@
  *   )
  * })
  *
- * if (!runtime.ok) {
+ * if (runtime._tag === "Failure") {
  *   throw new Error("Invalid runtime bootstrap data")
  * }
  *
  * // The runtime owns the world and executes explicit schedules.
- * runtime.value.tick(setupSchedule)
- * runtime.value.tick(updateSchedule)
+ * runtime.success.tick(setupSchedule)
+ * runtime.success.tick(updateSchedule)
  * ```
  *
  * @module Runtime
@@ -188,9 +188,11 @@ export type ProvidedResources<S extends Schema.Any, Provided> = Simplify<{
 }>
 
 /**
- * Validation failures for constructed resources, keyed by schema key.
+ * Why `make` failed: validation failures for constructed resources, keyed by
+ * schema key.
  */
 export type RuntimeConstructionError<S extends Schema.Any, Provided> = Simplify<{
+  readonly _tag: "RuntimeConstructionError"
   readonly resources: Partial<{
     readonly [K in ConstructedKeys<S, Provided>]:
       Schema.Resources<S>[K & keyof Schema.Resources<S>] extends DescriptorModule.ConstructedDescriptor<"resource", string, any, any, infer Error>
@@ -210,7 +212,7 @@ export type WithDebug<R, Enabled, S extends Schema.Any, Root> =
 
 /**
  * What `make` returns: always a `Result`. It is a `Success` when nothing
- * provided can fail, so `.value` is the runtime; when a provided resource
+ * provided can fail, so `.success` is the runtime; when a provided resource
  * goes through a constructor, it may be a `Failure` and must be checked.
  */
 export type MakeRuntimeResult<
@@ -542,7 +544,7 @@ const collectConstructedRegistryValues = <R extends Registry>(
   provided: Partial<{ readonly [K in keyof R]: unknown }> | undefined
 ): Result.Result<InitialRegistryValues<R>, Partial<{ readonly [K in keyof R]: unknown }>> => {
   if (!provided) {
-    return Result.success({})
+    return Result.succeed({})
   }
 
   const validated = {} as Partial<Record<keyof R, unknown>>
@@ -561,19 +563,19 @@ const collectConstructedRegistryValues = <R extends Registry>(
     }
 
     const result = constructor.result(next as never)
-    if (!result.ok) {
-      errors[schemaKey] = result.error
+    if (result._tag === "Failure") {
+      errors[schemaKey] = result.failure
       continue
     }
 
-    validated[schemaKey] = result.value
+    validated[schemaKey] = result.success
   }
 
   if (Object.keys(errors).length > 0) {
-    return Result.failure(errors as Partial<{ readonly [K in keyof R]: unknown }>)
+    return Result.fail(errors as Partial<{ readonly [K in keyof R]: unknown }>)
   }
 
-  return Result.success(validated as InitialRegistryValues<R>)
+  return Result.succeed(validated as InitialRegistryValues<R>)
 }
 
 /**
@@ -726,15 +728,15 @@ export const streamCapacity = 65_536
  */
 const migrateSave = (save: Snapshot.WorldSnapshot, saves: Snapshot.Migrations | undefined): Result.Result<Snapshot.WorldSnapshot, Snapshot.RestoreError> => {
   const latest = saves?.latest ?? 0
-  if (save.gameVersion > latest) return Result.failure({ _tag: "NewerGameVersion", gameVersion: save.gameVersion, latest })
+  if (save.gameVersion > latest) return Result.fail({ _tag: "NewerGameVersion", gameVersion: save.gameVersion, latest })
   let current = save
   for (const step of saves?.steps ?? []) {
     if (step.to <= current.gameVersion) continue
     const next = Snapshot.parse({ ...step.migrate(current), gameVersion: step.to })
-    if (!next.ok) return next
-    current = next.value
+    if (next._tag === "Failure") return next
+    current = next.success
   }
-  return Result.success(current)
+  return Result.succeed(current)
 }
 
 const makeValidatedRuntime = <
@@ -1098,8 +1100,8 @@ const makeValidatedRuntime = <
         noteCommand("relates", relation.name)
       }
       const result = world.tryRelate(id, relation, target)
-      if (!result.ok) {
-        appendRelationFailure(relation, "relate", id, target, result.error)
+      if (result._tag === "Failure") {
+        appendRelationFailure(relation, "relate", id, target, result.failure)
       }
       return result
     },
@@ -1113,13 +1115,13 @@ const makeValidatedRuntime = <
         noteCommand("relates", relation.name)
       }
       const result = world.reorderChildren(id, relation, children.map((child) => child))
-      if (!result.ok) {
-        const targetId = result.error._tag === "MissingChildEntity"
-          || result.error._tag === "DuplicateChild"
-          || result.error._tag === "ChildNotRelatedToParent"
-          ? result.error.childId
+      if (result._tag === "Failure") {
+        const targetId = result.failure._tag === "MissingChildEntity"
+          || result.failure._tag === "DuplicateChild"
+          || result.failure._tag === "ChildNotRelatedToParent"
+          ? result.failure.childId
           : id
-        appendRelationFailure(relation, "reorderChildren", id, targetId, result.error)
+        appendRelationFailure(relation, "reorderChildren", id, targetId, result.failure)
       }
       return result
     }
@@ -1153,13 +1155,13 @@ const makeValidatedRuntime = <
     relation: Relation.Relation.Any
   ): Result.Result<Entity.EntityId<S, Root>, Relation.Relation.LookupError> => {
     if (!world.records.has(target)) {
-      return Result.failure(Relation.missingEntityError(target))
+      return Result.fail(Relation.missingEntityError(target))
     }
     const targetId = world.relationTarget(relation, target)
     if (targetId === undefined) {
-      return Result.failure(Relation.missingRelationError(target, relation.name))
+      return Result.fail(Relation.missingRelationError(target, relation.name))
     }
-    return Result.success(entityId(targetId))
+    return Result.succeed(entityId(targetId))
   }
 
   const makeLookup = (reader: ReaderState): LookupApi<S, Root> => {
@@ -1167,14 +1169,14 @@ const makeValidatedRuntime = <
     related: relatedTarget,
     relatedSources(target, relation) {
       if (!world.records.has(target)) {
-        return Result.failure(Relation.missingEntityError(target))
+        return Result.fail(Relation.missingEntityError(target))
       }
-      return Result.success(world.relatedSourceIds(relation, target).map(entityId))
+      return Result.succeed(world.relatedSourceIds(relation, target).map(entityId))
     },
     parent: relatedTarget,
     ancestors(target, relation) {
       if (!world.records.has(target)) {
-        return Result.failure(Relation.missingEntityError(target))
+        return Result.fail(Relation.missingEntityError(target))
       }
       const ancestors: Array<Entity.EntityId<S, Root>> = []
       let current = world.relationTarget(relation, target)
@@ -1182,11 +1184,11 @@ const makeValidatedRuntime = <
         ancestors.push(entityId(current))
         current = world.relationTarget(relation, current)
       }
-      return Result.success(ancestors)
+      return Result.succeed(ancestors)
     },
     descendants(target, relation, options) {
       if (!world.records.has(target)) {
-        return Result.failure(Relation.missingEntityError(target))
+        return Result.fail(Relation.missingEntityError(target))
       }
       const descendants: Array<Entity.EntityId<S, Root>> = []
       if (options?.order === "breadth") {
@@ -1207,11 +1209,11 @@ const makeValidatedRuntime = <
           }
         }
       }
-      return Result.success(descendants)
+      return Result.succeed(descendants)
     },
     root(target, relation) {
       if (!world.records.has(target)) {
-        return Result.failure(Relation.missingEntityError(target))
+        return Result.fail(Relation.missingEntityError(target))
       }
       let current: number = target
       let parentId = world.relationTarget(relation, current)
@@ -1219,7 +1221,7 @@ const makeValidatedRuntime = <
         current = parentId
         parentId = world.relationTarget(relation, current)
       }
-      return Result.success(entityId(current))
+      return Result.succeed(entityId(current))
     }
   }
     return lookup
@@ -1231,7 +1233,7 @@ const makeValidatedRuntime = <
       const matches: Array<QueryMatch<S, Q>> = []
       for (const id of ids) {
         const resolved = resolve(id, query, reader)
-        if (resolved.ok) matches.push(resolved.value)
+        if (resolved._tag === "Success") matches.push(resolved.success)
       }
       return matches
     }
@@ -1244,29 +1246,29 @@ const makeValidatedRuntime = <
         return resolve(handle as Entity.Handle<Root, any>, query, reader)
       },
       children(target, relation) {
-        if (!world.records.has(target)) return Result.failure(Relation.missingEntityError(target))
-        return Result.success(matching(world.relatedSourceIds(relation, target).map(entityId)))
+        if (!world.records.has(target)) return Result.fail(Relation.missingEntityError(target))
+        return Result.succeed(matching(world.relatedSourceIds(relation, target).map(entityId)))
       },
       descendants(target, relation, options) {
         const ids = lookup.descendants(target, relation, options)
-        return ids.ok ? Result.success(matching(ids.value)) : ids
+        return ids._tag === "Success" ? Result.succeed(matching(ids.success)) : ids
       },
       single() {
         const matches = each()
         if (matches.length === 0) {
-          return Result.failure(Query.noEntitiesError())
+          return Result.fail(Query.noEntitiesError())
         }
         if (matches.length > 1) {
-          return Result.failure(Query.multipleEntitiesError(matches.length))
+          return Result.fail(Query.multipleEntitiesError(matches.length))
         }
-        return Result.success(matches[0]!)
+        return Result.succeed(matches[0]!)
       },
       singleOptional() {
         const matches = each()
         if (matches.length > 1) {
-          return Result.failure(Query.multipleEntitiesError(matches.length))
+          return Result.fail(Query.multipleEntitiesError(matches.length))
         }
-        return Result.success(matches[0])
+        return Result.succeed(matches[0])
       }
     }
   }
@@ -1413,7 +1415,7 @@ const makeValidatedRuntime = <
       result = run()
     } finally {
       phase = undefined
-      if (result?.ok === true) {
+      if (result?._tag === "Success") {
         world.commitPhase()
       } else {
         world.rollbackPhase()
@@ -1531,7 +1533,7 @@ const makeValidatedRuntime = <
   const queueMachine = <M extends Machine.StateMachine.Any>(stateMachine: M, value: unknown, skipIfSame: boolean): Machine.SetResult<M> => {
     const within = stateMachine.within
     if (within !== undefined && !currentMachines.has(stateMachine.key)) {
-      return Result.failure({
+      return Result.fail({
         _tag: "SubStateInactive",
         machine: stateMachine.name,
         parent: within.machine.name,
@@ -1819,7 +1821,7 @@ const makeValidatedRuntime = <
     return slot
   }
 
-  const succeeded = Result.success(undefined)
+  const succeeded = Result.succeed(undefined)
 
   /**
    * Runs one system atomically when its run conditions pass.
@@ -1872,11 +1874,11 @@ const makeValidatedRuntime = <
       commands.flush()
       throw defect
     }
-    if (!outcome.ok) {
-      if (tracing) emit(traceSystem(system, reader, thisRun, started, "failed", outcome.error, commands.flush()))
+    if (outcome._tag === "Failure") {
+      if (tracing) emit(traceSystem(system, reader, thisRun, started, "failed", outcome.failure, commands.flush()))
       rollbackSystemTransaction()
       commands.flush()
-      return Result.failure({ kind: "SystemFailure", system: system.name, error: outcome.error })
+      return Result.fail({ _tag: "SystemFailure", system: system.name, error: outcome.failure })
     }
     const queued = commands.flush()
     const traced = tracing ? traceSystem(system, reader, thisRun, started, "ok", undefined, queued) : undefined
@@ -1942,7 +1944,7 @@ const makeValidatedRuntime = <
     } finally {
       schedulePath.pop()
     }
-    emit({ type: "schedule.end", frame: frameCount, schedule: scheduleLabel, ok: result.ok, ms: HostClockModule.elapsed(started, now()) })
+    emit({ type: "schedule.end", frame: frameCount, schedule: scheduleLabel, ok: result._tag === "Success", ms: HostClockModule.elapsed(started, now()) })
     return result
   }
 
@@ -2062,10 +2064,10 @@ const makeValidatedRuntime = <
         for (const sub of leaving) {
           const value = currentMachines.get(sub.key)
           const result = runPhase(sub.key, "exit", value, { from: value, to: undefined } as unknown as Machine.TransitionSnapshot, schedules)
-          if (!result.ok) return result
+          if (result._tag === "Failure") return result
         }
         const left = runPhase(machineKey, "exit", snapshot.from, snapshot, schedules)
-        if (!left.ok) return left
+        if (left._tag === "Failure") return left
         for (const schedule of schedules) {
           const transition = schedule.transition
           if (
@@ -2075,12 +2077,12 @@ const makeValidatedRuntime = <
             && transition.to === snapshot.to
           ) {
             const result = runTransitionSchedule(schedule, snapshot)
-            if (!result.ok) return result
+            if (result._tag === "Failure") return result
           }
         }
         return succeeded
       })
-      if (!exited.ok) {
+      if (exited._tag === "Failure") {
         requeue()
         if (tracing) traceTransition(machineKey, snapshot, "failed")
         return exited
@@ -2098,14 +2100,14 @@ const makeValidatedRuntime = <
         const transition = schedule.transition
         if (transition.phase === "enter" && transition.machine.key === machineKey && transition.state === snapshot.to) {
           const result = runTransitionSchedule(schedule, snapshot)
-          if (!result.ok) {
+          if (result._tag === "Failure") {
             if (tracing) traceTransition(machineKey, snapshot, "enterFailed")
             return result
           }
         }
       }
       const enteredSchedules = runSubStateEnters(entered, schedules)
-      if (!enteredSchedules.ok) return enteredSchedules
+      if (enteredSchedules._tag === "Failure") return enteredSchedules
     }
     return succeeded
   }
@@ -2146,7 +2148,7 @@ const makeValidatedRuntime = <
       const transition = schedule.transition
       if (transition.phase === phase && transition.machine.key === machineKey && transition.state === state) {
         const result = runTransitionSchedule(schedule, snapshot)
-        if (!result.ok) return result
+        if (result._tag === "Failure") return result
       }
     }
     return succeeded
@@ -2183,7 +2185,7 @@ const makeValidatedRuntime = <
     for (const [key, value] of entered) {
       const snapshot = { from: undefined, to: value } as unknown as Machine.TransitionSnapshot
       const result = runPhase(key, "enter", value, snapshot, schedules)
-      if (!result.ok) {
+      if (result._tag === "Failure") {
         if (tracing) traceTransition(key, snapshot, "enterFailed")
         return result
       }
@@ -2202,7 +2204,7 @@ const makeValidatedRuntime = <
     for (const step of steps) {
       if (Schedule.isSystemStep(step)) {
         const result = runSystem(step as SystemDefinition<any, any, any>)
-        if (!result.ok) {
+        if (result._tag === "Failure") {
           return result
         }
         continue
@@ -2213,7 +2215,7 @@ const makeValidatedRuntime = <
           break
         case "applyStateTransitions": {
           const result = applyStateTransitions(step.bundle as never)
-          if (!result.ok) {
+          if (result._tag === "Failure") {
             return result
           }
           break
@@ -2275,8 +2277,8 @@ const makeValidatedRuntime = <
   }
 
   /**
-   * With debug: the last failed tick result, until its `ok` is read. The
-   * result handed back is a copy whose `ok` getter marks it read.
+   * With debug: the last failed tick result, until its `_tag` is read. The
+   * result handed back is a copy whose `_tag` getter marks it read.
    */
   let unread: { read: boolean; readonly event: Omit<Debug.FailureIgnoredEvent, "type" | "when"> } | undefined
   const reportUnread = (when: Debug.FailureIgnoredEvent["when"]): void => {
@@ -2291,9 +2293,9 @@ const makeValidatedRuntime = <
     result: R,
     schedules: ReadonlyArray<ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>>
   ): R => {
-    if (!debugEnabled || result.ok) return result
-    const error = result.error
-    const system = typeof error === "object" && error !== null && (error as { readonly kind?: unknown }).kind === "SystemFailure"
+    if (!debugEnabled || result._tag === "Success") return result
+    const error = result.failure
+    const system = typeof error === "object" && error !== null && (error as { readonly _tag?: unknown })._tag === "SystemFailure"
       ? (error as SystemFailure).system
       : undefined
     const names = schedules.flatMap((schedule) => schedule.steps.filter(Schedule.isSystemStep).map((step) => (step as SystemDefinition<any, any, any>).name))
@@ -2313,11 +2315,11 @@ const makeValidatedRuntime = <
     }
     unread = entry
     return {
-      get ok() {
+      get _tag() {
         entry.read = true
-        return false
+        return "Failure"
       },
-      error
+      failure: error
     } as unknown as R
   }
 
@@ -2331,7 +2333,7 @@ const makeValidatedRuntime = <
       return watchResult(observedTick(schedules, () => {
         for (const schedule of schedules) {
           const result = runScheduleUnsafe(schedule)
-          if (!result.ok) return result
+          if (result._tag === "Failure") return result
         }
         return succeeded
       }), schedules)
@@ -2357,9 +2359,9 @@ const makeValidatedRuntime = <
       throw defect
     }
     inTick = false
-    emitHost(result.ok
+    emitHost(result._tag === "Success"
       ? { type: "tick.end", schedules, frame: frameCount, outcome: "ok" }
-      : { type: "tick.end", schedules, frame: frameCount, outcome: "failed", error: result.error })
+      : { type: "tick.end", schedules, frame: frameCount, outcome: "failed", error: result.failure })
     return result
   }
 
@@ -2384,7 +2386,7 @@ const makeValidatedRuntime = <
       .map(({ kind, name }) => ({ kind, name }))
 
     if (missing.length > 0) {
-      return watchResult(Result.failure({
+      return watchResult(Result.fail({
         kind: "MissingRuntimeRequirements" as const,
         requirements: missing
       }), [schedule])
@@ -2392,7 +2394,7 @@ const makeValidatedRuntime = <
 
     const issues = OrderInternal.tickOrderIssues(schedule.steps)
     if (issues.length > 0) {
-      return watchResult(Result.failure({ kind: "TickOrderViolation" as const, issues }), [schedule])
+      return watchResult(Result.fail({ kind: "TickOrderViolation" as const, issues }), [schedule])
     }
 
     if (inTick) throw new Error("runtime.tryTick cannot run inside another tick")
@@ -2475,53 +2477,53 @@ const makeValidatedRuntime = <
 
   const restore = (data: unknown): Result.Result<void, Snapshot.RestoreError> => {
     const parsed = Snapshot.parse(data)
-    if (!parsed.ok) return parsed
-    const migrated = migrateSave(parsed.value, options.saves)
-    if (!migrated.ok) return migrated
-    const saved = migrated.value
+    if (parsed._tag === "Failure") return parsed
+    const migrated = migrateSave(parsed.success, options.saves)
+    if (migrated._tag === "Failure") return migrated
+    const saved = migrated.success
 
     // Validate everything before touching the world.
     const ids = new Set<number>()
     const entities: Array<{ readonly id: number; readonly components: Array<Entity.StagedComponent> }> = []
     for (const entity of saved.entities) {
-      if (ids.has(entity.id)) return Result.failure({ _tag: "DuplicateEntity", entityId: entity.id })
+      if (ids.has(entity.id)) return Result.fail({ _tag: "DuplicateEntity", entityId: entity.id })
       ids.add(entity.id)
       const components: Array<Entity.StagedComponent> = []
       for (const [name, raw] of Object.entries(entity.components)) {
         const descriptor = componentsByName.get(name)
         if (!descriptor || DescriptorModule.isTransient(descriptor)) {
-          return Result.failure({ _tag: "UnknownComponent", entityId: entity.id, name })
+          return Result.fail({ _tag: "UnknownComponent", entityId: entity.id, name })
         }
         const value = validate(raw, descriptor)
-        if (value === undefined) return Result.failure({ _tag: "UnvalidatedDescriptor", name })
-        if (!value.ok) return Result.failure({ _tag: "InvalidComponent", entityId: entity.id, name, error: value.error })
-        components.push([descriptor, value.value])
+        if (value === undefined) return Result.fail({ _tag: "UnvalidatedDescriptor", name })
+        if (value._tag === "Failure") return Result.fail({ _tag: "InvalidComponent", entityId: entity.id, name, error: value.failure })
+        components.push([descriptor, value.success])
       }
       // Transient components are never saved, so a requirement on one is not checked here.
       const missing = missingIn(components, DescriptorModule.isTransient)
       if (missing !== undefined) {
-        return Result.failure({ _tag: "MissingRequiredComponent", entityId: entity.id, name: missing[1], requiredBy: missing[0] })
+        return Result.fail({ _tag: "MissingRequiredComponent", entityId: entity.id, name: missing[1], requiredBy: missing[0] })
       }
       entities.push({ id: entity.id, components })
     }
     const validatedResources: Array<readonly [symbol, unknown]> = []
     for (const [name, raw] of Object.entries(saved.resources)) {
       const descriptor = resourcesByName.get(name)
-      if (!descriptor || DescriptorModule.isTransient(descriptor)) return Result.failure({ _tag: "UnknownResource", name })
+      if (!descriptor || DescriptorModule.isTransient(descriptor)) return Result.fail({ _tag: "UnknownResource", name })
       const value = validate(raw, descriptor)
-      if (value === undefined) return Result.failure({ _tag: "UnvalidatedDescriptor", name })
-      if (!value.ok) return Result.failure({ _tag: "InvalidResource", name, error: value.error })
-      validatedResources.push([descriptor.key, value.value])
+      if (value === undefined) return Result.fail({ _tag: "UnvalidatedDescriptor", name })
+      if (value._tag === "Failure") return Result.fail({ _tag: "InvalidResource", name, error: value.failure })
+      validatedResources.push([descriptor.key, value.success])
     }
     const edges: Array<readonly [Relation.Relation.Any, number, number]> = []
     for (const [name, groups] of Object.entries(saved.relations)) {
       const relation = relationsByName.get(name)
-      if (!relation) return Result.failure({ _tag: "UnknownRelation", name })
+      if (!relation) return Result.fail({ _tag: "UnknownRelation", name })
       const parents = new Map<number, number>()
       for (const [target, sources] of groups) {
         for (const source of sources) {
           const valid = ids.has(source) && ids.has(target) && (relation.allowSelf || source !== target) && !parents.has(source)
-          if (!valid) return Result.failure({ _tag: "InvalidRelation", name, sourceId: source, targetId: target })
+          if (!valid) return Result.fail({ _tag: "InvalidRelation", name, sourceId: source, targetId: target })
           parents.set(source, target)
           edges.push([relation, source, target])
         }
@@ -2531,7 +2533,7 @@ const makeValidatedRuntime = <
           const seen = new Set<number>([source])
           for (let current = parents.get(source); current !== undefined; current = parents.get(current)) {
             if (seen.has(current)) {
-              return Result.failure({ _tag: "InvalidRelation", name, sourceId: source, targetId: parents.get(source)! })
+              return Result.fail({ _tag: "InvalidRelation", name, sourceId: source, targetId: parents.get(source)! })
             }
             seen.add(current)
           }
@@ -2541,8 +2543,8 @@ const makeValidatedRuntime = <
     const restoredMachines = new Map(currentMachines)
     for (const [name, value] of Object.entries(saved.machines)) {
       const machine = machinesByName.get(name)
-      if (!machine) return Result.failure({ _tag: "UnknownMachine", name })
-      if (!machine.values.includes(value)) return Result.failure({ _tag: "InvalidMachineState", name, value })
+      if (!machine) return Result.fail({ _tag: "UnknownMachine", name })
+      if (!machine.values.includes(value)) return Result.fail({ _tag: "InvalidMachineState", name, value })
       restoredMachines.set(machine.key, value)
     }
     // A save has no value for a sub-state whose parent is elsewhere; one that
@@ -2554,7 +2556,7 @@ const makeValidatedRuntime = <
       const active = restoredMachines.get(within.machine.key) === within.state
       if (Object.hasOwn(saved.machines, machine.name)) {
         if (!active) {
-          return Result.failure({ _tag: "InactiveSubState", name: machine.name, parent: within.machine.name, requires: within.state })
+          return Result.fail({ _tag: "InactiveSubState", name: machine.name, parent: within.machine.name, requires: within.state })
         }
       } else if (active && subStateEntry.has(machine.key)) {
         restoredMachines.set(machine.key, subStateEntry.get(machine.key))
@@ -2566,9 +2568,9 @@ const makeValidatedRuntime = <
     const scoped = new Set<number>()
     const memberships: Array<readonly [number, symbol]> = []
     for (const [name, members] of Object.entries(saved.scopes)) {
-      if (!options.scopeDefinitions.some((scope) => scope.name === name)) return Result.failure({ _tag: "UnknownScope", name })
+      if (!options.scopeDefinitions.some((scope) => scope.name === name)) return Result.fail({ _tag: "UnknownScope", name })
       for (const id of members) {
-        if (!ids.has(id) || scoped.has(id)) return Result.failure({ _tag: "InvalidScope", name, entityId: id })
+        if (!ids.has(id) || scoped.has(id)) return Result.fail({ _tag: "InvalidScope", name, entityId: id })
         scoped.add(id)
         memberships.push([id, EntityScopeModule.keyOf(name)])
       }
@@ -2608,7 +2610,7 @@ const makeValidatedRuntime = <
   const tracedRestore = (data: unknown): Result.Result<void, Snapshot.RestoreError> => {
     if (inTick) throw new Error("runtime.restore was called while a schedule is running: the running systems' queued commands would land on the restored world; restore between ticks")
     const result = restore(data)
-    if (tracing) emit({ type: "restore", frame: frameCount, tick: world.currentTick(), ok: result.ok })
+    if (tracing) emit({ type: "restore", frame: frameCount, tick: world.currentTick(), ok: result._tag === "Success" })
     return result
   }
 
@@ -2840,20 +2842,20 @@ export const make = <
   readonly saves?: Snapshot.Migrations
 }): MakeRuntimeResult<S, Simplify<RuntimeServicesOf<ProvidedServices>>, Resources, Root, RuntimeMachinesOf<ProvidedMachines>, Enabled> => {
   const validated = collectConstructedRegistryValues(options.schema.resources, options.resources)
-  if (!validated.ok) {
-    return Result.failure({ resources: validated.error }) as never
+  if (validated._tag === "Failure") {
+    return Result.fail({ _tag: "RuntimeConstructionError", resources: validated.failure }) as never
   }
   const runtime = makeValidatedRuntime({
     schema: options.schema,
     services: options.services,
-    resources: validated.value,
+    resources: validated.success,
     machines: options.machines,
     machineDefinitions: options.machineDefinitions ?? [],
     scopeDefinitions: options.scopeDefinitions ?? [],
     debug: options.debug,
     saves: options.saves
   })
-  return Result.success(runtime) as never
+  return Result.succeed(runtime) as never
 }
 
 /** Names listed more than once in `Names` (a tuple), in order of their second listing. */

@@ -23,7 +23,7 @@ const makeRuntime = () => Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { Saved: 0 },
   machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing"), Game.Runtime.machine(Music, "Loud"))
-}).value
+}).success
 
 describe("the exit phase of a transition", () => {
   it("rolls back as one when a system in it fails, so the retry starts from the same state", () => {
@@ -48,9 +48,9 @@ describe("the exit phase of a transition", () => {
     const CloseSockets = Game.System("ExitPhase/CloseSockets", {}, () => {
       if (failures > 0) {
         failures--
-        return Result.failure("socket busy")
+        return Result.fail("socket busy")
       }
-      return Result.success(undefined)
+      return Result.succeed(undefined)
     })
     const transitions = Game.Schedule.transitions(
       Game.Schedule.onExit(Flow, "Playing", [SaveScore, ReadLeft]),
@@ -62,13 +62,13 @@ describe("the exit phase of a transition", () => {
     const runtime = makeRuntime()
 
     const failed = runtime.tick(Game.Schedule(ToMenu, Game.Schedule.applyStateTransitions(transitions), Game.Schedule.applyDeferred()))
-    expect(failed).toEqual({ ok: false, error: { kind: "SystemFailure", system: "ExitPhase/CloseSockets", error: "socket busy" } })
+    expect(failed).toEqual({ _tag: "Failure", failure: { _tag: "SystemFailure", system: "ExitPhase/CloseSockets", error: "socket busy" } })
     expect(runtime.inspect(State)).toEqual({ flow: "Playing", music: "Loud", saved: 0, names: 0 })
     expect(seen).toEqual([["score saved"]])
 
     // The retry: the queued transition runs the phase once more, from the same state.
     const retried = runtime.tick(Game.Schedule(Game.Schedule.applyStateTransitions(transitions), Game.Schedule.applyDeferred()))
-    expect(retried.ok).toBe(true)
+    expect(retried._tag).toBe("Success")
     expect(runtime.inspect(State)).toEqual({ flow: "Menu", music: "Loud", saved: 1, names: 1 })
     // The rolled-back event was retracted: the reader sees the new one, once.
     expect(seen).toEqual([["score saved"], ["score saved"]])

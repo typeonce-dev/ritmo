@@ -137,18 +137,18 @@ describe("Keyboard timelines", () => {
     live.push(recorder.snapshot())
 
     const parsed = Keyboard.parseTimeline(bindings, JSON.parse(JSON.stringify(recorder.timeline())))
-    expect(parsed.ok).toBe(true)
-    if (!parsed.ok) return
-    const replay = Keyboard.scripted(bindings, parsed.value)
+    expect(parsed._tag).toBe("Success")
+    if (parsed._tag === "Failure") return
+    const replay = Keyboard.scripted(bindings, parsed.success)
     expect(live.map(() => replay.snapshot())).toEqual(live)
   })
 
   it("rejects malformed timelines with the offending path", () => {
-    expect(Keyboard.parseTimeline(bindings, {})).toMatchObject({ ok: false, error: { path: "" } })
-    expect(Keyboard.parseTimeline(bindings, [{ frame: -1 }])).toMatchObject({ ok: false, error: { path: "[0].frame" } })
+    expect(Keyboard.parseTimeline(bindings, {})).toMatchObject({ _tag: "Failure", failure: { path: "" } })
+    expect(Keyboard.parseTimeline(bindings, [{ frame: -1 }])).toMatchObject({ _tag: "Failure", failure: { path: "[0].frame" } })
     expect(Keyboard.parseTimeline(bindings, [{ frame: 0, press: ["fly"] }])).toMatchObject({
-      ok: false,
-      error: { path: "[0].press[0]" }
+      _tag: "Failure",
+      failure: { path: "[0].press[0]" }
     })
   })
 })

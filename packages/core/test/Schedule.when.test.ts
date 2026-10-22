@@ -15,7 +15,7 @@ const makeRuntime = (mode: "Playing" | "Paused" = "Playing", round: "Live" | "Ov
     services: Runtime.services(),
     resources: { Log: [] },
     machines: Runtime.machines(Runtime.machine(Mode, mode), Runtime.machine(Round, round))
-  }).value
+  }).success
 
 const ReadLog = Game.Inspector("ScheduleWhen/ReadLog", { resources: { log: Game.System.readResource(Log) } }, ({ resources }) => resources.log.get())
 
@@ -102,10 +102,10 @@ describe("Schedule.when", () => {
 
   it("requires the machines its conditions read", () => {
     const schedule = Game.Schedule.when([Game.Condition.inState(Mode, "Playing")], logs("a"))
-    const withoutMachines = Game.Runtime.make({ services: Runtime.services(), resources: { Log: [] } }).value
+    const withoutMachines = Game.Runtime.make({ services: Runtime.services(), resources: { Log: [] } }).success
     expect(withoutMachines.tryTick(schedule)).toEqual({
-      ok: false,
-      error: { kind: "MissingRuntimeRequirements", requirements: [{ kind: "stateMachine", name: "ScheduleWhen/Mode" }] }
+      _tag: "Failure",
+      failure: { kind: "MissingRuntimeRequirements", requirements: [{ kind: "stateMachine", name: "ScheduleWhen/Mode" }] }
     })
   })
 })

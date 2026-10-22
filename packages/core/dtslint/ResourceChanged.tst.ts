@@ -37,7 +37,7 @@ describe("Game.System.changedResource", () => {
     }, ({ resources }) => {
       expect(resources.score.changed()).type.toBe<boolean>()
     })
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0, Hud: { text: "" } } }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0, Hud: { text: "" } } }).success
     runtime.tick(Game.Schedule(Count, Show))
     // @ts-expect-error ChangedTypes/Show needs ChangedTypes/Score from this tick, but its writer ChangedTypes/Count runs after it
     runtime.tick(Game.Schedule(Show, Count))

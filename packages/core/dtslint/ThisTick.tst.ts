@@ -29,7 +29,7 @@ const runtime = Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { Score: 0 },
   machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing"))
-}).value
+}).success
 
 describe("Game.System.thisTick", () => {
   it("marks a read and keeps its context view", () => {
@@ -105,7 +105,7 @@ describe("Game.System.thisTick", () => {
     }, () => {})
     // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "ThisTick/Clock"
     runtime.tick(Game.Schedule(Deal, Timed))
-    const bare = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const bare = Game.Runtime.make({ services: Game.Runtime.services() }).success
     // @ts-expect-error __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "ThisTick/Score"
     bare.tick(Game.Schedule(Count, Show))
   })

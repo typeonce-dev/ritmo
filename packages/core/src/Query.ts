@@ -656,8 +656,8 @@ export interface EntityStateWriteCell<T, Transitions> extends ConstructedWriteCe
    * @example
    * ```ts
    * const moved = data.attack.transition("windup", "active")
-   * if (!moved.ok) {
-   *   // moved.error.actual is the state some earlier write left
+   * if (moved._tag === "Failure") {
+   *   // moved.failure.actual is the state some earlier write left
    * }
    * ```
    */

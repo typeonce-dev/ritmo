@@ -19,11 +19,11 @@ export const ResolveFacingSystem = Game.System(
   ({ queries, machines, nextMachines }) =>
     {
       const player = queries.player.singleOptional()
-      if (!player.ok || !player.value) {
+      if (player._tag === "Failure" || !player.success) {
         return
       }
 
-      const velocity = player.value.data.velocity.get()
+      const velocity = player.success.data.velocity.get()
       const ax = Math.abs(velocity.x)
       const ay = Math.abs(velocity.y)
       if (ax === 0 && ay === 0) {
@@ -53,11 +53,11 @@ export const ResolveLocomotionSystem = Game.System(
   ({ queries, nextMachines }) =>
     {
       const player = queries.player.singleOptional()
-      if (!player.ok || !player.value) {
+      if (player._tag === "Failure" || !player.success) {
         return
       }
 
-      const velocity = player.value.data.velocity.get()
+      const velocity = player.success.data.velocity.get()
       nextMachines.locomotion.setIfChanged(
         lengthSquared(velocity) > 0 ? "Walking" : "Idle"
       )

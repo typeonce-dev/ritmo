@@ -15,8 +15,8 @@ import { Body, Chaser, Frame, Game, Hits, Player, Position, Rng, Shot, Walls } f
 const positive = (value: number): Scalar.Positive => {
   const checked = Scalar.Positive.result(value)
   // Authored constants below: a failure is a typo in this file.
-  if (!checked.ok) throw new Error(`Not a positive cell size: ${value}`)
-  return checked.value
+  if (checked._tag === "Failure") throw new Error(`Not a positive cell size: ${value}`)
+  return checked.success
 }
 
 /** A 600 × 400 room with a wall down the middle, open at the bottom. */
@@ -124,10 +124,10 @@ export const makeSimulation = (seed: number) => {
     services: Game.Runtime.services(Game.Runtime.service(Frame, frame))
   })
   // Random.seed always gives a valid state; the Result covers validated resources in general.
-  if (!made.ok) throw new Error("the random state did not validate")
-  const runtime = made.value
+  if (made._tag === "Failure") throw new Error("the random state did not validate")
+  const runtime = made.success
   const spawned = runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred()))
-  if (!spawned.ok) throw new Error("spawning failed")
+  if (spawned._tag === "Failure") throw new Error("spawning failed")
   const update = Game.Schedule(Chase, MoveShots, Game.Schedule.applyDeferred())
   return {
     runtime,

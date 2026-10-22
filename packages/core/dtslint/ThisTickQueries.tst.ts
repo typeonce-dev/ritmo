@@ -53,7 +53,7 @@ const Feel = Game.System("Tick/Feel", { events: { hit: Game.System.thisTick(Game
 const runtime = Game.Runtime.make({
   services: Game.Runtime.services(),
   machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Menu"))
-}).value
+}).success
 const deferred = Game.Schedule.applyDeferred()
 const playing = [Game.Condition.inState(Flow, "Playing")] as const
 

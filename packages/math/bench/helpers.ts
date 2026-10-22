@@ -11,8 +11,8 @@ import { Box2, Collide2, FlowField, Random, Scalar, SpatialGrid } from "@typeonc
 
 const positive = (value: number): Scalar.Positive => {
   const checked = Scalar.Positive.result(value)
-  if (!checked.ok) throw new Error(`Not positive: ${value}`)
-  return checked.value
+  if (checked._tag === "Failure") throw new Error(`Not positive: ${value}`)
+  return checked.success
 }
 
 /** Median nanoseconds per operation of `run`, which does `operations` operations. */

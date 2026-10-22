@@ -30,7 +30,7 @@ const runtime = Game.Runtime.make({
       detach: (mesh) => scene.remove(mesh)
     }))
   )
-}).value
+}).success
 ```
 
 For Pixi, [`@typeonce/ritmo-pixi`](https://github.com/typeonce-dev/ritmo/blob/main/packages/pixi/README.md) provides `PixiNodeRegistry.make(container)`, an implementation of the same registry contract. The host provides it with `Game.Runtime.service`; render systems keep depending on the generic service descriptor.

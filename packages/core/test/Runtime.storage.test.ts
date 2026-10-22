@@ -18,7 +18,7 @@ type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
 const makeRuntime = () => Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { Log: [] }
-}).value
+}).success
 
 const Positions = Game.Query({ selection: { position: Game.Query.write(Position) } })
 const Tagged = Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Tag] })
@@ -116,14 +116,14 @@ describe("Runtime storage", () => {
       commands: Game.System.commands(Game.System.despawns(Position), Game.System.inserts(Tag))
     }, ({ queries, commands }) => {
       const match = queries.positions.get(target!)
-      if (match.ok) commands.despawn(match.value.entity)
+      if (match._tag === "Success") commands.despawn(match.success.entity)
       commands.insert(target!, [Tag, {}])
     })
     let found = true
     const Lookup = Game.System("Storage/LookupTarget", {
       queries: { tagged: Game.Query({ selection: { tag: Game.Query.read(Tag) } }) }
     }, ({ queries }) => {
-      found = queries.tagged.get(target!).ok
+      found = queries.tagged.get(target!)._tag === "Success"
     })
 
     const runtime = makeRuntime()
@@ -154,7 +154,7 @@ describe("Runtime storage", () => {
     let children = -1
     const Count = Game.System("Storage/CountChildren", {}, ({ lookup }) => {
       const result = lookup.relatedSources(parent!, ChildOf)
-      children = result.ok ? result.value.length : -1
+      children = result._tag === "Success" ? result.success.length : -1
     })
 
     const runtime = makeRuntime()

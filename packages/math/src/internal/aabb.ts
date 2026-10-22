@@ -11,32 +11,32 @@ const make = (position: Vector2.Vector2, size: Size2.Size2): Aabb.Aabb =>
 
 export const result = (raw: Aabb.Raw): Result.Result<Aabb.Aabb, Aabb.Error> => {
   const position = Vector2.result(raw.position)
-  if (!position.ok) {
-    return Result.failure({
+  if (position._tag === "Failure") {
+    return Result.fail({
       tag: "Aabb/InvalidPosition",
-      error: position.error,
+      error: position.failure,
       input: raw
     })
   }
 
   const size = Size2.result(raw.size)
-  if (!size.ok) {
-    return Result.failure({
+  if (size._tag === "Failure") {
+    return Result.fail({
       tag: "Aabb/InvalidSize",
-      error: size.error,
+      error: size.failure,
       input: raw
     })
   }
 
-  return Result.success(make(position.value, size.value))
+  return Result.succeed(make(position.success, size.success))
 }
 
 export const option = (raw: Aabb.Raw): Aabb.Aabb | null => {
   const next = result(raw)
-  return next.ok ? next.value : null
+  return next._tag === "Success" ? next.success : null
 }
 
-export const is = (raw: Aabb.Raw): raw is Aabb.Raw & Aabb.Aabb => result(raw).ok
+export const is = (raw: Aabb.Raw): raw is Aabb.Raw & Aabb.Aabb => result(raw)._tag === "Success"
 
 export const position = (aabb: Aabb.Aabb): Vector2.Vector2 => aabb.position
 export const size = (aabb: Aabb.Aabb): Size2.Size2 => aabb.size
@@ -67,9 +67,9 @@ export const translate = (aabb: Aabb.Aabb, delta: Vector2.Vector2): Aabb.Aabb =>
   make(Vector2.add(aabb.position, delta), aabb.size)
 
 export const decode = (raw: unknown): Result.Result<Aabb.Aabb, Aabb.Error | Aabb.DecodeError> => {
-  if (typeof raw !== "object" || raw === null) return Result.failure({ tag: "Aabb/Malformed", input: raw })
+  if (typeof raw !== "object" || raw === null) return Result.fail({ tag: "Aabb/Malformed", input: raw })
   const { position, size } = raw as Record<string, unknown>
   return isVector2Shape(position) && isSize2Shape(size)
     ? result({ position, size })
-    : Result.failure({ tag: "Aabb/Malformed", input: raw })
+    : Result.fail({ tag: "Aabb/Malformed", input: raw })
 }

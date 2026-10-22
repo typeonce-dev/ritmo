@@ -5,9 +5,9 @@ import { describe, expect, it } from "tstyche"
 describe("helpers", () => {
   it("result helpers preserve tuple and record shapes", () => {
     const tuple = Result.all([
-      Result.success(1),
-      Result.failure("invalid" as const),
-      Result.success(true)
+      Result.succeed(1),
+      Result.fail("invalid" as const),
+      Result.succeed(true)
     ] as const)
 
     expect(tuple).type.toBe<Result.Result<readonly [number, never, boolean], "invalid">>()
@@ -47,15 +47,15 @@ describe("helpers", () => {
     const end = Scalar.Finite.result(10)
     const value = Scalar.Finite.result(5)
 
-    if (!start.ok || !end.ok || !value.ok) {
+    if (start._tag === "Failure" || end._tag === "Failure" || value._tag === "Failure") {
       return
     }
 
-    expect(Scalar.lerp(start.value, end.value, value.value)).type.toBe<Scalar.Finite>()
-    expect(Scalar.inverseLerp(start.value, end.value, value.value)).type.toBe<
+    expect(Scalar.lerp(start.success, end.success, value.success)).type.toBe<Scalar.Finite>()
+    expect(Scalar.inverseLerp(start.success, end.success, value.success)).type.toBe<
       Result.Result<Scalar.Finite, Scalar.InterpolationError>
     >()
-    expect(Scalar.remap(value.value, start.value, end.value, start.value, end.value)).type.toBe<
+    expect(Scalar.remap(value.success, start.success, end.success, start.success, end.success)).type.toBe<
       Result.Result<Scalar.Finite, Scalar.InterpolationError>
     >()
   })

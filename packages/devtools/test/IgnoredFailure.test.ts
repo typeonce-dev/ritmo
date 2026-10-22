@@ -4,7 +4,7 @@ import { Replay, Session } from "@typeonce/ritmo-devtools"
 import { Collector } from "@typeonce/ritmo-devtools/Monitor"
 
 const Game = Schema.bind(Schema.fragment({}))
-const Load = Game.System("Ignore/Load", {}, () => Result.failure("level file missing" as const))
+const Load = Game.System("Ignore/Load", {}, () => Result.fail("level file missing" as const))
 const Place = Game.System("Ignore/Place", {}, () => {})
 const Decorate = Game.System("Ignore/Decorate", {}, () => {})
 const Tick = Game.System("Ignore/Tick", {}, () => {})
@@ -13,7 +13,7 @@ const update = Game.Schedule(Tick)
 
 const make = () => {
   const hostClock = HostClock.test()
-  const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
+  const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).success
   return { runtime, hostClock }
 }
 
@@ -30,7 +30,7 @@ describe("ignored tick failures in devtools", () => {
       frame: 1,
       schedule: "setup",
       system: "Ignore/Load",
-      error: { kind: "SystemFailure", system: "Ignore/Load", error: "level file missing" },
+      error: { _tag: "SystemFailure", system: "Ignore/Load", error: "level file missing" },
       skipped: ["Ignore/Place", "Ignore/Decorate"],
       when: "next-tick"
     })

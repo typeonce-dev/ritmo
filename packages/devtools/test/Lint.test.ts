@@ -18,7 +18,7 @@ const Count = Game.System("LintTest/Count", {
 }, ({ queries }) => {
   for (const { data } of queries.scores.each()) data.score.update((score) => score + 1)
 })
-const runtime = () => Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
+const runtime = () => Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).success
 
 const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url))
 const entry = fileURLToPath(new URL("./fixtures/lint-entry.ts", import.meta.url))

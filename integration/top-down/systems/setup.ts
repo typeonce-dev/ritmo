@@ -10,21 +10,21 @@ export const SetupWorldSystem = Game.System(
   },
   ({ commands }) =>
     {
-      if (playerDraft.ok) {
-        commands.spawn(playerDraft.value)
+      if (playerDraft._tag === "Success") {
+        commands.spawn(playerDraft.success)
       }
 
       for (const wall of wallLayout) {
         const wallDraft = makeWallDraft(wall.x, wall.y, wall.width, wall.height)
-        if (wallDraft.ok) {
-          commands.spawn(wallDraft.value)
+        if (wallDraft._tag === "Success") {
+          commands.spawn(wallDraft.success)
         }
       }
 
       for (const pickup of pickupLayout) {
         const pickupDraft = makePickupDraft(pickup.x, pickup.y, pickup.label)
-        if (pickupDraft.ok) {
-          commands.spawn(pickupDraft.value)
+        if (pickupDraft._tag === "Success") {
+          commands.spawn(pickupDraft.success)
         }
       }
     }

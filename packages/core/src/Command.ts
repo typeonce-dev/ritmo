@@ -32,12 +32,12 @@
  *       [Health, 3]
  *     )
  *
- *     if (!enemy.ok) {
+ *     if (enemy._tag === "Failure") {
  *       return
  *     }
  *
  *     // Queue the world write now. The entity becomes visible later.
- *     commands.spawn(enemy.value)
+ *     commands.spawn(enemy.success)
  *   }
  * )
  *
@@ -189,7 +189,7 @@ export type DraftFor<
   P extends Entity.ComponentProof,
   Root,
   Relates = never
-> = [Extract<Entries[number], { readonly ok: boolean }>] extends [never]
+> = [Extract<Entries[number], { readonly _tag: "Success" | "Failure" }>] extends [never]
   ? Entity.EntityDraft<S, FoldEntries<Entries, P>, Root, Relates>
   : Result.Result<Entity.EntityDraft<S, FoldEntries<Entries, P>, Root, Relates>, EntryErrors<Entries>>
 
@@ -310,8 +310,8 @@ export const entry = <D extends Descriptor<"component", string, any>>(
  *   Game.Command.entryRaw(Position, { x: 8, y: 12 }),
  *   [Player, {}]
  * )
- * if (!draft.ok) return
- * commands.spawn(draft.value)
+ * if (draft._tag === "Failure") return
+ * commands.spawn(draft.success)
  * ```
  */
 export const entryRaw = <D extends DescriptorModule.ConstructedDescriptor<"component", string, any, any, any>>(
@@ -319,9 +319,9 @@ export const entryRaw = <D extends DescriptorModule.ConstructedDescriptor<"compo
   raw: Descriptor.Raw<D>
 ): Result.Result<Entry<D>, Descriptor.ConstructionError<D>> => {
   const validated = DescriptorModule.constructorOf(descriptor).result(raw) as Result.Result<Descriptor.Value<D>, Descriptor.ConstructionError<D>>
-  return validated.ok
-    ? Result.success([descriptor, validated.value] as Entry<D>)
-    : Result.failure(validated.error)
+  return validated._tag === "Success"
+    ? Result.succeed([descriptor, validated.success] as Entry<D>)
+    : Result.fail(validated.failure)
 }
 
 /**
@@ -366,13 +366,13 @@ const build = (
     } else {
       errors ??= new Array<unknown>(index).fill(null)
       const result = candidate as Result.Result<SchemaEntry<any>, unknown>
-      if (!result.ok) {
+      if (result._tag === "Failure") {
         failed = true
-        errors.push(result.error)
+        errors.push(result.failure)
         continue
       }
       errors.push(null)
-      resolved = result.value
+      resolved = result.success
     }
     proof[resolved[0].name] = resolved[1]
     components.push(resolved)
@@ -380,7 +380,7 @@ const build = (
   if (errors === undefined) {
     return Entity.draft(id, proof, components, relations)
   }
-  return failed ? Result.failure(errors) : Result.success(Entity.draft(id, proof, components, relations))
+  return failed ? Result.fail(errors) : Result.succeed(Entity.draft(id, proof, components, relations))
 }
 
 /**

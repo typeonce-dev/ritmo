@@ -14,7 +14,7 @@ const ReadPhases = Game.Inspector("State/ReadPhases", {
 }, ({ queries }) => queries.phases.each().map((match) => match.data.phase.get()))
 
 const makeRuntime = () => {
-  const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
+  const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).success
   const Spawn = Game.System("State/Spawn", {
     commands: Game.System.commands(Game.System.spawns(Phase, Mode))
   }, ({ commands }) => {
@@ -38,9 +38,9 @@ describe("Descriptor.EntityState", () => {
     })
     runtime.tick(Game.Schedule(Advance))
     expect(results).toEqual([
-      { ok: true, value: undefined },
-      { ok: false, error: { _tag: "EntityStateMismatch", component: "State/Phase", expected: "ready", actual: "windup" } },
-      { ok: true, value: undefined }
+      { _tag: "Success", success: undefined },
+      { _tag: "Failure", failure: { _tag: "EntityStateMismatch", component: "State/Phase", expected: "ready", actual: "windup" } },
+      { _tag: "Success", success: undefined }
     ])
     expect(runtime.inspect(ReadPhases)).toEqual(["active"])
   })
@@ -66,9 +66,9 @@ describe("Descriptor.EntityState", () => {
     const runtime = makeRuntime()
     const Fail = Game.System("State/Fail", { queries: { phases: Phases } }, ({ queries }) => {
       for (const { data } of queries.phases.each()) data.phase.transition("ready", "windup")
-      return Result.failure("Rejected" as const)
+      return Result.fail("Rejected" as const)
     })
-    expect(runtime.tick(Game.Schedule(Fail)).ok).toBe(false)
+    expect(runtime.tick(Game.Schedule(Fail))._tag).toBe("Failure")
     expect(runtime.inspect(ReadPhases)).toEqual(["ready"])
 
     const changed: Array<number> = []
@@ -93,7 +93,7 @@ describe("Descriptor.EntityState", () => {
     const results: Array<boolean> = []
     const Raw = Game.System("State/Raw", { queries: { phases: Phases } }, ({ queries }) => {
       for (const { data } of queries.phases.each()) {
-        results.push(data.phase.setRaw("active").ok, data.phase.setRaw("sleeping" as never).ok)
+        results.push(data.phase.setRaw("active")._tag === "Success", data.phase.setRaw("sleeping" as never)._tag === "Success")
       }
     })
     runtime.tick(Game.Schedule(Raw))
@@ -105,8 +105,8 @@ describe("Descriptor.EntityState", () => {
       ...snapshot,
       entities: [{ ...entity, components: { ...entity.components, "State/Phase": "sleeping" } }]
     })
-    expect(restored.ok ? undefined : restored.error._tag).toBe("InvalidComponent")
-    expect(runtime.restore(JSON.parse(JSON.stringify(snapshot))).ok).toBe(true)
+    expect(restored._tag === "Success" ? undefined : restored.failure._tag).toBe("InvalidComponent")
+    expect(runtime.restore(JSON.parse(JSON.stringify(snapshot)))._tag).toBe("Success")
     expect(runtime.inspect(ReadPhases)).toEqual(["active"])
   })
 })

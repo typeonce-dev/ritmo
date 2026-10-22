@@ -18,7 +18,7 @@ describe("BrowserTickSource.make", () => {
       step: Clock.hz(60),
       maxFrameSeconds: 0.25,
       maxStepsPerFrame: 5,
-      update: () => Result.success(undefined),
+      update: () => Result.succeed(undefined),
       render: () => {},
       onFailure: () => {}
     })

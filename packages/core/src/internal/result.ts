@@ -1,11 +1,11 @@
 export type Success<out Value> = {
-  readonly ok: true
-  readonly value: Value
+  readonly _tag: "Success"
+  readonly success: Value
 }
 
 export type Failure<out Error> = {
-  readonly ok: false
-  readonly error: Error
+  readonly _tag: "Failure"
+  readonly failure: Error
 }
 
 export type Result<Value, Error> = Success<Value> | Failure<Error>
@@ -34,25 +34,25 @@ export type AllSuccess<Input extends ResultCollection> = {
 
 export type AllError<Input extends ResultCollection> = FailureError<Input[keyof Input]>
 
-export const success = <Value>(value: Value): Success<Value> => ({
-  ok: true,
-  value
+export const succeed = <Value>(success: Value): Success<Value> => ({
+  _tag: "Success",
+  success
 })
 
-export const failure = <Error>(error: Error): Failure<Error> => ({
-  ok: false,
-  error
+export const fail = <Error>(failure: Error): Failure<Error> => ({
+  _tag: "Failure",
+  failure
 })
 
-export const isSuccess = <Value, Error>(result: Result<Value, Error>): result is Success<Value> => result.ok
+export const isSuccess = <Value, Error>(result: Result<Value, Error>): result is Success<Value> => result._tag === "Success"
 
-export const isFailure = <Value, Error>(result: Result<Value, Error>): result is Failure<Error> => !result.ok
+export const isFailure = <Value, Error>(result: Result<Value, Error>): result is Failure<Error> => result._tag === "Failure"
 
 export const match = <Value, Error, SuccessReturn, FailureReturn>(
   result: Result<Value, Error>,
   handlers: MatchHandlers<Value, Error, SuccessReturn, FailureReturn>
 ): MatchReturn<Value, Error, SuccessReturn, FailureReturn> =>
-  result.ok ? handlers.onSuccess(result.value) : handlers.onFailure(result.error)
+  result._tag === "Success" ? handlers.onSuccess(result.success) : handlers.onFailure(result.failure)
 
 export const all = <const Input extends ResultCollection>(
   input: Input
@@ -60,12 +60,12 @@ export const all = <const Input extends ResultCollection>(
   if (Array.isArray(input)) {
     const values: unknown[] = []
     for (const result of input) {
-      if (!result.ok) {
-        return failure(result.error as AllError<Input>)
+      if (result._tag === "Failure") {
+        return fail(result.failure as AllError<Input>)
       }
-      values.push(result.value)
+      values.push(result.success)
     }
-    return success(values as AllSuccess<Input>)
+    return succeed(values as AllSuccess<Input>)
   }
 
   const recordInput = input as Readonly<Record<string, Result<any, any>>>
@@ -75,11 +75,11 @@ export const all = <const Input extends ResultCollection>(
     if (result === undefined) {
       continue
     }
-    if (!result.ok) {
-      return failure(result.error as AllError<Input>)
+    if (result._tag === "Failure") {
+      return fail(result.failure as AllError<Input>)
     }
-    values[key] = result.value
+    values[key] = result.success
   }
 
-  return success(values as AllSuccess<Input>)
+  return succeed(values as AllSuccess<Input>)
 }

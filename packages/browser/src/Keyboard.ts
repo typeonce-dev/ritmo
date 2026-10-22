@@ -48,8 +48,8 @@
  *
  * // Node: replay it frame by frame.
  * const parsed = Keyboard.parseTimeline(bindings, JSON.parse(saved))
- * if (parsed.ok) {
- *   const replay = Keyboard.scripted(bindings, parsed.value)
+ * if (parsed._tag === "Success") {
+ *   const replay = Keyboard.scripted(bindings, parsed.success)
  * }
  * ```
  */
@@ -432,7 +432,7 @@ export const parseTimeline = <const B extends Bindings>(
   bindings: B,
   data: unknown
 ): Result.Result<Timeline<B>, InvalidTimeline> => {
-  const invalid = (path: string, message: string) => Result.failure<InvalidTimeline>({ _tag: "InvalidTimeline", path, message })
+  const invalid = (path: string, message: string) => Result.fail<InvalidTimeline>({ _tag: "InvalidTimeline", path, message })
   if (!Array.isArray(data)) return invalid("", "expected an array of entries")
   const entries: Array<TimelineEntry<B>> = []
   for (let index = 0; index < data.length; index++) {
@@ -444,7 +444,7 @@ export const parseTimeline = <const B extends Bindings>(
       return invalid(`${path}.frame`, "expected a non-negative integer")
     }
     const actionsAt = (value: unknown, field: string): Result.Result<Array<keyof B & string> | undefined, InvalidTimeline> => {
-      if (value === undefined) return Result.success(undefined)
+      if (value === undefined) return Result.succeed(undefined)
       if (!Array.isArray(value)) return invalid(`${path}.${field}`, "expected an array of action names")
       const names: Array<keyof B & string> = []
       for (let offset = 0; offset < value.length; offset++) {
@@ -454,17 +454,17 @@ export const parseTimeline = <const B extends Bindings>(
         }
         names.push(name)
       }
-      return Result.success(names)
+      return Result.succeed(names)
     }
     const pressed = actionsAt(press, "press")
-    if (!pressed.ok) return pressed
+    if (pressed._tag === "Failure") return pressed
     const released = actionsAt(release, "release")
-    if (!released.ok) return released
+    if (released._tag === "Failure") return released
     entries.push({
       frame,
-      ...(pressed.value === undefined ? {} : { press: pressed.value }),
-      ...(released.value === undefined ? {} : { release: released.value })
+      ...(pressed.success === undefined ? {} : { press: pressed.success }),
+      ...(released.success === undefined ? {} : { release: released.success })
     })
   }
-  return Result.success(entries)
+  return Result.succeed(entries)
 }

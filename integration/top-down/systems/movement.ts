@@ -18,12 +18,12 @@ export const PlanPlayerVelocitySystem = Game.System(
   ({ queries, resources }) =>
     {
       const player = queries.player.singleOptional()
-      if (!player.ok || !player.value) {
+      if (player._tag === "Failure" || !player.success) {
         return
       }
 
       const direction = normalizeMovement(resources.input.get())
-      player.value.data.velocity.updateRaw(() =>
+      player.success.data.velocity.updateRaw(() =>
         ({
           x: direction.x * PLAYER_SPEED,
           y: direction.y * PLAYER_SPEED
@@ -46,12 +46,12 @@ export const MovePlayerSystem = Game.System(
   ({ queries, resources }) =>
     {
       const player = queries.player.singleOptional()
-      if (!player.ok || !player.value) {
+      if (player._tag === "Failure" || !player.success) {
         return
       }
 
       const dt = resources.deltaTime.get()
-      const velocity = player.value.data.velocity.get()
+      const velocity = player.success.data.velocity.get()
       if (velocity.x === 0 && velocity.y === 0) {
         return
       }
@@ -61,19 +61,19 @@ export const MovePlayerSystem = Game.System(
         collider: match.data.collider.get()
       }))
 
-      const position = player.value.data.position.get()
-      const collider = player.value.data.collider.get()
+      const position = player.success.data.position.get()
+      const collider = player.success.data.collider.get()
       const nextX = resolveHorizontalMovement(position, velocity.x * dt, collider, walls)
       const nextPosition = Vector2.result({
         x: nextX,
         y: position.y
       })
-      if (!nextPosition.ok) {
+      if (nextPosition._tag === "Failure") {
         return
       }
-      const nextY = resolveVerticalMovement(nextPosition.value, velocity.y * dt, collider, walls)
+      const nextY = resolveVerticalMovement(nextPosition.success, velocity.y * dt, collider, walls)
 
-      player.value.data.position.setRaw({
+      player.success.data.position.setRaw({
         x: nextX,
         y: nextY
       })

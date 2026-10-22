@@ -43,8 +43,8 @@
  * localStorage.setItem("save", JSON.stringify(runtime.snapshot()))
  *
  * const restored = runtime.restore(JSON.parse(localStorage.getItem("save") ?? "null"))
- * if (!restored.ok) {
- *   console.error(restored.error)
+ * if (restored._tag === "Failure") {
+ *   console.error(restored.failure)
  * }
  * ```
  */
@@ -153,7 +153,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isEntityId = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value > 0
 
-const invalid = (path: string) => Result.failure<RestoreError>({ _tag: "InvalidSnapshot", path })
+const invalid = (path: string) => Result.fail<RestoreError>({ _tag: "InvalidSnapshot", path })
 
 /**
  * Checks the structure of untrusted snapshot data. Names and values are
@@ -161,7 +161,7 @@ const invalid = (path: string) => Result.failure<RestoreError>({ _tag: "InvalidS
  */
 export const parse = (data: unknown): Result.Result<WorldSnapshot, RestoreError> => {
   if (!isRecord(data)) return invalid("$")
-  if (data["version"] !== version) return Result.failure({ _tag: "UnsupportedVersion", version: data["version"] })
+  if (data["version"] !== version) return Result.fail({ _tag: "UnsupportedVersion", version: data["version"] })
   const gameVersion = data["gameVersion"] ?? 0
   if (typeof gameVersion !== "number" || !Number.isSafeInteger(gameVersion) || gameVersion < 0) return invalid("$.gameVersion")
   if (!isEntityId(data["nextEntity"])) return invalid("$.nextEntity")
@@ -195,7 +195,7 @@ export const parse = (data: unknown): Result.Result<WorldSnapshot, RestoreError>
   for (const [name, members] of Object.entries(scopes)) {
     if (!Array.isArray(members) || !members.every(isEntityId)) return invalid(`$.scopes.${name}`)
   }
-  return Result.success({ ...data, gameVersion } as unknown as WorldSnapshot)
+  return Result.succeed({ ...data, gameVersion } as unknown as WorldSnapshot)
 }
 
 /**

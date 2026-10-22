@@ -7,7 +7,7 @@ const Paved = Descriptor.Component<{}>()("AnyOf/Paved")
 
 const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite, Paved } }))
 
-const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value
+const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).success
 
 const Redraw = Game.Query({
   selection: { position: Game.Query.read(Position) },

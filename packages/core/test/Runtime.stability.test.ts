@@ -37,14 +37,14 @@ describe("Runtime stabilization APIs", () => {
       },
       ({ queries, resources, events, nextMachines, commands }) => {
         const position = queries.positions.single()
-        if (position.ok) {
-          position.value.data.position.set({ x: 99 })
+        if (position._tag === "Success") {
+          position.success.data.position.set({ x: 99 })
         }
         resources.count.set(99)
         events.signal.emit(99)
         nextMachines.mode.set("Broken")
         commands.spawn(Game.Command.spawn([Position, { x: 99 }]))
-        return Result.failure("Rejected" as const)
+        return Result.fail("Rejected" as const)
       }
     )
 
@@ -66,7 +66,7 @@ describe("Runtime stabilization APIs", () => {
       },
       ({ queries, resources, events, machines }) => {
         const position = queries.positions.single()
-        observedPosition = position.ok ? position.value.data.position.get().x : -1
+        observedPosition = position._tag === "Success" ? position.success.data.position.get().x : -1
         observedCount = resources.count.get()
         observedSignals = events.signal.all()
         observedMode = machines.mode.get()
@@ -77,18 +77,18 @@ describe("Runtime stabilization APIs", () => {
       services: Game.Runtime.services(),
       resources: { Count: 1 },
       machines: Game.Runtime.machines(Game.Runtime.machine(Mode, "Ready"))
-    }).value
+    }).success
 
-    expect(runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred()))).toEqual({ ok: true, value: undefined })
+    expect(runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred()))).toEqual({ _tag: "Success", success: undefined })
     expect(runtime.tick(Game.Schedule(fail))).toEqual({
-      ok: false,
-      error: {
-        kind: "SystemFailure",
+      _tag: "Failure",
+      failure: {
+        _tag: "SystemFailure",
         system: "Stability/Fail",
         error: "Rejected"
       }
     })
-    expect(runtime.tick(Game.Schedule(observe))).toEqual({ ok: true, value: undefined })
+    expect(runtime.tick(Game.Schedule(observe))).toEqual({ _tag: "Success", success: undefined })
     expect(observedPosition).toBe(1)
     expect(observedCount).toBe(1)
     expect(observedSignals).toEqual([])
@@ -123,7 +123,7 @@ describe("Runtime stabilization APIs", () => {
       }
     )
 
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).success
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred(), clear, Game.Schedule.applyDeferred()))
     runtime.tick(Game.Schedule(observe))
 
@@ -162,7 +162,7 @@ describe("Runtime stabilization APIs", () => {
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(),
       resources: { Score: 7 }
-    }).value
+    }).success
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred()))
 
     expect(runtime.inspect(snapshot)).toEqual({ positions: [4], score: 7 })
@@ -180,7 +180,7 @@ describe("Runtime stabilization APIs", () => {
     const load = Game.System(
       "TransitionFailure/Load",
       {},
-      () => Result.failure("LoadFailed" as const)
+      () => Result.fail("LoadFailed" as const)
     )
     const transitions = Game.Schedule.transitions(
       Game.Schedule.onEnter(Mode, "Playing", [load])
@@ -193,12 +193,12 @@ describe("Runtime stabilization APIs", () => {
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(),
       machines: Game.Runtime.machines(Game.Runtime.machine(Mode, "Menu"))
-    }).value
+    }).success
 
     expect(runtime.tick(schedule)).toEqual({
-      ok: false,
-      error: {
-        kind: "SystemFailure",
+      _tag: "Failure",
+      failure: {
+        _tag: "SystemFailure",
         system: "TransitionFailure/Load",
         error: "LoadFailed"
       }

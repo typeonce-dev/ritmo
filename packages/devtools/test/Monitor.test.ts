@@ -25,7 +25,7 @@ const paused = Game.Condition.check("paused", { resources: { paused: Game.System
 const Idle = Game.System("Mon/Idle", { when: [paused] }, () => {})
 
 const setup = () => {
-  const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Paused: false }, debug: { hostClock } }).value
+  const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Paused: false }, debug: { hostClock } }).success
   const update = Game.Schedule(Move, Fire, Idle, Game.Schedule.applyDeferred())
   runtime.debug.nameSchedules({ update })
   runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred()))

@@ -24,8 +24,8 @@ const makeRuntime = (score: number, frame = 0) => {
     resources: { Score: score, Frame: frame },
     machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Menu"))
   })
-  if (!made.ok) throw new Error("invalid fixture")
-  return made.value
+  if (made._tag === "Failure") throw new Error("invalid fixture")
+  return made.success
 }
 
 const Named = Game.Query({ selection: { name: Game.Query.read(Name) } })
@@ -50,8 +50,8 @@ const populate = (runtime: ReturnType<typeof makeRuntime>) => {
     commands: Game.System.commands(Game.System.spawns(Name, Position, Sprite, Target), Game.System.relates(ChildOf))
   }, ({ commands, nextMachines, resources }) => {
     const parentDraft = Game.Command.spawn([Name, "parent"], Game.Command.entryRaw(Position, { x: 1, y: 2 }))
-    if (!parentDraft.ok) throw new Error("invalid fixture")
-    const parent = commands.spawn(Game.Command.extend(parentDraft.value, [Sprite, { frame: 3 }]))
+    if (parentDraft._tag === "Failure") throw new Error("invalid fixture")
+    const parent = commands.spawn(Game.Command.extend(parentDraft.success, [Sprite, { frame: 3 }]))
     const first = commands.spawn(Game.Command.relate(Game.Command.spawn([Name, "first"]), ChildOf, parent))
     commands.spawn(Game.Command.relate(Game.Command.spawn([Name, "second"]), ChildOf, parent))
     commands.spawn(Game.Command.spawn([Target, { handle: Game.Entity.handle(first, Name) }]))
@@ -76,8 +76,8 @@ describe("Runtime snapshots", () => {
     const target = makeRuntime(0)
     const before = target.snapshot()
     const restored = target.restore(JSON.parse(JSON.stringify(invalid)))
-    expect(restored.ok).toBe(false)
-    if (!restored.ok) expect(restored.error._tag).toBe("InvalidComponent")
+    expect(restored._tag).toBe("Failure")
+    if (restored._tag === "Failure") expect(restored.failure._tag).toBe("InvalidComponent")
     expect(target.snapshot()).toEqual(before)
     expect(saved.entities.find((entity) => Target.name in entity.components)?.components[Target.name]).toEqual({ handle: 2 })
   })
@@ -89,7 +89,7 @@ describe("Runtime snapshots", () => {
     const target = makeRuntime(7)
     const restored = target.restore(JSON.parse(json))
 
-    expect(restored.ok).toBe(true)
+    expect(restored._tag).toBe("Success")
     expect(readWorld(target)).toEqual(readWorld(source))
 
     let children: Array<string> = []
@@ -102,10 +102,10 @@ describe("Runtime snapshots", () => {
     }, ({ queries }) => {
       const parent = readWorld(target).names.find(([, name]) => name === "parent")![0]
       const matches = queries.named.children(Entity.makeEntityId(parent), ChildOf)
-      children = matches.ok ? matches.value.map((match) => match.data.name.get()) : []
+      children = matches._tag === "Success" ? matches.success.map((match) => match.data.name.get()) : []
       const handle = queries.targets.each()[0]!.data.target.get().handle
       const match = queries.named.getHandle(handle)
-      resolved = match.ok ? match.value.data.name.get() : "missing"
+      resolved = match._tag === "Success" ? match.success.data.name.get() : "missing"
     })
     target.tick(Game.Schedule(Check))
 
@@ -157,7 +157,7 @@ describe("Runtime snapshots", () => {
     ]
     for (const [data, tag] of cases) {
       const result = runtime.restore(data)
-      expect(result.ok ? undefined : result.error._tag).toBe(tag)
+      expect(result._tag === "Success" ? undefined : result.failure._tag).toBe(tag)
     }
     expect(readWorld(runtime)).toEqual(before)
   })
@@ -187,7 +187,7 @@ describe("Runtime snapshots", () => {
     expect(saved.entities.some((entity) => "Snapshot/Sprite" in entity.components)).toBe(false)
 
     const target = makeRuntime(0, 5)
-    expect(target.restore(JSON.parse(JSON.stringify(saved))).ok).toBe(true)
+    expect(target.restore(JSON.parse(JSON.stringify(saved)))._tag).toBe("Success")
     const Read = Game.Inspector("Snapshot/ReadTransient", {
       queries: { sprites: Game.Query({ selection: { sprite: Game.Query.read(Sprite) } }) },
       resources: { frame: Game.System.readResource(Frame), score: Game.System.readResource(Score) }
@@ -208,21 +208,21 @@ describe("Runtime snapshots", () => {
           typeof value === "number" && value > 0 ? { value } : { issues: [{ message: "must be positive" }] }
       }
     })
-    expect(positive.result(2)).toEqual(Result.success(2))
-    expect(positive.result(-1)).toEqual(Result.failure([{ message: "must be positive" }]))
+    expect(positive.result(2)).toEqual(Result.succeed(2))
+    expect(positive.result(-1)).toEqual(Result.fail({ _tag: "StandardSchemaIssues", issues: [{ message: "must be positive" }] }))
 
     const async = Descriptor.fromStandardSchema({
       "~standard": { version: 1, vendor: "test", validate: async (value: unknown) => ({ value }) }
     })
     const outcome = async.result(1)
-    expect(outcome.ok).toBe(false)
+    expect(outcome._tag === "Failure" && outcome.failure._tag).toBe("StandardSchemaIssues")
   })
 
   it("decodes stored handles and rejects malformed ones", () => {
     const valid = Entity.decodeHandle(Root, JSON.parse(JSON.stringify(Entity.makeHandle(4))))
-    expect(valid.ok && valid.value).toBe(4)
+    expect(valid._tag === "Success" && valid.success).toBe(4)
     for (const raw of [null, 0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, "4", { kind: "EntityHandle", value: 7 }, { kind: "EntityId", value: 4 }, { kind: "EntityHandle", value: 1.5 }, { value: 4 }]) {
-      expect(Entity.decodeHandle(Root, raw).ok).toBe(false)
+      expect(Entity.decodeHandle(Root, raw)._tag).toBe("Failure")
     }
   })
 })

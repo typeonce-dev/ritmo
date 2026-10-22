@@ -58,7 +58,7 @@ import * as Result from "./Result.ts"
  * const handle = Game.Entity.handle(playerId, Player)
  * // `players` is a query the system declares: queries: { players: PlayerQuery }
  * const resolved = queries.players.getHandle(handle)
- * if (!resolved.ok) return
+ * if (resolved._tag === "Failure") return
  * ```
  */
 export type EntityTypeId = "~ritmo/Entity"
@@ -318,7 +318,7 @@ export interface InvalidHandle {
  * const Target = Descriptor.ConstructedComponent({
  *   result: (raw: unknown) => {
  *     const enemy = Entity.decodeHandle(Root, isRecord(raw) ? raw["enemy"] : undefined, Health)
- *     return enemy.ok ? Result.success({ enemy: enemy.value }) : enemy
+ *     return enemy._tag === "Success" ? Result.succeed({ enemy: enemy.success }) : enemy
  *   }
  * })("Game/Target")
  * ```
@@ -332,8 +332,8 @@ export const decodeHandle = <
   _intent?: Intent
 ): Result.Result<Handle<Root, Intent>, InvalidHandle> => {
   return typeof raw === "number" && Number.isInteger(raw) && raw > 0
-    ? Result.success(makeHandle<Root, Intent>(raw))
-    : Result.failure({ _tag: "InvalidHandle", value: raw })
+    ? Result.succeed(makeHandle<Root, Intent>(raw))
+    : Result.fail({ _tag: "InvalidHandle", value: raw })
 }
 
 /**

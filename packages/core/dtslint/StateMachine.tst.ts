@@ -198,7 +198,7 @@ describe("StateMachine", () => {
       resources: {
         Counter: 0
       }
-    }).value
+    }).success
 
     expect(runtime.machineValues).type.toBe<{}>()
   })
@@ -213,7 +213,7 @@ describe("StateMachine", () => {
         Runtime.machine(AppState, "Menu"),
         Runtime.machine(RoundState, "Warmup")
       )
-    }).value
+    }).success
 
     expect(MachineSchedule).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof schema>>()
   })
@@ -244,7 +244,7 @@ describe("StateMachine", () => {
         Runtime.machine(AppState, "Menu"),
         Runtime.machine(RoundState, "Warmup")
       )
-    }).value
+    }).success
 
     expect(Game.Schedule(IncrementWithOrCondition)).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof schema>>()
   })
@@ -263,7 +263,7 @@ describe("StateMachine", () => {
           "Playing"
         )
       )
-    }).value
+    }).success
   })
 
   it("does not expose transition context on normal schedules", () => {
@@ -350,13 +350,13 @@ describe("StateMachine", () => {
       services: Runtime.services(),
       resources: { Counter: 0 },
       machines: Runtime.machines(Runtime.machine(RoundState, "Warmup"))
-    }).value
+    }).success
     withMachine.tick(Game.Schedule(Game.Schedule.applyStateTransitions(bundle)))
     const withoutMachine = Game.Runtime.make({
       services: Runtime.services(),
       resources: { Counter: 0 },
       machines: Runtime.machines(Runtime.machine(AppState, "Menu"))
-    }).value
+    }).success
     // @ts-expect-error __runtimeRequirementError__: "Missing machine"; readonly __requirement__: "RoundState"
     withoutMachine.tick(Game.Schedule(Game.Schedule.applyStateTransitions(bundle)))
   })
@@ -371,10 +371,10 @@ describe("StateMachine", () => {
       services: Runtime.services(),
       resources: { Counter: 0 },
       machines: Runtime.machines(Runtime.machine(AppState, "Menu"))
-    }).value
+    }).success
     withMachine.tick(gated)
 
-    const withoutMachine = Game.Runtime.make({ services: Runtime.services(), resources: { Counter: 0 } }).value
+    const withoutMachine = Game.Runtime.make({ services: Runtime.services(), resources: { Counter: 0 } }).success
     // @ts-expect-error __runtimeRequirementError__: "Missing machine"; readonly __requirement__: "AppState"
     withoutMachine.tick(gated)
 

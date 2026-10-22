@@ -7,7 +7,7 @@ const Game = Schema.bind(Schema.fragment({ components: { Name }, relations: { Ch
 const Level = Game.EntityScope("SnapshotScopes/Level")
 const Menu = Game.EntityScope("SnapshotScopes/Menu")
 
-const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() }).value
+const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() }).success
 type Runtime = ReturnType<typeof makeRuntime>
 
 const Names = Game.Inspector("SnapshotScopes/Names", {
@@ -22,7 +22,7 @@ const despawn = (runtime: Runtime, scope: typeof Level | typeof Menu) =>
 const roundTrip = (runtime: Runtime): Runtime => {
   const restored = makeRuntime()
   const result = restored.restore(JSON.parse(JSON.stringify(runtime.snapshot())))
-  if (!result.ok) throw new Error(JSON.stringify(result.error))
+  if (result._tag === "Failure") throw new Error(JSON.stringify(result.failure))
   return restored
 }
 
@@ -67,12 +67,12 @@ describe("snapshots keep entity scopes", () => {
     const id = saved.entities[0]!.id
     const target = makeRuntime()
     expect(target.restore({ ...saved, scopes: { [Level.name]: [id + 100] } })).toEqual({
-      ok: false,
-      error: { _tag: "InvalidScope", name: Level.name, entityId: id + 100 }
+      _tag: "Failure",
+      failure: { _tag: "InvalidScope", name: Level.name, entityId: id + 100 }
     })
     expect(target.restore({ ...saved, scopes: { [Level.name]: [id], [Menu.name]: [id] } })).toEqual({
-      ok: false,
-      error: { _tag: "InvalidScope", name: Menu.name, entityId: id }
+      _tag: "Failure",
+      failure: { _tag: "InvalidScope", name: Menu.name, entityId: id }
     })
   })
 
@@ -85,11 +85,11 @@ describe("snapshots keep entity scopes", () => {
     const id = saved.entities[0]!.id
     const target = makeRuntime()
     expect(target.restore({ ...saved, scopes: { "SnapshotScopes/Levl": [id] } })).toEqual({
-      ok: false,
-      error: { _tag: "UnknownScope", name: "SnapshotScopes/Levl" }
+      _tag: "Failure",
+      failure: { _tag: "UnknownScope", name: "SnapshotScopes/Levl" }
     })
     // Nothing changed: the target still restores the real save.
-    expect(target.restore(saved)).toEqual({ ok: true, value: undefined })
+    expect(target.restore(saved)).toEqual({ _tag: "Success", success: undefined })
     expect(target.inspect(Names)).toEqual(["wall"])
   })
 
@@ -97,8 +97,8 @@ describe("snapshots keep entity scopes", () => {
     const runtime = makeRuntime()
     const { scopes: _scopes, ...rest } = runtime.snapshot()
     expect(makeRuntime().restore({ ...rest, version: 1 })).toEqual({
-      ok: false,
-      error: { _tag: "UnsupportedVersion", version: 1 }
+      _tag: "Failure",
+      failure: { _tag: "UnsupportedVersion", version: 1 }
     })
   })
 })

@@ -11,7 +11,7 @@ const LastX = Descriptor.Resource<number>()("LastX")
 const SafePosition = Descriptor.ConstructedComponent(Vector2)("SafePosition")
 const SafeVelocity = Descriptor.ConstructedComponent({
   result: (raw: { x: number; y: number }) =>
-    Number.isFinite(raw.x) && Number.isFinite(raw.y) ? Result.success(raw) : Result.failure("bad-velocity" as const)
+    Number.isFinite(raw.x) && Number.isFinite(raw.y) ? Result.succeed(raw) : Result.fail("bad-velocity" as const)
 })("SafeVelocity")
 
 const Game = Schema.bind(Schema.fragment({
@@ -41,7 +41,7 @@ const makeRuntime = () =>
       Count: 0,
       LastX: -1
     }
-  }).value
+  }).success
 
 describe("Runtime commands", () => {
   it("insertMany applies entries in order with last-write-wins semantics", () => {
@@ -81,8 +81,8 @@ describe("Runtime commands", () => {
       ({ queries, resources }) =>
         {
           const result = queries.moving.single()
-          resources.count.set(result.ok ? 1 : 0)
-          resources.lastX.set(result.ok ? result.value.data.position.get().x : -1)
+          resources.count.set(result._tag === "Success" ? 1 : 0)
+          resources.lastX.set(result._tag === "Success" ? result.success.data.position.get().x : -1)
         }
     )
 
@@ -164,7 +164,7 @@ describe("Runtime commands", () => {
         {
           if (!storedId) return
           const match = queries.positions.get(storedId)
-          if (match.ok) commands.despawn(match.value.entity)
+          if (match._tag === "Success") commands.despawn(match.success.entity)
         }
     )
 
@@ -190,7 +190,7 @@ describe("Runtime commands", () => {
             return
           }
           const result = queries.positions.get(id)
-          resources.count.set(result.ok ? 0 : result.error._tag === "MissingEntity" ? 1 : -1)
+          resources.count.set(result._tag === "Success" ? 0 : result.failure._tag === "MissingEntity" ? 1 : -1)
         }
     )
 
@@ -232,21 +232,21 @@ describe("Runtime commands", () => {
 
   it("entryRaw and insertRaw validate constructed component input explicitly", () => {
     const invalidEntry = ConstructedGame.Command.entryRaw(SafePosition, { x: Number.NaN, y: 0 })
-    expect(invalidEntry.ok).toBe(false)
+    expect(invalidEntry._tag).toBe("Failure")
 
     const spawned = ConstructedGame.Command.spawn(
       ConstructedGame.Command.entryRaw(SafePosition, { x: 1, y: 2 })
     )
 
-    expect(spawned.ok).toBe(true)
-    if (!spawned.ok) {
+    expect(spawned._tag).toBe("Success")
+    if (spawned._tag === "Failure") {
       return
     }
 
     const inserted = ConstructedGame.Command.extend(
-      spawned.value, ConstructedGame.Command.entryRaw(SafePosition, { x: 3, y: 4 }))
+      spawned.success, ConstructedGame.Command.entryRaw(SafePosition, { x: 3, y: 4 }))
 
-    expect(inserted.ok).toBe(true)
+    expect(inserted._tag).toBe("Success")
   })
 
   it("insert on an existing entity becomes visible after explicit applyDeferred in the same schedule", () => {
@@ -323,19 +323,19 @@ describe("Runtime commands", () => {
             Game.Command.entryRaw(SafeVelocity, { x: Number.NaN, y: 0 })
           )
 
-          expect(invalidDraft).toEqual(Result.failure([null, "bad-velocity"]))
+          expect(invalidDraft).toEqual(Result.fail([null, "bad-velocity"]))
 
           const validDraft = Game.Command.spawn(
             Game.Command.entry(Position, { x: 4, y: 5 }),
             Game.Command.entryRaw(SafeVelocity, { x: 6, y: 7 })
           )
 
-          if (!validDraft.ok) {
+          if (validDraft._tag === "Failure") {
             resources.count.set(-1)
             return
           }
 
-          commands.spawn(validDraft.value)
+          commands.spawn(validDraft.success)
           resources.count.set(1)
           resources.lastX.set(4)
         }
@@ -360,8 +360,8 @@ describe("Runtime commands", () => {
       ({ queries, resources }) =>
         {
           const result = queries.moving.single()
-          resources.count.set(result.ok ? 1 : 0)
-          resources.lastX.set(result.ok ? result.value.data.position.get().x : -1)
+          resources.count.set(result._tag === "Success" ? 1 : 0)
+          resources.lastX.set(result._tag === "Success" ? result.success.data.position.get().x : -1)
         }
     )
 
@@ -392,19 +392,19 @@ describe("Runtime commands", () => {
             Game.Command.entryRaw(SafeVelocity, { x: Number.NaN, y: 0 })
           )
 
-          expect(invalidDraft).toEqual(Result.failure([null, "bad-velocity"]))
+          expect(invalidDraft).toEqual(Result.fail([null, "bad-velocity"]))
 
           const validDraft = Game.Command.spawn(
             Game.Command.entry(Position, { x: 4, y: 5 }),
             Game.Command.entryRaw(SafeVelocity, { x: 6, y: 7 })
           )
 
-          if (!validDraft.ok) {
+          if (validDraft._tag === "Failure") {
             resources.count.set(-1)
             return
           }
 
-          commands.spawn(validDraft.value)
+          commands.spawn(validDraft.success)
           resources.count.set(1)
           resources.lastX.set(4)
         }
@@ -429,8 +429,8 @@ describe("Runtime commands", () => {
       ({ queries, resources }) =>
         {
           const result = queries.moving.single()
-          resources.count.set(result.ok ? 1 : 0)
-          resources.lastX.set(result.ok ? result.value.data.position.get().x : -1)
+          resources.count.set(result._tag === "Success" ? 1 : 0)
+          resources.lastX.set(result._tag === "Success" ? result.success.data.position.get().x : -1)
         }
     )
 

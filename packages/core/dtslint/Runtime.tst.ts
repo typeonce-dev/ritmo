@@ -95,7 +95,7 @@ describe("Runtime", () => {
         Counter: 0,
         CurrentPhase: "Running"
       }
-    }).value
+    }).success
 
     expect(runtime).type.toBeAssignableTo<Runtime.Runtime<
       typeof schema,
@@ -127,9 +127,9 @@ describe("Runtime", () => {
       }
     })
 
-    if (runtime.ok) {
-      runtime.value.tick(resourceSchedule)
-      runtime.value.tick(stateSchedule)
+    if (runtime._tag === "Success") {
+      runtime.success.tick(resourceSchedule)
+      runtime.success.tick(stateSchedule)
     }
   })
 
@@ -141,7 +141,7 @@ describe("Runtime", () => {
         DeltaTime: 1 / 60,
         Counter: 0,
         // @ts-expect-error Type 'Success<{ width: number; height: number; }>' is missing the following properties from type 'Raw'
-        Viewport: Result.success({ width: 320, height: 180 })
+        Viewport: Result.succeed({ width: 320, height: 180 })
       }
     })
   })
@@ -159,13 +159,13 @@ describe("Runtime", () => {
 
   it("returns a Success when nothing provided can fail, and a Result to check otherwise", () => {
     const plain = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Counter: 0 } })
-    expect(plain.ok).type.toBe<true>()
-    expect(plain.value.tick).type.not.toBe<never>()
+    expect(plain._tag).type.toBe<"Success">()
+    expect(plain.success.tick).type.not.toBe<never>()
     const maybe: { readonly Viewport?: { readonly width: number; readonly height: number } } = {}
     const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: maybe })
-    expect(made.ok).type.toBe<boolean>()
-    // @ts-expect-error Property 'value' does not exist on type
-    made.value
+    expect(made._tag).type.toBe<"Success" | "Failure">()
+    // @ts-expect-error Property 'success' does not exist on type
+    made.success
   })
 
   it("rejects an unknown resource key next to known ones, naming it", () => {
@@ -177,7 +177,7 @@ describe("Runtime", () => {
         // @ts-expect-error Countr is not a resource key of this schema
         Countr: 0
       }
-    }).value
+    }).success
     Game.Runtime.make({
       services: Game.Runtime.services(),
       resources: {
@@ -185,7 +185,7 @@ describe("Runtime", () => {
         // @ts-expect-error DeltaTim is not a resource key of this schema
         DeltaTim: 1 / 60
       }
-    }).value
+    }).success
     // A value typed as the resources record is accepted as it is.
     const resources: Runtime.RuntimeResources<typeof schema> = { DeltaTime: 1 / 60 }
     expect(Game.Runtime.make({ services: Game.Runtime.services(), resources })).type.not.toRaiseError()
@@ -211,7 +211,7 @@ describe("Runtime", () => {
         Counter: 0,
         CurrentPhase: "Running"
       }
-    }).value
+    }).success
 
     // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "Logger"
     runtime.tick(serviceSchedule)
@@ -221,7 +221,7 @@ describe("Runtime", () => {
     const runtime = Runtime.make({
       schema,
       services: Runtime.services()
-    }).value
+    }).success
 
     // @ts-expect-error __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "Time"
     runtime.tick(resourceSchedule)
@@ -235,7 +235,7 @@ describe("Runtime", () => {
         DeltaTime: 1 / 60,
         Counter: 0
       }
-    }).value
+    }).success
 
     // @ts-expect-error __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "Phase"
     runtime.tick(stateSchedule)
@@ -250,7 +250,7 @@ describe("Runtime", () => {
         Counter: 0,
         CurrentPhase: "Running"
       }
-    }).value
+    }).success
 
     // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "Logger"
     runtime.tick(serviceSchedule)
@@ -271,7 +271,7 @@ describe("Runtime", () => {
         Counter: 0,
         CurrentPhase: "Running"
       }
-    }).value
+    }).success
 
     runtime.tick(resourceSchedule, stateSchedule, serviceSchedule)
   })
@@ -291,7 +291,7 @@ describe("Runtime", () => {
         Counter: 0,
         CurrentPhase: "Running"
       }
-    }).value
+    }).success
 
     runtime.tick(prefixedServiceSchedule)
   })
@@ -305,7 +305,7 @@ describe("Runtime", () => {
           log(_message: string) {}
         }
       }
-    }).value
+    }).success
   })
 
   it("rejects non-service descriptors in Runtime.services", () => {
@@ -336,12 +336,12 @@ describe("Runtime snapshots", () => {
 
   it("exposes snapshot and restore only when every value can be validated on load", () => {
     const Valid = Schema.bind(Schema.fragment({ components: { Place, Sprite }, resources: { Frame } }), Root)
-    const valid = Valid.Runtime.make({ services: Valid.Runtime.services(), resources: { Frame: 0 } }).value
+    const valid = Valid.Runtime.make({ services: Valid.Runtime.services(), resources: { Frame: 0 } }).success
     expect(valid.snapshot()).type.toBe<import("@typeonce/ritmo/Snapshot").WorldSnapshot>()
     expect(valid.restore(null)).type.toBe<Result.Result<void, import("@typeonce/ritmo/Snapshot").RestoreError>>()
 
     const Invalid = Schema.bind(Schema.fragment({ components: { Place, Label }, resources: { Score } }), Root)
-    const invalid = Invalid.Runtime.make({ services: Invalid.Runtime.services(), resources: { Score: 0 } }).value
+    const invalid = Invalid.Runtime.make({ services: Invalid.Runtime.services(), resources: { Score: 0 } }).success
     expect(invalid.snapshot).type.toBe<{
       readonly "SnapshotTypes/Label needs a validator": "Use a Constructed* descriptor whose constructor accepts unknown input (validated on load) or a Transient* one (not saved)"
       readonly "SnapshotTypes/Score needs a validator": "Use a Constructed* descriptor whose constructor accepts unknown input (validated on load) or a Transient* one (not saved)"
@@ -353,19 +353,19 @@ describe("Runtime snapshots", () => {
   })
 
   it("requires constructors that accept untrusted input", () => {
-    const typedOnly = { result: (raw: { readonly n: number }) => Result.success(raw.n) }
+    const typedOnly = { result: (raw: { readonly n: number }) => Result.succeed(raw.n) }
     const Typed = Descriptor.ConstructedComponent(typedOnly)("SnapshotTypes/Typed")
     const Unknown = Descriptor.ConstructedComponent({
-      result: (raw: unknown) => typeof raw === "number" ? Result.success(raw) : Result.failure("NaN" as const)
+      result: (raw: unknown) => typeof raw === "number" ? Result.succeed(raw) : Result.fail("NaN" as const)
     })("SnapshotTypes/Unknown")
-    const Decoded = Descriptor.ConstructedComponent({ ...typedOnly, decode: (raw: unknown) => Result.failure(raw) })("SnapshotTypes/Decoded")
+    const Decoded = Descriptor.ConstructedComponent({ ...typedOnly, decode: (raw: unknown) => Result.fail(raw) })("SnapshotTypes/Decoded")
 
     const Loadable = Schema.bind(Schema.fragment({ components: { Unknown, Decoded, Place } }), Root)
-    const loadable = Loadable.Runtime.make({ services: Loadable.Runtime.services() }).value
+    const loadable = Loadable.Runtime.make({ services: Loadable.Runtime.services() }).success
     expect(loadable.snapshot()).type.toBe<import("@typeonce/ritmo/Snapshot").WorldSnapshot>()
 
     const Unloadable = Schema.bind(Schema.fragment({ components: { Typed } }), Root)
-    const unloadable = Unloadable.Runtime.make({ services: Unloadable.Runtime.services() }).value
+    const unloadable = Unloadable.Runtime.make({ services: Unloadable.Runtime.services() }).success
     // @ts-expect-error Type '{ readonly "SnapshotTypes/Typed needs a validator": "Use a Constructed* descriptor whose constructor
     unloadable.snapshot()
   })
@@ -396,7 +396,7 @@ describe("Decode", () => {
 
     const Root = Schema.defineRoot("DecodeTypes")
     const Game = Schema.bind(Schema.fragment({ components: { Stats, Team, Player } }), Root)
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).success
     expect(runtime.snapshot()).type.toBe<import("@typeonce/ritmo/Snapshot").WorldSnapshot>()
   })
 })

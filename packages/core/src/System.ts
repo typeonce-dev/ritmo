@@ -699,17 +699,17 @@ export interface QueryIteration<S extends Schema.Any, Q extends Query.Any> {
    * Returns a single match when zero or one entity satisfies the query.
    *
    * Use this when absence is acceptable but multiplicity is still a bug. Zero
-   * matches return `ok: true` with `value: undefined`; multiple matches remain
+   * matches return a `Success` whose `success` is `undefined`; multiple matches remain
    * an explicit `MultipleEntities` failure.
    *
    * @example
    * ```ts
    * const player = queries.player.singleOptional()
-   * if (!player.ok || !player.value) {
+   * if (player._tag === "Failure" || !player.success) {
    *   return
    * }
    *
-   * player.value.data.position.set({ x: 0, y: 0 })
+   * player.success.data.position.set({ x: 0, y: 0 })
    * ```
    */
   singleOptional(): Result.Result<QueryMatch<S, Q> | undefined, Query.MultipleEntitiesError>
@@ -1151,7 +1151,7 @@ export interface SystemFailure<
   out Name extends string = string,
   out Error = unknown
 > {
-  readonly kind: "SystemFailure"
+  readonly _tag: "SystemFailure"
   readonly system: Name
   readonly error: Error
 }
@@ -1213,11 +1213,11 @@ export interface SystemDefinition<
  * A system implementation.
  *
  * Return nothing for a system that cannot fail. Return
- * `Result.failure(error)` for an expected failure: the system's ECS writes
+ * `Result.fail(error)` for an expected failure: the system's ECS writes
  * are rolled back, its commands and events are dropped, and the tick stops
  * with a typed `SystemFailure` whose `error` is inferred from every
- * `Result.failure(...)` the body returns. A returned success
- * (`Result.success(...)`) behaves like returning nothing. Exceptions are
+ * `Result.fail(...)` the body returns. A returned success
+ * (`Result.succeed(...)`) behaves like returning nothing. Exceptions are
  * defects, not failures: they roll back the same way and are rethrown.
  *
  * @example
@@ -1225,7 +1225,7 @@ export interface SystemDefinition<
  * const Spend = Game.System("Game/Spend", {
  *   resources: { gold: Game.System.writeResource(Gold) }
  * }, ({ resources }) => {
- *   if (resources.gold.get() < 10) return Result.failure("NotEnoughGold" as const)
+ *   if (resources.gold.get() < 10) return Result.fail("NotEnoughGold" as const)
  *   resources.gold.update((gold) => gold - 10)
  * })
  * ```
@@ -1238,7 +1238,7 @@ export type SystemRun<Spec extends AnySystemSpec, E = never> =
  *
  * This is the public entrypoint for authoring systems. The implementation only
  * receives the capabilities declared in the spec; return
- * `Result.failure(error)` for an expected failure (see {@link SystemRun}).
+ * `Result.fail(error)` for an expected failure (see {@link SystemRun}).
  *
  * Use the string-name overload in normal code. The name is turned into an
  * internal ordering token automatically, so the system can participate in

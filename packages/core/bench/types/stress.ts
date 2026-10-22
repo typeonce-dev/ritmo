@@ -1165,7 +1165,7 @@ const runtime = Game.Runtime.make({
   services: Game.Runtime.services(Game.Runtime.service(Clock, { now: () => 0 })),
   resources: { R00: 0, R01: 0, R02: 0, R03: 0, R04: 0, R05: 0, R06: 0, R07: 0, R08: 0, R09: 0, R10: 0, R11: 0, R12: 0, R13: 0, R14: 0, R15: 0 },
   machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Menu"))
-}).value
+}).success
 
 runtime.tick(Update)
 
@@ -1991,7 +1991,7 @@ const Rq15 = Game.System("Stress/Rq15", {
 })
 runtime.tick(Game.Schedule(Rq00, Rq01, Rq02, Rq03, Rq04, Rq05, Rq06, Rq07, Rq08, Rq09, Rq10, Rq11, Rq12, Rq13, Rq14, Rq15, Game.Schedule.applyDeferred()))
 
-const incomplete = Game.Runtime.make({ services: Game.Runtime.services() }).value
+const incomplete = Game.Runtime.make({ services: Game.Runtime.services() }).success
 // @ts-expect-error missing services, resources and machines are compile errors
 incomplete.tick(Update)
 

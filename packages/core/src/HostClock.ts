@@ -54,9 +54,9 @@ export const test = (): TestHostClock => {
   return {
     now: () => current,
     adjust: (ms) => {
-      if (!Number.isFinite(ms) || ms < 0 || !Number.isFinite(current + ms)) return Result.failure({ _tag: "InvalidAdjustment", ms })
+      if (!Number.isFinite(ms) || ms < 0 || !Number.isFinite(current + ms)) return Result.fail({ _tag: "InvalidAdjustment", ms })
       current += ms
-      return Result.success(undefined)
+      return Result.succeed(undefined)
     }
   }
 }

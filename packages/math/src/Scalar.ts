@@ -15,10 +15,10 @@
  * // Validate raw numbers before geometry or gameplay code relies on them.
  * const speed = Scalar.Finite.result(12)
  * const limit = Scalar.Finite.result(8)
- * if (!speed.ok || !limit.ok) return
+ * if (speed._tag === "Failure" || limit._tag === "Failure") return
  *
  * // Operate on the branded values after the boundary has been crossed.
- * const clamped = Scalar.clamp(speed.value, limit.value, speed.value)
+ * const clamped = Scalar.clamp(speed.success, limit.success, speed.success)
  * ```
  *
  * @module Scalar

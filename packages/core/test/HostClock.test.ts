@@ -5,25 +5,25 @@ describe("HostClock.test", () => {
   it("starts at 0 and moves only through adjust", () => {
     const clock = HostClock.test()
     expect(clock.now()).toBe(0)
-    expect(clock.adjust(16)).toEqual({ ok: true, value: undefined })
+    expect(clock.adjust(16)).toEqual({ _tag: "Success", success: undefined })
     expect(clock.now()).toBe(16)
-    expect(clock.adjust(0).ok).toBe(true)
+    expect(clock.adjust(0)._tag).toBe("Success")
     expect(clock.now()).toBe(16)
   })
 
   it("rejects a negative adjustment and does not move", () => {
     const clock = HostClock.test()
     clock.adjust(10)
-    expect(clock.adjust(-5)).toEqual({ ok: false, error: { _tag: "InvalidAdjustment", ms: -5 } })
+    expect(clock.adjust(-5)).toEqual({ _tag: "Failure", failure: { _tag: "InvalidAdjustment", ms: -5 } })
     expect(clock.now()).toBe(10)
   })
 
   it("rejects non-finite adjustments without poisoning later readings", () => {
     const clock = HostClock.test()
-    for (const ms of [NaN, Infinity, -Infinity]) expect(clock.adjust(ms).ok).toBe(false)
+    for (const ms of [NaN, Infinity, -Infinity]) expect(clock.adjust(ms)._tag).toBe("Failure")
     expect(clock.now()).toBe(0)
-    expect(clock.adjust(Number.MAX_VALUE).ok).toBe(true)
-    expect(clock.adjust(Number.MAX_VALUE).ok).toBe(false)
+    expect(clock.adjust(Number.MAX_VALUE)._tag).toBe("Success")
+    expect(clock.adjust(Number.MAX_VALUE)._tag).toBe("Failure")
     expect(clock.now()).toBe(Number.MAX_VALUE)
   })
 })
@@ -53,7 +53,7 @@ const traced = (clock: HostClock.TestHostClock, step: number) => {
   const runtime = Game.Runtime.make({
     services: Game.Runtime.services(Game.Runtime.service(Tick, { clock, step })),
     debug: { hostClock: clock }
-  }).value
+  }).success
   const update = Game.Schedule(Advance, Idle)
   runtime.debug.nameSchedules({ update })
   const events: Array<Debug.TraceEvent> = []

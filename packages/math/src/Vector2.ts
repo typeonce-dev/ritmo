@@ -13,10 +13,10 @@
  * ```ts
  * // Validate one raw velocity before storing or reusing it elsewhere.
  * const velocity = Vector2.result({ x: 3, y: 4 })
- * if (!velocity.ok) return
+ * if (velocity._tag === "Failure") return
  *
  * // Derive a movement direction from the branded vector.
- * const direction = Vector2.normalizeOrZero(velocity.value)
+ * const direction = Vector2.normalizeOrZero(velocity.success)
  * ```
  *
  * @module Vector2
@@ -199,7 +199,7 @@ export const length: (vector: Vector2) => Scalar.NonNegative = internal.length
  * @example
  * ```ts
  * const direction = Vector2.normalize(Vector2.zero())
- * if (!direction.ok) {
+ * if (direction._tag === "Failure") {
  *   return
  * }
  * ```

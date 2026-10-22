@@ -9,49 +9,49 @@ const OtherGame = Schema.bind(Schema.fragment({ components: { Other } }))
 
 describe("Runtime debug option", () => {
   it("adds the debug handle only when enabled", () => {
-    const plain = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const plain = Game.Runtime.make({ services: Game.Runtime.services() }).success
     expect(plain).type.not.toHaveProperty("debug")
 
-    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.standard } }).value
+    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.standard } }).success
     expect(debugged).type.toHaveProperty("debug")
     expect(debugged.debug.describe()).type.toBe<Debug.Description>()
   })
 
   it("keeps the handle inside the Result of fallible runtimes", () => {
-    const Viewport = Descriptor.ConstructedResource({ result: (raw: number) => ({ ok: true as const, value: raw }) })("DebugTypes/Viewport")
+    const Viewport = Descriptor.ConstructedResource({ result: (raw: number) => ({ _tag: "Success", success: raw }) })("DebugTypes/Viewport")
     const Fallible = Schema.bind(Schema.fragment({ resources: { Viewport } }))
     const made = Fallible.Runtime.make({ services: Fallible.Runtime.services(), resources: { Viewport: 1 }, debug: { hostClock: HostClock.standard } })
-    if (made.ok) {
-      expect(made.value.debug.frame()).type.toBe<number>()
+    if (made._tag === "Success") {
+      expect(made.success.debug.frame()).type.toBe<number>()
     }
   })
 
   it("types the handle as optional when the option may be undefined (a dev build)", () => {
     const dev: boolean = Math.random() > 2
-    const maybe = Game.Runtime.make({ services: Game.Runtime.services(), debug: dev ? { hostClock: HostClock.standard } : undefined }).value
+    const maybe = Game.Runtime.make({ services: Game.Runtime.services(), debug: dev ? { hostClock: HostClock.standard } : undefined }).success
     expect(maybe.debug).type.toBe<Debug.Handle<typeof Game.schema, typeof Game.schema> | undefined>()
     // @ts-expect-error 'maybe.debug' is possibly 'undefined'.
     maybe.debug.describe()
-    const off = Game.Runtime.make({ services: Game.Runtime.services(), debug: undefined }).value
+    const off = Game.Runtime.make({ services: Game.Runtime.services(), debug: undefined }).success
     expect(off).type.not.toHaveProperty("debug")
   })
 
   it("rejects the removed boolean form and a debug option without a host clock", () => {
     // @ts-expect-error Type 'boolean' is not assignable to type 'Option'.
-    Game.Runtime.make({ services: Game.Runtime.services(), debug: true }).value
+    Game.Runtime.make({ services: Game.Runtime.services(), debug: true }).success
     // @ts-expect-error Property 'hostClock' is missing
-    Game.Runtime.make({ services: Game.Runtime.services(), debug: {} }).value
+    Game.Runtime.make({ services: Game.Runtime.services(), debug: {} }).success
   })
 
   it("filters dumps by the runtime's own components", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.standard } }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.standard } }).success
     expect(runtime.debug.dump).type.toBeCallableWith({ with: [Position] })
     expect(runtime.debug.dump).type.not.toBeCallableWith({ with: [Other] })
     expect(OtherGame.schema.components.Other).type.toBe<typeof Other>()
   })
 
   it("names only schedules of the runtime's schema", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.standard } }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.standard } }).success
     const own = Game.Schedule(Game.System("DebugTypes/Own", {}, () => {}))
     const foreign = OtherGame.Schedule(OtherGame.System("DebugTypes/Foreign", {}, () => {}))
     expect(runtime.debug.nameSchedules).type.toBeCallableWith({ own })

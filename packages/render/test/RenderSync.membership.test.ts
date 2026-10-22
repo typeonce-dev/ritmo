@@ -40,7 +40,7 @@ const setup = (withSelect = false) => {
   const render = withSelect
     ? RenderSync.system(Game, { ...options, select: { visible: Game.Query.read(Visible) } })
     : RenderSync.system(Game, options)
-  const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Nodes, registry)) }).value
+  const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Nodes, registry)) }).success
   const ids: Array<Id> = []
   const step = (run: (context: Parameters<typeof Step.run>[0]) => void) =>
     runtime.tick(Game.Schedule(Game.System("Membership/Step", stepAccess, run), Game.Schedule.applyDeferred(), render))
@@ -69,8 +69,8 @@ describe("RenderSync keeps one node per entity its query matches", () => {
     const first = registry.get(ids[0]!)!
     step(({ commands, queries }) => {
       const found = queries.sprites.get(ids[0]!)
-      if (!found.ok) throw new Error("sprite must still be alive")
-      commands.remove(found.value.entity, Position)
+      if (found._tag === "Failure") throw new Error("sprite must still be alive")
+      commands.remove(found.success.entity, Position)
     })
     expect(registry.size).toBe(0)
     expect(first.destroyed).toBe(true)
@@ -92,8 +92,8 @@ describe("RenderSync keeps one node per entity its query matches", () => {
     expect(registry.size).toBe(1)
     step(({ commands, queries }) => {
       const found = queries.sprites.get(ids[0]!)
-      if (!found.ok) throw new Error("sprite must still be alive")
-      commands.remove(found.value.entity, Visible)
+      if (found._tag === "Failure") throw new Error("sprite must still be alive")
+      commands.remove(found.success.entity, Visible)
     })
     expect(registry.size).toBe(0)
   })
@@ -105,8 +105,8 @@ describe("RenderSync keeps one node per entity its query matches", () => {
     })
     step(({ commands, queries }) => {
       const found = queries.sprites.get(ids[0]!)
-      if (!found.ok) throw new Error("sprite must still be alive")
-      commands.despawn(found.value.entity)
+      if (found._tag === "Failure") throw new Error("sprite must still be alive")
+      commands.despawn(found.success.entity)
     })
     expect(registry.size).toBe(0)
   })

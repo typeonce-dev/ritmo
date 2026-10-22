@@ -71,7 +71,7 @@ const makeRuntime = () => Game.Runtime.make({
     Game.Runtime.service(Nodes, layer()),
     Game.Runtime.service(Clock, { alpha: 0.5 })
   )
-}).value
+}).success
 
 const SpawnSprites = (count: number) => Game.System("RenderBench/SpawnSprites", { commands: Game.System.commands(Game.System.spawns(Position, Previous, Frame, Sprite)) }, ({ commands }) => {
   for (let index = 0; index < count; index++) {

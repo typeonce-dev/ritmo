@@ -4,7 +4,7 @@ import { Debug, Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
 const Score = Descriptor.Resource<number>()("Ignored/Score")
 const Game = Schema.bind(Schema.fragment({ resources: { Score } }))
 
-const Load = Game.System("Ignored/Load", {}, () => Result.failure("level file missing" as const))
+const Load = Game.System("Ignored/Load", {}, () => Result.fail("level file missing" as const))
 const Place = Game.System("Ignored/Place", {}, () => {})
 const Count = Game.System("Ignored/Count", { resources: { score: Game.System.writeResource(Score) } }, ({ resources }) => {
   resources.score.update((score) => score + 1)
@@ -13,7 +13,7 @@ const Decorate = Game.System("Ignored/Decorate", {}, () => {})
 const setup = Game.Schedule(Place, Load, Decorate, Count)
 const update = Game.Schedule(Count)
 
-const makeDebug = () => Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock: HostClock.test() } }).value
+const makeDebug = () => Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock: HostClock.test() } }).success
 
 const ignoredEvents = (runtime: ReturnType<typeof makeDebug>) => {
   const seen: Array<Debug.FailureIgnoredEvent> = []
@@ -36,7 +36,7 @@ describe("ignored tick failures (debug only)", () => {
       frame: 1,
       schedule: "setup",
       system: "Ignored/Load",
-      error: { kind: "SystemFailure", system: "Ignored/Load", error: "level file missing" },
+      error: { _tag: "SystemFailure", system: "Ignored/Load", error: "level file missing" },
       skipped: ["Ignored/Decorate", "Ignored/Count"],
       when: "next-tick"
     }])
@@ -46,9 +46,9 @@ describe("ignored tick failures (debug only)", () => {
     const runtime = makeDebug()
     const seen = ignoredEvents(runtime)
     const ticked = runtime.tick(setup)
-    if (!ticked.ok) expect(ticked.error.system).toBe("Ignored/Load")
+    if (ticked._tag === "Failure") expect(ticked.failure.system).toBe("Ignored/Load")
     const tried = runtime.tryTick(setup)
-    expect(tried.ok).toBe(false)
+    expect(tried._tag).toBe("Failure")
     runtime.tick(update)
     runtime.debug.checkIgnoredFailures()
     expect(seen).toEqual([])
@@ -59,7 +59,7 @@ describe("ignored tick failures (debug only)", () => {
     const seen = ignoredEvents(runtime)
     const late = runtime.tick(setup)
     runtime.tick(update)
-    expect(late.ok).toBe(false)
+    expect(late._tag).toBe("Failure")
     expect(seen.map((event) => event.when)).toEqual(["next-tick"])
   })
 
@@ -73,7 +73,7 @@ describe("ignored tick failures (debug only)", () => {
   })
 
   it("reports a tryTick that ran nothing (missing requirements), with every system skipped", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).success
     const seen: Array<Debug.FailureIgnoredEvent> = []
     runtime.debug.observeHost((event) => {
       if (event.type === "failure.ignored") seen.push(event)
@@ -84,9 +84,9 @@ describe("ignored tick failures (debug only)", () => {
   })
 
   it("tracks nothing with debug off: the result is the plain failure", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 } }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 } }).success
     const result = runtime.tick(setup)
     expect(Object.getOwnPropertyDescriptor(result, "ok")?.get).toBeUndefined()
-    expect(result).toEqual({ ok: false, error: { kind: "SystemFailure", system: "Ignored/Load", error: "level file missing" } })
+    expect(result).toEqual({ _tag: "Failure", failure: { _tag: "SystemFailure", system: "Ignored/Load", error: "level file missing" } })
   })
 })

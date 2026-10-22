@@ -25,7 +25,7 @@ describe("InputCapture", () => {
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(Source, { snapshot: () => queued.shift()! })),
       resources: { Input: Keyboard.idle(bindings) }
-    }).value
+    }).success
     runtime.tick(Game.Schedule(Read))
     runtime.tick(Game.Schedule(Capture, Read))
     runtime.tick(Game.Schedule(Capture, Read))
@@ -53,7 +53,7 @@ describe("InputCapture", () => {
       services: Game.Runtime.services(Game.Runtime.service(Source, keyboard)),
       resources: { Input: Keyboard.idle(bindings) },
       machines: Game.Runtime.machines(Game.Runtime.machine(Pace, "Frozen"))
-    }).value
+    }).success
     runtime.tick(Game.Schedule(Capture))
     expect(keyboard.frames()).toBe(0)
     runtime.tick(Game.Schedule(Resume, Game.Schedule.applyStateTransitions(), Capture))

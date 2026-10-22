@@ -20,11 +20,11 @@ abstract class WriteCellBase<T> {
 
   /** Writes a validated candidate only on success. Backs `setRaw` / `updateRaw`. */
   writeResult<E>(result: Result.Result<T, E>): Result.Result<void, E> {
-    if (!result.ok) {
-      return Result.failure(result.error)
+    if (result._tag === "Failure") {
+      return Result.fail(result.failure)
     }
-    this.set(result.value)
-    return Result.success(undefined)
+    this.set(result.success)
+    return Result.succeed(undefined)
   }
 
   update(f: (current: T) => T): void {
@@ -56,10 +56,10 @@ const withTransition = (cell: WriteCellBase<unknown>, component: string) => Obje
   transition(from: unknown, to: unknown): Result.Result<void, { readonly _tag: "EntityStateMismatch"; readonly component: string; readonly expected: unknown; readonly actual: unknown }> {
     const actual = cell.get()
     if (actual !== from) {
-      return Result.failure({ _tag: "EntityStateMismatch", component, expected: from, actual })
+      return Result.fail({ _tag: "EntityStateMismatch", component, expected: from, actual })
     }
     cell.set(to)
-    return Result.success(undefined)
+    return Result.succeed(undefined)
   }
 })
 

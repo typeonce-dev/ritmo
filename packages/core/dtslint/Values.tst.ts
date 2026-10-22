@@ -4,12 +4,12 @@ import { describe, expect, it } from "tstyche"
 
 describe("Result", () => {
   it("keeps value and error types through narrowing, match, and all", () => {
-    const parsed = Result.success(1) as Result.Result<number, "NaN">
-    if (parsed.ok) expect(parsed.value).type.toBe<number>()
-    else expect(parsed.error).type.toBe<"NaN">()
+    const parsed = Result.succeed(1) as Result.Result<number, "NaN">
+    if (parsed._tag === "Success") expect(parsed.success).type.toBe<number>()
+    else expect(parsed.failure).type.toBe<"NaN">()
     expect(Result.match(parsed, { onSuccess: (value) => value > 0, onFailure: (error) => error })).type.toBe<boolean | "NaN">()
 
-    const name = Result.success("a") as Result.Result<string, "Empty">
+    const name = Result.succeed("a") as Result.Result<string, "Empty">
     expect(Result.all([parsed, name])).type.toBe<Result.Result<readonly [number, string], "NaN" | "Empty">>()
     expect(Result.all({ parsed, name })).type.toBe<Result.Result<{ readonly parsed: number; readonly name: string }, "NaN" | "Empty">>()
   })

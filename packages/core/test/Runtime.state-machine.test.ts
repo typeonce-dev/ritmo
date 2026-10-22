@@ -28,7 +28,7 @@ const makeRuntime = () =>
       Runtime.machine(AppState, "Menu"),
       Runtime.machine(RoundState, "Warmup")
     )
-  }).value
+  }).success
 
 describe("Runtime state machine", () => {
   it("gates systems by the committed current state", () => {
@@ -56,7 +56,7 @@ describe("Runtime state machine", () => {
         Runtime.machine(AppState, "Menu"),
         Runtime.machine(RoundState, "Warmup")
       )
-    }).value
+    }).success
     runtime.tick(Game.Schedule(increment))
 
     expect(readResourceValue(runtime, schema, Counter)).toBe(0)
@@ -139,7 +139,7 @@ describe("Runtime state machine", () => {
         Runtime.machine(AppState, "Menu"),
         Runtime.machine(RoundState, "Warmup")
       )
-    }).value
+    }).success
     const transitionVisibilitySchedule = Game.Schedule(queuePlaying, before, Game.Schedule.applyStateTransitions(), after)
     runtime.tick(transitionVisibilitySchedule)
 
@@ -230,7 +230,7 @@ describe("Runtime state machine", () => {
         Runtime.machine(AppState, "Menu"),
         Runtime.machine(RoundState, "Warmup")
       )
-    }).value
+    }).success
     const bundledTransitionSchedule = Game.Schedule(queuePlaying, Game.Schedule.applyStateTransitions(transitions))
     runtime.tick(bundledTransitionSchedule)
 
@@ -279,7 +279,7 @@ describe("Runtime state machine", () => {
         Runtime.machine(AppState, "Menu"),
         Runtime.machine(RoundState, "Warmup")
       )
-    }).value
+    }).success
     const changedSchedule = Game.Schedule(queuePlaying, Game.Schedule.applyStateTransitions(), observeChanged)
     runtime.tick(changedSchedule)
 
@@ -325,7 +325,7 @@ describe("Runtime state machine", () => {
         Runtime.machine(AppState, "Menu"),
         Runtime.machine(RoundState, "Warmup")
       )
-    }).value
+    }).success
     runtime.tick(Game.Schedule(first, second))
 
     expect(readResourceValue(runtime, schema, Log)).toEqual([])
@@ -376,7 +376,7 @@ describe("Runtime state machine", () => {
         Runtime.machine(AppState, "Menu"),
         Runtime.machine(RoundState, "Warmup")
       )
-    }).value
+    }).success
     const gatedSchedule = Game.Schedule(queueStates, Game.Schedule.applyStateTransitions(), gated)
     runtime.tick(gatedSchedule)
 
@@ -413,7 +413,7 @@ describe("Runtime state machine", () => {
         Runtime.machine(AppState, "Menu"),
         Runtime.machine(RoundState, "Warmup")
       )
-    }).value
+    }).success
     const incrementSchedule = Game.Schedule(increment)
     runtime.tick(incrementSchedule)
 
@@ -490,7 +490,7 @@ describe("Runtime state machine", () => {
         Runtime.machine(LocalAppState, "Menu"),
         Runtime.machine(LocalRoundState, "Warmup")
       )
-    }).value
+    }).success
     const localTransitionSchedule = LocalGame.Schedule(queueStates, LocalGame.Schedule.applyStateTransitions(transitions))
     runtime.tick(localTransitionSchedule)
 
@@ -583,7 +583,7 @@ describe("Runtime state machine", () => {
         Runtime.machine(LocalAppState, "Menu"),
         Runtime.machine(LocalRoundState, "Warmup")
       )
-    }).value
+    }).success
     const localRoundSchedule = LocalGame.Schedule(queueApp, LocalGame.Schedule.applyStateTransitions(transitions), observeRoundChange, observeRoundState)
     runtime.tick(localRoundSchedule)
 
@@ -634,7 +634,7 @@ describe("Runtime state machine", () => {
       services: Runtime.services(),
       resources: { Counter: 0, Log: [] },
       machines: Runtime.machines(Runtime.machine(LocalAppState, "Menu"), Runtime.machine(LocalRoundState, "Warmup"))
-    }).value
+    }).success
 
     // Live was queued before the marker: it commits there. SuddenDeath was
     // queued by a transition schedule during the marker: it waits for the next.
@@ -651,11 +651,11 @@ describe("Runtime state machine", () => {
     const LocalGame = Schema.bind(schema)
     const LocalAppState = LocalGame.StateMachine("LocalAppStateMissing", ["Menu", "Playing"] as const)
     const bundle = LocalGame.Schedule.transitions(LocalGame.Schedule.onEnter(LocalAppState, "Playing", []))
-    const runtime = LocalGame.Runtime.make({ services: Runtime.services(), resources: { Counter: 0, Log: [] } }).value
+    const runtime = LocalGame.Runtime.make({ services: Runtime.services(), resources: { Counter: 0, Log: [] } }).success
     const erasedTryTick = runtime.tryTick as (schedule: unknown) => unknown
     expect(erasedTryTick(LocalGame.Schedule(LocalGame.Schedule.applyStateTransitions(bundle)))).toEqual({
-      ok: false,
-      error: { kind: "MissingRuntimeRequirements", requirements: [{ kind: "stateMachine", name: "LocalAppStateMissing" }] }
+      _tag: "Failure",
+      failure: { kind: "MissingRuntimeRequirements", requirements: [{ kind: "stateMachine", name: "LocalAppStateMissing" }] }
     })
   })
 
@@ -871,7 +871,7 @@ describe("Runtime state machine", () => {
         Runtime.machine(LocalAppState, "Menu"),
         Runtime.machine(LocalRoundState, "Warmup")
       )
-    }).value
+    }).success
 
     runtime.tick(LocalGame.Schedule(
       queueStates,

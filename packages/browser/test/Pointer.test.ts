@@ -132,9 +132,9 @@ describe("Pointer timelines", () => {
     live.push(recorder.snapshot())
 
     const parsed = Pointer.parseTimeline(JSON.parse(JSON.stringify(recorder.timeline())))
-    expect(parsed.ok).toBe(true)
-    if (!parsed.ok) return
-    const replay = Pointer.scripted(parsed.value)
+    expect(parsed._tag).toBe("Success")
+    if (parsed._tag === "Failure") return
+    const replay = Pointer.scripted(parsed.success)
     const replayed = live.map(() => replay.snapshot())
     expect(replayed.map(({ over: _, ...rest }) => rest)).toEqual(live.map(({ over: _, ...rest }) => rest))
     recorder.dispose()
@@ -143,12 +143,12 @@ describe("Pointer timelines", () => {
 
   it("rejects malformed timelines with a path", () => {
     expect(Pointer.parseTimeline([{ frame: 0, move: { x: "1", y: 2 } }])).toEqual({
-      ok: false,
-      error: { _tag: "InvalidTimeline", path: "[0].move.x", message: "expected a finite number" }
+      _tag: "Failure",
+      failure: { _tag: "InvalidTimeline", path: "[0].move.x", message: "expected a finite number" }
     })
     expect(Pointer.parseTimeline([{ frame: 1, press: ["left"] }])).toMatchObject({
-      ok: false,
-      error: { path: "[0].press[0]" }
+      _tag: "Failure",
+      failure: { path: "[0].press[0]" }
     })
   })
 })

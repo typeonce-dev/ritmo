@@ -76,7 +76,7 @@ const Attack = Game.System("Concepts/Attack", {
 }, ({ queries, events }) => {
   for (const { data } of queries.attackers.each()) {
     const enemy = queries.enemies.getHandle(data.target.get().enemy)
-    if (enemy.ok) {
+    if (enemy._tag === "Success") {
       events.hit.emit({ amount: 1 })
     }
   }
@@ -90,7 +90,7 @@ const ApplyHits = Game.System("Concepts/ApplyHits", {
 }, ({ events, resources, nextMachines }) => {
   const total = events.hit.all().reduce((sum, hit) => sum + hit.amount, 0)
   if (total > 100) {
-    return Result.failure("ImpossibleDamage" as const)
+    return Result.fail("ImpossibleDamage" as const)
   }
   resources.score.update((score) => score + total)
   if (resources.score.get() >= 3) {
@@ -133,16 +133,16 @@ export const runLookups = () => {
   const made = Game.Runtime.make({
     services: Game.Runtime.services(),
     machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing"))
-  }).value
+  }).success
   made.tick(setup)
   let found = false
   let only = false
   const Lookup = Game.System("Concepts/Lookup", movementAccess, ({ queries }) => {
     const [first] = queries.moving.each()
     if (first === undefined) return
-    found = queries.moving.get(first.entity.id).ok
+    found = queries.moving.get(first.entity.id)._tag === "Success"
     const result = queries.moving.singleOptional()
-    only = result.ok && result.value !== undefined
+    only = result._tag === "Success" && result.success !== undefined
   })
   made.tick(Game.Schedule(Lookup))
   return { found, only, ...made.inspect(InspectPosition) }
@@ -157,23 +157,23 @@ export const runConcepts = (frames: number): { readonly log: ReadonlyArray<strin
     resources: { DeltaTime: 1, Score: 0 },
     machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing"))
   })
-  if (!made.ok) {
+  if (made._tag === "Failure") {
     return { log, failure: "InvalidResources" }
   }
-  const runtime = made.value
+  const runtime = made.success
 
   const ready = runtime.tick(setup)
-  if (!ready.ok) {
+  if (ready._tag === "Failure") {
     return { log, failure: "setup failed" }
   }
   for (let frame = 0; frame < frames; frame++) {
     const result = runtime.tick(update)
-    if (!result.ok) {
-      return { log, failure: `${result.error.system}: ${result.error.error}` }
+    if (result._tag === "Failure") {
+      return { log, failure: `${result.failure.system}: ${result.failure.error}` }
     }
   }
 
   const saved = JSON.stringify(runtime.snapshot())
   const restored = runtime.restore(JSON.parse(saved))
-  return { log, failure: restored.ok ? undefined : restored.error._tag }
+  return { log, failure: restored._tag === "Success" ? undefined : restored.failure._tag }
 }

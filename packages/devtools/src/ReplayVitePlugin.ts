@@ -57,15 +57,15 @@ export const plugin = (options: { readonly directory?: string } = {}): Plugin =>
           data = undefined
         }
         const parsed = Replay.parse(data)
-        if (!parsed.ok) {
+        if (parsed._tag === "Failure") {
           response.statusCode = 400
-          response.end(parsed.error._tag === "InvalidReplay" ? parsed.error.message : parsed.error._tag)
+          response.end(parsed.failure._tag === "InvalidReplay" ? parsed.failure.message : parsed.failure._tag)
           return
         }
-        sink.save(parsed.value)
+        sink.save(parsed.success)
         const path = sink.written.at(-1)!.slice(server.config.root.length + 1)
-        const ticks = parsed.value.ticks.length
-        server.config.logger.info(`[ritmo] replay saved: ${path} (${ticks} ticks): ${parsed.value.reason}`)
+        const ticks = parsed.success.ticks.length
+        server.config.logger.info(`[ritmo] replay saved: ${path} (${ticks} ticks): ${parsed.success.reason}`)
         response.statusCode = 201
         response.end(path)
       })

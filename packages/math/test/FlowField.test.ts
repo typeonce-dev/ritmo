@@ -4,8 +4,8 @@ import { type Box2, FlowField, Scalar, type Vec2 } from "@typeonce/ritmo-math"
 
 const cellSize = (value: number): Scalar.Positive => {
   const size = Scalar.Positive.result(value)
-  if (!size.ok) throw new Error("test cell size")
-  return size.value
+  if (size._tag === "Failure") throw new Error("test cell size")
+  return size.success
 }
 
 /** A walled room 600 wide with a wall down its middle, open only at the bottom. */

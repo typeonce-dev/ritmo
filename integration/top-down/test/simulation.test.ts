@@ -10,9 +10,9 @@ import { inputBindings } from "../types.ts"
 
 const start = (timeline: Keyboard.Timeline<typeof inputBindings>) => {
   const simulation = createTopDownSimulation({ keyboard: Keyboard.scripted(inputBindings, timeline), hostClock: HostClock.test() })
-  if (!simulation.ok) throw new Error(simulation.error.message)
-  const { runtime, setup, update } = simulation.value
-  expect(runtime.tick(setup).ok).toBe(true)
+  if (simulation._tag === "Failure") throw new Error(simulation.failure.message)
+  const { runtime, setup, update } = simulation.success
+  expect(runtime.tick(setup)._tag).toBe("Success")
   return { runtime, update }
 }
 
@@ -22,7 +22,7 @@ const PlayerPosition = Game.Inspector("Test/PlayerPosition", { queries: { player
 describe("top-down simulation", () => {
   it("runs headless and moves the player with scripted input", () => {
     const { runtime, update } = start([{ frame: 0, press: ["right"] }, { frame: 30, release: ["right"] }])
-    for (let frame = 0; frame < 60; frame++) expect(runtime.tick(update).ok).toBe(true)
+    for (let frame = 0; frame < 60; frame++) expect(runtime.tick(update)._tag).toBe("Success")
     const [position] = runtime.inspect(PlayerPosition)
     expect(position?.x).toBeCloseTo(640 + 280 * 30 / 60)
     expect(position?.y).toBe(260)
@@ -49,8 +49,8 @@ describe("top-down debug session", () => {
     ])
     const hostClock = HostClock.test()
     const simulation = createTopDownSimulation({ keyboard, hostClock })
-    if (!simulation.ok) throw new Error(simulation.error.message)
-    const { runtime, setup, update } = simulation.value
+    if (simulation._tag === "Failure") throw new Error(simulation.failure.message)
+    const { runtime, setup, update } = simulation.success
     const session = Session.make(runtime, { hostClock, schedules: { setup, update } })
     session.run("setup")
 

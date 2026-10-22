@@ -18,7 +18,7 @@ describe("a query naming a look-alike descriptor", () => {
     }, ({ queries }) => {
       for (const { data } of queries.modes.each()) data.mode.transition("a", "b")
     })
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).success
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred()))
     expect(() => runtime.tick(Game.Schedule(Flip))).toThrow(
       "Identity/Mode is plain in this schema, but this query names a descriptor that is an entity state"
@@ -34,7 +34,7 @@ describe("a query naming a look-alike descriptor", () => {
     }, ({ queries }) => {
       for (const { data } of queries.kinds.each()) data.kind.set("a")
     })
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).success
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred()))
     expect(() => runtime.tick(Game.Schedule(Retag))).toThrow("Identity/Kind is immutable in this schema, but this query names a descriptor that is plain")
   })
@@ -47,7 +47,7 @@ describe("a query naming a look-alike descriptor", () => {
     }, ({ queries }) => {
       for (const { data } of queries.modes.each()) seen.push(data.mode.get())
     })
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).success
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred(), Read))
     expect(seen).toEqual(["a"])
   })

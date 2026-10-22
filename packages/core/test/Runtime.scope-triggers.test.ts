@@ -16,7 +16,7 @@ const makeRuntime = () => Game.Runtime.make({
   services: Game.Runtime.services(),
   machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Menu")),
   debug: { hostClock: HostClock.test() }
-}).value
+}).success
 
 const Names = Game.Inspector("ScopeTriggers/Names", {
   queries: { named: Game.Query({ selection: { name: Game.Query.read(Name) } }) }
@@ -102,7 +102,7 @@ describe("entity scopes despawned by state transitions", () => {
     const scopeLints = (runtime: { readonly debug: { readonly describe: () => Debug.Description } }) =>
       runtime.debug.describe().lints.filter((lint) => lint.code === "scope-trigger-never-applied").map((lint) => lint.message)
 
-    const unprovided = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value
+    const unprovided = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).success
     expect(unprovided.debug.describe().scopes).toEqual([
       { name: "ScopeTriggers/Run", despawnOn: ["onExit(ScopeTriggers/Flow=Playing)"] },
       { name: "ScopeTriggers/Overlay", despawnOn: ["onEnter(ScopeTriggers/Flow=Menu)"] }

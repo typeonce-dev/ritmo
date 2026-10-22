@@ -555,8 +555,10 @@ export const isTransient = (descriptor: Descriptor.Any): descriptor is Descripto
 
 /**
  * The parts of the Standard Schema v1 interface (https://standardschema.dev)
- * that `fromStandardSchema` reads. ArkType, Effect Schema, Zod, and Valibot
- * schemas all satisfy it.
+ * that `fromStandardSchema` reads. ArkType, Zod, and Valibot schemas satisfy
+ * it as they are; an Effect schema does through `Schema.toStandardSchemaV1`
+ * (or skip the adapter: Effect's `Schema.decodeResult` and friends already
+ * return results Ritmo accepts, see `ConstructedComponent`).
  */
 export interface StandardSchema<Input, Output> {
   readonly "~standard": {
@@ -577,9 +579,19 @@ export namespace StandardSchema {
   }
 }
 
-const asyncValidationIssue: ReadonlyArray<StandardSchema.Issue> = [
-  { message: "Asynchronous validation is not supported: descriptor constructors run synchronously" }
-]
+/**
+ * Why a `fromStandardSchema` constructor rejected a value: the schema's own
+ * issues.
+ */
+export interface StandardSchemaIssues {
+  readonly _tag: "StandardSchemaIssues"
+  readonly issues: ReadonlyArray<StandardSchema.Issue>
+}
+
+const asyncValidationIssue: StandardSchemaIssues = {
+  _tag: "StandardSchemaIssues",
+  issues: [{ message: "Asynchronous validation is not supported: descriptor constructors run synchronously" }]
+}
 
 /**
  * Adapts a Standard Schema validator into a descriptor constructor, so any
@@ -596,17 +608,17 @@ const asyncValidationIssue: ReadonlyArray<StandardSchema.Issue> = [
  */
 export const fromStandardSchema = <Input, Output>(
   schema: StandardSchema<Input, Output>
-): ResultConstructor<Output, Input, ReadonlyArray<StandardSchema.Issue>> & Decoder<Output> => {
+): ResultConstructor<Output, Input, StandardSchemaIssues> & Decoder<Output> => {
   const validate = (raw: unknown) => {
     const outcome = schema["~standard"].validate(raw)
     if (outcome instanceof Promise) {
       // Avoid an unhandled rejection from the discarded promise.
       outcome.catch(() => {})
-      return ResultModule.failure(asyncValidationIssue)
+      return ResultModule.fail(asyncValidationIssue)
     }
     return outcome.issues === undefined
-      ? ResultModule.success(outcome.value)
-      : ResultModule.failure(outcome.issues)
+      ? ResultModule.succeed(outcome.value)
+      : ResultModule.fail<StandardSchemaIssues>({ _tag: "StandardSchemaIssues", issues: outcome.issues })
   }
   return { result: validate, decode: validate }
 }

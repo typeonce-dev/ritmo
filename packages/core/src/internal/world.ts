@@ -608,16 +608,16 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     targetId: number
   ): Result.Result<void, Relation.Relation.MutationError> => {
     if (!records.has(sourceId)) {
-      return Result.failure(Relation.missingEntityError(sourceId))
+      return Result.fail(Relation.missingEntityError(sourceId))
     }
     if (!records.has(targetId)) {
-      return Result.failure(Relation.missingTargetEntityError(sourceId, targetId, relation.name))
+      return Result.fail(Relation.missingTargetEntityError(sourceId, targetId, relation.name))
     }
     if (!relation.allowSelf && sourceId === targetId) {
-      return Result.failure(Relation.selfRelationNotAllowedError(sourceId, relation.name))
+      return Result.fail(Relation.selfRelationNotAllowedError(sourceId, relation.name))
     }
     if (relation.relationKind === "hierarchy" && wouldCreateHierarchyCycle(relation, sourceId, targetId)) {
-      return Result.failure(Relation.hierarchyCycleError(sourceId, targetId, relation.name))
+      return Result.fail(Relation.hierarchyCycleError(sourceId, targetId, relation.name))
     }
 
     let targets = relationTargets.get(relation.key)
@@ -633,7 +633,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     addRelatedSource(relation, targetId, sourceId)
     bumpRelation(relation.key)
     if (hooks !== undefined) hooks.related(sourceId, relation, targetId)
-    return Result.success(undefined)
+    return Result.succeed(undefined)
   }
 
   const reorderChildren = (
@@ -642,7 +642,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     childIds: ReadonlyArray<number>
   ): Result.Result<void, Relation.Relation.MutationError> => {
     if (!records.has(parentId)) {
-      return Result.failure(Relation.missingEntityError(parentId))
+      return Result.fail(Relation.missingEntityError(parentId))
     }
 
     const currentChildren = relatedSourceIds(relation, parentId)
@@ -650,23 +650,23 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
 
     for (const childId of childIds) {
       if (!records.has(childId)) {
-        return Result.failure(Relation.missingChildEntityError(parentId, childId, relation.name))
+        return Result.fail(Relation.missingChildEntityError(parentId, childId, relation.name))
       }
       if (seenChildren.has(childId)) {
-        return Result.failure(Relation.duplicateChildError(parentId, childId, relation.name))
+        return Result.fail(Relation.duplicateChildError(parentId, childId, relation.name))
       }
       seenChildren.add(childId)
       if (relationTarget(relation, childId) !== parentId) {
-        return Result.failure(Relation.childNotRelatedToParentError(parentId, childId, relation.name))
+        return Result.fail(Relation.childNotRelatedToParentError(parentId, childId, relation.name))
       }
     }
 
     if (currentChildren.length !== childIds.length) {
-      return Result.failure(Relation.childSetMismatchError(parentId, relation.name))
+      return Result.fail(Relation.childSetMismatchError(parentId, relation.name))
     }
     for (const childId of currentChildren) {
       if (!seenChildren.has(childId)) {
-        return Result.failure(Relation.childSetMismatchError(parentId, relation.name))
+        return Result.fail(Relation.childSetMismatchError(parentId, relation.name))
       }
     }
 
@@ -674,7 +674,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       relatedSources.get(relation.key)!.set(parentId, [...childIds])
       bumpRelation(relation.key)
     }
-    return Result.success(undefined)
+    return Result.succeed(undefined)
   }
 
   const destroyEntity = (id: number): void => {

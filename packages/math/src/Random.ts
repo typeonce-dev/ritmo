@@ -165,7 +165,7 @@ const isState = (value: unknown): value is State =>
  * @category Resource
  */
 export const result = (raw: number): Result.Result<State, InvalidState> =>
-  isState(raw) ? Result.success(raw) : Result.failure({ _tag: "InvalidRandomState", value: raw })
+  isState(raw) ? Result.succeed(raw) : Result.fail({ _tag: "InvalidRandomState", value: raw })
 
 /**
  * Validates a state read from untrusted data (a save).
@@ -173,7 +173,7 @@ export const result = (raw: number): Result.Result<State, InvalidState> =>
  * @category Resource
  */
 export const decode = (raw: unknown): Result.Result<State, InvalidState> =>
-  isState(raw) ? Result.success(raw) : Result.failure({ _tag: "InvalidRandomState", value: raw })
+  isState(raw) ? Result.succeed(raw) : Result.fail({ _tag: "InvalidRandomState", value: raw })
 
 /**
  * The starting state for a seed, reduced to an unsigned 32-bit integer like

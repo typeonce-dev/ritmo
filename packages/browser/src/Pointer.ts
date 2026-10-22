@@ -384,7 +384,7 @@ export interface InvalidTimeline {
  * optional finite `move`, and optional `press`/`release` arrays of buttons.
  */
 export const parseTimeline = (data: unknown): Result.Result<Timeline, InvalidTimeline> => {
-  const invalid = (path: string, message: string) => Result.failure<InvalidTimeline>({ _tag: "InvalidTimeline", path, message })
+  const invalid = (path: string, message: string) => Result.fail<InvalidTimeline>({ _tag: "InvalidTimeline", path, message })
   if (!Array.isArray(data)) return invalid("", "expected an array of entries")
   const entries: Array<TimelineEntry> = []
   for (let index = 0; index < data.length; index++) {
@@ -409,7 +409,7 @@ export const parseTimeline = (data: unknown): Result.Result<Timeline, InvalidTim
       position = { x, y }
     }
     const buttonsAt = (value: unknown, field: string): Result.Result<Array<Button> | undefined, InvalidTimeline> => {
-      if (value === undefined) return Result.success(undefined)
+      if (value === undefined) return Result.succeed(undefined)
       if (!Array.isArray(value)) return invalid(`${path}.${field}`, "expected an array of buttons")
       const names: Array<Button> = []
       for (let offset = 0; offset < value.length; offset++) {
@@ -418,18 +418,18 @@ export const parseTimeline = (data: unknown): Result.Result<Timeline, InvalidTim
         if (button === undefined) return invalid(`${path}.${field}[${offset}]`, `expected one of ${buttons.join(", ")}`)
         names.push(button)
       }
-      return Result.success(names)
+      return Result.succeed(names)
     }
     const pressed = buttonsAt(press, "press")
-    if (!pressed.ok) return pressed
+    if (pressed._tag === "Failure") return pressed
     const released = buttonsAt(release, "release")
-    if (!released.ok) return released
+    if (released._tag === "Failure") return released
     entries.push({
       frame,
       ...(position === undefined ? {} : { move: position }),
-      ...(pressed.value === undefined ? {} : { press: pressed.value }),
-      ...(released.value === undefined ? {} : { release: released.value })
+      ...(pressed.success === undefined ? {} : { press: pressed.success }),
+      ...(released.success === undefined ? {} : { release: released.success })
     })
   }
-  return Result.success(entries)
+  return Result.succeed(entries)
 }

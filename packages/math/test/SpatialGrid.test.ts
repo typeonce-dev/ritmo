@@ -4,8 +4,8 @@ import { Random, Scalar, SpatialGrid } from "@typeonce/ritmo-math"
 
 const cellSize = (value: number): Scalar.Positive => {
   const size = Scalar.Positive.result(value)
-  if (!size.ok) throw new Error("test cell size")
-  return size.value
+  if (size._tag === "Failure") throw new Error("test cell size")
+  return size.success
 }
 
 describe("SpatialGrid", () => {

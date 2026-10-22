@@ -5,12 +5,12 @@ import { Aabb, InputAxis, Scalar, Size2, Vector2 } from "@typeonce/ritmo-math"
 
 describe("helpers", () => {
   it("matches explicit success and failure branches", () => {
-    expect(Result.match(Result.success(3), {
+    expect(Result.match(Result.succeed(3), {
       onSuccess: (value) => value + 1,
       onFailure: () => 0
     })).toBe(4)
 
-    expect(Result.match(Result.failure("invalid"), {
+    expect(Result.match(Result.fail("invalid"), {
       onSuccess: () => 0,
       onFailure: (error) => error
     })).toBe("invalid")
@@ -18,14 +18,14 @@ describe("helpers", () => {
 
   it("aggregates tuple and record results", () => {
     expect(Result.all([
-      Result.success(1),
-      Result.success("two")
-    ] as const)).toEqual(Result.success([1, "two"]))
+      Result.succeed(1),
+      Result.succeed("two")
+    ] as const)).toEqual(Result.succeed([1, "two"]))
 
     expect(Result.all({
-      x: Result.success(1),
-      y: Result.success("two")
-    })).toEqual(Result.success({
+      x: Result.succeed(1),
+      y: Result.succeed("two")
+    })).toEqual(Result.succeed({
       x: 1,
       y: "two"
     }))
@@ -33,37 +33,37 @@ describe("helpers", () => {
 
   it("returns the first failure while aggregating results", () => {
     expect(Result.all([
-      Result.success(1),
-      Result.failure("boom"),
-      Result.failure("later")
-    ] as const)).toEqual(Result.failure("boom"))
+      Result.succeed(1),
+      Result.fail("boom"),
+      Result.fail("later")
+    ] as const)).toEqual(Result.fail("boom"))
 
     expect(Result.all({
-      ok: Result.success(1),
-      fail: Result.failure("boom")
-    })).toEqual(Result.failure("boom"))
+      ok: Result.succeed(1),
+      fail: Result.fail("boom")
+    })).toEqual(Result.fail("boom"))
   })
 
   it("rejects invalid scalar and geometry inputs", () => {
-    expect(Scalar.Finite.result(Number.NaN).ok).toBe(false)
-    expect(Size2.result({ width: -1, height: 2 }).ok).toBe(false)
-    expect(Vector2.result({ x: Number.POSITIVE_INFINITY, y: 0 }).ok).toBe(false)
+    expect(Scalar.Finite.result(Number.NaN)._tag).toBe("Failure")
+    expect(Size2.result({ width: -1, height: 2 })._tag).toBe("Failure")
+    expect(Vector2.result({ x: Number.POSITIVE_INFINITY, y: 0 })._tag).toBe("Failure")
     expect(Aabb.result({
       position: { x: 0, y: 0 },
       size: { width: -1, height: 1 }
-    }).ok).toBe(false)
+    })._tag).toBe("Failure")
   })
 
   it("interpolates finite scalar values", () => {
     const start = Scalar.Finite.result(10)
     const end = Scalar.Finite.result(20)
     const amount = Scalar.Finite.result(0.25)
-    expect(start.ok && end.ok && amount.ok).toBe(true)
-    if (!start.ok || !end.ok || !amount.ok) {
+    expect(start._tag === "Success" && end._tag === "Success" && amount._tag === "Success").toBe(true)
+    if (start._tag === "Failure" || end._tag === "Failure" || amount._tag === "Failure") {
       return
     }
 
-    expect(Scalar.lerp(start.value, end.value, amount.value)).toBe(12.5)
+    expect(Scalar.lerp(start.success, end.success, amount.success)).toBe(12.5)
   })
 
   it("computes inverse interpolation and remap explicitly", () => {
@@ -72,23 +72,23 @@ describe("helpers", () => {
     const five = Scalar.Finite.result(5)
     const hundred = Scalar.Finite.result(100)
     const twoHundred = Scalar.Finite.result(200)
-    expect(zero.ok && ten.ok && five.ok && hundred.ok && twoHundred.ok).toBe(true)
-    if (!zero.ok || !ten.ok || !five.ok || !hundred.ok || !twoHundred.ok) {
+    expect(zero._tag === "Success" && ten._tag === "Success" && five._tag === "Success" && hundred._tag === "Success" && twoHundred._tag === "Success").toBe(true)
+    if (zero._tag === "Failure" || ten._tag === "Failure" || five._tag === "Failure" || hundred._tag === "Failure" || twoHundred._tag === "Failure") {
       return
     }
 
-    expect(Scalar.inverseLerp(zero.value, ten.value, five.value)).toEqual(Result.success(0.5))
+    expect(Scalar.inverseLerp(zero.success, ten.success, five.success)).toEqual(Result.succeed(0.5))
     expect(
-      Scalar.remap(five.value, zero.value, ten.value, hundred.value, twoHundred.value)
-    ).toEqual(Result.success(150))
+      Scalar.remap(five.success, zero.success, ten.success, hundred.success, twoHundred.success)
+    ).toEqual(Result.succeed(150))
   })
 
   it("fails inverse interpolation and remap for zero-sized input ranges", () => {
     const zero = Scalar.Finite.result(0)
     const five = Scalar.Finite.result(5)
     const ten = Scalar.Finite.result(10)
-    expect(zero.ok && five.ok && ten.ok).toBe(true)
-    if (!zero.ok || !five.ok || !ten.ok) {
+    expect(zero._tag === "Success" && five._tag === "Success" && ten._tag === "Success").toBe(true)
+    if (zero._tag === "Failure" || five._tag === "Failure" || ten._tag === "Failure") {
       return
     }
 
@@ -98,34 +98,34 @@ describe("helpers", () => {
       end: 5
     }
 
-    expect(Scalar.inverseLerp(five.value, five.value, ten.value)).toEqual(Result.failure(error))
-    expect(Scalar.remap(ten.value, five.value, five.value, zero.value, ten.value)).toEqual(Result.failure(error))
+    expect(Scalar.inverseLerp(five.success, five.success, ten.success)).toEqual(Result.fail(error))
+    expect(Scalar.remap(ten.success, five.success, five.success, zero.success, ten.success)).toEqual(Result.fail(error))
   })
 
   it("normalizes movement explicitly and without mutating the source", () => {
     const raw = { x: 3, y: 4 } as const
     const vector = Vector2.result(raw)
-    expect(vector.ok).toBe(true)
-    if (!vector.ok) {
+    expect(vector._tag).toBe("Success")
+    if (vector._tag === "Failure") {
       return
     }
 
-    const normalized = Vector2.normalize(vector.value)
-    expect(normalized.ok).toBe(true)
-    if (!normalized.ok) {
+    const normalized = Vector2.normalize(vector.success)
+    expect(normalized._tag).toBe("Success")
+    if (normalized._tag === "Failure") {
       return
     }
 
     expect(raw).toEqual({ x: 3, y: 4 })
-    expect(Vector2.toRaw(vector.value)).toEqual({ x: 3, y: 4 })
-    expect(Vector2.length(normalized.value)).toBeCloseTo(1)
+    expect(Vector2.toRaw(vector.success)).toEqual({ x: 3, y: 4 })
+    expect(Vector2.length(normalized.success)).toBeCloseTo(1)
   })
 
   it("returns an explicit failure for zero-length normalization", () => {
     const zero = Vector2.zero()
     const normalized = Vector2.normalize(zero)
 
-    expect(normalized).toEqual(Result.failure({
+    expect(normalized).toEqual(Result.fail({
       tag: "Vector2/ZeroLength"
     }))
     expect(Vector2.normalizeOrZero(zero)).toEqual(zero)
@@ -173,17 +173,17 @@ describe("helpers", () => {
   })
 
   it("decodes untrusted input of any shape", () => {
-    expect(Vector2.decode({ x: 1, y: 2 }).ok).toBe(true)
-    expect(Size2.decode({ width: 1, height: 2 }).ok).toBe(true)
-    expect(Aabb.decode({ position: { x: 0, y: 0 }, size: { width: 1, height: 1 } }).ok).toBe(true)
+    expect(Vector2.decode({ x: 1, y: 2 })._tag).toBe("Success")
+    expect(Size2.decode({ width: 1, height: 2 })._tag).toBe("Success")
+    expect(Aabb.decode({ position: { x: 0, y: 0 }, size: { width: 1, height: 1 } })._tag).toBe("Success")
     for (const raw of [null, 3, "x", [], { x: "1", y: 2 }]) {
       const decoded = Vector2.decode(raw)
-      expect(decoded.ok ? undefined : decoded.error.tag).toBe("Vector2/Malformed")
+      expect(decoded._tag === "Success" ? undefined : decoded.failure.tag).toBe("Vector2/Malformed")
     }
     const invalid = Vector2.decode({ x: Number.NaN, y: 0 })
-    expect(invalid.ok ? undefined : invalid.error.tag).toBe("Vector2/Invalid")
+    expect(invalid._tag === "Success" ? undefined : invalid.failure.tag).toBe("Vector2/Invalid")
     const box = Aabb.decode({ position: null, size: { width: 1, height: 1 } })
-    expect(box.ok ? undefined : box.error.tag).toBe("Aabb/Malformed")
-    expect(Size2.decode({ width: 1 }).ok).toBe(false)
+    expect(box._tag === "Success" ? undefined : box.failure.tag).toBe("Aabb/Malformed")
+    expect(Size2.decode({ width: 1 })._tag).toBe("Failure")
   })
 })

@@ -5,7 +5,7 @@ import * as Runtime from "@typeonce/ritmo/Runtime"
 const Ping = Descriptor.Event<{ value: number }>()("Ping")
 const Game = Schema.bind(Schema.fragment({ events: { Ping } }))
 
-const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() }).value
+const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() }).success
 
 const emitter = (name: string, values: ReadonlyArray<number>) =>
   Game.System(name, { events: { ping: Game.System.writeEvent(Ping) } }, ({ events }) => {
@@ -62,21 +62,21 @@ describe("Runtime events", () => {
     const log: Array<ReadonlyArray<number>> = []
     const failingEmit = Game.System("Events/FailingEmit", { events: { ping: Game.System.writeEvent(Ping) } }, ({ events }) => {
       events.ping.emit({ value: 9 })
-      return Result.failure("Boom" as const)
+      return Result.fail("Boom" as const)
     })
     let fail = true
     const flakyRead = Game.System("Events/FlakyRead", { events: { ping: Game.System.readEvent(Ping) } }, ({ events }) => {
       log.push(events.ping.all().map((event) => event.value))
       if (fail) {
         fail = false
-        return Result.failure("NotYet" as const)
+        return Result.fail("NotYet" as const)
       }
-      return Result.success(undefined)
+      return Result.succeed(undefined)
     })
     const runtime = makeRuntime()
-    expect(runtime.tick(Game.Schedule(failingEmit)).ok).toBe(false)
-    expect(runtime.tick(Game.Schedule(emitter("Events/EmitValid", [1]), flakyRead)).ok).toBe(false)
-    expect(runtime.tick(Game.Schedule(flakyRead)).ok).toBe(true)
+    expect(runtime.tick(Game.Schedule(failingEmit))._tag).toBe("Failure")
+    expect(runtime.tick(Game.Schedule(emitter("Events/EmitValid", [1]), flakyRead))._tag).toBe("Failure")
+    expect(runtime.tick(Game.Schedule(flakyRead))._tag).toBe("Success")
     expect(log).toEqual([[1], [1]])
   })
 
@@ -159,7 +159,7 @@ describe("Runtime events", () => {
     const runtime = Local.Runtime.make({
       services: Local.Runtime.services(),
       machines: Local.Runtime.machines(Local.Runtime.machine(Mode, "On"))
-    }).value
+    }).success
     runtime.tick(Local.Schedule(gated))
     runtime.tick(Local.Schedule(toggle("Off"), Local.Schedule.applyStateTransitions()))
     runtime.tick(Local.Schedule(emit, gated))

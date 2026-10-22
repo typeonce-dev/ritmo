@@ -8,11 +8,11 @@ const make = (width: Scalar.NonNegative, height: Scalar.NonNegative): Size2.Size
 export const result = (raw: Size2.Raw): Result.Result<Size2.Size2, Size2.Error> => {
   const width = Scalar.NonNegative.result(raw.width)
   const height = Scalar.NonNegative.result(raw.height)
-  if (!width.ok || !height.ok) {
-    return Result.failure({
+  if (width._tag === "Failure" || height._tag === "Failure") {
+    return Result.fail({
       tag: "Size2/Invalid",
-      width: width.ok ? null : width.error,
-      height: height.ok ? null : height.error,
+      width: width._tag === "Success" ? null : width.failure,
+      height: height._tag === "Success" ? null : height.failure,
       input: {
         width: raw.width,
         height: raw.height
@@ -20,15 +20,15 @@ export const result = (raw: Size2.Raw): Result.Result<Size2.Size2, Size2.Error> 
     })
   }
 
-  return Result.success(make(width.value, height.value))
+  return Result.succeed(make(width.success, height.success))
 }
 
 export const option = (raw: Size2.Raw): Size2.Size2 | null => {
   const next = result(raw)
-  return next.ok ? next.value : null
+  return next._tag === "Success" ? next.success : null
 }
 
-export const is = (raw: Size2.Raw): raw is Size2.Raw & Size2.Size2 => result(raw).ok
+export const is = (raw: Size2.Raw): raw is Size2.Raw & Size2.Size2 => result(raw)._tag === "Success"
 
 export const toRaw = (size: Size2.Size2): Size2.Raw => ({
   width: size.width,
@@ -45,4 +45,4 @@ export const isRawShape = (raw: unknown): raw is Size2.Raw =>
   typeof raw === "object" && raw !== null && typeof (raw as Record<string, unknown>)["width"] === "number" && typeof (raw as Record<string, unknown>)["height"] === "number"
 
 export const decode = (raw: unknown): Result.Result<Size2.Size2, Size2.Error | Size2.DecodeError> =>
-  isRawShape(raw) ? result(raw) : Result.failure({ tag: "Size2/Malformed", input: raw })
+  isRawShape(raw) ? result(raw) : Result.fail({ tag: "Size2/Malformed", input: raw })

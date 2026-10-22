@@ -18,8 +18,8 @@ const make = () => {
     machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing")),
     debug: { hostClock }
   })
-  if (!made.ok) throw new Error("invalid fixture")
-  return made.value
+  if (made._tag === "Failure") throw new Error("invalid fixture")
+  return made.success
 }
 const setReady = (value: boolean) => Game.System(`Host/Ready/${value}`, { resources: { ready: Game.System.writeResource(Ready) } }, ({ resources }) => { resources.ready.set(value) })
 const setFlow = (value: "Playing" | "Menu") => Game.System(`Host/Flow/${value}`, { nextMachines: { flow: Game.System.nextState(Flow) } }, ({ nextMachines }) => { nextMachines.flow.set(value) })
@@ -124,7 +124,7 @@ describe("host events and pause gates", () => {
     const stop = runtime.debug.observe((event) => { if (event.type === "frame") runtime.restore(saved) })
     expect(() => runtime.tick(Game.Schedule())).toThrow("while a schedule is running")
     stop()
-    expect(runtime.restore(saved)).toEqual({ ok: true, value: undefined })
+    expect(runtime.restore(saved)).toEqual({ _tag: "Success", success: undefined })
   })
 
   it("preserves unread host sends through restore without replaying already consumed sends or simulation events", () => {
@@ -139,7 +139,7 @@ describe("host events and pause gates", () => {
     runtime.tick(fast)
     runtime.tick(Game.Schedule(emitter))
     const saved = runtime.snapshot()
-    expect(runtime.restore(saved).ok).toBe(true)
+    expect(runtime.restore(saved)._tag).toBe("Success")
     runtime.tick(fast, slow)
     runtime.tick(fast, slow)
     expect(fastLog).toEqual([[], [6], [], []])
@@ -211,7 +211,7 @@ describe("system local state", () => {
     }, ({ local, resources }) => {
       seen.push(++local.runs)
       resources.count.set(99)
-      return Result.failure("retry" as const)
+      return Result.fail("retry" as const)
     })
     const first = make()
     const second = make()
@@ -223,9 +223,9 @@ describe("system local state", () => {
     expect(first.snapshot().resources).toEqual({ "Host/Count": 0 })
     first.debug.nameSchedules({ update: Game.Schedule(system) })
     expect(first.debug.describe().systems[0]?.local).toBe(true)
-    expect(first.restore(null).ok).toBe(false)
+    expect(first.restore(null)._tag).toBe("Failure")
     expect(factories).toBe(2)
-    expect(first.restore(first.snapshot()).ok).toBe(true)
+    expect(first.restore(first.snapshot())._tag).toBe("Success")
     first.tick(Game.Schedule(system))
     expect(seen).toEqual([1, 2, 1, 1])
     expect(factories).toBe(3)
@@ -262,7 +262,7 @@ describe("system local state", () => {
     expect(seen[3]).toBe(seen[1])
     expect(seen.map((local) => local.runs)).toEqual([2, 2, 2, 2])
     fail = false
-    expect(runtime.restore(saved).ok).toBe(true)
+    expect(runtime.restore(saved)._tag).toBe("Success")
     runtime.tick(schedule)
     expect(seen[4]).not.toBe(seen[0])
     expect(seen[5]).not.toBe(seen[1])

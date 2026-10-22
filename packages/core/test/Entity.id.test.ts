@@ -6,7 +6,7 @@ const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 
 describe("Game.Entity.id", () => {
   it("returns the id a handle names, and handles of one entity compare by ===", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).success
     const seen: Array<boolean> = []
     runtime.tick(Game.Schedule(
       Game.System("EntityId/Spawn", { commands: Game.System.commands(Game.System.spawns(Health)) }, ({ commands }) => {
@@ -17,7 +17,7 @@ describe("Game.Entity.id", () => {
         for (const match of queries.healths.each()) {
           const handle = Game.Entity.handle(match.entity, Health)
           seen.push(Game.Entity.id(handle) === match.entity.id, handle === Game.Entity.handle(match.entity.id, Health))
-          seen.push(queries.healths.get(Game.Entity.id(handle)).ok)
+          seen.push(queries.healths.get(Game.Entity.id(handle))._tag === "Success")
         }
       })
     ))

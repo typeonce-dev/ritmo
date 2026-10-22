@@ -167,7 +167,7 @@ describe("Schema", () => {
         DeltaTime: 1 / 60,
         CurrentPhase: "Running"
       }
-    }).value
+    }).success
 
     expect(update).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof schema>>()
     runtime.tick(update)
@@ -214,7 +214,7 @@ describe("Schema", () => {
 
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services()
-    }).value
+    }).success
 
     expect(Game.Schedule(ObserveSystem)).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof schema>>()
   })
@@ -249,22 +249,22 @@ describe("Schema", () => {
             QueryTypes.Query.MultipleEntitiesError
           >>()
 
-          if (!result.ok || !result.value) {
+          if (result._tag === "Failure" || !result.success) {
             return
           }
 
-          expect(result.value.entity.proof).type.toBe<{
+          expect(result.success.entity.proof).type.toBe<{
             readonly position: QueryTypes.ReadonlyValue<{ x: number; y: number }>
             readonly velocity: QueryTypes.ReadonlyValue<{ dx: number; dy: number }>
           }>()
-          result.value.data.position.set({ x: 0, y: 0 })
-          expect(result.value.data.velocity.get()).type.toBe<QueryTypes.ReadonlyValue<{ dx: number; dy: number }>>()
+          result.success.data.position.set({ x: 0, y: 0 })
+          expect(result.success.data.velocity.get()).type.toBe<QueryTypes.ReadonlyValue<{ dx: number; dy: number }>>()
         }
     )
 
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services()
-    }).value
+    }).success
 
     expect(Game.Schedule(ObserveSystem)).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof schema>>()
   })
@@ -350,7 +350,7 @@ describe("Schema", () => {
 
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services()
-    }).value
+    }).success
 
     const schedule = Game.Schedule(ObserveLifecycleSystem)
 
@@ -431,7 +431,7 @@ describe("Schema", () => {
       resources: {
         DeltaTime: 1 / 60
       }
-    }).value
+    }).success
 
     const scheduleB = GameB.Schedule(SystemB)
 
@@ -576,37 +576,37 @@ describe("Schema", () => {
           }
 
           const single = queries.player.single()
-          if (single.ok) {
-            single.value.data.position.get()
+          if (single._tag === "Success") {
+            single.success.data.position.get()
             // @ts-expect-error Property 'velocity' does not exist on type 'Cells<QuerySpec<{ readonly position
-            single.value.data.velocity.get()
+            single.success.data.velocity.get()
           }
 
           const singleOptional = queries.player.singleOptional()
-          if (singleOptional.ok && singleOptional.value) {
-            singleOptional.value.data.position.get()
+          if (singleOptional._tag === "Success" && singleOptional.success) {
+            singleOptional.success.data.position.get()
             // @ts-expect-error Property 'velocity' does not exist on type 'Cells<QuerySpec<{ readonly position
-            singleOptional.value.data.velocity.get()
+            singleOptional.success.data.velocity.get()
 
-            const handle = Game.Entity.handle(singleOptional.value.entity.id, Position)
+            const handle = Game.Entity.handle(singleOptional.success.entity.id, Position)
             const fromHandle = queries.player.getHandle(handle)
-            if (fromHandle.ok) {
-              fromHandle.value.data.position.get()
+            if (fromHandle._tag === "Success") {
+              fromHandle.success.data.position.get()
               // @ts-expect-error Property 'velocity' does not exist on type 'Cells<QuerySpec<{ readonly position
-              fromHandle.value.data.velocity.get()
+              fromHandle.success.data.velocity.get()
             }
           }
 
           const direct = queries.player.get(entityId)
-          if (direct.ok) {
-            direct.value.data.position.get()
+          if (direct._tag === "Success") {
+            direct.success.data.position.get()
             // @ts-expect-error Property 'velocity' does not exist on type 'Cells<QuerySpec<{ readonly position
-            direct.value.data.velocity.get()
+            direct.success.data.velocity.get()
           }
 
           const children = queries.player.children(entityId, ChildOf)
-          if (children.ok) {
-            for (const child of children.value) {
+          if (children._tag === "Success") {
+            for (const child of children.success) {
               child.data.position.get()
               // @ts-expect-error Property 'velocity' does not exist on type 'Cells<QuerySpec<{ readonly position
               child.data.velocity.get()
@@ -614,8 +614,8 @@ describe("Schema", () => {
           }
 
           const descendants = queries.player.descendants(entityId, ChildOf, { order: "depth" })
-          if (descendants.ok) {
-            for (const descendant of descendants.value) {
+          if (descendants._tag === "Success") {
+            for (const descendant of descendants.success) {
               descendant.data.position.get()
               // @ts-expect-error Property 'velocity' does not exist on type 'Cells<QuerySpec<{ readonly position
               descendant.data.velocity.get()
@@ -708,9 +708,9 @@ describe("Schema", () => {
       queries: { readers: Game.Query({ selection: { hp: Game.Query.read(Hp) } }) }
     }, ({ queries, lookup }) => {
       const read = queries.readers.get(entityId)
-      if (read.ok) {
+      if (read._tag === "Success") {
         // @ts-expect-error Property 'set' does not exist on type 'ReadCell<number>'.
-        read.value.data.hp.set(0)
+        read.success.data.hp.set(0)
       }
       // @ts-expect-error Property 'get' does not exist on type 'LookupApi
       lookup.get(entityId, Game.Query({ selection: { hp: Game.Query.write(Hp) } }))

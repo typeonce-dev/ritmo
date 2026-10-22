@@ -8,11 +8,11 @@ const make = (x: Scalar.Finite, y: Scalar.Finite): Vector2.Vector2 => ({ x, y })
 export const result = (raw: Vector2.Raw): Result.Result<Vector2.Vector2, Vector2.Error> => {
   const x = Scalar.Finite.result(raw.x)
   const y = Scalar.Finite.result(raw.y)
-  if (!x.ok || !y.ok) {
-    return Result.failure({
+  if (x._tag === "Failure" || y._tag === "Failure") {
+    return Result.fail({
       tag: "Vector2/Invalid",
-      x: x.ok ? null : x.error,
-      y: y.ok ? null : y.error,
+      x: x._tag === "Success" ? null : x.failure,
+      y: y._tag === "Success" ? null : y.failure,
       input: {
         x: raw.x,
         y: raw.y
@@ -20,15 +20,15 @@ export const result = (raw: Vector2.Raw): Result.Result<Vector2.Vector2, Vector2
     })
   }
 
-  return Result.success(make(x.value, y.value))
+  return Result.succeed(make(x.success, y.success))
 }
 
 export const option = (raw: Vector2.Raw): Vector2.Vector2 | null => {
   const next = result(raw)
-  return next.ok ? next.value : null
+  return next._tag === "Success" ? next.success : null
 }
 
-export const is = (raw: Vector2.Raw): raw is Vector2.Raw & Vector2.Vector2 => result(raw).ok
+export const is = (raw: Vector2.Raw): raw is Vector2.Raw & Vector2.Vector2 => result(raw)._tag === "Success"
 
 export const toRaw = (vector: Vector2.Vector2): Vector2.Raw => ({
   x: vector.x,
@@ -65,13 +65,13 @@ export const normalize = (
 ): Result.Result<Vector2.Vector2, Vector2.NormalizeError> => {
   const magnitudeSquared = lengthSquared(vector)
   if (magnitudeSquared === 0) {
-    return Result.failure({
+    return Result.fail({
       tag: "Vector2/ZeroLength"
     })
   }
 
   const magnitude = Math.sqrt(magnitudeSquared) as Scalar.NonNegative
-  return Result.success(
+  return Result.succeed(
     make(
       (vector.x / magnitude) as Scalar.Finite,
       (vector.y / magnitude) as Scalar.Finite
@@ -81,7 +81,7 @@ export const normalize = (
 
 export const normalizeOrZero = (vector: Vector2.Vector2): Vector2.Vector2 => {
   const normalized = normalize(vector)
-  return normalized.ok ? normalized.value : zero()
+  return normalized._tag === "Success" ? normalized.success : zero()
 }
 
 export const normalizeXYOrZero = (x: number, y: number): {
@@ -112,4 +112,4 @@ export const isRawShape = (raw: unknown): raw is Vector2.Raw =>
   typeof raw === "object" && raw !== null && typeof (raw as Record<string, unknown>)["x"] === "number" && typeof (raw as Record<string, unknown>)["y"] === "number"
 
 export const decode = (raw: unknown): Result.Result<Vector2.Vector2, Vector2.Error | Vector2.DecodeError> =>
-  isRawShape(raw) ? result(raw) : Result.failure({ tag: "Vector2/Malformed", input: raw })
+  isRawShape(raw) ? result(raw) : Result.fail({ tag: "Vector2/Malformed", input: raw })

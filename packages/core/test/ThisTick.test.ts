@@ -23,19 +23,19 @@ const erased = (schedule: ExecutableScheduleDefinition<any, any, any, any, any, 
 
 describe("thisTick at runtime", () => {
   it("lets tryTick run a schedule whose writers come first", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).success
     seen.length = 0
-    expect(runtime.tryTick(erased(Game.Schedule(Deal, Apply))).ok).toBe(true)
+    expect(runtime.tryTick(erased(Game.Schedule(Deal, Apply)))._tag).toBe("Success")
     expect(seen).toEqual([[1]])
   })
 
   it("makes tryTick return a TickOrderViolation, running nothing, when a writer runs after the reader", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).success
     seen.length = 0
     const result = runtime.tryTick(erased(Game.Schedule(Apply, Deal)))
     expect(result).toEqual({
-      ok: false,
-      error: {
+      _tag: "Failure",
+      failure: {
         kind: "TickOrderViolation",
         issues: [{
           kind: "lateWriter",
@@ -50,23 +50,23 @@ describe("thisTick at runtime", () => {
   })
 
   it("runs a reader with no writer in the tick, which sees events sent with runtime.send", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).success
     seen.length = 0
     const alone = erased(Game.Schedule(Apply))
-    expect(runtime.tryTick(alone).ok).toBe(true)
+    expect(runtime.tryTick(alone)._tag).toBe("Success")
     runtime.send(Damage, 5)
-    expect(runtime.tryTick(alone).ok).toBe(true)
+    expect(runtime.tryTick(alone)._tag).toBe("Success")
     expect(seen).toEqual([[], [5]])
   })
 
   it("reports no this-tick-order lint when the writer runs first", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).success
     runtime.debug.nameSchedules({ update: erased(Game.Schedule(Deal, Apply)) })
     expect(runtime.debug.describe().lints.filter((lint) => lint.code === "this-tick-order")).toEqual([])
   })
 
   it("reports a this-tick-order lint for named schedules", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).success
     runtime.debug.nameSchedules({ update: erased(Game.Schedule(Apply, Deal)) })
     expect(runtime.debug.describe().lints.filter((lint) => lint.code === "this-tick-order").map((lint) => lint.message)).toEqual([
       "in update, ThisTickRuntime/Apply needs ThisTickRuntime/Damage from this tick, but its writer ThisTickRuntime/Deal runs after it: move ThisTickRuntime/Deal before ThisTickRuntime/Apply, or read ThisTickRuntime/Damage without thisTick"

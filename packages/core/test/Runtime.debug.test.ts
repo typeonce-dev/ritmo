@@ -25,7 +25,7 @@ const makeRuntime = () => Game.Runtime.make({
   resources: { Score: 0 },
   machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Menu")),
   debug: { hostClock }
-}).value
+}).success
 
 const Moving = Game.Query({ selection: { position: Game.Query.write(Position) } })
 
@@ -61,7 +61,7 @@ describe("Runtime debug handle", () => {
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(Clock, { now: () => 0 })),
       resources: { Score: 0 }
-    }).value
+    }).success
     expect("debug" in runtime).toBe(false)
   })
 
@@ -288,10 +288,10 @@ describe("Runtime debug handle", () => {
     }, ({ queries, commands }) => {
       for (const match of queries.moving.each()) match.data.position.set({ x: 99 })
       commands.spawn(Game.Command.spawn([Tagged, {}]))
-      return Result.failure("Nope" as const)
+      return Result.fail("Nope" as const)
     })
     const { events } = collect(runtime)
-    expect(runtime.tick(Game.Schedule(Failing)).ok).toBe(false)
+    expect(runtime.tick(Game.Schedule(Failing))._tag).toBe("Failure")
     const failed = events.find((event): event is Debug.SystemEvent => event.type === "system")!
     expect(failed).toMatchObject({
       outcome: "failed",

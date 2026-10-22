@@ -50,7 +50,7 @@ const makeRuntime = () =>
       LastError: "",
       StoredHandle: null
     }
-  }).value
+  }).success
 
 describe("Runtime query and lookup", () => {
   it("each returns zero matches when nothing satisfies the query", () => {
@@ -100,7 +100,7 @@ describe("Runtime query and lookup", () => {
       ({ queries, resources }) =>
         {
           const result = queries.positions.single()
-          resources.lastError.set(result.ok ? "" : result.error._tag)
+          resources.lastError.set(result._tag === "Success" ? "" : result.failure._tag)
         }
     )
 
@@ -142,7 +142,7 @@ describe("Runtime query and lookup", () => {
       ({ queries, resources }) =>
         {
           const result = queries.positions.single()
-          resources.lastError.set(result.ok ? "" : result.error._tag)
+          resources.lastError.set(result._tag === "Success" ? "" : result.failure._tag)
         }
     )
 
@@ -175,8 +175,8 @@ describe("Runtime query and lookup", () => {
       ({ queries, resources }) =>
         {
           const result = queries.positions.singleOptional()
-          resources.lastError.set(result.ok ? "" : result.error._tag)
-          resources.lastX.set(result.ok && result.value ? result.value.data.position.get().x : -1)
+          resources.lastError.set(result._tag === "Success" ? "" : result.failure._tag)
+          resources.lastX.set(result._tag === "Success" && result.success ? result.success.data.position.get().x : -1)
         }
     )
 
@@ -219,17 +219,17 @@ describe("Runtime query and lookup", () => {
       ({ queries, resources }) =>
         {
           const result = queries.positions.singleOptional()
-          resources.lastError.set(result.ok ? "" : result.error._tag)
-          if (!result.ok || !result.value) {
+          resources.lastError.set(result._tag === "Success" ? "" : result.failure._tag)
+          if (result._tag === "Failure" || !result.success) {
             resources.lastX.set(-1)
             return
           }
 
-          result.value.data.position.update((position) => ({
+          result.success.data.position.update((position) => ({
             ...position,
             x: position.x + 1
           }))
-          resources.lastX.set(result.value.data.position.get().x)
+          resources.lastX.set(result.success.data.position.get().x)
         }
     )
 
@@ -275,7 +275,7 @@ describe("Runtime query and lookup", () => {
       ({ queries, resources }) =>
         {
           const result = queries.positions.singleOptional()
-          resources.lastError.set(result.ok ? "" : result.error._tag)
+          resources.lastError.set(result._tag === "Success" ? "" : result.failure._tag)
         }
     )
 
@@ -333,7 +333,7 @@ describe("Runtime query and lookup", () => {
           }
           const missing = queries.positions.get(Entity.makeEntityId<typeof schema>(9999))
           const mismatch = queries.velocities.get(existingId)
-          resources.lastError.set(`${missing.ok ? "ok" : missing.error._tag}/${mismatch.ok ? "ok" : mismatch.error._tag}`)
+          resources.lastError.set(`${missing._tag === "Success" ? "ok" : missing.failure._tag}/${mismatch._tag === "Success" ? "ok" : mismatch.failure._tag}`)
         }
     )
 
@@ -500,13 +500,13 @@ describe("Runtime query and lookup", () => {
 
           const result = queries.positioned.get(existingId)
 
-          if (!result.ok) {
-            resources.lastError.set(result.error._tag)
+          if (result._tag === "Failure") {
+            resources.lastError.set(result.failure._tag)
             return
           }
 
-          resources.lastError.set(result.value.data.velocity.present ? "Present" : "Missing")
-          resources.lastX.set(result.value.data.position.get().x)
+          resources.lastError.set(result.success.data.velocity.present ? "Present" : "Missing")
+          resources.lastX.set(result.success.data.position.get().x)
         }
     )
 
@@ -550,8 +550,8 @@ describe("Runtime query and lookup", () => {
       ({ queries }) =>
         {
           const result = queries.positions.single()
-          if (result.ok) {
-            result.value.data.position.update((position) => ({
+          if (result._tag === "Success") {
+            result.success.data.position.update((position) => ({
               ...position,
               x: 9
             }))
@@ -577,7 +577,7 @@ describe("Runtime query and lookup", () => {
       ({ queries, resources }) =>
         {
           const result = queries.positions.single()
-          resources.lastX.set(result.ok ? result.value.data.position.get().x : -1)
+          resources.lastX.set(result._tag === "Success" ? result.success.data.position.get().x : -1)
         }
     )
 
@@ -628,12 +628,12 @@ describe("Runtime query and lookup", () => {
 
           const result = queries.positions.getHandle(currentHandle)
 
-          if (!result.ok) {
-            resources.lastError.set(result.error._tag)
+          if (result._tag === "Failure") {
+            resources.lastError.set(result.failure._tag)
             return
           }
 
-          resources.lastX.set(result.value.data.position.get().x)
+          resources.lastX.set(result.success.data.position.get().x)
           resources.lastError.set("")
         }
     )
@@ -656,8 +656,8 @@ describe("Runtime query and lookup", () => {
             return
           }
           const result = queries.positions.getHandle(currentHandle)
-          if (result.ok) {
-            commands.despawn(result.value.entity)
+          if (result._tag === "Success") {
+            commands.despawn(result.success.entity)
           }
         }
     )
@@ -670,7 +670,7 @@ describe("Runtime query and lookup", () => {
         LastError: "",
         StoredHandle: null
       }
-    }).value
+    }).success
 
     runtime.tick(
       Game.Schedule(spawn, Game.Schedule.applyDeferred()),
@@ -744,12 +744,12 @@ describe("Runtime query and lookup", () => {
           const resourceResult = queries.positions.getHandle(resourceHandle)
           const eventResult = queries.positions.getHandle(eventHandle)
 
-          if (!resourceResult.ok || !eventResult.ok) {
-            resources.lastError.set(`${resourceResult.ok ? "ok" : resourceResult.error._tag}/${eventResult.ok ? "ok" : eventResult.error._tag}`)
+          if (resourceResult._tag === "Failure" || eventResult._tag === "Failure") {
+            resources.lastError.set(`${resourceResult._tag === "Success" ? "ok" : resourceResult.failure._tag}/${eventResult._tag === "Success" ? "ok" : eventResult.failure._tag}`)
             return
           }
 
-          resources.lastX.set(resourceResult.value.data.position.get().x + eventResult.value.data.position.get().x)
+          resources.lastX.set(resourceResult.success.data.position.get().x + eventResult.success.data.position.get().x)
           resources.lastError.set("")
         }
     )
@@ -770,8 +770,8 @@ describe("Runtime query and lookup", () => {
         {
           if (spawnedTarget) {
             const target = queries.positions.get(spawnedTarget)
-            if (target.ok) {
-              commands.despawn(target.value.entity)
+            if (target._tag === "Success") {
+              commands.despawn(target.success.entity)
             }
           }
         }
@@ -804,7 +804,7 @@ describe("Runtime query and lookup", () => {
         LastError: "",
         StoredHandle: null
       }
-    }).value
+    }).success
 
     runtime.tick(
       Game.Schedule(spawn, Game.Schedule.applyDeferred(), observe)
@@ -834,7 +834,7 @@ describe("optional slots", () => {
     const Read = Local.Inspector("Optional/Read", {
       queries: { named: Local.Query({ selection: { name: Local.Query.read(Name), hp: Local.Query.optional(Hp) } }) }
     }, ({ queries }) => queries.named.each().map(({ data }) => [data.name.get(), data.hp.value()] as const).sort())
-    const runtime = Local.Runtime.make({ services: Local.Runtime.services() }).value
+    const runtime = Local.Runtime.make({ services: Local.Runtime.services() }).success
     runtime.tick(Local.Schedule(spawn, Local.Schedule.applyDeferred()))
     expect(runtime.inspect(Read)).toEqual([["empty", undefined], ["full", 3]])
   })

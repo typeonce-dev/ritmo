@@ -17,15 +17,15 @@ describe("InputCapture", () => {
     const withoutKeyboard = Game.Runtime.make({
       services: Game.Runtime.services(),
       resources: { Input: Keyboard.idle(bindings), Wrong: { jump: false } }
-    }).value
+    }).success
     // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "CaptureTypes/Keyboard"
     withoutKeyboard.tick(Game.Schedule(Capture))
 
     const ready = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(KeyboardInput, Keyboard.actions(window, bindings))),
       resources: { Input: Keyboard.idle(bindings), Wrong: { jump: false } }
-    }).value
-    expect(ready.tick(Game.Schedule(Capture)).ok).type.toBe<boolean>()
+    }).success
+    expect(ready.tick(Game.Schedule(Capture))._tag).type.toBe<"Success" | "Failure">()
   })
 
   it("requires the machines its run conditions read", () => {
@@ -38,11 +38,11 @@ describe("InputCapture", () => {
     })
     const services = Game.Runtime.services(Game.Runtime.service(KeyboardInput, Keyboard.actions(window, bindings)))
     const resources = { Input: Keyboard.idle(bindings), Wrong: { jump: false } }
-    const withoutMachine = Game.Runtime.make({ services, resources }).value
+    const withoutMachine = Game.Runtime.make({ services, resources }).success
     // @ts-expect-error __runtimeRequirementError__: "Missing machine"; readonly __requirement__: "CaptureTypes/Pace"
     withoutMachine.tick(Game.Schedule(Capture))
-    const ready = Game.Runtime.make({ services, resources, machines: Game.Runtime.machines(Game.Runtime.machine(Pace, "Running")) }).value
-    expect(ready.tick(Game.Schedule(Capture)).ok).type.toBe<boolean>()
+    const ready = Game.Runtime.make({ services, resources, machines: Game.Runtime.machines(Game.Runtime.machine(Pace, "Running")) }).success
+    expect(ready.tick(Game.Schedule(Capture))._tag).type.toBe<"Success" | "Failure">()
   })
 
   it("rejects resources whose value is not the snapshot type", () => {

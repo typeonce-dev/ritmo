@@ -12,10 +12,10 @@
  * ```ts
  * // Validate raw viewport dimensions before storing or reusing them.
  * const viewport = Size2.result({ width: 800, height: 600 })
- * if (!viewport.ok) return
+ * if (viewport._tag === "Failure") return
  *
  * // Read the branded size later without rechecking width/height validity.
- * const width = Size2.width(viewport.value)
+ * const width = Size2.width(viewport.success)
  * ```
  *
  * @module Size2

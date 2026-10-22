@@ -114,7 +114,7 @@ const validate = (options: Options): Result.Result<void, InvalidOptions> => {
   for (const field of ["maxFrameSeconds"] as const) {
     const value = options[field]
     if (!Number.isFinite(value) || value <= 0) {
-      return Result.failure({
+      return Result.fail({
         kind: "InvalidFixedLoopOptions",
         field,
         reason: "mustBeFiniteAndPositive",
@@ -123,14 +123,14 @@ const validate = (options: Options): Result.Result<void, InvalidOptions> => {
     }
   }
   if (!Number.isInteger(options.maxStepsPerFrame) || options.maxStepsPerFrame <= 0) {
-    return Result.failure({
+    return Result.fail({
       kind: "InvalidFixedLoopOptions",
       field: "maxStepsPerFrame",
       reason: "mustBePositiveInteger",
       value: options.maxStepsPerFrame
     })
   }
-  return Result.success(undefined)
+  return Result.succeed(undefined)
 }
 
 /**
@@ -144,7 +144,7 @@ export const start = <TTick extends Tick, UpdateError>(
   options: StartOptions<TTick, UpdateError>
 ): Result.Result<Driver, InvalidOptions> => {
   const validity = validate(options)
-  if (!validity.ok) {
+  if (validity._tag === "Failure") {
     return validity
   }
 
@@ -182,8 +182,8 @@ export const start = <TTick extends Tick, UpdateError>(
     let fixedSteps = 0
     while (accumulator >= options.step.dt && fixedSteps < options.maxStepsPerFrame) {
       const update = options.update(options.step.dt)
-      if (!update.ok) {
-        fail({ kind: "UpdateFailure", error: update.error })
+      if (update._tag === "Failure") {
+        fail({ kind: "UpdateFailure", error: update.failure })
         return
       }
       accumulator -= options.step.dt
@@ -209,7 +209,7 @@ export const start = <TTick extends Tick, UpdateError>(
     hostSubscription.stop()
   }
 
-  return Result.success({
+  return Result.succeed({
     stop,
     reset() {
       accumulator = 0

@@ -9,7 +9,7 @@ const Bosses = Game.Inspector("StaleTarget/Bosses", { queries: { bosses: Game.Qu
 
 describe("a spawned id used after its run", () => {
   it("is skipped by despawn and remove, traced, and linted", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).success
     let kept: Command.SpawnedId<typeof Game.schema, typeof Game.schema, "StaleTarget/Boss" | "StaleTarget/Mark"> | undefined
     const Spawn = Game.System("StaleTarget/Spawn", { commands: Game.System.commands(Game.System.spawns(Boss, Mark)) }, ({ commands }) => {
       kept = commands.spawn(Game.Command.spawn([Boss, {}], [Mark, {}]))
@@ -38,7 +38,7 @@ describe("a spawned id used after its run", () => {
   })
 
   it("still lets the run that spawned an id despawn and remove through it", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).success
     const SpawnAndUndo = Game.System("StaleTarget/SpawnAndUndo", {
       commands: Game.System.commands(Game.System.spawns(Boss, Mark), Game.System.despawns(Boss), Game.System.removes(Mark))
     }, ({ commands }) => {

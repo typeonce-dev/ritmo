@@ -92,19 +92,19 @@ export interface InvalidTime {
 export const start = <Hz extends number>(step: Step<Hz>): Time<Hz> => ({ step: 0, hz: step.hz, dt: 0 })
 
 const timeOf = <Hz extends number>(step: Step<Hz>, raw: unknown): Result.Result<Time<Hz>, InvalidTime> => {
-  if (typeof raw !== "object" || raw === null) return Result.failure({ _tag: "InvalidTime", message: "a clock value is an object { step, hz, dt }" })
+  if (typeof raw !== "object" || raw === null) return Result.fail({ _tag: "InvalidTime", message: "a clock value is an object { step, hz, dt }" })
   const value = raw as { readonly step?: unknown; readonly hz?: unknown; readonly dt?: unknown }
   if (value.hz !== step.hz) {
-    return Result.failure({
+    return Result.fail({
       _tag: "InvalidTime",
       message: typeof value.hz === "number" ? `saved at ${value.hz} Hz, this game runs at ${step.hz} Hz` : `hz must be ${step.hz}`
     })
   }
   if (typeof value.step !== "number" || !Number.isSafeInteger(value.step) || value.step < 0) {
-    return Result.failure({ _tag: "InvalidTime", message: "step must be a whole number of steps, 0 or more" })
+    return Result.fail({ _tag: "InvalidTime", message: "step must be a whole number of steps, 0 or more" })
   }
-  if (value.dt !== 0 && value.dt !== step.dt) return Result.failure({ _tag: "InvalidTime", message: `dt must be 0 or 1/${step.hz}` })
-  return Result.success({ step: value.step, hz: step.hz, dt: value.dt })
+  if (value.dt !== 0 && value.dt !== step.dt) return Result.fail({ _tag: "InvalidTime", message: `dt must be 0 or 1/${step.hz}` })
+  return Result.succeed({ step: value.step, hz: step.hz, dt: value.dt })
 }
 
 /** The descriptor `Clock.resource` returns: a validated resource holding `Time<Hz>`. */
@@ -271,15 +271,15 @@ export type ValidDuration<Hz extends number, Seconds extends number> =
 
 const stepsOf = (hz: number, seconds: number): Result.Result<number, InvalidDuration> => {
   if (!Number.isFinite(seconds) || seconds < 0) {
-    return Result.failure({ _tag: "InvalidDuration", seconds, message: "a duration needs a finite, non-negative number of seconds" })
+    return Result.fail({ _tag: "InvalidDuration", seconds, message: "a duration needs a finite, non-negative number of seconds" })
   }
   // Exact check first (at least one whole step), then round to the nearest whole step, half up.
   if (seconds * hz < 1 - 1e-9) {
-    return Result.failure({ _tag: "InvalidDuration", seconds, message: `${seconds}s is shorter than one step (1/${hz}s)` })
+    return Result.fail({ _tag: "InvalidDuration", seconds, message: `${seconds}s is shorter than one step (1/${hz}s)` })
   }
   const steps = Math.max(1, Math.round(seconds * hz))
-  if (!Number.isSafeInteger(steps)) return Result.failure({ _tag: "InvalidDuration", seconds, message: "a duration must fit in a safe whole number of steps" })
-  return Result.success(steps)
+  if (!Number.isSafeInteger(steps)) return Result.fail({ _tag: "InvalidDuration", seconds, message: "a duration must fit in a safe whole number of steps" })
+  return Result.succeed(steps)
 }
 
 /**
@@ -291,14 +291,14 @@ const stepsOf = (hz: number, seconds: number): Result.Result<number, InvalidDura
  */
 export const duration = <Hz extends number, const Seconds extends number>(step: Step<Hz>, seconds: ValidDuration<Hz, Seconds>): Duration<Hz> => {
   const steps = stepsOf(step.hz, seconds as number)
-  if (!steps.ok) throw new Error(steps.error.message)
-  return { kind: "ClockDuration", steps: steps.value, hz: step.hz } as Duration<Hz>
+  if (steps._tag === "Failure") throw new Error(steps.failure.message)
+  return { kind: "ClockDuration", steps: steps.success, hz: step.hz } as Duration<Hz>
 }
 
 /** Seconds from data as whole steps of `step`, the same rules as `duration`, as a `Result`. */
 export const durationRaw = <Hz extends number>(step: Step<Hz>, seconds: number): Result.Result<Duration<Hz>, InvalidDuration> => {
   const steps = stepsOf(step.hz, seconds)
-  return steps.ok ? Result.success({ kind: "ClockDuration", steps: steps.value, hz: step.hz } as Duration<Hz>) : steps
+  return steps._tag === "Success" ? Result.succeed({ kind: "ClockDuration", steps: steps.success, hz: step.hz } as Duration<Hz>) : steps
 }
 
 type StepsMessage = "Clock.durationOfSteps needs a positive whole number of steps"

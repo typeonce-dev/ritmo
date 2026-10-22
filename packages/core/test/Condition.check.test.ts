@@ -18,7 +18,7 @@ const makeRuntime = (freeze = 0, flow: "Playing" | "Over" = "Playing") =>
     resources: { Freeze: { remaining: freeze }, Log: [] },
     machines: Runtime.machines(Runtime.machine(Flow, flow)),
     debug: { hostClock }
-  }).value
+  }).success
 
 const ReadLog = Game.Inspector("Check/ReadLog", { resources: { log: Game.System.readResource(Log) } }, ({ resources }) => resources.log.get())
 
@@ -118,10 +118,10 @@ describe("Condition.check", () => {
       services: Runtime.services(),
       resources: { Log: [] },
       machines: Runtime.machines(Runtime.machine(Flow, "Playing"))
-    }).value
+    }).success
     expect(withoutFreeze.tryTick(Game.Schedule.when([Game.Condition.not(frozen)], logs("a")))).toEqual({
-      ok: false,
-      error: { kind: "MissingRuntimeRequirements", requirements: [{ kind: "resource", name: "Check/Freeze" }] }
+      _tag: "Failure",
+      failure: { kind: "MissingRuntimeRequirements", requirements: [{ kind: "resource", name: "Check/Freeze" }] }
     })
   })
 

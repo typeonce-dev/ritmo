@@ -54,7 +54,7 @@ const vectorValidate: BenchCase = {
         let total = 0
         for (let index = 0; index < N; index++) {
           const vector = Vector2.result(raws[index]!)
-          total += vector.ok ? vector.value.y : -1
+          total += vector._tag === "Success" ? vector.success.y : -1
         }
         check(total)
       }
@@ -235,8 +235,8 @@ const randomDraw: BenchCase = {
     const Rng = Descriptor.ConstructedResource(Random)("Bench/Rng")
     const Game = Schema.bind(Schema.fragment({ resources: { Rng } }))
     const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Rng: Random.seed(1) } })
-    if (!made.ok) throw new Error("bench runtime")
-    const runtime = made.value
+    if (made._tag === "Failure") throw new Error("bench runtime")
+    const runtime = made.success
     const schedule = Game.Schedule(Game.System("Bench/Draw", { resources: { rng: Game.System.writeResource(Rng) } }, ({ resources }) => {
       const random = Random.draw(resources.rng)
       let total = 0

@@ -10,9 +10,9 @@ const Open = Descriptor.ConstructedResource(Decode.boolean)("Changed/Open")
 
 const Game = Schema.bind(Schema.fragment({ resources: { Score, Hud, Open } }))
 
-const unwrap = <A>(made: { readonly ok: true; readonly value: A } | { readonly ok: false }): A => {
-  if (!made.ok) throw new Error("invalid fixture")
-  return made.value
+const unwrap = <A>(made: { readonly _tag: "Success"; readonly success: A } | { readonly _tag: "Failure" }): A => {
+  if (made._tag === "Failure") throw new Error("invalid fixture")
+  return made.success
 }
 
 const makeRuntime = () => unwrap(
@@ -30,7 +30,7 @@ const writer = () => {
   }, ({ resources }) => {
     resources.score.set(state.score)
     resources.hud.set(state.hud)
-    return state.fail ? Result.failure("boom") : Result.success(undefined)
+    return state.fail ? Result.fail("boom") : Result.succeed(undefined)
   })
   return { state, system }
 }
@@ -89,7 +89,7 @@ describe("Game.System.changedResource", () => {
     runtime.tick(schedule)
     w.state.score = 9
     w.state.fail = true
-    expect(runtime.tryTick(schedule).ok).toBe(false)
+    expect(runtime.tryTick(schedule)._tag).toBe("Failure")
     expect(r.seen.length).toBe(1)
     // The failure aborted the tick before the reader; rerun the reader alone.
     runtime.tick(Game.Schedule(r.system))
@@ -134,7 +134,7 @@ describe("Game.System.changedResource", () => {
     runtime.tick(Game.Schedule(r.system))
     const saved = runtime.snapshot()
     const restored = runtime.restore(JSON.parse(JSON.stringify(saved)))
-    expect(restored).toEqual({ ok: true, value: undefined })
+    expect(restored).toEqual({ _tag: "Success", success: undefined })
     runtime.tick(Game.Schedule(r.system))
     expect(r.seen).toEqual([[true, true], [false, false], [true, true]])
   })

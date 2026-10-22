@@ -116,8 +116,8 @@ const Sim = Schema.bind(Schema.fragment({ resources: { Time } }))
 const AdvanceTime = Clock.system(Sim, { name: "Consumer/AdvanceTime", resource: Time })
 const repeated = Determinism.check(({ hostClock }) => {
   const made = Sim.Runtime.make({ services: Sim.Runtime.services(), resources: { Time: Clock.start(step) }, debug: { hostClock } })
-  if (!made.ok) throw new Error("initial clock must be valid")
-  return { runtime: made.value, schedules: { update: Sim.Schedule(AdvanceTime) } }
+  if (made._tag === "Failure") throw new Error("initial clock must be valid")
+  return { runtime: made.success, schedules: { update: Sim.Schedule(AdvanceTime) } }
 }, { schedule: "update", frames: Clock.steps(Clock.duration(step, 0.5)), hostClock: HostClock.test() })
 if (!repeated.ok) throw new Error(JSON.stringify(repeated))
 
@@ -125,19 +125,19 @@ const Position = Descriptor.ConstructedComponent(Vector2)("Consumer/Position")
 const Game = Schema.bind(Schema.fragment({ components: { Position } }))
 const Spawn = Game.System("Consumer/Spawn", { commands: Game.System.commands(Game.System.spawns(Position)) }, ({ commands }) => {
   const draft = Game.Command.spawn(Game.Command.entryRaw(Position, { x: 1, y: 2 }))
-  if (draft.ok) commands.spawn(draft.value)
+  if (draft._tag === "Success") commands.spawn(draft.success)
 })
 const hostClock = HostClock.test()
-const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
+const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).success
 const session = Session.make(runtime, { hostClock, schedules: { setup: Game.Schedule(Spawn, Game.Schedule.applyDeferred()) } })
 const ran = session.run("setup")
 const keyboard = Keyboard.scripted({ jump: [" "] }, [{ frame: 0, press: ["jump"] }])
 const registry = NodeRegistry.make<string>({ attach: () => {}, detach: () => {} })
 const sprites = PixiNodeRegistry.make<{ destroy(): void }>({ addChild: () => {}, removeChild: () => {} })
 const cell = Scalar.Positive.result(8)
-const grid = cell.ok ? SpatialGrid.make(cell.value) : undefined
+const grid = cell._tag === "Success" ? SpatialGrid.make(cell.success) : undefined
 grid?.insert(0, 1, 1, 1)
-const field = cell.ok ? FlowField.make(cell.value) : undefined
+const field = cell._tag === "Success" ? FlowField.make(cell.success) : undefined
 field?.setWalls([{ minX: 0, minY: 0, maxX: 16, maxY: 4 }], 1)
 const moved = Collide2.moveCircle({ x: 0, y: 10 }, { x: 0, y: -20 }, 2, [{ minX: -8, minY: 0, maxX: 8, maxY: 4 }])
 if (BrowserHostClock.make({ performance: { now: () => 7 } }).now() !== 7) throw new Error("BrowserHostClock misbehaves when packed")
@@ -148,19 +148,19 @@ const loop = FixedLoop.start({
   step: Clock.hz(100),
   maxFrameSeconds: 0.1,
   maxStepsPerFrame: 5,
-  update: () => { loopUpdates += 1; return Result.success(undefined) },
+  update: () => { loopUpdates += 1; return Result.succeed(undefined) },
   render: () => {},
   onFailure: () => {}
 })
 frames.shift()?.(0)
 frames.shift()?.(20)
-if (!loop.ok || loopUpdates !== 2) throw new Error("FixedLoop with BrowserTickSource misbehaves when packed")
-loop.value.stop()
+if (loop._tag === "Failure" || loopUpdates !== 2) throw new Error("FixedLoop with BrowserTickSource misbehaves when packed")
+loop.success.stop()
 if ("FixedLoop" in Browser) throw new Error("Browser publishes the moved FixedLoop")
 if (!moved.blocked || Random.make(42).next() !== 0.6011037519201636 || Ops.hypot(3, 4) !== 5 || Ops.sin(0) !== 0) throw new Error("math helpers misbehave when packed")
 if ("NodeRegistry" in Pixi || "RenderSync" in Pixi) throw new Error("Pixi publishes removed compatibility exports")
 console.log(JSON.stringify({
-  ok: ran.data.ok && Result.isSuccess(Result.success(1)),
+  ok: ran.data.ok && Result.isSuccess(Result.succeed(1)),
   entities: session.dump().data.entityCount,
   jump: keyboard.snapshot().jump.pressed,
   nodes: registry.size + sprites.size
@@ -182,7 +182,7 @@ if (output !== expected) throw new Error(`consumer printed ${output}, expected $
 console.log(output)
 
 step("run the published devtools CLI")
-writeFileSync(path.join(consumer, "lint.mjs"), `import { HostClock, Schema } from "@typeonce/ritmo"; const Game = Schema.bind(Schema.fragment({})); export const lintTarget = () => ({ runtime: Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value, schedules: { update: Game.Schedule() } });\n`)
+writeFileSync(path.join(consumer, "lint.mjs"), `import { HostClock, Schema } from "@typeonce/ritmo"; const Game = Schema.bind(Schema.fragment({})); export const lintTarget = () => ({ runtime: Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).success, schedules: { update: Game.Schedule() } });\n`)
 const lintOutput = run(path.join(consumer, "node_modules", ".bin", "ritmo-devtools"), ["lint", "lint.mjs"], consumer)
 if (!lintOutput.includes("0 warnings")) throw new Error(`published lint CLI failed: ${lintOutput}`)
 

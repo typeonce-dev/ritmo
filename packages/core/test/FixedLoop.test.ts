@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { Clock, Debug, FixedLoop, HostClock, Result, Schema } from "@typeonce/ritmo"
 
 const Game = Schema.bind(Schema.fragment({}))
-const Fail = Game.System("LoopIgnored/Fail", {}, () => Result.failure("boom" as const))
+const Fail = Game.System("LoopIgnored/Fail", {}, () => Result.fail("boom" as const))
 const step = Game.Schedule(Fail)
 
 describe("FixedLoop.start", () => {
@@ -22,7 +22,7 @@ describe("FixedLoop.start", () => {
       maxStepsPerFrame: 3,
       update: (step) => {
         steps.push(step)
-        return Result.success(undefined)
+        return Result.succeed(undefined)
       },
       render: (frame) => frames.push(frame),
       onFailure: () => {
@@ -30,7 +30,7 @@ describe("FixedLoop.start", () => {
       }
     })
 
-    expect(driver.ok).toBe(true)
+    expect(driver._tag).toBe("Success")
     tick?.({ deltaMS: 25 })
     tick?.({ deltaMS: 10 })
 
@@ -60,13 +60,13 @@ describe("FixedLoop.start", () => {
       maxStepsPerFrame: 3,
       update: () => {
         updates += 1
-        return updates === 4 ? Result.failure("Paused" as const) : Result.success(undefined)
+        return updates === 4 ? Result.fail("Paused" as const) : Result.succeed(undefined)
       },
       render: (frame) => frames.push(frame),
       onFailure: (failure) => failures.push(failure)
     })
 
-    expect(driver.ok).toBe(true)
+    expect(driver._tag).toBe("Success")
     tick?.({ deltaMS: 100 })
     expect(updates).toBe(3)
     expect(frames[0]?.fixedSteps).toBe(3)
@@ -88,14 +88,14 @@ describe("FixedLoop.start", () => {
       step: Clock.hz(60),
       maxFrameSeconds: 0,
       maxStepsPerFrame: 3,
-      update: () => Result.success(undefined),
+      update: () => Result.succeed(undefined),
       render: () => {},
       onFailure: () => {}
     })
 
     expect(result).toEqual({
-      ok: false,
-      error: {
+      _tag: "Failure",
+      failure: {
         kind: "InvalidFixedLoopOptions",
         field: "maxFrameSeconds",
         reason: "mustBeFiniteAndPositive",
@@ -108,7 +108,7 @@ describe("FixedLoop.start", () => {
 
 describe("ignored tick failures through FixedLoop", () => {
   it("does not report a failure FixedLoop handled (it reads ok and stops)", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).success
     const seen: Array<Debug.FailureIgnoredEvent> = []
     runtime.debug.observe((event) => {
       if (event.type === "failure.ignored") seen.push(event)
@@ -127,7 +127,7 @@ describe("ignored tick failures through FixedLoop", () => {
       render: () => {},
       onFailure: (failure) => failures.push(failure)
     })
-    expect(driver.ok).toBe(true)
+    expect(driver._tag).toBe("Success")
     tick?.({ deltaMS: 10 })
     runtime.debug.checkIgnoredFailures()
     expect(failures).toHaveLength(1)

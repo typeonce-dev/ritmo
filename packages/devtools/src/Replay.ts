@@ -41,7 +41,7 @@
  *
  * // later, in Node:
  * const replay = Replay.session(makeReplaySimulation, Replay.parse(JSON.parse(text)))
- * if (replay.ok) console.log(replay.value.play().text)
+ * if (replay._tag === "Success") console.log(replay.success.play().text)
  * ```
  */
 import type { Clock, HostClock } from "@typeonce/ritmo"
@@ -388,7 +388,7 @@ export type ReplayError =
 
 /** Checks the shape of untrusted replay data (`JSON.parse` output). */
 export const parse = (data: unknown): Result.Result<ReplayFile, ReplayError> => {
-  const invalid = (message: string) => Result.failure<ReplayError>({ _tag: "InvalidReplay", message })
+  const invalid = (message: string) => Result.fail<ReplayError>({ _tag: "InvalidReplay", message })
   if (!isRecord(data) || data["format"] !== "ritmo-replay") return invalid("not a ritmo replay (format)")
   if (data["version"] !== 1) return invalid(`unsupported replay version ${JSON.stringify(data["version"])}`)
   for (const key of ["library", "schema", "schedule", "reason"] as const) {
@@ -400,7 +400,7 @@ export const parse = (data: unknown): Result.Result<ReplayFile, ReplayError> => 
   if (!Array.isArray(data["checkpoints"])) return invalid("checkpoints must be a list")
   if (!isRecord(data["constants"])) return invalid("constants must be an object")
   // The snapshot itself is validated by `restore`, and service values by the systems that read them.
-  return Result.success(data as unknown as ReplayFile)
+  return Result.succeed(data as unknown as ReplayFile)
 }
 
 /**
@@ -476,13 +476,13 @@ export const session = <S extends Schema.Any, Root>(
   }
   const target = make(playback)
   const schedule = target.schedules[file.schedule]
-  if (schedule === undefined) return Result.failure({ _tag: "MissingSchedule", schedule: file.schedule })
+  if (schedule === undefined) return Result.fail({ _tag: "MissingSchedule", schedule: file.schedule })
   const current = schemaHash(target.runtime.debug)
   if (current !== file.schema) {
-    return Result.failure({ _tag: "SchemaMismatch", message: "replay recorded with an older schema", recorded: file.schema, current })
+    return Result.fail({ _tag: "SchemaMismatch", message: "replay recorded with an older schema", recorded: file.schema, current })
   }
   const restored = target.runtime.restore(file.start.snapshot)
-  if (!restored.ok) return Result.failure({ _tag: "RestoreFailed", error: restored.error })
+  if (restored._tag === "Failure") return Result.fail({ _tag: "RestoreFailed", error: restored.failure })
   const replay = Session.make(target.runtime, { schedules: { [file.schedule]: schedule }, hostClock: target.hostClock })
   const send = target.runtime.send as (descriptor: { readonly kind: "event"; readonly name: string; readonly key: symbol }, value: unknown) => void
   const events = new Map(target.runtime.debug.describe().events.map(({ name }) => [name, { kind: "event" as const, name, key: Symbol.for(`ritmo/event/${name}`) }]))
@@ -524,7 +524,7 @@ export const session = <S extends Schema.Any, Root>(
   }
   prepare(ran + 1)
 
-  return Result.success({
+  return Result.succeed({
     session: replay,
     file,
     play,
@@ -543,15 +543,15 @@ export const verify = <S extends Schema.Any, Root>(
   file: ReplayFile
 ): Result.Result<Rendered.Rendered<{ readonly deterministic: boolean; readonly firstDifference: number | undefined; readonly diverged: PlayResult["diverged"] }>, ReplayError> => {
   const first = session(make, file)
-  if (!first.ok) return first
+  if (first._tag === "Failure") return first
   const second = session(make, file)
-  if (!second.ok) return second
-  const played = first.value.play()
-  second.value.play()
-  const ticks = [...first.value.hashes().keys()].sort((left, right) => left - right)
-  const firstDifference = ticks.find((tick) => first.value.hashes().get(tick) !== second.value.hashes().get(tick))
+  if (second._tag === "Failure") return second
+  const played = first.success.play()
+  second.success.play()
+  const ticks = [...first.success.hashes().keys()].sort((left, right) => left - right)
+  const firstDifference = ticks.find((tick) => first.success.hashes().get(tick) !== second.success.hashes().get(tick))
   const deterministic = firstDifference === undefined
-  return Result.success(Rendered.make(
+  return Result.succeed(Rendered.make(
     { deterministic, firstDifference, diverged: played.data.diverged },
     deterministic
       ? `deterministic over ${ticks.length - 1} ticks${played.data.diverged.length === 0 ? ", and matches the recording" : `, but differs from the recording at tick ${played.data.diverged[0]!.tick}`}`
@@ -570,9 +570,9 @@ export const extract = <S extends Schema.Any, Root>(
   range: { readonly from: number; readonly to: number }
 ): Result.Result<ReplayFile, ReplayError> => {
   const opened = session(make, file)
-  if (!opened.ok) return opened
-  opened.value.play({ to: range.from - 1 })
-  const start = opened.value.snapshot()
+  if (opened._tag === "Failure") return opened
+  opened.success.play({ to: range.from - 1 })
+  const start = opened.success.snapshot()
   // Each kept tick carries its sources' values in full, so the extract does not depend on earlier ticks.
   const latest = new Map<string, ReadonlyArray<unknown>>()
   const ticks: Array<TickRecord> = []
@@ -581,9 +581,9 @@ export const extract = <S extends Schema.Any, Root>(
     if (record.tick < range.from || record.tick > range.to) continue
     ticks.push({ tick: record.tick, services: Object.fromEntries(latest), ...(record.sent === undefined ? {} : { sent: record.sent }) })
   }
-  opened.value.play({ to: range.to })
-  const checkpoints = [...opened.value.hashes()].filter(([tick]) => tick >= range.from - 1 && tick <= range.to).map(([tick, hash]) => ({ tick, hash }))
-  return Result.success({
+  opened.success.play({ to: range.to })
+  const checkpoints = [...opened.success.hashes()].filter(([tick]) => tick >= range.from - 1 && tick <= range.to).map(([tick, hash]) => ({ tick, hash }))
+  return Result.succeed({
     ...file,
     reason: `${file.reason} (ticks ${range.from}-${range.to})`,
     start: { tick: range.from - 1, snapshot: start, pendingCommands: 0 },

@@ -513,13 +513,13 @@ export const makeQueryEngine = (world: World) => {
   ): Result.Result<AnyMatch, Query.Query.LookupError> => {
     const record = world.records.get(id)
     if (!record) {
-      return Result.failure(Query.missingEntityError(id))
+      return Result.fail(Query.missingEntityError(id))
     }
     const state = stateOf(query)
     if (!matchesStructure(state, record) || !matchesFilters(state, record, since)) {
-      return Result.failure(Query.queryMismatchError(id))
+      return Result.fail(Query.queryMismatchError(id))
     }
-    return Result.success(matchFor(state, record))
+    return Result.succeed(matchFor(state, record))
   }
 
   return { each, get }

@@ -91,7 +91,7 @@ export interface Handle<S extends Schema.Any = Schema.Any, Root = unknown> {
    */
   readonly observeHost: (listener: (event: HostEvent<S, Root>) => void) => () => void
   /**
-   * Reports the last failed tick result if nobody read its `ok`, as a
+   * Reports the last failed tick result if nobody read its `_tag`, as a
    * `failure.ignored` event (to `observe` and `observeHost` listeners), with
    * `when: "session-end"`. Call it when a session ends; the start of the
    * next tick checks the same with `when: "next-tick"`. Emits nothing to a
@@ -638,7 +638,7 @@ export type HostEvent<S extends Schema.Any = Schema.Any, Root = unknown> =
   | FailureIgnoredEvent
 
 /**
- * A failed `tick` / `tryTick` result whose `ok` nobody read: the failure
+ * A failed `tick` / `tryTick` result whose `_tag` nobody read: the failure
  * went unnoticed, and the systems after the failing one did not run that
  * tick. Found at the start of the next tick (`when: "next-tick"`) or by
  * `checkIgnoredFailures()` (`when: "session-end"`). Debug runtimes only.

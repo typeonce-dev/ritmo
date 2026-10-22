@@ -23,11 +23,11 @@ export const UpdateFocusedCollectableSystem = Game.System(
   ({ queries, resources }) =>
     {
       const player = queries.player.singleOptional()
-      if (!player.ok || !player.value) {
+      if (player._tag === "Failure" || !player.success) {
         return
       }
 
-      const playerPosition = player.value.data.position.get()
+      const playerPosition = player.success.data.position.get()
       let current: import("../schema.ts").FocusedCollectableValue["current"] = null
       let label: string | null = null
       let bestDistanceSquared = Number.POSITIVE_INFINITY
@@ -81,12 +81,12 @@ export const CollectFocusedCollectableSystem = Game.System(
       }
 
       const result = queries.collectables.getHandle(focused.current)
-      if (!result.ok) {
+      if (result._tag === "Failure") {
         resources.focused.set(makeEmptyFocusedCollectable())
         return
       }
 
-      commands.despawn(result.value.entity)
+      commands.despawn(result.success.entity)
       resources.collectedCount.update((value) => value + 1)
       resources.focused.set(makeEmptyFocusedCollectable())
     }

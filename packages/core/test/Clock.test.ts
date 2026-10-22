@@ -29,8 +29,8 @@ const make = () => {
     resources: { Time: Clock.start(step), Slow: Clock.start(Clock.hz(10)) },
     machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing"))
   })
-  if (!made.ok) throw new Error("clock values are valid")
-  return made.value
+  if (made._tag === "Failure") throw new Error("clock values are valid")
+  return made.success
 }
 
 describe("Clock", () => {
@@ -75,11 +75,11 @@ describe("Clock", () => {
     expect(Clock.steps(Clock.duration(step, 0.025))).toBe(2)
     expect(Clock.steps(Clock.duration(step, 0.02))).toBe(1)
     expect(Clock.steps(Clock.duration(Clock.hz(4), 0.25))).toBe(1)
-    expect(Clock.durationRaw(step, 0.5)).toEqual(Result.success({ kind: "ClockDuration", steps: 30, hz: 60 }))
-    expect(Clock.durationRaw(step, 0.001)).toEqual(Result.failure({ _tag: "InvalidDuration", seconds: 0.001, message: "0.001s is shorter than one step (1/60s)" }))
-    expect(Clock.durationRaw(step, -1).ok).toBe(false)
-    expect(Clock.durationRaw(step, Number.NaN).ok).toBe(false)
-    expect(Clock.durationRaw(step, Number.MAX_VALUE).ok).toBe(false)
+    expect(Clock.durationRaw(step, 0.5)).toEqual(Result.succeed({ kind: "ClockDuration", steps: 30, hz: 60 }))
+    expect(Clock.durationRaw(step, 0.001)).toEqual(Result.fail({ _tag: "InvalidDuration", seconds: 0.001, message: "0.001s is shorter than one step (1/60s)" }))
+    expect(Clock.durationRaw(step, -1)._tag).toBe("Failure")
+    expect(Clock.durationRaw(step, Number.NaN)._tag).toBe("Failure")
+    expect(Clock.durationRaw(step, Number.MAX_VALUE)._tag).toBe("Failure")
     expect(Clock.steps(Clock.duration(Clock.hz(10000000), 1e-7))).toBe(1)
   })
 
@@ -100,13 +100,13 @@ describe("Clock", () => {
     const FastTime = Clock.resource("ClockRun/Time", Clock.hz(120))
     const Fast = Schema.bind(Schema.fragment({ resources: { Time: FastTime, Slow } }))
     const made = Fast.Runtime.make({ services: Fast.Runtime.services(), resources: { Time: Clock.start(Clock.hz(120)), Slow: Clock.start(Clock.hz(10)) } })
-    if (!made.ok) throw new Error("clock values are valid")
-    expect(made.value.restore(saved)).toEqual(Result.failure({
+    if (made._tag === "Failure") throw new Error("clock values are valid")
+    expect(made.success.restore(saved)).toEqual(Result.fail({
       _tag: "InvalidResource",
       name: "ClockRun/Time",
       error: { _tag: "InvalidTime", message: "saved at 60 Hz, this game runs at 120 Hz" }
     }))
-    expect(runtime.restore(saved).ok).toBe(true)
+    expect(runtime.restore(saved)._tag).toBe("Success")
   })
 
   it("is not a component or other plain resource", () => {

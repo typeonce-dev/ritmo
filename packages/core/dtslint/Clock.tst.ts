@@ -104,8 +104,8 @@ describe("Clock.system", () => {
     resources: { Time: Clock.start(step), Slow: Clock.start(Clock.hz(10)), Paused: false },
     machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing"))
   })
-  if (!made.ok) throw new Error("unreachable")
-  const runtime = made.value
+  if (made._tag === "Failure") throw new Error("unreachable")
+  const runtime = made.success
 
   it("is a writer of its resource for thisTick reads", () => {
     Game.System("ClockTypes/ReadTyped", { resources: { time: Game.System.readResource(Time) } }, ({ resources }) => {
@@ -118,8 +118,8 @@ describe("Clock.system", () => {
 
   it("needs the machines its hold conditions read", () => {
     const madeBare = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Time: Clock.start(step), Slow: Clock.start(Clock.hz(10)), Paused: false } })
-    if (!madeBare.ok) throw new Error("unreachable")
-    const bare = madeBare.value
+    if (madeBare._tag === "Failure") throw new Error("unreachable")
+    const bare = madeBare.success
     // @ts-expect-error __runtimeRequirementError__: "Missing machine"; readonly __requirement__: "ClockTypes/Flow"
     bare.tick(Game.Schedule(AdvanceTime))
   })

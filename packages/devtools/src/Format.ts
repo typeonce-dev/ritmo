@@ -308,7 +308,7 @@ export type LineKind =
 export const ignoredFailure = (event: Debug.FailureIgnoredEvent, options: ValueOptions = {}): string => {
   const who = event.system === undefined ? `${event.schedule} did not run` : `${event.system} failed`
   // A system failure shows what the system returned; anything else (missing requirements) as it is.
-  const error = typeof event.error === "object" && event.error !== null && (event.error as { readonly kind?: unknown }).kind === "SystemFailure"
+  const error = typeof event.error === "object" && event.error !== null && (event.error as { readonly _tag?: unknown })._tag === "SystemFailure"
     ? (event.error as { readonly error: unknown }).error
     : event.error
   const later = `${event.skipped.length} later ${event.skipped.length === 1 ? "system" : "systems"} did not run`

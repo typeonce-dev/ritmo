@@ -6,7 +6,7 @@ const Kind = Descriptor.Component<"wall" | "pickup">()("Immutable/Kind", { immut
 
 const Game = Schema.bind(Schema.fragment({ components: { Position, Kind } }))
 
-const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() }).value
+const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() }).success
 
 const Spawn = Game.System("Immutable/Spawn", {
   commands: Game.System.commands(Game.System.spawns(Position, Kind))

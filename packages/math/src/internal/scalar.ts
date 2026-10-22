@@ -4,8 +4,8 @@ import type * as Scalar from "../Scalar.ts"
 
 const finiteBrand = Brand.refine<Scalar.Finite, number, Scalar.Error>((value) =>
   Number.isFinite(value)
-    ? Result.success(value as Scalar.Finite)
-    : Result.failure({
+    ? Result.succeed(value as Scalar.Finite)
+    : Result.fail({
         tag: "Scalar/NotFinite",
         value
       })
@@ -13,13 +13,13 @@ const finiteBrand = Brand.refine<Scalar.Finite, number, Scalar.Error>((value) =>
 
 const nonNegativeBrand = Brand.refine<Scalar.NonNegative, number, Scalar.Error>((value) => {
   const finite = finiteBrand.result(value)
-  if (!finite.ok) {
+  if (finite._tag === "Failure") {
     return finite
   }
 
   return value >= 0
-    ? Result.success(value as Scalar.NonNegative)
-    : Result.failure({
+    ? Result.succeed(value as Scalar.NonNegative)
+    : Result.fail({
         tag: "Scalar/Negative",
         value
       })
@@ -27,13 +27,13 @@ const nonNegativeBrand = Brand.refine<Scalar.NonNegative, number, Scalar.Error>(
 
 const positiveBrand = Brand.refine<Scalar.Positive, number, Scalar.Error>((value) => {
   const finite = finiteBrand.result(value)
-  if (!finite.ok) {
+  if (finite._tag === "Failure") {
     return finite
   }
 
   return value > 0
-    ? Result.success(value as Scalar.Positive)
-    : Result.failure({
+    ? Result.succeed(value as Scalar.Positive)
+    : Result.fail({
         tag: "Scalar/NonPositive",
         value
       })
@@ -67,14 +67,14 @@ export const inverseLerp = (
   value: number
 ): Result.Result<Scalar.Finite, Scalar.InterpolationError> => {
   if (start === end) {
-    return Result.failure({
+    return Result.fail({
       tag: "Scalar/ZeroRange",
       start,
       end
     })
   }
 
-  return Result.success(((value - start) / (end - start)) as Scalar.Finite)
+  return Result.succeed(((value - start) / (end - start)) as Scalar.Finite)
 }
 
 export const remap = (
@@ -85,9 +85,9 @@ export const remap = (
   outputEnd: number
 ): Result.Result<Scalar.Finite, Scalar.InterpolationError> => {
   const amount = inverseLerp(inputStart, inputEnd, value)
-  if (!amount.ok) {
+  if (amount._tag === "Failure") {
     return amount
   }
 
-  return Result.success(lerp(outputStart, outputEnd, amount.value))
+  return Result.succeed(lerp(outputStart, outputEnd, amount.success))
 }

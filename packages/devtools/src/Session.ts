@@ -537,8 +537,8 @@ export const make = <
         stop = { reason: "ignored-failure", ...found }
         break
       }
-      if (!result.ok) {
-        const error = describeError(result.error)
+      if (result._tag === "Failure") {
+        const error = describeError(result.failure)
         stop = error.kind === "MissingRuntimeRequirements"
           ? { reason: "missingRequirements", frame, requirements: error.requirements }
           : error.kind === "TickOrderViolation"

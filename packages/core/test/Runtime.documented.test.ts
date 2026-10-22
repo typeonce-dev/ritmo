@@ -8,9 +8,9 @@ const Gems = Descriptor.ConstructedResource(Decode.number)("Documented/Gems")
 const Game = Schema.bind(Schema.fragment({ components: { Count }, events: { Ping }, resources: { Gold, Gems } }))
 const Flow = Game.StateMachine("Documented/Flow", ["A", "B"] as const)
 
-const unwrap = <T>(result: { readonly ok: true; readonly value: T } | { readonly ok: false }): T => {
-  if (!result.ok) throw new Error("expected success")
-  return result.value
+const unwrap = <T>(result: { readonly _tag: "Success"; readonly success: T } | { readonly _tag: "Failure" }): T => {
+  if (result._tag === "Failure") throw new Error("expected success")
+  return result.success
 }
 const makeRuntime = () => unwrap(Game.Runtime.make({
   services: Game.Runtime.services(),
@@ -63,7 +63,7 @@ describe("documented semantics", () => {
     const saved = JSON.parse(JSON.stringify(runtime.snapshot()))
     delete saved.resources["Documented/Gems"]
     runtime.tick(Game.Schedule(Gems2))
-    expect(runtime.restore(saved)).toEqual({ ok: true, value: undefined })
+    expect(runtime.restore(saved)).toEqual({ _tag: "Success", success: undefined })
     expect(runtime.inspect(Game.Inspector("Documented/Read", { resources: { gems: Game.System.readResource(Gems) } }, ({ resources }) => resources.gems.get()))).toBe(7)
   })
 })

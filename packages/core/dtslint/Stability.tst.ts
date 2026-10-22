@@ -13,7 +13,7 @@ const Failing = Game.System(
   { resources: { value: Game.System.writeResource(Value) } },
   ({ resources }) => {
     resources.value.set(1)
-    return Result.failure("Rejected" as const)
+    return Result.fail("Rejected" as const)
   }
 )
 
@@ -21,7 +21,7 @@ const schedule = Game.Schedule(Failing)
 const runtime = Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { Value: 0 }
-}).value
+}).success
 
 describe("stability types", () => {
   it("carries exact system failures through schedules and runtimes", () => {
@@ -37,10 +37,10 @@ describe("stability types", () => {
       ({ resources }) => {
         const value = resources.value.get()
         if (value < 0) {
-          return Result.failure("Negative" as const)
+          return Result.fail("Negative" as const)
         }
         if (value === 0) {
-          return Result.failure("Empty" as const)
+          return Result.fail("Empty" as const)
         }
         resources.value.set(value - 1)
       }
@@ -56,7 +56,7 @@ describe("stability types", () => {
       { queries: { positions: Game.Query({ selection: { position: Game.Query.read(Position) } }) } },
       ({ queries }) => {
         const position = queries.positions.single()
-        if (!position.ok) return position
+        if (position._tag === "Failure") return position
       }
     )
     expect(runtime.tick(Game.Schedule(Single))).type.toBe<
@@ -65,7 +65,7 @@ describe("stability types", () => {
   })
 
   it("treats a system that returns only successes as infallible", () => {
-    const Succeeds = Game.System("StabilityTypes/Succeeds", {}, () => Result.success(1))
+    const Succeeds = Game.System("StabilityTypes/Succeeds", {}, () => Result.succeed(1))
     expect(runtime.tick(Game.Schedule(Succeeds))).type.toBe<Result.Result<void, never>>()
   })
 
@@ -149,7 +149,7 @@ describe("stability types", () => {
     const load = Game.System(
       "StabilityTypes/LoadLevel",
       {},
-      () => Result.failure("LoadFailed" as const)
+      () => Result.fail("LoadFailed" as const)
     )
     const transitions = Game.Schedule.transitions(
       Game.Schedule.onEnter(Mode, "Playing", [load])
@@ -162,7 +162,7 @@ describe("stability types", () => {
       services: Game.Runtime.services(),
       resources: { Value: 0 },
       machines: Game.Runtime.machines(Game.Runtime.machine(Mode, "Menu"))
-    }).value
+    }).success
 
     expect(transitionRuntime.tick(transitionSchedule)).type.toBe<
       Result.Result<void, System.SystemFailure<"StabilityTypes/LoadLevel", "LoadFailed">>

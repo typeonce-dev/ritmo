@@ -14,7 +14,7 @@ const Game = Schema.bind(Schema.fragment({ components: { Position }, resources: 
 
 const Spawn = Game.System("Replay/Spawn", { commands: Game.System.commands(Game.System.spawns(Position)) }, ({ commands }) => {
   const draft = Game.Command.spawn(Game.Command.entryRaw(Position, { x: 0 }))
-  if (draft.ok) commands.spawn(draft.value)
+  if (draft._tag === "Success") commands.spawn(draft.success)
 })
 const Move = Game.System("Replay/Move", {
   queries: { movers: Game.Query({ selection: { position: Game.Query.write(Position) } }) },
@@ -42,9 +42,9 @@ const live = (dxs: ReadonlyArray<number>) => {
     resources: { Steps: 0 },
     debug: { hostClock }
   })
-  if (!made.ok) throw new Error("fixture")
-  made.value.tick(setup)
-  return made.value
+  if (made._tag === "Failure") throw new Error("fixture")
+  made.success.tick(setup)
+  return made.success
 }
 
 /** The game built for a replay: the recorded input instead of the live one. */
@@ -54,8 +54,8 @@ const make = (playback: Replay.Playback) => {
     resources: { Steps: 0 },
     debug: { hostClock }
   })
-  if (!made.ok) throw new Error("fixture")
-  return { runtime: made.value, schedules: { update }, hostClock }
+  if (made._tag === "Failure") throw new Error("fixture")
+  return { runtime: made.success, schedules: { update }, hostClock }
 }
 
 const record = (dxs: ReadonlyArray<number>, options: { readonly keep?: number; readonly every?: number } = {}) => {
@@ -84,12 +84,12 @@ describe("Replay", () => {
     expect(file.ticks.find((record) => record.tick === 5)?.services).toBeUndefined()
 
     const opened = Replay.session(make, file)
-    if (!opened.ok) throw new Error(JSON.stringify(opened.error))
-    const played = opened.value.play()
+    if (opened._tag === "Failure") throw new Error(JSON.stringify(opened.failure))
+    const played = opened.success.play()
     expect(played.data.diverged).toEqual([])
     expect(played.text).toContain("checkpoints match")
-    expect(positionOf(opened.value.snapshot())).toEqual(positionOf(runtime.snapshot()))
-    expect(positionOf(opened.value.snapshot())).toEqual({ x: (1 + 2 + 3 + 5) * 2 + 10 })
+    expect(positionOf(opened.success.snapshot())).toEqual(positionOf(runtime.snapshot()))
+    expect(positionOf(opened.success.snapshot())).toEqual({ x: (1 + 2 + 3 + 5) * 2 + 10 })
   })
 
   it("keeps only the last seconds, from the newest snapshot before them", () => {
@@ -101,8 +101,8 @@ describe("Replay", () => {
     // The input never changed after tick 1, yet the window carries it.
     expect(file.ticks[0]!.services).toEqual({ "Replay/Input": [{ dx: 1 }] })
     const opened = Replay.session(make, file)
-    if (!opened.ok) throw new Error(JSON.stringify(opened.error))
-    const played = opened.value.play()
+    if (opened._tag === "Failure") throw new Error(JSON.stringify(opened.failure))
+    const played = opened.success.play()
     expect(played.data.run.stop).toEqual({ reason: "completed" })
     expect(played.data.diverged).toEqual([])
   })
@@ -111,16 +111,16 @@ describe("Replay", () => {
     const { runtime, recorder } = record([1, 1, 1])
     for (let step = 0; step < 3; step++) runtime.tick(update)
     const opened = Replay.session(make, recorder.save("explain"))
-    if (!opened.ok) throw new Error("open")
-    opened.value.play()
-    expect(opened.value.session.whyResource(Steps).text).toContain("Replay/Move")
+    if (opened._tag === "Failure") throw new Error("open")
+    opened.success.play()
+    expect(opened.success.session.whyResource(Steps).text).toContain("Replay/Move")
   })
 
   it("finds nondeterminism by replaying twice", () => {
     const { runtime, recorder } = record([1, 1, 1, 1])
     for (let step = 0; step < 4; step++) runtime.tick(update)
     const file = recorder.save("nondeterministic")
-    expect(Replay.verify(make, file)).toMatchObject({ ok: true, value: { data: { deterministic: true, diverged: [] } } })
+    expect(Replay.verify(make, file)).toMatchObject({ _tag: "Success", success: { data: { deterministic: true, diverged: [] } } })
 
     let calls = 0
     const Noise = Game.System("Replay/Noise", { resources: { steps: Game.System.writeResource(Steps) } }, ({ resources }) => {
@@ -130,7 +130,7 @@ describe("Replay", () => {
     })
     const noisy = (playback: Replay.Playback) => ({ ...make(playback), schedules: { update: Game.Schedule(Move, Noise) } })
     const verdict = Replay.verify(noisy, file)
-    expect(verdict.ok && verdict.value.data.deterministic).toBe(false)
+    expect(verdict._tag === "Success" && verdict.success.data.deterministic).toBe(false)
   })
 
   it("extracts a range into a small replay that plays from its own start", () => {
@@ -138,23 +138,23 @@ describe("Replay", () => {
     for (let step = 0; step < 6; step++) runtime.tick(update)
     const file = recorder.save("extract")
     const extracted = Replay.extract(make, file, { from: 4, to: 5 })
-    if (!extracted.ok) throw new Error("extract")
-    expect(extracted.value.start.tick).toBe(3)
-    expect(positionOf(extracted.value.start.snapshot)).toEqual({ x: (1 + 2 + 3) * 2 })
-    expect(extracted.value.ticks.map((record) => record.tick)).toEqual([4, 5])
-    const opened = Replay.session(make, JSON.parse(JSON.stringify(extracted.value)))
-    if (!opened.ok) throw new Error("open extract")
-    expect(opened.value.play().data.diverged).toEqual([])
-    expect(positionOf(opened.value.snapshot())).toEqual({ x: (1 + 2 + 3 + 4 + 5) * 2 })
+    if (extracted._tag === "Failure") throw new Error("extract")
+    expect(extracted.success.start.tick).toBe(3)
+    expect(positionOf(extracted.success.start.snapshot)).toEqual({ x: (1 + 2 + 3) * 2 })
+    expect(extracted.success.ticks.map((record) => record.tick)).toEqual([4, 5])
+    const opened = Replay.session(make, JSON.parse(JSON.stringify(extracted.success)))
+    if (opened._tag === "Failure") throw new Error("open extract")
+    expect(opened.success.play().data.diverged).toEqual([])
+    expect(positionOf(opened.success.snapshot())).toEqual({ x: (1 + 2 + 3 + 4 + 5) * 2 })
   })
 
   it("rejects a replay recorded with another schema, and data that is not a replay", () => {
     const { runtime, recorder } = record([1])
     runtime.tick(update)
     const file = recorder.save("schema")
-    expect(Replay.session(make, { ...file, schema: "00000000" })).toMatchObject({ ok: false, error: { _tag: "SchemaMismatch", message: "replay recorded with an older schema" } })
-    expect(Replay.parse({ format: "other" })).toMatchObject({ ok: false, error: { _tag: "InvalidReplay" } })
-    expect(Replay.parse(JSON.parse(JSON.stringify(file))).ok).toBe(true)
+    expect(Replay.session(make, { ...file, schema: "00000000" })).toMatchObject({ _tag: "Failure", failure: { _tag: "SchemaMismatch", message: "replay recorded with an older schema" } })
+    expect(Replay.parse({ format: "other" })).toMatchObject({ _tag: "Failure", failure: { _tag: "InvalidReplay" } })
+    expect(Replay.parse(JSON.parse(JSON.stringify(file)))._tag).toBe("Success")
   })
 
   it("saves by itself when an invariant breaks, once until it holds again, and when a tick fails", () => {
@@ -164,7 +164,7 @@ describe("Replay", () => {
     for (let step = 0; step < 5; step++) runtime.tick(update)
     expect(sink.files.map((file) => file.reason)).toEqual(["invariant far away broke at tick 3: x above 20"])
 
-    const failing = Game.Schedule(Game.System("Replay/Fail", {}, () => Result.failure("Broken" as const)))
+    const failing = Game.Schedule(Game.System("Replay/Fail", {}, () => Result.fail("Broken" as const)))
     const failures = Replay.memorySink()
     const quiet = live([])
     Replay.recorder(quiet, { schedule: failing, name: "failing", keep: 10, step: Clock.hz(1), sink: failures, hostClock, saveOn: { failure: true } })

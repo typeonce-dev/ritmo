@@ -8,7 +8,7 @@ describe("FixedLoop.start", () => {
       step: Clock.hz(60),
       maxFrameSeconds: 0.25,
       maxStepsPerFrame: 5,
-      update: () => Result.failure("GameOver" as const),
+      update: () => Result.fail("GameOver" as const),
       render: (frame) => {
         expect(frame.alpha).type.toBe<number>()
       },
@@ -26,7 +26,7 @@ describe("FixedLoop.start", () => {
       step: 1 / 60,
       maxFrameSeconds: 0.25,
       maxStepsPerFrame: 5,
-      update: () => Result.success(undefined),
+      update: () => Result.succeed(undefined),
       render: () => {},
       onFailure: () => {}
     })

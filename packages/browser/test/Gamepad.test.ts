@@ -218,9 +218,9 @@ describe("Gamepad.recording", () => {
     seen.push(live.snapshot())
 
     const parsed = Gamepad.parseTimeline(JSON.parse(JSON.stringify(live.timeline())))
-    expect(parsed.ok).toBe(true)
-    if (!parsed.ok) return
-    const replay = Gamepad.scripted(bindings, parsed.value)
+    expect(parsed._tag).toBe("Success")
+    if (parsed._tag === "Failure") return
+    const replay = Gamepad.scripted(bindings, parsed.success)
     for (const snapshot of seen) {
       const { id: _, ...rest } = replay.snapshot()
       const { id: __, ...expected } = snapshot
@@ -231,11 +231,11 @@ describe("Gamepad.recording", () => {
 
 describe("Gamepad.parseTimeline", () => {
   it("names the offending value", () => {
-    expect(Gamepad.parseTimeline([{ frame: 0, press: ["jump"] }])).toMatchObject({ ok: false, error: { path: "[0].press[0]" } })
-    expect(Gamepad.parseTimeline([{ frame: -1 }])).toMatchObject({ ok: false, error: { path: "[0].frame" } })
-    expect(Gamepad.parseTimeline([{ frame: 0, left: { x: 2, y: 0 } }])).toMatchObject({ ok: false, error: { path: "[0].left" } })
-    expect(Gamepad.parseTimeline([{ frame: 0, rightTrigger: 2 }])).toMatchObject({ ok: false, error: { path: "[0].rightTrigger" } })
-    expect(Gamepad.parseTimeline({})).toMatchObject({ ok: false, error: { path: "" } })
+    expect(Gamepad.parseTimeline([{ frame: 0, press: ["jump"] }])).toMatchObject({ _tag: "Failure", failure: { path: "[0].press[0]" } })
+    expect(Gamepad.parseTimeline([{ frame: -1 }])).toMatchObject({ _tag: "Failure", failure: { path: "[0].frame" } })
+    expect(Gamepad.parseTimeline([{ frame: 0, left: { x: 2, y: 0 } }])).toMatchObject({ _tag: "Failure", failure: { path: "[0].left" } })
+    expect(Gamepad.parseTimeline([{ frame: 0, rightTrigger: 2 }])).toMatchObject({ _tag: "Failure", failure: { path: "[0].rightTrigger" } })
+    expect(Gamepad.parseTimeline({})).toMatchObject({ _tag: "Failure", failure: { path: "" } })
   })
 })
 

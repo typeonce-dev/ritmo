@@ -7,7 +7,7 @@ const Scratch = Descriptor.TransientComponent<{ value: number }>()("Repeat/Scrat
 const Game = Schema.bind(Schema.fragment({ resources: { Count }, components: { Scratch } }))
 const options = { schedule: "update", frames: 4, hostClock: HostClock.test() } as const
 const factory = (next: (value: number) => number) => ({ hostClock }: Determinism.Context) => {
-  const runtime = Game.Runtime.make({ resources: { Count: 0 }, services: Game.Runtime.services(), debug: { hostClock } }).value
+  const runtime = Game.Runtime.make({ resources: { Count: 0 }, services: Game.Runtime.services(), debug: { hostClock } }).success
   const update = Game.Schedule(Game.System("Repeat/Advance", { resources: { count: Game.System.writeResource(Count) } }, ({ resources }) => {
     resources.count.update(next)
   }))
@@ -29,7 +29,7 @@ describe("Determinism.check", () => {
   it("checks the initial world too, without ticking", () => {
     let counter = 0
     const result = Determinism.check(({ hostClock }) => ({
-      runtime: Game.Runtime.make({ resources: { Count: ++counter }, services: Game.Runtime.services(), debug: { hostClock } }).value,
+      runtime: Game.Runtime.make({ resources: { Count: ++counter }, services: Game.Runtime.services(), debug: { hostClock } }).success,
       schedules: { update: Game.Schedule() }
     }), { ...options, frames: 0 })
     expect(result).toMatchObject({ ok: false, frame: 0, reason: "difference", after: undefined })
@@ -38,7 +38,7 @@ describe("Determinism.check", () => {
   it("includes transient components and names a deferred spawn", () => {
     let counter = 0
     const result = Determinism.check(({ hostClock }) => {
-      const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
+      const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).success
       const Spawn = Game.System("Repeat/Spawn", { commands: Game.System.commands(Game.System.spawns(Scratch)) }, ({ commands }) => {
         commands.spawn(Game.Command.spawn([Scratch, { value: ++counter }]))
       })
@@ -55,7 +55,7 @@ describe("Determinism.check", () => {
     const shared: { map: Map<string, number>; self?: unknown } = { map: new Map() }
     shared.self = shared
     const result = Determinism.check(({ hostClock }) => {
-      const runtime = Mutable.Runtime.make({ services: Mutable.Runtime.services(), resources: { Data: shared }, debug: { hostClock } }).value
+      const runtime = Mutable.Runtime.make({ services: Mutable.Runtime.services(), resources: { Data: shared }, debug: { hostClock } }).success
       const Write = Mutable.System("Repeat/Mutate", { resources: { data: Mutable.System.writeResource(Data) } }, () => {
         shared.map.set("value", ++counter)
       })
@@ -72,9 +72,9 @@ describe("Determinism.check", () => {
     const make = (throws: boolean) => ({ hostClock }: Determinism.Context) => {
       const Fail = Game.System("Repeat/Fail", {}, () => {
         if (throws) throw new Error("broken")
-        return Result.failure("refused")
+        return Result.fail("refused")
       })
-      return { runtime: Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value, schedules: { update: Game.Schedule(Fail) } }
+      return { runtime: Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).success, schedules: { update: Game.Schedule(Fail) } }
     }
     expect(Determinism.check(make(false), options)).toMatchObject({ ok: false, frame: 1, reason: "failure", run: "first" })
     expect(Determinism.check(make(true), options)).toMatchObject({ ok: false, frame: 1, reason: "defect", run: "first" })

@@ -20,7 +20,7 @@ describe("RenderSync after its removal stream dropped entries", () => {
       create: ({ entity }) => ({ id: entity }),
       apply: () => {}
     })
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Nodes, registry)) }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Nodes, registry)) }).success
     // More entities than a stream keeps, plus one that stays.
     const count = Runtime.streamCapacity + 10
     const Spawn = Game.System("Lagged/Spawn", { commands: Game.System.commands(Game.System.spawns(Sprite, Position)) }, ({ commands }) => {

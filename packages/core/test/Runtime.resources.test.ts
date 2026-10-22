@@ -40,23 +40,23 @@ const makeRuntime = () => {
     }
   })
 
-  if (!runtime.ok) {
+  if (runtime._tag === "Failure") {
     throw new Error("expected constructed runtime test fixture to be valid")
   }
 
-  return runtime.value
+  return runtime.success
 }
 
 describe("Runtime resources", () => {
   it("always returns a Result from make, whatever resources the value turns out to hold", () => {
     const plain = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Counter: 0 } })
-    expect(plain.ok).toBe(true)
+    expect(plain._tag).toBe("Success")
     // Typed as possibly holding a constructed resource, holding none at runtime.
     const maybe: { readonly Viewport?: { readonly width: number; readonly height: number } } = {}
     const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: maybe })
-    expect(made.ok).toBe(true)
-    if (!made.ok) throw new Error("expected a runtime")
-    expect(typeof made.value.tick).toBe("function")
+    expect(made._tag).toBe("Success")
+    if (made._tag === "Failure") throw new Error("expected a runtime")
+    expect(typeof made.success.tick).toBe("function")
   })
 
   it("reads initial resource seeding on the first update", () => {
@@ -129,25 +129,25 @@ describe("Runtime resources", () => {
             width: Number.NaN,
             height: 360
           })
-          expect(failedSet.ok).toBe(false)
+          expect(failedSet._tag).toBe("Failure")
 
           const successfulSet = resources.viewport.setRaw({
             width: 800,
             height: 450
           })
-          expect(successfulSet).toEqual(Result.success(undefined))
+          expect(successfulSet).toEqual(Result.succeed(undefined))
 
           const failedUpdate = resources.camera.updateRaw(() => ({
             x: Number.POSITIVE_INFINITY,
             y: 4
           }))
-          expect(failedUpdate.ok).toBe(false)
+          expect(failedUpdate._tag).toBe("Failure")
 
           const successfulUpdate = resources.camera.updateRaw((camera) => ({
             x: camera.x + 5,
             y: camera.y + 7
           }))
-          expect(successfulUpdate).toEqual(Result.success(undefined))
+          expect(successfulUpdate).toEqual(Result.succeed(undefined))
         }
     )
 
@@ -171,12 +171,12 @@ describe("Runtime resources", () => {
       }
     })
 
-    if (!runtime.ok) {
+    if (runtime._tag === "Failure") {
       throw new Error("expected schema-key constructed runtime seeds to be valid")
     }
 
-    expect(readResourceValue(runtime.value, schema, Time)).toBe(0.25)
-    expect(readResourceValue(runtime.value, schema, Phase)).toBe("Running")
+    expect(readResourceValue(runtime.success, schema, Time)).toBe(0.25)
+    expect(readResourceValue(runtime.success, schema, Phase)).toBe("Running")
   })
 
   it("make returns the runtime directly when no provided resource can fail", () => {
@@ -187,7 +187,7 @@ describe("Runtime resources", () => {
         DeltaTime: 0.75,
         Counter: 2
       }
-    }).value
+    }).success
 
     expect(readResourceValue(runtime, schema, Counter)).toBe(2)
   })
@@ -211,13 +211,13 @@ describe("Runtime resources", () => {
       }
     })
 
-    expect(runtime.ok).toBe(false)
-    if (runtime.ok) {
+    expect(runtime._tag).toBe("Failure")
+    if (runtime._tag === "Success") {
       return
     }
 
-    expect(runtime.error.resources.Viewport).toBeDefined()
-    expect(runtime.error.resources.Camera).toBeDefined()
+    expect(runtime.failure.resources.Viewport).toBeDefined()
+    expect(runtime.failure.resources.Camera).toBeDefined()
   })
 
   it("lets one system read one resource and write another in the same update", () => {
@@ -248,13 +248,13 @@ describe("Runtime resources", () => {
       }
     })
 
-    if (!runtime.ok) {
+    if (runtime._tag === "Failure") {
       throw new Error("expected syncFromPhase runtime seeds to be valid")
     }
 
-    runtime.value.tick(Schedule.Schedule(syncFromPhase))
+    runtime.success.tick(Schedule.Schedule(syncFromPhase))
 
-    expect(readResourceValue(runtime.value, schema, Counter)).toBe(1)
+    expect(readResourceValue(runtime.success, schema, Counter)).toBe(1)
   })
 
   it("reads a provided service during schedule execution", () => {
@@ -295,11 +295,11 @@ describe("Runtime resources", () => {
       }
     })
 
-    if (!runtime.ok) {
+    if (runtime._tag === "Failure") {
       throw new Error("expected logger runtime seeds to be valid")
     }
 
-    runtime.value.tick(Schedule.Schedule(logTime))
+    runtime.success.tick(Schedule.Schedule(logTime))
 
     expect(seen).toEqual(["dt=0.25"])
   })
@@ -342,11 +342,11 @@ describe("Runtime resources", () => {
       }
     })
 
-    if (!runtime.ok) {
+    if (runtime._tag === "Failure") {
       throw new Error("expected prefixed logger runtime seeds to be valid")
     }
 
-    runtime.value.tick(Schedule.Schedule(logTime))
+    runtime.success.tick(Schedule.Schedule(logTime))
 
     expect(seen).toEqual(["dt=0.125"])
   })

@@ -20,9 +20,9 @@ export default defineRule({
     },
     messages: {
       tick:
-        "The result of `{{call}}(...)` is dropped. A system that fails stops the tick and returns the failure here, so it goes unnoticed and the world is left half-updated. Check it: `const ran = {{call}}(...); if (!ran.ok) ...` (`ran.error` names the system and why). Write `void {{call}}(...)` to ignore it on purpose.",
+        "The result of `{{call}}(...)` is dropped. A system that fails stops the tick and returns the failure here, so it goes unnoticed and the world is left half-updated. Check it: `const ran = {{call}}(...); if (ran._tag === \"Failure\") ...` (`ran.failure` names the system and why). Write `void {{call}}(...)` to ignore it on purpose.",
       restore:
-        "The result of `{{call}}(...)` is dropped. A save that fails to load leaves the previous world in place, unnoticed. Check it: `const restored = {{call}}(data); if (!restored.ok) ...` (`restored.error` says what was invalid). Write `void {{call}}(...)` to ignore it on purpose."
+        "The result of `{{call}}(...)` is dropped. A save that fails to load leaves the previous world in place, unnoticed. Check it: `const restored = {{call}}(data); if (restored._tag === \"Failure\") ...` (`restored.failure` says what was invalid). Write `void {{call}}(...)` to ignore it on purpose."
     },
     schema: [
       {

@@ -9,8 +9,8 @@ const State = Game.Inspector("RandomResource/State", { resources: { rng: Game.Sy
 
 const makeRuntime = () => {
   const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Rng: Random.seed(42) } })
-  if (!made.ok) throw new Error("expected a runtime")
-  return made.value
+  if (made._tag === "Failure") throw new Error("expected a runtime")
+  return made.success
 }
 
 describe("Random as a resource", () => {
@@ -32,13 +32,13 @@ describe("Random as a resource", () => {
     const runtime = makeRuntime()
     const Fail = Game.System("RandomResource/Fail", { resources: { rng: Game.System.writeResource(Rng) } }, ({ resources }) => {
       Random.draw(resources.rng).next()
-      return Result.failure("nope")
+      return Result.fail("nope")
     })
     runtime.tick(Game.Schedule(Fail))
     expect(runtime.inspect(State)).toBe(42)
     const saved = JSON.parse(JSON.stringify(runtime.snapshot()))
-    expect(runtime.restore(saved).ok).toBe(true)
-    expect(runtime.restore({ ...saved, resources: { "RandomResource/Rng": -1 } }).ok).toBe(false)
+    expect(runtime.restore(saved)._tag).toBe("Success")
+    expect(runtime.restore({ ...saved, resources: { "RandomResource/Rng": -1 } })._tag).toBe("Failure")
     expect(Random.seed(-1)).toBe(0xffffffff)
   })
 })

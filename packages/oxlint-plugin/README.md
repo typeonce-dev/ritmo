@@ -60,7 +60,7 @@ const started = performance.now()
 | [`use-ops-for-math`](#ritmouse-ops-for-math) | simulation | `Math.sin`, `Math.hypot`, `a ** b`, ... | `Ops` |
 | [`keep-simulation-headless`](#ritmokeep-simulation-headless) | simulation | page globals, host I/O, renderer imports | input and data from the host, drawing in a render schedule |
 | [`no-infinity-in-simulation-data`](#ritmono-infinity-in-simulation-data) | simulation | `Infinity` / `NaN` in object literals | `null` |
-| [`handle-tick-result`](#ritmohandle-tick-result) | everywhere | a dropped `runtime.tick(...)` / `restore(...)` result | check `.ok` |
+| [`handle-tick-result`](#ritmohandle-tick-result) | everywhere | a dropped `runtime.tick(...)` / `restore(...)` result | check its `_tag` |
 | [`prefix-descriptor-and-system-names`](#ritmoprefix-descriptor-and-system-names) | everywhere | `"Position"`, `Game.System("Move", ...)` | `"Game/Position"` |
 | [`use-cell-value`](#ritmouse-cell-value) | everywhere | `cell.present ? cell.get() : undefined` | `cell.value()` |
 
@@ -155,9 +155,9 @@ runtime.restore(save)                                            // reported
 
 // instead
 const ran = runtime.tick(update)
-if (!ran.ok) console.error(ran.error)                            // names the system and why
+if (ran._tag === "Failure") console.error(ran.failure)          // names the system and why
 const restored = runtime.restore(save)
-if (!restored.ok) showLoadError(restored.error)
+if (restored._tag === "Failure") showLoadError(restored.failure)
 void runtime.tick(render)                                        // ignored on purpose
 ```
 

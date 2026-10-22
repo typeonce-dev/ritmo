@@ -27,7 +27,7 @@ const makeRuntime = () =>
     resources: {
       Summary: ""
     }
-  }).value
+  }).success
 
 describe("Runtime relationships", () => {
   it("supports relation-aware queries and hierarchy traversal", () => {
@@ -100,11 +100,11 @@ describe("Runtime relationships", () => {
           const ancestors = lookup.ancestors(childId, ChildOf)
 
           resources.summary.set([
-            rootChildren.ok ? rootChildren.value.data.children.get().length : -1,
-            childParent.ok ? childParent.value.data.parent.get() : -1,
-            descendants.ok ? descendants.value.length : -1,
-            target.ok ? target.value : -1,
-            ancestors.ok ? ancestors.value.length : -1
+            rootChildren._tag === "Success" ? rootChildren.success.data.children.get().length : -1,
+            childParent._tag === "Success" ? childParent.success.data.parent.get() : -1,
+            descendants._tag === "Success" ? descendants.success.length : -1,
+            target._tag === "Success" ? target.success : -1,
+            ancestors._tag === "Success" ? ancestors.success.length : -1
           ].join("/"))
         }
     )
@@ -162,8 +162,8 @@ describe("Runtime relationships", () => {
         {
           if (rootId) {
             const root = queries.named.get(rootId)
-            if (root.ok) {
-              commands.despawn(root.value.entity)
+            if (root._tag === "Success") {
+              commands.despawn(root.success.entity)
             }
           }
         }
@@ -186,7 +186,7 @@ describe("Runtime relationships", () => {
           const childRoot = lookup.root(childId, ChildOf)
           const archerTarget = lookup.related(archerId, Targeting)
 
-          resources.summary.set(`${childRoot.ok ? "ok" : childRoot.error._tag}/${archerTarget.ok ? "ok" : archerTarget.error._tag}`)
+          resources.summary.set(`${childRoot._tag === "Success" ? "ok" : childRoot.failure._tag}/${archerTarget._tag === "Success" ? "ok" : archerTarget.failure._tag}`)
         }
     )
 
@@ -267,8 +267,8 @@ describe("Runtime relationships", () => {
             .join("|")
 
           resources.summary.set([
-            betaTarget.ok ? betaTarget.value : -1,
-            alphaSources.ok ? alphaSources.value.length : -1,
+            betaTarget._tag === "Success" ? betaTarget.success : -1,
+            alphaSources._tag === "Success" ? alphaSources.success.length : -1,
             optionalSummary
           ].join("/"))
         }
@@ -338,7 +338,7 @@ describe("Runtime relationships", () => {
           const target = lookup.related(alphaId, Targeting)
           const sources = lookup.relatedSources(betaId, Targeting)
 
-          resources.summary.set(`${target.ok ? target.value : target.error._tag}/${sources.ok ? sources.value.length : -1}`)
+          resources.summary.set(`${target._tag === "Success" ? target.success : target.failure._tag}/${sources._tag === "Success" ? sources.success.length : -1}`)
         }
     )
 
@@ -425,9 +425,9 @@ describe("Runtime relationships", () => {
           const fromQuery = queries.hasChildren.get(rootId)
           resources.summary.set(
             [
-              children.ok ? children.value.map((child) => String(child)).join(",") : children.error._tag,
-              descendants.ok ? descendants.value.map((child) => String(child)).join(",") : descendants.error._tag,
-              fromQuery.ok ? fromQuery.value.data.children.get().map((child) => String(child)).join(",") : fromQuery.error._tag
+              children._tag === "Success" ? children.success.map((child) => String(child)).join(",") : children.failure._tag,
+              descendants._tag === "Success" ? descendants.success.map((child) => String(child)).join(",") : descendants.failure._tag,
+              fromQuery._tag === "Success" ? fromQuery.success.data.children.get().map((child) => String(child)).join(",") : fromQuery.failure._tag
             ].join("/")
           )
         }
@@ -507,13 +507,13 @@ describe("Runtime relationships", () => {
           )
 
           resources.summary.set([
-            children.ok
-              ? children.value.map((match) => match.data.name.get().value).join(",")
-              : children.error._tag,
-            descendants.ok
-              ? descendants.value.map((match) => match.data.name.get().value).join(",")
-              : descendants.error._tag,
-            missing.ok ? "ok" : missing.error._tag
+            children._tag === "Success"
+              ? children.success.map((match) => match.data.name.get().value).join(",")
+              : children.failure._tag,
+            descendants._tag === "Success"
+              ? descendants.success.map((match) => match.data.name.get().value).join(",")
+              : descendants.failure._tag,
+            missing._tag === "Success" ? "ok" : missing.failure._tag
           ].join("/"))
         }
     )
@@ -570,7 +570,7 @@ describe("Runtime relationships", () => {
             return
           }
           const target = lookup.related(alphaId, Targeting)
-          resources.summary.set(`${target.ok ? "ok" : target.error._tag}/${relationFailures.targeting.all().length}`)
+          resources.summary.set(`${target._tag === "Success" ? "ok" : target.failure._tag}/${relationFailures.targeting.all().length}`)
         }
     )
 
@@ -593,8 +593,8 @@ describe("Runtime relationships", () => {
           const target = lookup.related(alphaId, Targeting)
           const sources = lookup.relatedSources(betaId, Targeting)
           resources.summary.set([
-            target.ok ? String(target.value) : target.error._tag,
-            sources.ok ? sources.value.map((source) => String(source)).join(",") : sources.error._tag,
+            target._tag === "Success" ? String(target.success) : target.failure._tag,
+            sources._tag === "Success" ? sources.success.map((source) => String(source)).join(",") : sources.failure._tag,
             relationFailures.targeting.all().length
           ].join("/"))
         }
@@ -667,8 +667,8 @@ describe("Runtime relationships", () => {
           const target = lookup.related(alphaId, Targeting)
           const sources = lookup.relatedSources(betaId, Targeting)
           resources.summary.set([
-            target.ok ? "ok" : target.error._tag,
-            sources.ok ? sources.value.length : 0,
+            target._tag === "Success" ? "ok" : target.failure._tag,
+            sources._tag === "Success" ? sources.success.length : 0,
             relationFailures.targeting.all().length
           ].join("/"))
         }
@@ -754,8 +754,8 @@ describe("Runtime relationships", () => {
           resources.summary.set([
             targetingFailures.map((failure) => failure.error._tag).join(","),
             hierarchyFailures.map((failure) => failure.error._tag).join(","),
-            alphaTarget.ok ? "ok" : alphaTarget.error._tag,
-            betaParent.ok ? "ok" : betaParent.error._tag
+            alphaTarget._tag === "Success" ? "ok" : alphaTarget.failure._tag,
+            betaParent._tag === "Success" ? "ok" : betaParent.failure._tag
           ].join("/"))
         }
     )
@@ -856,7 +856,7 @@ describe("Runtime relationships", () => {
           const children = lookup.relatedSources(rootId, ChildOf)
           resources.summary.set([
             failures.map((failure) => `${failure.operation}:${failure.error._tag}`).join(","),
-            children.ok ? children.value.map((child) => String(child)).join(",") : children.error._tag
+            children._tag === "Success" ? children.success.map((child) => String(child)).join(",") : children.failure._tag
           ].join("/"))
         }
     )

@@ -15,35 +15,35 @@ const update = Game.Schedule(Game.System("DevtoolsTypes/Noop", {}, () => {}))
 
 describe("Session.make", () => {
   it("requires a runtime made with debug: { hostClock }", () => {
-    const plain = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const plain = Game.Runtime.make({ services: Game.Runtime.services() }).success
     expect(Session.make).type.not.toBeCallableWith(plain, { hostClock, schedules: { update } })
-    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
+    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).success
     expect(Session.make).type.toBeCallableWith(debugged, { hostClock, schedules: { update } })
   })
 
   it("requires the host clock that times runs", () => {
-    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
+    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).success
     // @ts-expect-error Property 'hostClock' is missing
     Session.make(debugged, { schedules: { update } })
   })
 
   it("rejects schedules of another schema", () => {
-    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
+    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).success
     const foreign = OtherGame.Schedule(OtherGame.System("DevtoolsTypes/Foreign", {}, () => {}))
     expect(Session.make).type.not.toBeCallableWith(debugged, { hostClock, schedules: { foreign } })
   })
 
   it("describes but does not run describe-only schedules", () => {
     const render = Game.Schedule(Game.System("DevtoolsTypes/Render", {}, () => {}))
-    const session = Session.make(Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value, { hostClock, schedules: { update }, describe: { render } })
+    const session = Session.make(Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).success, { hostClock, schedules: { update }, describe: { render } })
     expect(session.run).type.toBeCallableWith("update")
     expect(session.run).type.not.toBeCallableWith("render")
     const foreign = OtherGame.Schedule(OtherGame.System("DevtoolsTypes/ForeignRender", {}, () => {}))
-    expect(Session.make).type.not.toBeCallableWith(Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value, { hostClock, schedules: { update }, describe: { foreign } })
+    expect(Session.make).type.not.toBeCallableWith(Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).success, { hostClock, schedules: { update }, describe: { foreign } })
   })
 
   it("runs only named schedules and filters by the runtime's descriptors", () => {
-    const session = Session.make(Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value, { hostClock, schedules: { update } })
+    const session = Session.make(Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).success, { hostClock, schedules: { update } })
     expect(session.run).type.toBeCallableWith("update")
     expect(session.run).type.not.toBeCallableWith("updat")
     expect(session.journal).type.toBeCallableWith({ component: Position })
@@ -77,17 +77,17 @@ describe("Invariant.fromInspector", () => {
     }, ({ queries, resources }) =>
       queries.positions.each().some((match) => match.data.position.get().x > resources.limit.get()) ? "over limit" : undefined))
 
-    const provided = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Limit: 10 }, debug: { hostClock } }).value
+    const provided = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Limit: 10 }, debug: { hostClock } }).success
     Session.make(provided, { hostClock, schedules: { update }, invariants: [UnderLimit] })
 
-    const missing = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
+    const missing = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).success
     // @ts-expect-error __fixInvariantRequirements__: { readonly __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "DevtoolsTypes/Limit"
     Session.make(missing, { hostClock, schedules: { update }, invariants: [UnderLimit] })
   })
 
   it("rejects invariants of another game", () => {
     const Foreign = Invariant.fromInspector(OtherGame.Inspector("DevtoolsTypes/Foreign", {}, () => undefined))
-    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
+    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).success
     expect(Session.make).type.not.toBeCallableWith(debugged, { hostClock, schedules: { update }, invariants: [Foreign] })
     expect(Session.make).type.toBeCallableWith(debugged, { hostClock, schedules: { update }, invariants: [Invariant.fromInspector(Game.Inspector("DevtoolsTypes/Own", {}, () => undefined))] })
   })
@@ -95,7 +95,7 @@ describe("Invariant.fromInspector", () => {
 
 describe("Lint.run", () => {
   it("returns a report and takes host events of the runtime's schema only", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Limit: 1 }, debug: { hostClock } }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Limit: 1 }, debug: { hostClock } }).success
     expect(Lint.run({ runtime, schedules: { update }, hostEvents: [Request] }).data).type.toBe<Lint.Report>()
     expect(Lint.run).type.not.toBeCallableWith({ runtime, schedules: { update }, hostEvents: [Foreign] })
     expect(runtime.debug.declareHostEvents).type.not.toBeCallableWith([Foreign])
@@ -103,7 +103,7 @@ describe("Lint.run", () => {
   })
 
   it("requires a runtime made with debug: { hostClock }", () => {
-    const plain = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Limit: 1 } }).value
+    const plain = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Limit: 1 } }).success
     expect(Lint.run).type.not.toBeCallableWith({ runtime: plain, schedules: { update } })
   })
 })
@@ -123,7 +123,7 @@ describe("Replay.recorder", () => {
       Saved.Runtime.service(Mapped, { snapshot: () => new Map() })
     ),
     debug: { hostClock }
-  }).value
+  }).success
   const base = { name: "update", keep: 10, step: Clock.hz(1), sink: Replay.memorySink(), hostClock }
 
   it("accepts plain-data sources and plain constants", () => {
@@ -148,7 +148,7 @@ describe("Replay.recorder", () => {
   it("requires a runtime whose world can be saved", () => {
     const Loose = Descriptor.Component<{ readonly x: number }>()("DevtoolsTypes/Loose")
     const Unsaved = Schema.bind(Schema.fragment({ components: { Loose } }))
-    const unsaved = Unsaved.Runtime.make({ services: Unsaved.Runtime.services(), debug: { hostClock } }).value
+    const unsaved = Unsaved.Runtime.make({ services: Unsaved.Runtime.services(), debug: { hostClock } }).success
     const update = Unsaved.Schedule(Unsaved.System("DevtoolsTypes/Unsaved", {}, () => {}))
     expect(Replay.recorder).type.not.toBeCallableWith(unsaved, { ...base, schedule: update })
   })

@@ -5,8 +5,8 @@ import { Vec2, Vector2 } from "@typeonce/ritmo-math"
 describe("Vec2", () => {
   it("does plain arithmetic, accepting validated vectors", () => {
     const validated = Vector2.result({ x: 3, y: 4 })
-    if (!validated.ok) throw new Error("vector")
-    expect(Vec2.length(validated.value)).toBe(5)
+    if (validated._tag === "Failure") throw new Error("vector")
+    expect(Vec2.length(validated.success)).toBe(5)
     expect(Vec2.add({ x: 1, y: 2 }, { x: 3, y: 4 })).toEqual({ x: 4, y: 6 })
     expect(Vec2.subtract({ x: 1, y: 2 }, { x: 3, y: 4 })).toEqual({ x: -2, y: -2 })
     expect(Vec2.scale({ x: 1, y: -2 }, 3)).toEqual({ x: 3, y: -6 })

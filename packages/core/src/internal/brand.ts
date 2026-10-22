@@ -27,9 +27,9 @@ export const refine = <Value, Raw, Error>(
   result: validate,
   option: (raw) => {
     const result = validate(raw)
-    return result.ok ? result.value : null
+    return result._tag === "Success" ? result.success : null
   },
-  is: (raw): raw is Raw & Value => validate(raw).ok
+  is: (raw): raw is Raw & Value => validate(raw)._tag === "Success"
 })
 
 export const all = <Value, Raw, ErrorA, ErrorB>(
@@ -39,18 +39,18 @@ export const all = <Value, Raw, ErrorA, ErrorB>(
   refine((raw) => {
     const leftResult = left.result(raw)
     const rightResult = right.result(raw)
-    if (!leftResult.ok || !rightResult.ok) {
+    if (leftResult._tag === "Failure" || rightResult._tag === "Failure") {
       return {
-        ok: false,
-        error: [
-          leftResult.ok ? undefined as never : leftResult.error,
-          rightResult.ok ? undefined as never : rightResult.error
+        _tag: "Failure",
+        failure: [
+          leftResult._tag === "Success" ? undefined as never : leftResult.failure,
+          rightResult._tag === "Success" ? undefined as never : rightResult.failure
         ] as const
       }
     }
 
     return {
-      ok: true,
-      value: leftResult.value
+      _tag: "Success",
+      success: leftResult.success
     }
   })

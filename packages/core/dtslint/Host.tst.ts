@@ -39,10 +39,10 @@ describe("host APIs", () => {
   it("carries pause requirements through nesting and rejects foreign conditions", () => {
     const system = Game.System("Types/Run", {}, () => {})
     const gated = Game.Schedule.when([ready], Game.Schedule.pauseWhen([ready], system))
-    const missing = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const missing = Game.Runtime.make({ services: Game.Runtime.services() }).success
     // @ts-expect-error __runtimeRequirementError__: "Missing resource"
     missing.tick(gated)
-    const supplied = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Ready: true } }).value
+    const supplied = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Ready: true } }).success
     supplied.tick(gated)
     const Other = Schema.bind(Schema.fragment({ resources: { Ready } }), Schema.defineRoot("Other"))
     const mode = Other.StateMachine("Other/Mode", ["Playing"])
@@ -51,7 +51,7 @@ describe("host APIs", () => {
   })
 
   it("accepts only schema events and their payloads", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).success
     expect(runtime.send(Ping, 1)).type.toBe<void>()
     // @ts-expect-error is not assignable to parameter of type 'number'
     runtime.send(Ping, "bad")

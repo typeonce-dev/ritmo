@@ -13,7 +13,7 @@ const Game = Schema.bind(Schema.fragment({
   requires: [Schema.requires(Player, Position, Velocity), Schema.requires(Ghost, Trail)]
 }))
 
-const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value
+const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).success
 
 const Movers = Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Velocity], without: [Player] })
 
@@ -112,12 +112,12 @@ describe("Schema.requires at runtime", () => {
     const runtime = makeRuntime()
     runtime.tick(Game.Schedule(SpawnMover, Game.Schedule.applyDeferred(), Promote, Game.Schedule.applyDeferred()))
     const saved = JSON.parse(JSON.stringify(runtime.snapshot()))
-    expect(runtime.restore(saved)).toEqual({ ok: true, value: undefined })
+    expect(runtime.restore(saved)).toEqual({ _tag: "Success", success: undefined })
 
     delete saved.entities[0].components["Requires/Velocity"]
     expect(runtime.restore(saved)).toEqual({
-      ok: false,
-      error: { _tag: "MissingRequiredComponent", entityId: 1, name: "Requires/Velocity", requiredBy: "Requires/Player" }
+      _tag: "Failure",
+      failure: { _tag: "MissingRequiredComponent", entityId: 1, name: "Requires/Velocity", requiredBy: "Requires/Player" }
     })
   })
 
@@ -129,7 +129,7 @@ describe("Schema.requires at runtime", () => {
       commands.spawn(Game.Command.spawn([Ghost, {}], [Trail, 0]))
     }), Game.Schedule.applyDeferred()))
     const saved = JSON.parse(JSON.stringify(runtime.snapshot()))
-    expect(runtime.restore(saved)).toEqual({ ok: true, value: undefined })
+    expect(runtime.restore(saved)).toEqual({ _tag: "Success", success: undefined })
   })
 
   it("rejects a saved component requiring a transient one when bound from erased fragments", () => {

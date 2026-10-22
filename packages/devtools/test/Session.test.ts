@@ -62,7 +62,7 @@ const makeRuntime = () => Game.Runtime.make({
   resources: { Score: 0 },
   machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Paused")),
   debug: { hostClock }
-}).value
+}).success
 
 const makeSession = () => {
   const runtime = makeRuntime()
@@ -76,7 +76,7 @@ describe("Session", () => {
       services: Game.Runtime.services(),
       machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Paused")),
       debug: { hostClock }
-    }).value
+    }).success
     const Read = Game.System("Dev/HeldReader", { events: { hit: Game.System.readEvent(Hit) } }, () => {})
     const update = Game.Schedule.pauseWhen([Game.Condition.inState(Flow, "Playing")], Read)
     const session = Session.make(runtime, { hostClock, schedules: { update } })
@@ -112,7 +112,7 @@ describe("Session", () => {
         resources: { Score: 0 },
         machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Paused")),
         debug: { hostClock: clock }
-      }).value
+      }).success
       const session = Session.make(runtime, { hostClock: clock, schedules: { setup, update } })
       const runs = [session.run("setup").text, session.run("update", { frames: 5 }).text]
       return { runs, report: session.report().text }
@@ -155,8 +155,8 @@ describe("Session", () => {
   })
 
   it("reports expected failures and thrown defects as stops", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock } }).value
-    const Fail = Game.System("Dev/Fail", {}, () => Result.failure("Broken" as const))
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock } }).success
+    const Fail = Game.System("Dev/Fail", {}, () => Result.fail("Broken" as const))
     const Throw = Game.System("Dev/Throw", {}, () => {
       throw new Error("kaboom")
     })
@@ -211,7 +211,7 @@ describe("Session", () => {
     const Queue = Game.System("Dev/QueueLate", { commands: Game.System.commands(Game.System.spawns(Health)) }, ({ commands }) => {
       commands.spawn(Game.Command.spawn([Health, 1]))
     })
-    const runtime2 = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock } }).value
+    const runtime2 = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock } }).success
     const late = Session.make(runtime2, { hostClock, schedules: { late: Game.Schedule(Queue) } })
     late.run("late", { frames: 2 })
     expect(late.report().data.warnings).toMatchObject([
@@ -285,7 +285,7 @@ describe("Format.transition", () => {
 
 describe("Session report streams", () => {
   it("lists streams held past the frame window by a reader", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock } }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock } }).success
     const Emit = Game.System("Dev/EmitHit", { events: { hit: Game.System.writeEvent(Hit) } }, ({ events }) => {
       events.hit.emit(1)
     })
@@ -306,7 +306,7 @@ describe("Session next states and resources", () => {
       resources: { Score: 0 },
       machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Paused")),
       debug: { hostClock }
-    }).value
+    }).success
     const session = Session.make(runtime, { hostClock, schedules: { update: Game.Schedule(Play, Game.Schedule.applyDeferred()) } })
     const run = session.run("update", { frames: 3 })
     expect(run.data.lintWarnings).toBe(1)
@@ -320,7 +320,7 @@ describe("Session next states and resources", () => {
   })
 
   it("explains the latest changes to a resource", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock } }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock } }).success
     const Add = Game.System("Dev/Add", { resources: { score: Game.System.writeResource(Score) } }, ({ resources }) => {
       resources.score.update((score) => score + 5)
     })
@@ -348,7 +348,7 @@ describe("describe-only schedules", () => {
     resources: { Score: 0 },
     machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "Playing")),
     debug: { hostClock }
-  }).value
+  }).success
   const update = Game.Schedule(Damage)
 
   it("counts their reads in lints without making them runnable", () => {
@@ -379,7 +379,7 @@ describe("Session risk checks", () => {
   const RiskGame = Schema.bind(Schema.fragment({ components: { Velocity, Shot }, resources: { Total }, events: { Blast } }))
 
   const makeRiskSession = (update: ReturnType<typeof RiskGame.Schedule>) => {
-    const runtime = RiskGame.Runtime.make({ services: RiskGame.Runtime.services(), resources: { Total: { sum: 0 } }, debug: { hostClock } }).value
+    const runtime = RiskGame.Runtime.make({ services: RiskGame.Runtime.services(), resources: { Total: { sum: 0 } }, debug: { hostClock } }).success
     return Session.make(runtime, { hostClock, schedules: { update } })
   }
 

@@ -8,9 +8,9 @@
  * ```ts
  * const keyboard = Keyboard.scripted(inputBindings, [{ frame: 0, press: ["right"] }])
  * const simulation = createTopDownSimulation({ keyboard, hostClock: HostClock.test() })
- * if (simulation.ok) {
- *   simulation.value.runtime.tick(simulation.value.setup)
- *   simulation.value.runtime.tick(simulation.value.update)
+ * if (simulation._tag === "Success") {
+ *   simulation.success.runtime.tick(simulation.success.setup)
+ *   simulation.success.runtime.tick(simulation.success.update)
  * }
  * ```
  */
@@ -49,8 +49,8 @@ export const createTopDownSimulation = (options: TopDownSimulationOptions) => {
   return Result.match(made, {
     onSuccess: (runtime) => {
       runtime.debug.nameSchedules({ setup: setupWorldSchedule, update: simulationSchedule })
-      return Result.success({ runtime, setup: setupWorldSchedule, update: simulationSchedule })
+      return Result.succeed({ runtime, setup: setupWorldSchedule, update: simulationSchedule })
     },
-    onFailure: () => Result.failure({ message: "Invalid top-down runtime resources." })
+    onFailure: () => Result.fail({ message: "Invalid top-down runtime resources." })
   })
 }

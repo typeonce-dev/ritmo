@@ -90,10 +90,10 @@ const made = Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { Time: Clock.start(step) }
 })
-if (made.ok) {
-  const runtime = made.value
+if (made._tag === "Success") {
+  const runtime = made.success
   const ticked = runtime.tick(Game.Schedule(AdvanceTime, Move))
-  if (!ticked.ok) console.error(ticked.error)
+  if (ticked._tag === "Failure") console.error(ticked.failure)
 }
 ```
 

@@ -71,7 +71,7 @@ const within = (segment: string, nested: DecodeError): DecodeError => ({ ...nest
 const make = <T>(parse: Internals<T>["parse"], explain: Internals<T>["explain"]): Codec<T> => {
   const decode = (raw: unknown): Result.Result<T, DecodeError> => {
     const value = parse(raw)
-    return value === invalid ? Result.failure(explain(raw)) : Result.success(value)
+    return value === invalid ? Result.fail(explain(raw)) : Result.succeed(value)
   }
   return { result: decode, decode, [internals]: { parse, explain } } as Codec<T>
 }
@@ -81,11 +81,11 @@ const internalsOf = <T>(codec: Codec<T>): Internals<T> =>
   (codec as Codec<T> & { readonly [internals]?: Internals<T> })[internals] ?? {
     parse: (raw) => {
       const value = codec.decode(raw)
-      return value.ok ? value.value : invalid
+      return value._tag === "Success" ? value.success : invalid
     },
     explain: (raw) => {
       const value = codec.decode(raw)
-      return value.ok ? error("a valid value", raw) : value.error
+      return value._tag === "Success" ? error("a valid value", raw) : value.failure
     }
   }
 
@@ -200,7 +200,7 @@ export const handle = <
   make(
     (raw) => {
       const decoded = Entity.decodeHandle(root, raw, intent)
-      return decoded.ok ? decoded.value : invalid
+      return decoded._tag === "Success" ? decoded.success : invalid
     },
     (raw) => error("entity handle", raw)
   )

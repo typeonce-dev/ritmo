@@ -20,8 +20,8 @@
  * // Create a domain-specific constructor that only accepts valid ports.
  * const Port = Brand.refine((raw: number) =>
  *   raw > 0
- *     ? Result.success(raw as Brand.Branded<number, "Port">)
- *     : Result.failure({ tag: "InvalidPort", value: raw })
+ *     ? Result.succeed(raw as Brand.Branded<number, "Port">)
+ *     : Result.fail({ tag: "InvalidPort", value: raw })
  * )
  * ```
  *

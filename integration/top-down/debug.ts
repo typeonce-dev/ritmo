@@ -31,8 +31,8 @@ const keyboard = Keyboard.scripted(inputBindings, [
 // A test clock keeps every timing at 0, so the output is the same on every run.
 const hostClock = HostClock.test()
 const simulation = createTopDownSimulation({ keyboard, hostClock })
-if (!simulation.ok) throw new Error(simulation.error.message)
-const { runtime, setup, update } = simulation.value
+if (simulation._tag === "Failure") throw new Error(simulation.failure.message)
+const { runtime, setup, update } = simulation.success
 
 // An invariant is an inspector that returns a violation message, or
 // `undefined` while it holds. It declares its reads like a system, so

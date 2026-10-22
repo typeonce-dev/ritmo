@@ -21,7 +21,7 @@ describe("the stream-loss-unread lint", () => {
       if (events.hit.lagged()) return
       events.hit.all()
     })
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).success
     runtime.tick(Game.Schedule(Count, Checked))
     runtime.tick(Game.Schedule(Emit))
     runtime.tick(Game.Schedule())
@@ -39,7 +39,7 @@ describe("the stream-loss-unread lint", () => {
     }, ({ events }) => {
       events.hit.all()
     })
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).success
     runtime.tick(Game.Schedule(Paused))
     expect(lintsOf(runtime)).toEqual([
       "info: StreamLoss/Paused reads events StreamLoss/Hit under pauseWhen and never checks lagged(): a long pause drops entries past the stream's capacity"

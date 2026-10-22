@@ -135,14 +135,14 @@ export const check = <S extends Schema.Any, Root, const Names extends string>(
       if (frame > 0) {
         run = "first"
         const result = first.runtime.tryTick(a)
-        if (!result.ok) return { ok: false, frame, reason: "failure", run, error: result.error }
+        if (result._tag === "Failure") return { ok: false, frame, reason: "failure", run, error: result.failure }
       }
       run = "first"
       const left = capture(first.runtime.debug.dump())
       if (frame > 0) {
         run = "second"
         const result = second.runtime.tryTick(b)
-        if (!result.ok) return { ok: false, frame, reason: "failure", run, error: result.error }
+        if (result._tag === "Failure") return { ok: false, frame, reason: "failure", run, error: result.failure }
       }
       run = "second"
       const found = difference(left, capture(second.runtime.debug.dump()))
@@ -171,7 +171,7 @@ const locate = <S extends Schema.Any, Root, Names extends string>(
           const after = event.type === "system" ? event.system : event.type === "deferred" ? "applyDeferred()" : event.type === "transition" ? "applyStateTransitions()" : undefined
           if (after !== undefined) traces[run as 0 | 1].push({ after, state: capture(target.runtime.debug.dump()) })
         }))
-        if (!target.runtime.tryTick(target.schedules[schedule]).ok) return undefined
+        if (target.runtime.tryTick(target.schedules[schedule])._tag === "Failure") return undefined
       }
     }
     for (let index = 0; index < Math.max(traces[0].length, traces[1].length); index++) {

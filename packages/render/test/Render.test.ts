@@ -111,12 +111,12 @@ describe("@typeonce/ritmo-render", () => {
       commands: Game.System.commands(Game.System.despawns(Sprite))
     }, ({ queries, commands }) => {
       const hero = queries.sprites.get(ids[0]!)
-      if (hero.ok) commands.despawn(hero.value.entity)
+      if (hero._tag === "Success") commands.despawn(hero.success.entity)
     })
 
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(Nodes, registry))
-    }).value
+    }).success
     const sync = Game.Schedule(render)
 
     runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred(), sync))
@@ -161,7 +161,7 @@ describe("@typeonce/ritmo-render", () => {
         Zoomed.Runtime.service(Prefix, "#")
       ),
       resources: { Zoom: 2 }
-    }).value
+    }).success
     runtime.tick(Zoomed.Schedule(Spawn, Zoomed.Schedule.applyDeferred(), render))
     expect(layer.children.map((node) => [node.label, node.x])).toEqual([["#hero", 6], ["#none", 2]])
   })
@@ -199,7 +199,7 @@ describe("@typeonce/ritmo-render", () => {
 
     const runtime = Animated.Runtime.make({
       services: Animated.Runtime.services(Animated.Runtime.service(Nodes, inLayer(layer)))
-    }).value
+    }).success
     runtime.tick(Animated.Schedule(Spawn, Animated.Schedule.applyDeferred(), render))
     runtime.tick(Animated.Schedule(step(false), render))
     runtime.tick(Animated.Schedule(step(true), render))
@@ -232,7 +232,7 @@ describe("@typeonce/ritmo-render", () => {
     })
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(Nodes, inLayer(layer)))
-    }).value
+    }).success
     runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred(), render))
     const old = layer.children[0]!
     runtime.tick(Game.Schedule(Swap, Game.Schedule.applyDeferred(), Readd, Game.Schedule.applyDeferred(), render))
@@ -263,7 +263,7 @@ describe("@typeonce/ritmo-render", () => {
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(Nodes, inLayer(layer))),
       machines: Game.Runtime.machines(Game.Runtime.machine(Mode, "Hidden"))
-    }).value
+    }).success
     runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred(), render))
     expect(layer.children).toEqual([])
     runtime.tick(Game.Schedule(Show, Game.Schedule.applyStateTransitions(), render))
@@ -293,7 +293,7 @@ describe("@typeonce/ritmo-render", () => {
     const Relabel = Game.System("RenderTest/Relabel", { queries: { all: Game.Query({ selection: { sprite: Game.Query.write(Sprite) } }) } }, ({ queries }) => {
       for (const { data } of queries.all.each()) data.sprite.set({ label: "b" })
     })
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Nodes, inLayer(layer))) }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Nodes, inLayer(layer))) }).success
     runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred(), render))
     runtime.tick(Game.Schedule(Move, render))
     runtime.tick(Game.Schedule(Relabel, render))
@@ -331,7 +331,7 @@ describe("@typeonce/ritmo-render", () => {
     })
     const runtime = Moving.Runtime.make({
       services: Moving.Runtime.services(Moving.Runtime.service(Nodes, inLayer(layer)), Moving.Runtime.service(Clock, clock))
-    }).value
+    }).success
     runtime.tick(Moving.Schedule(Spawn, Moving.Schedule.applyDeferred(), sync, interpolate))
     expect(layer.children.map((node) => [node.x, node.y])).toEqual([[2.5, 5]])
     clock.alpha = 0.5
@@ -373,7 +373,7 @@ describe("@typeonce/ritmo-render", () => {
     })
     const runtime = Space.Runtime.make({
       services: Space.Runtime.services(Space.Runtime.service(Nodes, inLayer(layer)), Space.Runtime.service(Clock, { alpha: 0.25 }))
-    }).value
+    }).success
     runtime.tick(Space.Schedule(Spawn, Space.Schedule.applyDeferred(), sync, interpolate))
     expect(placed).toEqual([[2.5, 5, 10]])
   })

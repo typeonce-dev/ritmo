@@ -25,8 +25,8 @@ const erased = (schedule: ExecutableScheduleDefinition<any, any, any, any, any, 
   schedule as ExecutableScheduleDefinition<typeof Game.schema, never, typeof Game.schema>
 
 const machines = Game.Runtime.machines(Game.Runtime.machine(Flow, "Menu"))
-const make = () => Game.Runtime.make({ services: Game.Runtime.services(), machines }).value
-const makeDebug = () => Game.Runtime.make({ services: Game.Runtime.services(), machines, debug: { hostClock } }).value
+const make = () => Game.Runtime.make({ services: Game.Runtime.services(), machines }).success
+const makeDebug = () => Game.Runtime.make({ services: Game.Runtime.services(), machines, debug: { hostClock } }).success
 
 const unflushed = "TickQuery/Aim needs this tick's commands for queries.enemies, but TickQuery/SpawnWave queues them with no applyDeferred() in between: add Game.Schedule.applyDeferred() after TickQuery/SpawnWave"
 const late = "TickQuery/SpawnWave queues commands that TickQuery/Aim needs this tick (queries.enemies), but it runs after TickQuery/Aim: move TickQuery/SpawnWave before the applyDeferred() that precedes TickQuery/Aim, or read queries.enemies without thisTick"
@@ -35,7 +35,7 @@ describe("thisTick on queries at runtime", () => {
   it("lets tryTick run a reader after the writer and a marker; the reader sees the spawn", () => {
     const runtime = make()
     seen.length = 0
-    expect(runtime.tryTick(erased(Game.Schedule(SpawnWave, Game.Schedule.applyDeferred(), Aim))).ok).toBe(true)
+    expect(runtime.tryTick(erased(Game.Schedule(SpawnWave, Game.Schedule.applyDeferred(), Aim)))._tag).toBe("Success")
     expect(seen).toEqual([1])
   })
 
@@ -43,8 +43,8 @@ describe("thisTick on queries at runtime", () => {
     const runtime = make()
     seen.length = 0
     expect(runtime.tryTick(erased(Game.Schedule(SpawnWave, Aim)))).toEqual({
-      ok: false,
-      error: {
+      _tag: "Failure",
+      failure: {
         kind: "TickOrderViolation",
         issues: [{ kind: "unflushedWriter", reader: "TickQuery/Aim", data: "queries.enemies", writer: "TickQuery/SpawnWave", message: unflushed }]
       }
@@ -55,16 +55,16 @@ describe("thisTick on queries at runtime", () => {
   it("makes tryTick fail for a writer after the reader", () => {
     const runtime = make()
     const result = runtime.tryTick(erased(Game.Schedule(Aim, Game.Schedule.applyDeferred(), SpawnWave)))
-    expect(result.ok ? [] : result.error.kind === "TickOrderViolation" ? result.error.issues.map((issue) => issue.message) : []).toEqual([late])
+    expect(result._tag === "Success" ? [] : result.failure.kind === "TickOrderViolation" ? result.failure.issues.map((issue) => issue.message) : []).toEqual([late])
   })
 
   it("counts a transition bundle at its marker: its flush, then its schedules", () => {
     const runtime = make()
     const spawnOnEnter = Game.Schedule.transitions(Game.Schedule.onEnter(Flow, "Playing", [SpawnWave]))
     const result = runtime.tryTick(erased(Game.Schedule(Game.Schedule.applyStateTransitions(spawnOnEnter), Aim)))
-    expect(result.ok ? [] : result.error.kind === "TickOrderViolation" ? result.error.issues.map((issue) => issue.message) : []).toEqual([unflushed])
+    expect(result._tag === "Success" ? [] : result.failure.kind === "TickOrderViolation" ? result.failure.issues.map((issue) => issue.message) : []).toEqual([unflushed])
     const aimOnEnter = Game.Schedule.transitions(Game.Schedule.onEnter(Flow, "Playing", [Aim]))
-    expect(runtime.tryTick(erased(Game.Schedule(SpawnWave, Game.Schedule.applyStateTransitions(aimOnEnter)))).ok).toBe(true)
+    expect(runtime.tryTick(erased(Game.Schedule(SpawnWave, Game.Schedule.applyStateTransitions(aimOnEnter))))._tag).toBe("Success")
   })
 
   it("reports this-tick-order lints for query reads, and none when ordered", () => {

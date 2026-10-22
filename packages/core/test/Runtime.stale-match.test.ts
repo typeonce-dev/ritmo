@@ -13,7 +13,7 @@ const spawn = Game.System("Stale/Spawn", { commands: Game.System.commands(Game.S
 
 describe("a query match kept past its run", () => {
   it("throws a named error when its entity was despawned, instead of reading the internal marker", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).success
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred()))
     const outcomes: Array<string> = []
     const Keep = Game.System("Stale/KeepDespawned", {
@@ -42,7 +42,7 @@ describe("a query match kept past its run", () => {
   })
 
   it("throws instead of writing a removed component back without the insert path", () => {
-    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).success
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred()))
     const outcomes: Array<string> = []
     const Keep = Game.System("Stale/KeepRemoved", {

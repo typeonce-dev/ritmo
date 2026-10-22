@@ -41,7 +41,7 @@ type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
 const makeRuntime = () => Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { Sum: 0 }
-}).value
+}).success
 
 type BenchRuntime = ReturnType<typeof makeRuntime>
 
@@ -187,8 +187,8 @@ const sparseSingle: BenchCase = {
     const MovePlayer = Game.System("Bench/MovePlayer", { queries: { player: PlayerQuery } }, ({ queries }) =>
       {
         const player = queries.player.single()
-        if (player.ok) {
-          player.value.data.position.update((position) => ({ x: position.x + 1, y: position.y }))
+        if (player._tag === "Success") {
+          player.success.data.position.update((position) => ({ x: position.x + 1, y: position.y }))
         }
       })
     const schedule = Game.Schedule(MovePlayer)
@@ -341,7 +341,7 @@ const longOrdered: BenchCase = {
       run: () => {
         for (let index = 0; index < 10; index++) {
           const result = runtime.tryTick(schedule)
-          if (!result.ok) throw new Error(JSON.stringify(result.error))
+          if (result._tag === "Failure") throw new Error(JSON.stringify(result.failure))
         }
       }
     }
@@ -370,7 +370,7 @@ const lookupGet: BenchCase = {
         let total = 0
         for (const id of ids) {
           const match = queries.movers.get(id)
-          if (match.ok) total += match.value.data.position.get().x
+          if (match._tag === "Success") total += match.success.data.position.get().x
         }
         resources.sum.set(total)
       })
@@ -434,7 +434,7 @@ const hierarchy: BenchCase = {
         let total = 0
         for (const root of roots) {
           const descendants = lookup.descendants(root, ChildOf)
-          if (descendants.ok) total += descendants.value.length
+          if (descendants._tag === "Success") total += descendants.success.length
         }
         resources.sum.set(total)
       })
@@ -452,7 +452,7 @@ const snapshotRoundTrip: BenchCase = {
     return {
       run: () => {
         const restored = runtime.restore(JSON.parse(JSON.stringify(runtime.snapshot())))
-        if (!restored.ok) throw new Error("snapshot round-trip failed")
+        if (restored._tag === "Failure") throw new Error("snapshot round-trip failed")
       }
     }
   }
@@ -550,9 +550,9 @@ const clockAdvance: BenchCase = {
     const Time = Clock.resource("ClockBench/Time", step)
     const Game = Schema.bind(Schema.fragment({ resources: { Time } }))
     const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Time: Clock.start(step) } })
-    if (!made.ok) throw new Error("initial clock is valid")
+    if (made._tag === "Failure") throw new Error("initial clock is valid")
     const update = Game.Schedule(Clock.system(Game, { name: "ClockBench/Advance", resource: Time }))
-    return { run: () => { for (let index = 0; index < 1000; index++) made.value.tick(update) } }
+    return { run: () => { for (let index = 0; index < 1000; index++) made.success.tick(update) } }
   }
 }
 

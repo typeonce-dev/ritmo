@@ -12,6 +12,13 @@
  * failure should remain visible and typed instead of being hidden behind
  * exceptions or implicit coercion.
  *
+ * A result is plain data, `{ _tag: "Success", success }` or
+ * `{ _tag: "Failure", failure }`: narrow it on `_tag` (or with
+ * `isSuccess`/`isFailure`). It has the same fields as Effect's `Result`, so an
+ * Effect `Result` (from `Schema.decodeUnknownResult`, say) is a Ritmo result
+ * as it is, and a Ritmo result becomes an Effect with
+ * `r._tag === "Success" ? Effect.succeed(r.success) : Effect.fail(r.failure)`.
+ *
  * In practical ECS code this is the shared language for construction-time
  * validation and fallible lookups. It keeps ordinary failure in the type
  * surface instead of pushing it into exceptions.
@@ -89,15 +96,26 @@ export type AllError<Input extends ReadonlyArray<Result<any, any>> | Readonly<Re
 /**
  * Creates the successful branch of a {@link Result}.
  *
- * @category Constructors
- */
-export const success: <Value>(value: Value) => Success<Value> = internal.success
-/**
- * Creates the failed branch of a {@link Result}.
+ * @example
+ * ```ts
+ * const ok = Result.succeed(42) // { _tag: "Success", success: 42 }
+ * ```
  *
  * @category Constructors
  */
-export const failure: <Error>(error: Error) => Failure<Error> = internal.failure
+export const succeed: <Value>(success: Value) => Success<Value> = internal.succeed
+/**
+ * Creates the failed branch of a {@link Result}. Give the error a `_tag` so
+ * callers can narrow it.
+ *
+ * @example
+ * ```ts
+ * const failed = Result.fail({ _tag: "OutOfRange", value: -1 }) // { _tag: "Failure", failure: { ... } }
+ * ```
+ *
+ * @category Constructors
+ */
+export const fail: <Error>(failure: Error) => Failure<Error> = internal.fail
 /**
  * Narrows one {@link Result} to its successful branch.
  *

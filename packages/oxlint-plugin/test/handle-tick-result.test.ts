@@ -5,9 +5,9 @@ const rule = plugin.rules["handle-tick-result"]!
 
 tester.run("handle-tick-result", rule, {
   valid: [
-    "const ran = runtime.tick(update); if (!ran.ok) report(ran.error)",
-    "if (!runtime.tick(setup).ok) throw new Error(\"setup failed\")",
-    "const restored = runtime.restore(save); if (!restored.ok) showError(restored.error)",
+    "const ran = runtime.tick(update); if (ran._tag === \"Failure\") report(ran.failure)",
+    "if (runtime.tick(setup)._tag === \"Failure\") throw new Error(\"setup failed\")",
+    "const restored = runtime.restore(save); if (restored._tag === \"Failure\") showError(restored.failure)",
     "void runtime.tick(render)",
     "const step = () => runtime.tick(update)",
     // Game wrappers and other libraries with methods of the same name (inkline-town headless.ts, spirit-call tests).

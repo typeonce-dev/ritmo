@@ -9,7 +9,7 @@ const Game = Schema.bind(Schema.fragment({ components: { Position, Tag } }))
 
 type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
 
-const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() }).value
+const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() }).success
 
 const Added = Game.Query({ selection: { position: Game.Query.read(Position) }, filters: [Game.Query.added(Position)] })
 const Changed = Game.Query({ selection: { position: Game.Query.read(Position) }, filters: [Game.Query.changed(Position)] })
@@ -94,7 +94,7 @@ describe("Runtime change detection", () => {
       for (const { data } of queries.positions.each()) {
         data.position.set({ x: 100 })
       }
-      return Result.failure("Rejected" as const)
+      return Result.fail("Rejected" as const)
     })
     const runtime = makeRuntime()
     runtime.tick(Game.Schedule(spawner([1]), Game.Schedule.applyDeferred(), reader.system))
@@ -102,7 +102,7 @@ describe("Runtime change detection", () => {
     const result = runtime.tick(Game.Schedule(Failing))
     runtime.tick(Game.Schedule(reader.system))
 
-    expect(result.ok).toBe(false)
+    expect(result._tag).toBe("Failure")
     expect(reader.runs[1]).toEqual({ added: [], changed: [] })
   })
 
@@ -123,9 +123,9 @@ describe("Runtime change detection", () => {
       commands: Game.System.commands(Game.System.removes(Position), Game.System.despawns(Position))
     }, ({ queries, commands }) => {
       const first = queries.positions.get(ids[0]!)
-      if (first.ok) commands.remove(first.value.entity, Position)
+      if (first._tag === "Success") commands.remove(first.success.entity, Position)
       const second = queries.positions.get(ids[1]!)
-      if (second.ok) commands.despawn(second.value.entity)
+      if (second._tag === "Success") commands.despawn(second.success.entity)
     })
     const runtime = makeRuntime()
     runtime.tick(Game.Schedule(spawner([1, 2], ids), Game.Schedule.applyDeferred(), Reader))
@@ -161,7 +161,7 @@ describe("Runtime change detection", () => {
       commands: Game.System.commands(Game.System.despawns(Position))
     }, ({ queries, commands }) => {
       const match = queries.positions.get(ids[next++]!)
-      if (match.ok) commands.despawn(match.value.entity)
+      if (match._tag === "Success") commands.despawn(match.success.entity)
     })
     const runtime = makeRuntime()
     runtime.tick(Game.Schedule(spawner([1, 2, 3, 4], ids), Game.Schedule.applyDeferred(), Reader))
@@ -199,13 +199,13 @@ describe("Runtime change detection", () => {
     }, ({ queries, commands }) => {
       for (const id of ids) {
         const match = queries.positions.get(id)
-        if (match.ok) commands.despawn(match.value.entity)
+        if (match._tag === "Success") commands.despawn(match.success.entity)
       }
     })
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(),
       machines: Game.Runtime.machines(Game.Runtime.machine(Flow, "On"))
-    }).value
+    }).success
     runtime.tick(Game.Schedule(spawner([1], ids), Game.Schedule.applyDeferred(), Reader))
     runtime.tick(Game.Schedule(Toggle, Game.Schedule.applyStateTransitions()))
     runtime.tick(Game.Schedule(Despawn, Game.Schedule.applyDeferred(), Reader))
