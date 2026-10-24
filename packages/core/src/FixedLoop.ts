@@ -1,13 +1,14 @@
 /**
  * Deterministic fixed-step timing for any host: browsers, native shells,
- * desktop runtimes, and headless tests.
+ * desktop runtimes, servers, and headless tests.
  *
  * The loop owns the timing policy that is easy to get subtly wrong in every
  * game: frame clamping, catch-up limits, interpolation, cancellation, and
  * typed update failures. It does not know about an ECS runtime, a renderer,
  * or a platform: frames arrive through a `TickSource` that the host supplies.
  * Use a platform adapter such as `BrowserTickSource.make(window)` from
- * `@typeonce/ritmo-browser`, or wrap a renderer's own ticker with `source`.
+ * `@typeonce/ritmo-browser`, or wrap a renderer's own ticker or a server timer
+ * with `source`.
  *
  * @example
  * ```ts
@@ -18,6 +19,30 @@
  *   maxStepsPerFrame: 5,
  *   update: () => runtime.tick(update),
  *   render: (frame) => draw(frame.alpha),
+ *   onFailure: (failure) => console.error(failure)
+ * })
+ * ```
+ *
+ * @example
+ * ```ts
+ * // Server host (Node, a Cloudflare Durable Object): a timer, no renderer
+ * const interval = FixedLoop.source((onTick) => {
+ *   let last = performance.now()
+ *   const id = setInterval(() => {
+ *     const now = performance.now()
+ *     onTick({ deltaMS: now - last })
+ *     last = now
+ *   }, 1000 / 60)
+ *   return { stop: () => clearInterval(id) }
+ * })
+ *
+ * const loop = FixedLoop.start({
+ *   source: interval,
+ *   step: Clock.hz(60),
+ *   maxFrameSeconds: 0.25,
+ *   maxStepsPerFrame: 5,
+ *   update: () => runtime.tick(update),
+ *   render: () => {},
  *   onFailure: (failure) => console.error(failure)
  * })
  * ```

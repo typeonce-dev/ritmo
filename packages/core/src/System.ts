@@ -807,7 +807,8 @@ export interface QueryIteration<S extends Schema.Any, Q extends Query.Any> {
   /**
    * Returns every current match, in spawn order (ascending entity id), so
    * iteration is the same on every run and platform. The matches are valid
-   * during this run only (see {@link QueryMatch}).
+   * during this run only (see {@link QueryMatch}, which also types a helper
+   * that takes them).
    */
   each(): ReadonlyArray<QueryMatch<S, Q>>
   /**

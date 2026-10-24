@@ -787,6 +787,22 @@ export type OptionalReadCell<T> = PresentOptionalReadCell<T> | AbsentOptionalRea
  * reading an entity that may have changed or left the query. To follow an
  * entity across runs, keep `match.entity.id` or a handle and resolve it again
  * with `queries.x.get(id)` / `queries.x.getHandle(handle)`, which is fallible.
+ *
+ * Type a game helper that takes matches with this type, from the bound game's
+ * `schema` and the query constant, instead of a hand-written structural type.
+ *
+ * @example
+ * ```ts
+ * import type { QueryMatch } from "@typeonce/ritmo/Query"
+ *
+ * const PlayerRead = Game.Query({ selection: { position: Game.Query.read(Position) } })
+ *
+ * const leftmost = (players: ReadonlyArray<QueryMatch<typeof Game.schema, typeof PlayerRead>>) =>
+ *   players.reduce((min, player) => Math.min(min, player.data.position.get().x), Infinity)
+ *
+ * // In a system declaring `queries: { players: PlayerRead }`:
+ * leftmost(queries.players.each())
+ * ```
  */
 export type QueryMatch<S extends Schema.Any, Q extends Query.Any> =
   keyof Query.WriteProof<Q> extends never
