@@ -1,6 +1,6 @@
 {
   "name": "@typeonce/ritmo-render",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Renderer-agnostic entity-to-node mirroring for Ritmo",
   "author": "Sandro Maglione",
   "license": "MIT",
