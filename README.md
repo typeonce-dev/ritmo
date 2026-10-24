@@ -135,6 +135,9 @@ every change: where the docs are and how to structure the game.
 - [Grand Theft Auto: Lunigiana](https://github.com/mastro993/gta-lunigiana):
   an open-world car-theft game in isometric pixel art, set in the real valleys
   of Lunigiana.
+- [Bug Killer](https://github.com/giovannilondero/bug-killer): a top-down
+  shooter against a (fictional) backlog, where tickets are the enemies,
+  with bosses, demanding clients and multiplayer for up to 4 developers.
 
 ## Guarantees
 
