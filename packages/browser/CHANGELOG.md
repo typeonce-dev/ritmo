@@ -1,5 +1,113 @@
 # @typeonce/ritmo-browser
 
+## 0.14.0
+
+### Minor Changes
+
+- 9831926: **A touch control the game hides is `null` in the layout, and lets go of its finger.** A finger kept the control it landed on until it lifted, and the layout was read only on a new touch, so a thumb resting on the walking stick when the game swapped in the driving buttons kept holding its direction: the car drove off on its own. The layout is now read on every snapshot and every new touch. A held control that turns `null` releases at once with `cancelled: true`, and its finger does nothing until it lifts; a `null` control takes no finger. Its name stays in `actions` and `vectors`, reported idle.
+
+  ```ts
+  Touch.actions(canvas, window, ({ width, height }) => ({
+    sticks: {
+      move: driving()
+        ? null
+        : { region: { left: 0, top: 0, width: width / 2, height }, radius: 56 },
+    },
+    buttons: {
+      steerLeft: driving()
+        ? { center: { x: 60, y: height - 60 }, radius: 40 }
+        : null,
+    },
+  }));
+  ```
+
+  - **Breaking: `Layout.buttons` zones are `ButtonZone | null`, and `Layout.sticks` zones `StickZone | null`.** Code that reads zones from `view().layout` narrows them:
+
+    ```diff
+    -const dash = view.layout.buttons.dash
+    -draw(dash.center, dash.radius)
+    +const dash = view.layout.buttons.dash
+    +if (dash !== null) draw(dash.center, dash.radius)
+    ```
+
+  - The layout function now runs once per `snapshot()` as well: keep it cheap.
+
+- accd1d0: **Touch layouts have named sticks, so a twin-stick shooter moves on the left and aims on the right.** A stick's key is the vector it drives, as a button's key is the action it reports. Each stick floats under its own thumb, two thumbs drive two sticks at once, and each reports `vectors.<name>` with `active`. A finger goes to the button it lands on, otherwise to the first free stick (in key order) whose region contains it, otherwise the swipe area.
+
+  ```ts
+  Touch.actions(canvas, window, ({ width, height }) => ({
+    sticks: {
+      move: {
+        region: { left: 0, top: 0, width: width / 2, height },
+        radius: 56,
+      },
+      aim: {
+        region: { left: width / 2, top: 0, width: width / 2, height },
+        radius: 56,
+      },
+    },
+    buttons: {
+      dash: { center: { x: width - 84, y: height - 150 }, radius: 36 },
+    },
+  }));
+  ```
+
+  - **Breaking: `Layout.stick` (with `vector`) is `Layout.sticks`, keyed by the vector.** A buttons-only layout passes `sticks: {}`. A leftover `vector` field does not compile (`a stick drives the vector named by its key in sticks: remove vector`), and neither does a stick named like a button (`dash names both a stick and a button: give them different names`).
+
+    ```diff
+    -stick: { region, radius: 56, vector: "move" },
+    +sticks: { move: { region, radius: 56 } },
+    ```
+
+  - **Breaking: `Snapshot.stick` and the `Stick` type are removed.** Each stick is in `vectors` as a `StickState`: a `Controls.Vector` plus `active` (a thumb is on it). `Controls` merges it as a plain vector.
+
+    ```diff
+    -if (snapshot.stick.active) walk(snapshot.stick.vector)
+    +if (snapshot.vectors.move.active) walk(snapshot.vectors.move)
+    ```
+
+  - **Breaking: `View.stick` is `View.sticks`, by name** (each `{ origin, knob }` or `null`), and the radius is on `view.layout.sticks.<name>`.
+
+    ```diff
+    -if (view.stick !== null) draw(view.stick.origin, view.stick.knob, view.layout.stick.radius)
+    +const stick = view.sticks.move
+    +if (stick !== null) draw(stick.origin, stick.knob, view.layout.sticks.move.radius)
+    ```
+
+  - **Breaking: `Names.vector` is `Names.sticks`, required like `buttons`** (`[]` for buttons only), for `Touch.idle` and `Touch.scripted`.
+
+    ```diff
+    -Touch.idle({ buttons: ["dash"], vector: "move" })
+    -Touch.idle({ buttons: ["jump"] })
+    +Touch.idle({ buttons: ["dash"], sticks: ["move"] })
+    +Touch.idle({ buttons: ["jump"], sticks: [] })
+    ```
+
+  - **Breaking: a timeline's `stick` is `sticks`, by name.** Naming a stick the names do not declare does not compile. `TimelineEntry` and `Timeline` take the stick names as a second type parameter.
+
+    ```diff
+    -{ frame: 0, stick: { x: 1, y: 0 } },
+    -{ frame: 3, stick: null }
+    +{ frame: 0, sticks: { move: { x: 1, y: 0 } } },
+    +{ frame: 3, sticks: { move: null } }
+    ```
+
+  - `Controls` copies each merged vector, so a merged `vectors.move` is a plain `{ x, y }` whatever the device's vector carries.
+
+### Patch Changes
+
+- 9695562: **Keys typed into a form field are left to the field.** With `window` as the host, `Keyboard.actions` pressed bound actions and called `preventDefault()` for keys typed into an `<input>`, `<textarea>`, `<select>`, or contenteditable element, so typing "wasd" in a name field moved the player and the characters never reached the field. Now a keydown whose `target` is such a field presses no action and is not prevented, and `Keyboard.presses` skips it. Keyups are always processed, so a key held before focus moved into a field still releases. `KeyEvent` gains an optional `target` (a real `KeyboardEvent` fits as before). A game that wrapped `window` in a filtering `KeyboardHost` can pass `window` directly.
+- Updated dependencies [c3719a5]
+- Updated dependencies [70d054e]
+- Updated dependencies [adb4066]
+- Updated dependencies [97e95fb]
+- Updated dependencies [dbfbd9d]
+- Updated dependencies [343660e]
+- Updated dependencies [d24258e]
+- Updated dependencies [cfe332a]
+- Updated dependencies [8aa1e85]
+  - @typeonce/ritmo@0.14.0
+
 ## 0.13.0
 
 ### Patch Changes

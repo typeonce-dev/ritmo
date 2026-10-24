@@ -1,6 +1,6 @@
 {
   "name": "@typeonce/ritmo-pixi",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Pixi container adapter for Ritmo render-node registries",
   "author": "Sandro Maglione",
   "license": "MIT",

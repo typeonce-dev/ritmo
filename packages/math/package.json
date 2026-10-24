@@ -1,6 +1,6 @@
 {
   "name": "@typeonce/ritmo-math",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Validated math values and hot-path game helpers (collision, spatial grid, flow field, random) for Ritmo games",
   "author": "Sandro Maglione",
   "license": "MIT",

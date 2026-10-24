@@ -1,6 +1,6 @@
 {
   "name": "@typeonce/ritmo",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "The agent-first, type-safe ECS runtime for TypeScript",
   "author": "Sandro Maglione",
   "license": "MIT",

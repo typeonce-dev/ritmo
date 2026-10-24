@@ -1,5 +1,105 @@
 # @typeonce/ritmo
 
+## 0.14.0
+
+### Minor Changes
+
+- 70d054e: **Rewind a runtime in memory, for rollback netcode and client prediction.** `runtime.checkpoint(simulate)` marks the world between ticks, and `runtime.rewind(checkpoint)` puts it back exactly: ticking `simulate` again gives the same results, bit for bit, as a runtime that never rewound (entity ids, values and their change ticks, relations, scopes, resources, machines, queued commands, unread events, and the read positions of `simulate`'s systems). See the `Checkpoint` module, and the skill's new `playbooks/netcode.md`.
+
+  ```ts
+  const history = new Map<number, Checkpoint.Checkpoint<typeof Root>>();
+  history.set(tick, runtime.checkpoint(simulate));
+  runtime.tick(simulate);
+
+  // Real input for an earlier tick differs from the guess: go back and run again.
+  const rewound = runtime.rewind(history.get(wrongTick)!);
+  if (!rewound.ok) resync(rewound.error); // Released: older than the window
+  ```
+
+  - Taking a checkpoint copies only resources, machines, and queues; the first change to a page of values, an entity, a relation, or a scope after it keeps what it replaced. The runtime keeps the last `checkpoints` (a new option of `Game.Runtime.make`, `Checkpoint.defaultWindow` = 16 by default); an older one, one newer than a checkpoint rewound to, and every one taken before a `restore` fail with `Released`. A checkpoint of another runtime fails with `OtherRuntime`.
+  - A schedule that would not rewind does not compile, and the error (`__fixCheckpoint__`) names the fix: a service that is neither an input source (`snapshot()`) nor plain data, a system with `local` state (in its state transitions too), or a schedule widened to a schedule type.
+  - Systems and inspectors outside the rewound schedule, like renderers, see a rewind as ordinary changes. An entity the rewind took away and the ticks after it brought back under the same id is seen as changed, never as despawned and spawned again, so `RenderSync` keeps its node.
+  - **`runtime.checksum()`**: a fingerprint of what `snapshot()` saves, as 16 hex digits, that does not depend on how the world was built (component order, object key order). Peers compare it to catch a desync; gated like `snapshot`, and returns a `Result`.
+  - `Schedule.Source<Data>` and `Schedule.IsPlain<T>`: the input-source shape and the plain-data check that replays and checkpoints share. `Schedule.SystemsIn` is exported.
+
+  **Devtools:**
+
+  - **Breaking: `Replay.Source` and `Replay.IsPlain` moved to core**, as `Schedule.Source` and `Schedule.IsPlain`.
+
+    ```diff
+    -const Controls = Descriptor.Service<Replay.Source<Input>>()("Game/Controls")
+    +import type * as Schedule from "@typeonce/ritmo/Schedule"
+    +const Controls = Descriptor.Service<Schedule.Source<Input>>()("Game/Controls")
+    ```
+
+  - **Breaking: replay checkpoint hashes are `runtime.checksum()`.** Replays recorded with an earlier version report every checkpoint as diverged; record them again. A runtime passed to `Replay.recorder` or `Replay.session` needs `checksum`, which every runtime with `snapshot` has.
+
+  **Lint:** `handle-tick-result` also reports a dropped `runtime.rewind(...)` result: a released checkpoint changes nothing, and the ticks meant to run again would run on top of the present.
+
+- dbfbd9d: **New package: `@typeonce/ritmo-netcode`, online multiplayer.** A session per peer exchanges inputs over a `NetworkLink` and ticks the simulation with every seat's input: `Netcode.rollback` runs at once on guesses and rolls back with the runtime's checkpoints when real input contradicts one; `Netcode.lockstep` waits for every seat. Seat 0 starts the match and every resync from one save that every peer restores at the same tick; `session.rate` slows the peer that runs ahead; peers compare checksums of confirmed ticks, and a mismatch stops the session with `Desynced` until `resync()`.
+
+  ```ts
+  const seats = Netcode.seats(PlayerInput, { count: 2, idle })                       // the simulation's input source
+  const session = Netcode.rollback(runtime, { simulate, seats: seats.value, seat, links: [WebSocketNetworkLink.make(socket)], hostClock, step })
+  FixedLoop.start({ ..., rate: session.value.rate, update: session.value.update({ input: readInput, onHalted: report }) })
+  ```
+
+  - Transports: `WebSocketNetworkLink.make(socket)` (a relay; the browser's, Node's, Deno's, or Bun's WebSocket), `WebRtcNetworkLink.make(channel)` (between peers), `MemoryNetworkLink.make(...)` (seeded latency, jitter, and loss, for headless tests), or any `{ send, receive, status }`.
+  - What does not compile: a rollback simulation that cannot be rewound, one whose requirements the runtime does not provide, and a runtime that cannot save. What fails at construction, as a typed `Result`: a seat out of range, seats another session took or the runtime does not provide, and a `maxRollback` beyond the checkpoints the runtime keeps.
+  - The skill's `playbooks/netcode.md` now drives the package instead of a hand-written loop.
+
+  **Core:**
+
+  - `FixedLoop.start` takes `rate`, read once per frame, within `FixedLoop.rateRange` (0.9 to 1.1): how fast host time runs into the accumulator, for a networked session's pacing. A value outside the range stops the loop with an `InvalidRate` failure, a new member of `FixedLoop.Failure`.
+  - **`runtime.restore` sets the next entity id to the save's**, where it used to keep the higher of the save's and the runtime's own. The same save restored in two runtimes now allocates the same ids afterwards, whatever each held before; peers of a networked game need it. A handle kept from before a restore may now name an entity spawned after it: drop handles across a restore, as their ids could already name restored entities.
+
+  **Lint:** `keep-simulation-headless` reports `WebSocket`, `RTCPeerConnection`, and `RTCDataChannel` with their own message: online play runs the simulation under a netcode session, and remote input goes through `Netcode.seats`, never `runtime.send(...)`.
+
+  **Devtools:** `Desync.compare(mine, theirs)` lists every difference between two saves of a tick, entities by id and values by path: the report for a `Desynced` session made with `keepSnapshots: true`.
+
+- 8aa1e85: **Component values are stored per component, in pages of entity ids**, and a system's run keeps the old values of only the slots it writes. This is the storage layout unboxed numbers build on. Performance is about the same as before; queries, cells and snapshots keep their API.
+
+  - **Breaking: `changed` means the value differs.** A write counts as a change only when the new value differs from the one before the system's run: a different number or string (`NaN` equals `NaN`), or a different object. Writing back the value you read, or an equal number, no longer counts. Inserting a component still counts as added and changed. The devtools journal records only these writes.
+
+    ```diff
+    -// re-set every frame to mark it changed
+    -data.position.set(data.position.get())
+    +// write a new value when it moves; keep writing back the same one when it does not
+    +data.position.set({ x: position.x + velocity.x, y: position.y + velocity.y })
+    ```
+
+  - **Breaking: a query match is valid during the run that produced it.** Its cells throw when used later. This covers a match kept in `local` state, captured in a closure, or returned from an inspector: before, such a match kept reading the entity's current values, even after it left the query. Keep the id or a handle, and resolve it again.
+
+    ```diff
+    -local.target ??= queries.enemies.each()[0]
+    -const at = local.target?.data.position.get()
+    +local.target ??= queries.enemies.each()[0]?.entity.id
+    +const found = local.target === undefined ? undefined : queries.enemies.get(local.target)
+    +const at = found?.ok ? found.value.data.position.get() : undefined
+    ```
+
+  - **Breaking: `runtime.inspect(...)` throws while a schedule is running**, like `snapshot` and `restore`. Read the world from a system, or inspect between ticks.
+
+### Patch Changes
+
+- c3719a5: **Faster component writes and spawns, with the same semantics.** A write through a query cell now stamps its change tick as it happens, and committing a system run no longer replays its writes; a system still does not see its own writes in its `changed` filters, and a rolled-back run or transition phase still restores the values and their change ticks. An entity's storage is sized to the components it holds, not to every component in the schema. On the community ECS benchmark cases, iteration with writes is 1.3–1.8× faster and spawning and despawning 1.4× faster.
+- adb4066: **An event the host sends with `runtime.send` reaches a reader that has not run yet.** A reader starts holding events on its first run, so until then a sent event was kept for only two `runtime.tick(...)` calls: a request sent before the first fixed step (a menu setting, a title card holding the clock) was dropped when the render schedule ticked first, with `lagged()` reporting nothing. A sent event now waits for the first reader of its stream to run, up to `Runtime.streamCapacity` entries, as the `runtime.send` docs promised. A game that placed its request handlers in `setup` too, only so they listen before the host sends, can keep them in `update` alone.
+
+  - **Behaviour:** a run that sent an event before its reader first ran now delivers it. A recorded replay or fingerprint of such a run plays differently: re-record it with the upgrade.
+  - Events systems emit are unchanged, and so is a second reader that first runs after the first reader read the event: it does not see it.
+
+- 97e95fb: JSDoc: `QueryMatch` shows how to type a game helper that takes query matches (`QueryMatch<typeof Game.schema, typeof PlayerRead>`), and `each()` points to it. The `FixedLoop` module lists servers as a host and shows a server loop that wraps `setInterval` with `FixedLoop.source`, with no renderer.
+- 343660e: **Numbers are stored unboxed.** A component value that is a number (a plain or branded number such as `Scalar.Finite`, a number literal union, an entity id) is kept in a typed array in its page. Reading one returns the number and writing one copies it in: nothing is allocated, and change detection and rollback compare plain numbers. Nothing to declare: the runtime stores each value by what it is, so a component whose value is sometimes a number (`number | { x: number }`) works too. Queries, cells, commands and snapshots keep their API. On the community ECS benchmark cases, iteration with number writes is about 1.4× faster than before, and reading object values through a query is about 25% faster.
+- d24258e: **The `RuntimeServices` docs show how to pass services through a game's own function.** Bound it by `RuntimeServices`, not `RuntimeServices<any>`: every service set satisfies the bound, `const` keeps the exact one, and a missing service still fails at `tick`.
+
+  ```ts
+  export const makeRuntime = <const Services extends RuntimeServices>(
+    services: Services
+  ) => Game.Runtime.make({ services, resources: { Score: 0 } });
+  ```
+
+- cfe332a: **Skill and JSDoc: recognise flat mode records and same-run despawns.** The mechanic and state playbooks and the self-check name the symptoms of state that should be a machine: a system that returns early on a mode field (gate it with `Game.Condition.inState` in `when` on a `Game.StateMachine`), and a nullable or kind-only field next to a `kind` or `phase` field (split it into `Descriptor.EntityState` or `Game.StateMachine` states). `commands.despawn`'s JSDoc says the entity still matches this system's queries for the rest of its run, and to skip the ids it despawned with a local `Set`.
+
 ## 0.13.0
 
 ### Minor Changes
