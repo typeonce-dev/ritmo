@@ -17,6 +17,14 @@
  * Ctrl+W / Cmd+W (close tab), Ctrl+T / Cmd+T, and Cmd+Q, and pages cannot
  * prevent them. Avoid Ctrl and Cmd as held modifiers in games.
  *
+ * Keys typed into a form field are left to the field: a key that goes down
+ * in an `<input>` (any type), `<textarea>`, `<select>`, or contenteditable
+ * element presses no action and is not `preventDefault`-ed, so a name field
+ * on the same page as the game receives "wasd" and the player does not move.
+ * Releases are always processed, so a key held before focus moved into a
+ * field still releases its action. With `window` as the host this needs no
+ * setup.
+ *
  * @module Keyboard
  * @docGroup browser
  *
@@ -77,13 +85,31 @@ export type { Direction }
 
 /**
  * The subset of `KeyboardEvent` the module reads. `code` (the physical key)
- * is optional so simple test hosts can omit it; browsers always provide it.
+ * and `target` (the element the key was typed into) are optional so simple
+ * test hosts can omit them; browsers always provide them.
+ *
+ * A target is a form field, whose key presses {@link actions} and
+ * {@link presses} leave to it, when its `tagName` is `INPUT` (any type,
+ * checkboxes and buttons included), `TEXTAREA`, or `SELECT`, or its
+ * `isContentEditable` is `true`. It is read by shape, not `instanceof`, so
+ * it works across iframes, and a test host types into a field by passing
+ * `{ tagName: "INPUT" }` or `{ isContentEditable: true }`.
  */
 export interface KeyEvent {
   readonly key: string
   readonly code?: string
   readonly repeat: boolean
+  readonly target?: object | null
   preventDefault(): void
+}
+
+const editableTags: ReadonlySet<string> = new Set(["INPUT", "TEXTAREA", "SELECT"])
+
+/** Whether a key event's target is a form field, by the rule on {@link KeyEvent}. */
+const isEditableTarget = (target: object | null | undefined): boolean => {
+  if (target === null || target === undefined) return false
+  const { tagName, isContentEditable } = target as { readonly tagName?: unknown; readonly isContentEditable?: unknown }
+  return isContentEditable === true || (typeof tagName === "string" && editableTags.has(tagName.toUpperCase()))
 }
 
 /**
@@ -297,7 +323,9 @@ const labelsOf = (flat: Readonly<Record<string, Keys>>): ReadonlyArray<string> =
 
 /**
  * Starts tracking bound keys on `host`, usually `window`, until `dispose()`.
- * When the window loses focus every held action is released. Each call is
+ * When the window loses focus every held action is released. A key pressed
+ * in a form field (see {@link KeyEvent}) is left to the field: it
+ * presses no action and is not `preventDefault`-ed. Each call is
  * its own device: build one per source (one `Controls` merge, one player
  * of a pool). Use {@link scripted} for tests and headless runs, and
  * {@link presses} to capture an unbound key on a settings screen.
@@ -342,6 +370,9 @@ export const actions = <const B extends Bindings>(
   const released = new Set<string>()
 
   const onKeyDown = (event: KeyEvent): void => {
+    // Typed into a form field: the key belongs to the field. Its release is
+    // still processed by `onKeyUp`.
+    if (isEditableTarget(event.target)) return
     const tokens = [keyToken(event.key)]
     if (event.code !== undefined) {
       if (!keyTokenByCode.has(event.code)) keyTokenByCode.set(event.code, tokens[0]!)
@@ -359,6 +390,8 @@ export const actions = <const B extends Bindings>(
     if (handled && preventDefault) event.preventDefault()
   }
 
+  // Releases are processed wherever the key was released, form fields
+  // included, so a key held before focus moved into a field still releases.
   const onKeyUp = (event: KeyEvent): void => {
     const tokens = [keyToken(event.key)]
     if (event.code !== undefined) {
@@ -452,7 +485,8 @@ export interface Presses extends System.Consumes<"snapshot"> {
 /**
  * Starts collecting every key press on `host`, whatever the bindings, for a
  * settings screen that waits for the key to bind. Use {@link actions} for
- * gameplay. It never calls `preventDefault()`.
+ * gameplay. It never calls `preventDefault()`, and skips keys pressed in a
+ * form field (see {@link KeyEvent}).
  *
  * @example
  * ```ts
@@ -468,7 +502,7 @@ export interface Presses extends System.Consumes<"snapshot"> {
 export const presses = (host: KeyboardHost): Presses => {
   let pending: Array<KeyPress> = []
   const onKeyDown = (event: KeyEvent): void => {
-    if (event.repeat) return
+    if (event.repeat || isEditableTarget(event.target)) return
     pending.push({ key: event.key, code: event.code ?? null })
   }
   host.addEventListener("keydown", onKeyDown)

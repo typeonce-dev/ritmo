@@ -24,6 +24,19 @@ describe("Keyboard", () => {
     expect<Window>().type.toBeAssignableTo<Keyboard.KeyboardHost>()
   })
 
+  it("accepts a real KeyboardEvent, with its nullable `target`, without a cast", () => {
+    expect<KeyboardEvent>().type.toBeAssignableTo<Keyboard.KeyEvent>()
+    expect<KeyboardEvent["target"]>().type.toBeAssignableTo<Keyboard.KeyEvent["target"]>()
+    expect<HTMLElement>().type.toBeAssignableTo<Keyboard.KeyboardHost>()
+  })
+
+  it("types a key event target as an object, so a test host passes a fake field", () => {
+    expect<Keyboard.KeyEvent["target"]>().type.toBe<object | null | undefined>()
+    // @ts-expect-error Type 'string' is not assignable to type 'object'
+    const typed: Keyboard.KeyEvent = { key: "w", repeat: false, target: "INPUT", preventDefault() {} }
+    void typed
+  })
+
   it("requires at least one key per action", () => {
     // @ts-expect-error Type '[]' is not assignable to type 'readonly [KeyBinding, ...KeyBinding[]]'.
     Keyboard.actions(host, { jump: [] })

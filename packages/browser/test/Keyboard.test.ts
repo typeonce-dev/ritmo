@@ -15,9 +15,16 @@ const makeHost = () => {
       listeners.get(type)?.delete(listener)
     }
   }
-  const dispatch = (type: "keydown" | "keyup", key: string, repeat = false, code?: string) => {
+  const dispatch = (type: "keydown" | "keyup", key: string, repeat = false, code?: string, target?: object) => {
     for (const listener of listeners.get(type) ?? []) {
-      listener({ key, repeat, ...(code === undefined ? {} : { code }), preventDefault: () => prevented.push(key) })
+      const event: Keyboard.KeyEvent = {
+        key,
+        repeat,
+        ...(code === undefined ? {} : { code }),
+        ...(target === undefined ? {} : { target }),
+        preventDefault: () => prevented.push(key)
+      }
+      listener(event)
     }
   }
   return {
@@ -28,6 +35,10 @@ const makeHost = () => {
     /** A key event with its physical `code`, as browsers send it. */
     downCode: (key: string, code: string) => dispatch("keydown", key, false, code),
     upCode: (key: string, code: string) => dispatch("keyup", key, false, code),
+    /** A key event typed into `target`, such as a form field. */
+    downIn: (target: object, key: string, code?: string) => dispatch("keydown", key, false, code, target),
+    repeatIn: (target: object, key: string, code?: string) => dispatch("keydown", key, true, code, target),
+    upIn: (target: object, key: string, code?: string) => dispatch("keyup", key, false, code, target),
     blur: () => {
       for (const listener of listeners.get("blur") ?? []) listener()
     },
@@ -95,6 +106,62 @@ describe("Keyboard.actions", () => {
 
     input.dispose()
     expect(fake.listenerCount()).toBe(0)
+  })
+})
+
+describe("Keyboard form fields", () => {
+  const input = { tagName: "INPUT", isContentEditable: false }
+  const textarea = { tagName: "TEXTAREA", isContentEditable: false }
+  const select = { tagName: "SELECT", isContentEditable: false }
+  const editable = { tagName: "DIV", isContentEditable: true }
+  const canvas = { tagName: "CANVAS", isContentEditable: false }
+
+  it("leaves a bound key typed into a field to the field: no action, no preventDefault", () => {
+    for (const field of [input, textarea, select, editable]) {
+      const fake = makeHost()
+      const keys = Keyboard.actions(fake.host, { up: ["w"], jump: [Keyboard.code("Space")] })
+      fake.downIn(field, "w", "KeyW")
+      fake.downIn(field, " ", "Space")
+      fake.upIn(field, "w", "KeyW")
+      fake.upIn(field, " ", "Space")
+      const snapshot = keys.snapshot()
+      expect(snapshot.actions.up).toEqual({ held: false, pressed: false, released: false })
+      expect(snapshot.actions.jump).toEqual({ held: false, pressed: false, released: false })
+      expect(snapshot.used).toBe(false)
+      expect(fake.prevented).toEqual([])
+    }
+  })
+
+  it("releases a key held before focus moved into a field on a keyup from the field", () => {
+    const fake = makeHost()
+    const keys = Keyboard.actions(fake.host, { up: ["w"], right: [Keyboard.code("KeyD")] })
+    fake.downIn(canvas, "w", "KeyW")
+    fake.downIn(canvas, "d", "KeyD")
+    expect(keys.snapshot().actions.up.held).toBe(true)
+    // Focus moves into a text field; auto-repeat arrives there, then the release.
+    fake.repeatIn(input, "w", "KeyW")
+    fake.upIn(input, "w", "KeyW")
+    fake.upIn(editable, "d", "KeyD")
+    const snapshot = keys.snapshot()
+    expect(snapshot.actions.up).toEqual({ held: false, pressed: false, released: true })
+    expect(snapshot.actions.right).toEqual({ held: false, pressed: false, released: true })
+  })
+
+  it("plays a key typed outside a field as before", () => {
+    const fake = makeHost()
+    const keys = Keyboard.actions(fake.host, { up: ["w"] })
+    fake.downIn(canvas, "w", "KeyW")
+    expect(keys.snapshot().actions.up).toEqual({ held: true, pressed: true, released: false })
+    expect(fake.prevented).toEqual(["w"])
+  })
+
+  it("does not capture a key typed into a field on a settings screen", () => {
+    const fake = makeHost()
+    const presses = Keyboard.presses(fake.host)
+    fake.downIn(input, "j", "KeyJ")
+    fake.downIn(editable, "k", "KeyK")
+    fake.downIn(canvas, "l", "KeyL")
+    expect(presses.snapshot()).toEqual([{ key: "l", code: "KeyL" }])
   })
 })
 
