@@ -1,6 +1,6 @@
 {
   "name": "@typeonce/ritmo-netcode",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Rollback and lockstep sessions over any transport for Ritmo: input timelines, checkpoint history, pacing, resync, and desync checks",
   "author": "Sandro Maglione",
   "license": "MIT",

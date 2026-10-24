@@ -1,6 +1,6 @@
 {
   "name": "@typeonce/ritmo-browser",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Browser fixed-step loop, keyboard, gamepad, pointer, and touch actions, merged input, local multiplayer, and input capture for Ritmo",
   "author": "Sandro Maglione",
   "license": "MIT",
