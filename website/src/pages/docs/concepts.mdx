@@ -170,7 +170,7 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 import { Schema as S } from "effect"
 const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
   const json = S.toCodecJson(schema)
-  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], "~encode": S.toStandardSchemaV1(S.flip(json)) }
 }
 const Health = Descriptor.Component<number>()("Arena/Health")
 const Game = Schema.bind(Schema.fragment({ components: { Health } }))
@@ -206,8 +206,11 @@ Ritmo validates with the schema library the game already uses: any
 [Standard Schema](https://standardschema.dev) (Zod, Valibot, ArkType,
 Effect). A constructed descriptor takes one. Raw input and saves are checked
 by it, and `runtime.snapshot()` saves each value in the schema's encoded form.
-A value that changes shape when saved (a `Map`, an `Option`) needs a schema
-with an `encode` back, and Ritmo says so if it is missing.
+A Zod, Valibot, or ArkType schema of plain data passes as it is. A value that
+changes shape when saved (a `Map`, an `Option`, a `Date`) needs a schema with
+a `"~encode"` back, and Ritmo says so if it is missing: the Ritmo skill has a
+helper for Zod and one for Effect that build it from the library's own
+encoding.
 
 With Effect, one helper in the game turns any schema into that shape:
 
@@ -218,7 +221,7 @@ import { Schema as S } from "effect"
 // Decodes saved JSON, and encodes values back to it
 const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
   const json = S.toCodecJson(schema)
-  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], "~encode": S.toStandardSchemaV1(S.flip(json)) }
 }
 
 const Root = Schema.defineRoot("Arena")

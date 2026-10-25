@@ -675,10 +675,10 @@ export interface Runtime<
   /**
    * Captures the world as plain data: entities with their ids, components,
    * relation edges, resources, and committed machine values, each in its
-   * schema's saved form (encoded by the schema's `encode` when it has one).
-   * Fails with the value an `encode` rejected.
+   * schema's saved form (encoded by the schema's `"~encode"` when it has one).
+   * Fails with the value a `"~encode"` rejected.
    *
-   * Values without an `encode` are shared with the world, not copied;
+   * Values without a `"~encode"` are shared with the world, not copied;
    * serialize the snapshot (for example with `JSON.stringify`) to detach it.
    * Transient components and resources are skipped.
    *
@@ -695,7 +695,7 @@ export interface Runtime<
    * For spotting desyncs: peers of a rollback or lockstep game compare the
    * checksums of confirmed ticks, and a replay compares them with the ones
    * it recorded. Like `snapshot`, it skips transient components and
-   * resources, fails with the value an `encode` rejected, is callable only
+   * resources, fails with the value a `"~encode"` rejected, is callable only
    * when every component and resource is constructed or transient, and
    * throws while a schedule is running.
    */
@@ -2631,7 +2631,7 @@ const makeValidatedRuntime = <
     }
     return schema
   }
-  // A value's saved form: its schema's `encode`, or the value as it is.
+  // A value's saved form: its schema's `"~encode"`, or the value as it is.
   const encoded = (schema: Construction | undefined, value: unknown): Result.Result<unknown, DescriptorModule.SchemaIssues> =>
     schema?.encode === undefined ? Result.success(value) : schema.encode(value)
 

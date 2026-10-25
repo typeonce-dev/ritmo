@@ -19,9 +19,9 @@ export const decode = (codec: Descriptor.Codec<any, any>, raw: unknown): Result.
   return outcome.issues === undefined ? Result.success(outcome.value) : Result.failure(outcome.issues.map((issue) => issue.message).join("; "))
 }
 
-/** The saved form of a value: through the codec's `encode` when it has one. */
+/** The saved form of a value: through the codec's `"~encode"` when it has one. */
 export const encode = (codec: Descriptor.Codec<any, any>, value: unknown): Result.Result<unknown, string> =>
-  codec.encode === undefined ? Result.success(value) : decode(codec.encode as Descriptor.Codec<any, any>, value)
+  codec["~encode"] === undefined ? Result.success(value) : decode(codec["~encode"] as Descriptor.Codec<any, any>, value)
 
 /** A canonical text of plain data (object keys sorted), for comparing inputs. */
 export const canonical = (value: unknown): string => {

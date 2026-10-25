@@ -1,7 +1,12 @@
-import { Descriptor, Result, Schema } from "@typeonce/ritmo"
+import { Descriptor, Entity, Result, Schema } from "@typeonce/ritmo"
 import * as Codecs from "../test/codecs.ts"
 import type { Handle } from "@typeonce/ritmo/Entity"
+import { type } from "arktype"
+import { Schema as S } from "effect"
 import { describe, expect, it } from "tstyche"
+import * as v from "valibot"
+import { z } from "zod"
+import { effectCodec, zodCodec } from "../test/libraries.ts"
 
 describe("Result", () => {
   it("keeps value and error types through narrowing, match, and all", () => {
@@ -43,10 +48,10 @@ describe("Codecs", () => {
 
   it("rejects schemas Ritmo cannot save with", () => {
     const parsed = {} as Descriptor.StandardSchema<string, number>
-    // @ts-expect-error give it an `encode` schema back to the saved form
+    // @ts-expect-error give it a ~encode schema back to the saved form
     Descriptor.ConstructedComponent(parsed)
-    const backwards = { ...parsed, encode: {} as Descriptor.StandardSchema<number, boolean> }
-    // @ts-expect-error its encode does not return the saved form the schema decodes
+    const backwards = { ...parsed, "~encode": {} as Descriptor.StandardSchema<number, boolean> }
+    // @ts-expect-error its ~encode does not return the saved form the schema decodes
     Descriptor.ConstructedComponent(backwards)
     const dated = {} as Descriptor.StandardSchema<Date, Date>
     // @ts-expect-error the saved form of this schema is not plain data
@@ -54,7 +59,7 @@ describe("Codecs", () => {
     const constructor = { result: (raw: unknown) => Result.success(raw) }
     // @ts-expect-error Property '"~standard"' is missing
     Descriptor.ConstructedComponent(constructor)
-    const roundTrip = { ...parsed, encode: {} as Descriptor.StandardSchema<number, string> }
+    const roundTrip = { ...parsed, "~encode": {} as Descriptor.StandardSchema<number, string> }
     expect(Descriptor.ConstructedComponent(roundTrip)("Values/Parsed")).type.toBe<
       Descriptor.ConstructedDescriptor<"component", "Values/Parsed", number, string, Descriptor.SchemaIssues>
     >()
@@ -90,5 +95,48 @@ describe("Descriptor values", () => {
     Descriptor.Event<any>()("Values/AnyHit")
     // @ts-expect-error a service value cannot be `any`
     Descriptor.Service<any>()("Values/AnyLogger")
+  })
+})
+
+describe("schema libraries", () => {
+  it("takes Zod, Valibot, and ArkType schemas as they are, and Effect's through the playbook's codec", () => {
+    expect(Descriptor.ConstructedComponent(z.object({ x: z.number() }))("Values/Zod")).type.toBe<
+      Descriptor.ConstructedDescriptor<"component", "Values/Zod", { x: number }, { x: number }, Descriptor.SchemaIssues>
+    >()
+    expect(Descriptor.ConstructedComponent(v.object({ x: v.number() }))("Values/Valibot")).type.toBe<
+      Descriptor.ConstructedDescriptor<"component", "Values/Valibot", { x: number }, { x: number }, Descriptor.SchemaIssues>
+    >()
+    expect(Descriptor.ConstructedComponent(type({ x: "number" }))("Values/ArkType")).type.toBe<
+      Descriptor.ConstructedDescriptor<"component", "Values/ArkType", { x: number }, { x: number }, Descriptor.SchemaIssues>
+    >()
+    const Effect = Descriptor.ConstructedComponent(effectCodec(S.Struct({ x: S.Finite })))("Values/Effect")
+    expect<Descriptor.Descriptor.Value<typeof Effect>>().type.toBe<{ readonly x: number }>()
+  })
+
+  it("saves a transforming Zod or Effect schema through the playbook's codec, and names the fix without it", () => {
+    const date = z.codec(z.iso.datetime(), z.date(), { decode: (text) => new Date(text), encode: (at) => at.toISOString() })
+    expect(Descriptor.ConstructedResource(zodCodec(date))("Values/ZodDate")).type.toBe<
+      Descriptor.ConstructedDescriptor<"resource", "Values/ZodDate", Date, string, Descriptor.SchemaIssues>
+    >()
+    // @ts-expect-error give it a ~encode schema back to the saved form
+    Descriptor.ConstructedResource(date)
+    // @ts-expect-error the saved form of this schema is not plain data
+    Descriptor.ConstructedResource(z.date())
+    const EffectMap = Descriptor.ConstructedResource(effectCodec(S.ReadonlyMap(S.String, S.Int)))("Values/EffectMap")
+    expect<Descriptor.Descriptor.Value<typeof EffectMap>>().type.toBe<ReadonlyMap<string, number>>()
+  })
+
+  it("stores a handle through the forms the skill names, each narrowing to the guard's type", () => {
+    const Root = Schema.defineRoot("Values")
+    const isHandle = Entity.isHandle(Root)
+    type Handle = Entity.Handle<typeof Root>
+    const zod = Descriptor.ConstructedComponent(z.object({ target: z.unknown().refine(isHandle) }))("Values/ZodTarget")
+    expect<Descriptor.Descriptor.Value<typeof zod>["target"]>().type.toBe<Handle>()
+    const valibot = Descriptor.ConstructedComponent(v.object({ target: v.pipe(v.unknown(), v.guard(isHandle)) }))("Values/ValibotTarget")
+    expect<Descriptor.Descriptor.Value<typeof valibot>["target"]>().type.toBe<Handle>()
+    const arktype = Descriptor.ConstructedComponent(type({ target: type("unknown").narrow(isHandle) }))("Values/ArkTypeTarget")
+    expect<Descriptor.Descriptor.Value<typeof arktype>["target"]>().type.toBe<Handle>()
+    const effect = Descriptor.ConstructedComponent(effectCodec(S.Struct({ target: S.declare(isHandle) })))("Values/EffectTarget")
+    expect<Descriptor.Descriptor.Value<typeof effect>["target"]>().type.toBe<Handle>()
   })
 })

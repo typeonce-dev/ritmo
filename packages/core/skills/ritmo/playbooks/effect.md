@@ -10,7 +10,7 @@ export const codec = <S extends Schema.Top & { readonly DecodingServices: never;
   const json = Schema.toCodecJson(schema)
   return {
     "~standard": Schema.toStandardSchemaV1(json)["~standard"],
-    encode: Schema.toStandardSchemaV1(Schema.flip(json))
+    "~encode": Schema.toStandardSchemaV1(Schema.flip(json))
   }
 }
 ```

@@ -180,7 +180,7 @@ export const is = (raw: unknown): raw is State => isState(raw)
 /**
  * The codec of a random resource's state (a Standard Schema, see
  * `Descriptor.Codec`): `Descriptor.ConstructedResource(Random.codec)`. Its
- * saved form is the number itself, so it needs no `encode`.
+ * saved form is the number itself, so it needs no `"~encode"`.
  *
  * @category Resource
  */

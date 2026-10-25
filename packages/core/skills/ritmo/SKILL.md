@@ -28,6 +28,7 @@ Read the playbook for the change before writing code. A change that spans severa
 | New state, saves, or a Ritmo upgrade | [`playbooks/state-and-upgrades.md`](playbooks/state-and-upgrades.md) |
 | Online multiplayer, rollback, or prediction | [`playbooks/netcode.md`](playbooks/netcode.md) |
 | Schemas in a game that uses Effect | [`playbooks/effect.md`](playbooks/effect.md) |
+| Schemas in a game that uses Zod | [`playbooks/zod.md`](playbooks/zod.md) |
 
 ## Validating and saving values
 
@@ -35,9 +36,9 @@ Ritmo has no validators of its own. Every value it checks or saves is described 
 
 - A saved component or resource is `Descriptor.ConstructedComponent(schema)` or `ConstructedResource(schema)`. Raw input (`setRaw`, `updateRaw`, `Game.Command.entryRaw`, raw values given to `Game.Runtime.make`) is in the schema's saved form and is decoded by it. A value that is never saved is a `Transient*` descriptor.
 - A state of `Descriptor.EntityState` or `Game.StateMachine` is `{}` (no data) or one object schema for all of its data. Ritmo adds only `_tag`.
-- A value whose saved form differs from it (a `Map`, an `Option`, a class) needs a schema with an `encode` back to plain data: Zod's `z.codec`, or the Effect helper in [`playbooks/effect.md`](playbooks/effect.md). Without one, the descriptor does not compile and the error says so.
+- A Zod, Valibot, or ArkType schema of plain data passes as it is. A value whose saved form differs from it (a `Map`, an `Option`, a `Date`, a class) needs a schema with a `"~encode"` back to plain data: the helper in [`playbooks/zod.md`](playbooks/zod.md) or [`playbooks/effect.md`](playbooks/effect.md) builds it from the library's own encoding. Valibot and ArkType transforms only decode, so keep their saved values plain. Without a `"~encode"`, the descriptor does not compile and the error says so.
 - `runtime.snapshot()` encodes every value and returns a `Result`; `runtime.restore(...)` decodes. Validation is synchronous: no async checks.
-- Ritmo's own types come with a guard to build a schema from: `Entity.isHandle(Root, Intent)` for stored handles, and `is` on each ritmo-math type (which also has a ready `codec`). Wrap the guard with the library (`Schema.declare(guard)`, `z.custom(guard)`); never cast a raw number to a handle.
+- Ritmo's own types come with a guard to build a schema from: `Entity.isHandle(Root, Intent)` for stored handles, and `is` on each ritmo-math type (which also has a ready `codec`). Wrap the guard with a schema that narrows to its type: `Schema.declare(guard)` (Effect), `z.unknown().refine(guard)` (Zod), `v.pipe(v.unknown(), v.guard(guard))` (Valibot), `type("unknown").narrow(guard)` (ArkType). `z.custom(guard)` and `v.custom(guard)` type the value as `unknown`. Never cast a raw number to a handle.
 
 ## Principles
 

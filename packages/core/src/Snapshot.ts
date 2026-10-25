@@ -5,11 +5,11 @@
  * relation edges, resources, and committed state-machine values, keyed by
  * descriptor, relation, and machine names. A bound schema guarantees those
  * names are unique, so they are stable save keys. Each value is saved in its
- * schema's saved form: a schema with an `encode` (an `Option`, a `Map`)
+ * schema's saved form: a schema with a `"~encode"` (an `Option`, a `Map`)
  * encodes it, and any other value is saved as it is. The result is plain
  * data, ready for any store; turning it into text (`JSON.stringify`, or your
  * schema library's JSON string schema) is the game's choice. It is a
- * `Result`, because an `encode` can fail.
+ * `Result`, because a `"~encode"` can fail.
  *
  * `runtime.restore(data)` accepts `unknown`, because saved data comes from
  * outside the program, and validates it before touching the world: shape,
@@ -140,7 +140,7 @@ export interface WorldSnapshot {
 
 /**
  * Why `runtime.snapshot()` could not save the world: a value its schema's
- * `encode` rejected.
+ * `"~encode"` rejected.
  */
 export type SnapshotError =
   | { readonly _tag: "UnencodableComponent"; readonly entityId: number; readonly name: string; readonly error: SchemaIssues }
