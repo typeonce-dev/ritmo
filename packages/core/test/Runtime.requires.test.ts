@@ -107,7 +107,7 @@ describe("Schema.requires at runtime", () => {
   it("lists requirements and immutability per component in describe()", () => {
     const runtime = makeRuntime()
     const player = runtime.debug.describe().components.find((component) => component.name === "Requires/Player")
-    expect(player).toEqual({ name: "Requires/Player", storage: "constructed", immutable: false, requires: ["Requires/Position", "Requires/Velocity"] })
+    expect(player).toEqual({ name: "Requires/Player", storage: "constructed", immutable: false, requires: ["Requires/Position", "Requires/Velocity"], meta: {} })
   })
 
   it("restores entities that keep their requirements, and rejects one that does not", () => {

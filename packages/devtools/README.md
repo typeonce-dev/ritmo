@@ -204,6 +204,7 @@ f186 update  -                   transition Game/Flow Playing -> Paused applied
 | `system-failed` | A system returned an expected failure or threw. |
 | `ignored-failure` | A `tick` / `tryTick` result failed and nobody read its `ok` before the next tick (or the session's `report()`): the failure went unnoticed and later systems did not run. `run` stops on it with `reason: "ignored-failure"`. |
 | `non-finite-value` | A system wrote NaN or an infinity into a component, resource, event, or spawned entity. The message names the entity and path; `why()` shows the history. |
+| `out-of-range` | A system wrote a number outside the `range` its descriptor declares for that field (`meta: { hp: { range: [0, 100] } }`), in a write, a resource, or a spawned or inserted component. One count per write; the message names the entity, field, value, range, system, and first frame. The range is advisory: the schema decides what is valid. |
 | `population-growing` | A component's count rose through every quarter of a run of 60+ frames: its lowest count in each quarter was higher than in the quarter before. Bursts that are cleaned up do not trigger it; entities that are never despawned do. `run()` returns the counts in `growing`. |
 
 The report also starts with the static lints from `describe()`.
