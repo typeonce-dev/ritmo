@@ -1,10 +1,13 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Getting started
-description: Install Ritmo, define a world, and run its first tick.
+description: Install Ritmo, describe a world, spawn an entity, and watch it move over sixty ticks.
 ---
-Describe the world once, write systems that declare what they touch, and run
-them at a fixed step. The compiler checks that it all fits together.
+By the end of this page you have a world, an entity that moves, and a loop
+that runs it for one second of game time. The same code runs in a test, in
+Node, and on a page.
+
+Hover any name in the code to see its type.
 
 ## Install
 
@@ -12,30 +15,36 @@ them at a fixed step. The compiler checks that it all fits together.
 pnpm add @typeonce/ritmo
 ```
 
-TypeScript 5.9+ with `strict` on. Add-ons, all released with the same
-version:
+Ritmo needs TypeScript 5.9 or newer with `strict` on. The add-ons are
+released with the same version, and you install them when the game needs
+them:
 
 | Package | What it gives you |
 |---|---|
-| `@typeonce/ritmo` | The ECS runtime, the fixed-step loop, seeded random, and trigonometry that returns the same bits everywhere |
-| `@typeonce/ritmo-math` | 2D helpers on plain data: vectors, angles, swept circle collision, a flow field |
+| `@typeonce/ritmo` | The runtime, the fixed step, seeded `Random`, and `Ops` math that returns the same bits everywhere |
+| `@typeonce/ritmo-math` | 2D helpers on plain data: vectors, angles, swept circles, a flow field |
 | `@typeonce/ritmo-browser` | The browser loop, keyboard, gamepad, pointer, and touch input |
-| `@typeonce/ritmo-render` | Mirrors entities into any renderer's nodes |
+| `@typeonce/ritmo-render` | One renderer node per entity, kept in sync |
 | `@typeonce/ritmo-pixi` | The Pixi adapter for `ritmo-render` |
-| `@typeonce/ritmo-netcode` | [Online multiplayer](/features/rollback/): rollback and lockstep sessions over WebSocket, WebRTC, or any transport |
-| `@typeonce/ritmo-devtools` | Headless debug sessions, determinism checks, `ritmo-devtools lint` |
-| `@typeonce/oxlint-plugin-ritmo` | Lint rules that keep simulation code deterministic and headless |
+| `@typeonce/ritmo-netcode` | [Online multiplayer](/features/rollback/) with rollback or lockstep |
+| `@typeonce/ritmo-devtools` | Headless sessions, the fuzzer, determinism checks, `ritmo-devtools lint` |
+| `@typeonce/oxlint-plugin-ritmo` | Lint rules that keep game logic deterministic and headless |
 
-## A first world
+Working with a coding agent? [Set the project up with
+it](/docs/with-an-agent/) instead: it installs the checks too.
 
-Every other API comes from `Game`. Hover any name to see its type.
+## Describe the world
+
+A component is data an entity carries. A resource is one value for the
+whole world, here the clock. `Schema.bind` turns them into `Game`, and every
+other API comes from `Game`.
 
 ```ts twoslash title="schema.ts"
 import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
 
 type Vec = { x: number; y: number }
 
-// The simulation advances 60 fixed steps per second
+// 60 fixed steps per second, whatever the frame rate
 const step = Clock.hz(60)
 const Time = Clock.resource("Example/Time", step)
 
@@ -43,7 +52,6 @@ const Time = Clock.resource("Example/Time", step)
 const Position = Descriptor.Component<Vec>()("Example/Position")
 const Velocity = Descriptor.Component<Vec>()("Example/Velocity")
 
-// The world: every other API comes from Game
 const Game = Schema.bind(
   Schema.fragment({
     components: { Position, Velocity },
@@ -52,10 +60,11 @@ const Game = Schema.bind(
 )
 ```
 
-## A system
+## Write two systems
 
-It gets only what it declares: it writes `Position`, and reads `Velocity`
-and the clock.
+A system declares what it touches, and its function gets only that. `Move`
+writes `Position` and reads `Velocity` and the clock. Writing `Velocity`
+from it would not compile.
 
 ```ts twoslash title="move.ts"
 import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
@@ -94,9 +103,41 @@ const Move = Game.System(
 )
 ```
 
-## Run it
+`Spawn` creates the entity. It may spawn only the components it lists, and
+the spawn is queued: it lands at the next `applyDeferred()`, so no system
+sees the world change shape halfway through.
 
-Making a runtime and running a tick both return a `Result`. Neither throws.
+```ts twoslash title="spawn.ts"
+import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
+type Vec = { x: number; y: number }
+const step = Clock.hz(60)
+const Time = Clock.resource("Example/Time", step)
+const Position = Descriptor.Component<Vec>()("Example/Position")
+const Velocity = Descriptor.Component<Vec>()("Example/Velocity")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }))
+// ---cut---
+const Spawn = Game.System(
+  "Example/Spawn",
+  {
+    commands: Game.System.commands(
+      Game.System.spawns(Position, Velocity) // [!code highlight]
+    )
+  },
+  ({ commands }) => {
+    commands.spawn(
+      Game.Command.spawn(
+        [Position, { x: 0, y: 0 }],
+        [Velocity, { x: 30, y: 0 }]
+      )
+    )
+  }
+)
+```
+
+## Run the first tick
+
+A schedule lists systems in order. Making a runtime and running a tick each
+return a `Result`, so a failure is a value you check, never an exception.
 
 ```ts twoslash title="main.ts"
 import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
@@ -107,6 +148,7 @@ const Position = Descriptor.Component<Vec>()("Example/Position")
 const Velocity = Descriptor.Component<Vec>()("Example/Velocity")
 const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }))
 const Move = Game.System("Example/Move", { queries: { moving: Game.Query({ selection: { position: Game.Query.write(Position), velocity: Game.Query.read(Velocity) } }) }, resources: { time: Game.System.readResource(Time) } }, () => {})
+const Spawn = Game.System("Example/Spawn", { commands: Game.System.commands(Game.System.spawns(Position, Velocity)) }, () => {})
 // ---cut---
 // Moves the clock forward one step per tick
 const AdvanceTime = Clock.system(Game, {
@@ -114,7 +156,10 @@ const AdvanceTime = Clock.system(Game, {
   resource: Time
 })
 
-// Every service and resource the schedules need
+const setup = Game.Schedule(Spawn, Game.Schedule.applyDeferred())
+const update = Game.Schedule(AdvanceTime, Move)
+
+// Every service and resource the schedules need, given up front
 const made = Game.Runtime.make({
   services: Game.Runtime.services(),
   resources: { Time: Clock.start(step) }
@@ -122,13 +167,65 @@ const made = Game.Runtime.make({
 
 if (made.ok) {
   const runtime = made.value
+  runtime.tick(setup)
 
-  // One tick: AdvanceTime, then Move
-  const ticked = runtime.tick(Game.Schedule(AdvanceTime, Move)) // [!code highlight]
-  if (!ticked.ok) console.error(ticked.error)
+  // One second of game time
+  for (let frame = 0; frame < 60; frame++) {
+    const ticked = runtime.tick(update) // [!code highlight]
+    if (!ticked.ok) console.error(ticked.error)
+  }
 }
 ```
 
-This is a whole game loop, and it runs the same in tests, in Node and on a
-page. Next: [Concepts](/docs/concepts/) or [Loop, input,
-rendering](/docs/browser/).
+## Read the world
+
+An inspector declares reads like a system, and `runtime.inspect` returns
+what it computes. Tests, UIs, and saves read the world this way.
+
+```ts twoslash title="main.ts"
+import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
+type Vec = { x: number; y: number }
+const step = Clock.hz(60)
+const Time = Clock.resource("Example/Time", step)
+const Position = Descriptor.Component<Vec>()("Example/Position")
+const Velocity = Descriptor.Component<Vec>()("Example/Velocity")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }))
+const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Time: Clock.start(step) } })
+if (!made.ok) throw new Error()
+const runtime = made.value
+// ---cut---
+const Positions = Game.Inspector(
+  "Example/Positions",
+  {
+    queries: {
+      all: Game.Query({ selection: { position: Game.Query.read(Position) } })
+    }
+  },
+  ({ queries }) =>
+    Array.from(queries.all.each(), (match) => match.data.position.get())
+)
+
+// After the sixty ticks above
+console.log(runtime.inspect(Positions))
+```
+
+```text
+[ { x: 30, y: 0 } ]
+```
+
+Thirty units per second for sixty steps of 1/60 s: the entity is at 30, on
+every machine, every run.
+
+## Where to go next
+
+That is a whole game loop with no page in it. From here:
+
+- **[Online multiplayer](/features/rollback/)**: the same schedule, ticked by
+  two peers over WebRTC, with rollback when inputs arrive late.
+- **[Same game everywhere](/features/determinism/)**: why that 30 is the
+  same bits in every browser and on every CPU.
+- **[Bugs found before players](/features/bugs/)**: a fuzzer plays the game
+  and hands you each failure as a replay that is already a test.
+- **[Concepts](/docs/concepts/)**: queries, events, commands, and state
+  machines, in order.
+- **[Loop, input, rendering](/docs/browser/)**: put this world on a page.

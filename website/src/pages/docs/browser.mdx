@@ -6,15 +6,21 @@ description: Put a Ritmo world on a page, with a fixed-step loop, keyboard and g
 
 import Game from "../../components/Game.astro"
 
-The simulation never touches the page. The page is a **host** that runs the
-loop, reads input and draws.
+The simulation never touches the page. The page is a **host**: it runs the
+loop, reads input, and draws. After this page you can put the world from
+[Getting started](/docs/) in a browser, with a fixed-step loop, keyboard and
+gamepad controls, and a renderer.
 
 <Game id="top-down" />
 
+Walk with the arrows, WASD, or a gamepad stick, and press E or space near a
+part to pick it up. The rules are the headless
+systems from `integration/top-down`; only this host is new.
+
 ## The loop
 
-Fixed updates whatever the frame rate, then one `render`. Long frames are
-clamped.
+Each animation frame runs as many fixed updates as the time owes, then one
+`render`. A 144 Hz screen and a 60 Hz one run the same ticks.
 
 ```ts twoslash title="main.ts"
 import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
@@ -41,13 +47,15 @@ const loop = FixedLoop.start({
 })
 ```
 
-A renderer with its own ticker plugs in through `FixedLoop.source`.
+Long frames are clamped. A renderer with its own ticker plugs in through
+`FixedLoop.source`.
 
 ## Input
 
 Systems see **actions**, never keys. A button action is pressed and held
-(jump); a vector action is a direction of length at most 1 (move). Each
-device binds them, and the devices merge into one source.
+(jump). A vector action is a direction of length at most 1 (move). Each
+device binds them, and the devices merge into one source. See [Every
+device, one player](/features/devices/).
 
 ```ts twoslash title="input.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -98,7 +106,8 @@ type Snapshot = InputCapture.SnapshotOf<typeof ControlsInput>
 const Input = Descriptor.TransientResource<Snapshot>()("Example/Input")
 ```
 
-One snapshot per update, so every system sees the same input:
+`InputCapture.system` takes one snapshot per update, so every system sees
+the same input:
 
 ```ts twoslash title="jump.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -132,6 +141,8 @@ const Jump = Game.System(
 )
 ```
 
+The page and a test differ only in where the keyboard comes from:
+
 ```ts
 const keyboard = Keyboard.actions(window, keys) // in the page
 const keyboard = Keyboard.scripted(keys, [
@@ -143,16 +154,16 @@ const keyboard = Keyboard.scripted(keys, [
 
 Only the capture takes snapshots: each `snapshot()` starts a new press
 window, so a second caller would steal presses. Calling it through
-`Game.System.service` does not compile; a system that drains a source itself
-declares it with `Game.System.consumeService`, and `describe()` warns
-(`service-consumed-twice`) when one source is drained in two places.
+`Game.System.service` does not compile. A system that drains a source itself
+declares it with `Game.System.consumeService`.
 
 ### Local multiplayer
 
 Players are slots. No device belongs to a player until someone presses
 join on it: the first device to join is `p1`, the next `p2`. Two
 `Keyboard.actions` over different keys are two keyboard players, and
-`Gamepad.pads` lets every pad join on its own.
+`Gamepad.pads` lets every pad join on its own. [Local
+multiplayer](/features/multiplayer/) has the demo.
 
 ```ts twoslash title="players.ts"
 import { Descriptor } from "@typeonce/ritmo"
@@ -218,23 +229,23 @@ if (input.p2.device === "pads") {
 }
 ```
 
-A system opens joining with `setJoining(true)`, once for drop-in play or
-only on a join screen. It frees a slot with `leave("p2")`, from a pause
-menu for example.
+From a system, the pool is controlled with three calls:
 
-A player who is in from the start is seated from a setup system, without a
-press: `seat("p1", "right")` for a pool name, or `seat("p1", { pads: 0 })`
-for the first pad. A taken slot or device comes back as
-`{ ok: false, reason }`.
+- `setJoining(true)` opens joining, once for drop-in play or only on a join
+  screen.
+- `leave("p2")` frees a slot, from a pause menu for example.
+- `seat("p1", "right")` seats a player without a press, or
+  `seat("p1", { pads: 0 })` for the first pad. A taken slot or device comes
+  back as `{ ok: false, reason }`.
 
 A pad that disconnects keeps its slot (`connected: false`) and returns to
-it. The town on the home page plays this way: player 1 is seated on the
-arrows, and WASD or a gamepad joins player 2.
+it.
 
 ## Rendering
 
-One node per entity: created when it appears, updated when it moves,
-destroyed when it goes. You say what a node is.
+Ritmo does not draw. `RenderSync` keeps one node per entity: created when
+it appears, updated when it moves, destroyed when it goes. You say what a
+node is.
 
 ```ts twoslash title="render.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -273,9 +284,14 @@ The system needs a `NodeRegistry`, not Pixi. The page picks the renderer:
 Game.Runtime.service(WallNodes, PixiNodeRegistry.make(wallLayer))
 ```
 
-Any renderer works: `NodeRegistry.make({ attach, detach })`. Full host:
+Any renderer works: `NodeRegistry.make({ attach, detach })` is a few lines
+for Three.js or a canvas. The full host of the demo above is
 [`website/src/demos/top-down`](https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/top-down).
 
-A part that moves with an entity, like a turret on a tank, is a child entity in a
-`Descriptor.Hierarchy`. Pass it as `hierarchy: Attached` and the child's node is added under
-its parent's node, so its `Position` is relative to the parent and the renderer composes the two.
+A part that moves with an entity, like a turret on a tank, is a child entity
+in a `Descriptor.Hierarchy`. Pass it as `hierarchy`, and the child's node is
+added under its parent's node. Its `Position` is relative to the parent, and
+the renderer composes the two.
+
+Next: [Headless debugging](/docs/devtools/), the same game run without a
+page.

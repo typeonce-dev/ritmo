@@ -1,17 +1,83 @@
 ---
 layout: ../../layouts/Docs.astro
 title: With a coding agent
-description: Ritmo is built for games whose code an agent writes. Here is how to set one up.
+description: You direct the game, an agent writes the code, and Ritmo catches its mistakes at three layers.
 ---
 
-You direct the game. A coding agent writes the simulation, and Ritmo keeps it
-on track:
+Ritmo is built for games whose code a coding agent writes. You say what the
+game should do; the agent writes the systems; Ritmo stops its mistakes
+before you play them. After this page you can set up a project so the agent
+works inside those guardrails.
 
-| Layer | What the agent gets |
+## Three guardrails
+
+| Layer | What catches the mistake |
 |---|---|
-| **Compile time** | Wrong code does not compile, and the error names the fix. [Type safety](/docs/type-safety/) |
-| **Headless runs** | Play in Node, check invariants every frame, ask why a value changed. [Headless debugging](/docs/devtools/) |
-| **Lock-in** | A fuzzer finds the bug, and its shrunk replay becomes the test. [Bugs found before players](/features/bugs/) |
+| **Compile time** | Wrong code does not compile, and the error names the fix |
+| **Headless runs** | The game plays in Node, checks rules every frame, and explains why a value changed |
+| **Tests** | A fuzzer finds the bug, and its shrunk replay becomes the test |
+
+### The error names the fix
+
+A system that uses a service the runtime was not given does not compile. The
+agent reads the fix in the error and applies it, without reading the rest of
+the game.
+
+```ts twoslash title="report.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+// ---cut---
+// @errors: 2345
+const Logger = Descriptor.Service<{ log(message: string): void }>()(
+  "Arena/Logger"
+)
+
+const Report = Game.System(
+  "Arena/Report",
+  { services: { logger: Game.System.service(Logger) } },
+  ({ services }) => services.logger.log("tick")
+)
+
+const made = Game.Runtime.make({ services: Game.Runtime.services() })
+if (made.ok) made.value.tick(Game.Schedule(Report))
+```
+
+What the compiler cannot see, the lint rules catch, with the replacement in
+the message:
+
+```text
+error ritmo(use-random-for-randomness): Math.random() cannot be seeded or
+saved, so the run cannot replay. Draw from the world's Random resource:
+`const random = Random.draw(resources.rng)` (declare
+`rng: Game.System.writeResource(Rng)`), then `random.next()`, ...
+```
+
+[Type safety](/docs/type-safety/) lists every mistake the compiler stops.
+
+### The game explains itself
+
+The agent cannot watch the game. It runs it headless with scripted input and
+asks why a value is wrong, in plain text:
+
+```text
+e1 TopDown/Position is now {x:134.673,y:128.007}; last 5 changes (oldest first):
+could have spawned it: TopDown/SetupWorld
+...
+f120 update  TopDown/MovePlayer  write e1 TopDown/Position
+  {x:144.007,y:128.007} -> {x:139.34,y:128.007}
+f121 update  TopDown/MovePlayer  write e1 TopDown/Position
+  {x:139.34,y:128.007} -> {x:134.673,y:128.007}
+```
+
+[Headless debugging](/docs/devtools/) shows the session that produced this.
+
+### Every bug becomes a test
+
+The fuzzer plays the game with seeded input until an invariant breaks, then
+shrinks the run to the few inputs that still break it. That replay is
+already a test: the fix makes it pass, and it keeps the bug from coming
+back. See [Bugs found before players](/features/bugs/).
 
 ## Set up a project
 
@@ -22,19 +88,41 @@ Set up Ritmo in this project by following
 https://raw.githubusercontent.com/typeonce-dev/ritmo/main/packages/core/SETUP.md
 ```
 
-This installs the packages, sets up the checks (types, lints,
-`ritmo-devtools lint`, tests) and links the **Ritmo skill**.
+`SETUP.md` ships with `@typeonce/ritmo`. It has the agent:
+
+1. install the runtime, the devtools, and the lint plugin;
+2. link the **Ritmo skill** from `node_modules` into the folder it reads
+   skills from;
+3. add one check script: type check, `oxlint`, `ritmo-devtools lint`, and
+   the tests.
+
+From then on, "run the check" is how you and the agent know a change is
+done.
 
 ## The skill
 
-It ships inside `@typeonce/ritmo`, so it always matches the installed version.
-It has one playbook per kind of change (mechanic, content, UI, bug fix,
-refactor, saves) and principles for where code and state belong, among them:
+The skill ships inside `@typeonce/ritmo`, so it always matches the installed
+version. It sends each change to a playbook: a mechanic, content, UI and
+rendering, a bug fix, a refactor, state and saves, online multiplayer.
 
-- **The simulation is the game.** Input, drawing, UI and sound are host code.
-- **Intents in, plain data out.** Bots, tests and replays send the same intents as the UI.
-- **Each fact has one home.** A missing table entry does not compile.
-- **Make the next mistake fail loudly.** As a type, a lint or a test.
+Each playbook gives the steps and the check that proves them. The bug-fix
+playbook, for example, starts by reproducing the bug headless and encoding
+it as an invariant before any code changes.
 
-Agents read the JSDoc, READMEs and CHANGELOGs that ship with the packages.
-This site is for people.
+The skill also holds the principles for where code and state belong:
+
+- **The simulation is the game.** Input, drawing, UI, and sound are host
+  code.
+- **Intents in, plain data out.** Bots, tests, and replays send the same
+  intents as the UI.
+- **Each fact has one home.** A new id fails to compile until every table
+  has its entry.
+- **Make the next mistake fail loudly.** As a type, a lint, or a test.
+
+## What the agent reads
+
+The agent reads what npm ships: the JSDoc in each package's source, the
+READMEs, the CHANGELOGs (a breaking entry names its fix), and the skill.
+This site is for you.
+
+Next: [Getting started](/docs/) walks through the code the agent will write.

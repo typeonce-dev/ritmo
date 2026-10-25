@@ -1,31 +1,29 @@
 ---
 layout: ../layouts/Docs.astro
 title: Roadmap
-description: What Ritmo added from its roadmaps, the test an addition has to pass, what it leaves to the game on purpose, and what comes next.
+description: What Ritmo has shipped, the test an addition must pass, what it leaves to the game on purpose, and what comes next.
 ---
 
 Ritmo runs the simulation of a game that coding agents write. It is not a
 game engine: drawing, sound, saving, servers, and platform SDKs stay in the
-game, which plugs them in through typed contracts.
+game, plugged in through typed contracts.
 
-This page lists what Ritmo has added, what it decided not to add, and what
-it is waiting on.
+This page lists what Ritmo added, what it chose not to add, and what it is
+waiting on.
 
 ## The test for an addition
 
-An addition has to pass one test: **it is only right when it is built into
-the runtime.** Access declarations, per-reader streams, the fixed step,
+An addition passes one test: **it is only right when it is built into the
+runtime.** Access declarations, per-reader streams, the fixed step,
 rollback, or the devtools trace have to know about it.
 
-A piece a game can get from an existing library is a playbook in the
-[skill](/docs/with-an-agent/), not a package. A piece that is gameplay
-stays in the game.
+What a game can get from an existing library is a playbook in the
+[skill](/docs/with-an-agent/), not a package. Gameplay stays in the game.
 
-`ritmo-math` is the one exception. It holds the 2D helpers most games
-would otherwise rewrite, built on `Ops` so they replay the same on every
-engine. A helper gets in when at least two games hand-roll it. Determinism
-alone is never the reason: `Ops` and `oxlint --fix` already make any game
-math exact.
+`ritmo-math` is the one exception: the 2D helpers most games would
+otherwise rewrite, built on `Ops` so they replay the same on every engine.
+A helper gets in when at least two games hand-roll it. Determinism alone is
+never the reason: `Ops` and `oxlint --fix` already make any game math exact.
 
 Every addition keeps the library's rules: wrong code does not compile, a
 failure that depends on runtime state is a typed `Result`, and there is one
@@ -36,9 +34,9 @@ way to do each thing.
 **Bugs found before players.** The [fuzzer](/features/bugs/) plays the game
 with seeded input and shrinks each failure to a replay that is already a
 test ([#95](https://github.com/typeonce-dev/ritmo/pull/95)). It plays online
-matches too, with latency and packet loss, and a sync test checks every
-rollback on the tick it happens ([#99](https://github.com/typeonce-dev/ritmo/pull/99)).
-Browser games are fuzzed through the same controls the page reads
+matches too, with latency and packet loss, and a sync test checks each
+rollback on its tick ([#99](https://github.com/typeonce-dev/ritmo/pull/99)).
+Browser games are fuzzed through the controls the page reads
 ([#98](https://github.com/typeonce-dev/ritmo/pull/98)).
 
 **Same game in every browser.** `ritmo-devtools verify` plays a recorded
@@ -84,7 +82,7 @@ nodes attach under their parent's in the renderer
 ## Left to the game, on purpose
 
 These came up in the survey behind this page and were set aside. Each is a
-real need; none needs the runtime to be done right.
+real need, and none needs the runtime to be done right.
 
 - **Saving, servers, lobbies, relays.** `runtime.snapshot()` is the save; where
   it goes is the game's. Netcode works over any `NetworkLink`; who connects
@@ -96,10 +94,9 @@ real need; none needs the runtime to be done right.
   lines; the skill will show them.
 - **Physics engines, pathfinding, geometry, noise, curves, grids.** Libraries
   the game brings. The rewindable service contract above is the one hook
-  they need from Ritmo, and `ritmo-devtools scan` says whether one calls
-  math that differs across engines (then the game vendors it and runs
-  `oxlint --fix`). `ritmo-math` keeps to the 2D helpers most games rewrite;
-  it does not port a library's algorithms.
+  they need. `ritmo-devtools scan` says whether one calls math that differs
+  across engines; then the game vendors it and runs `oxlint --fix`.
+  `ritmo-math` does not port a library's algorithms.
 - **Gameplay bundles** (stats, status effects, inventory, dialogue, cameras,
   spawners). Systems the agent writes, with playbooks for the common shapes.
 - **Observers and lifecycle hooks, system sets with automatic ordering.** Each
@@ -111,10 +108,12 @@ real need; none needs the runtime to be done right.
   script today; a system swapped under a running world has no owner for its
   state.
 
-Several of these become playbooks in the skill instead: scene data spawned
-into an `EntityScope`, templates as spawn drafts, menu and gameplay input
-contexts from `Controls` and run conditions, separate `Random` resources per
-subsystem, a camera that follows, and saves over snapshots.
+Several become playbooks in the skill instead:
+
+- scene data spawned into an `EntityScope`, and templates as spawn drafts;
+- menu and gameplay input contexts from `Controls` and run conditions;
+- separate `Random` resources per subsystem;
+- a camera that follows, and saves over snapshots.
 
 ## Next
 
@@ -129,8 +128,8 @@ Recorded, and waiting for a reason:
   a measured regression.
 
 Rejected: patching the global `Math` at runtime (global, depends on import
-order, and misses WebAssembly), and a compile-time ban of `Math.sin` and
-the like (TypeScript cannot narrow a global per file).
+order, misses WebAssembly), and a compile-time ban of `Math.sin` and the
+like (TypeScript cannot narrow a global per file).
 
 ## How this page was made
 
@@ -138,5 +137,5 @@ A survey of what ECS runtimes, engines, physics and netcode libraries, and
 devtools offer (Bevy, flecs, Unity DOTS, bitECS, Koota, Rapier, Box2D, GGRS,
 Lightyear, Phaser, Godot, and others), filtered through two independent
 scope reviews against the rules above. Open an
-[issue](https://github.com/typeonce-dev/ritmo/issues) to argue for an item,
+[issue](https://github.com/typeonce-dev/ritmo/issues) to argue for an item
 or against one.

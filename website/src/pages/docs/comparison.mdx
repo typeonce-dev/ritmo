@@ -1,11 +1,13 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Ritmo and other ECS libraries
-description: The same mechanic in bitECS, Koota, Miniplex, and Ritmo, what happens when it is changed wrong, and what Ritmo trades for its guarantees.
+description: One mechanic in bitECS, Koota, Miniplex, and Ritmo, what happens when it is changed wrong, and what Ritmo trades for its guarantees.
 ---
 
-TypeScript has several entity component system libraries. In their own
-words, from their READMEs:
+If you already use an ECS in TypeScript, this page shows what changes with
+Ritmo: the same mechanic in four libraries, five mistakes and what each
+library does with them, and what the checks cost. The other three, in their
+own words:
 
 - [**bitECS**](https://github.com/NateTheGreatt/bitECS): "Flexible, minimal,
   data-oriented ECS library for Typescript."
@@ -16,12 +18,9 @@ words, from their READMEs:
   management system for games and similarly demanding applications."
 
 **Ritmo** is built for a game that keeps growing while coding agents write
-it. Every system declares what it reads, writes, and queues, so the
-compiler checks each change against the rest of the game.
-
-Mistakes come back as compile errors, typed failures, and lint messages
-that name the fix. An agent can change a system it never read without
-breaking the ones around it.
+it. Every system declares what it reads, writes, and queues, so the compiler
+checks each change against the rest of the game. Mistakes come back as
+compile errors, typed failures, and lint messages that name the fix.
 
 ## The same mechanic in each library
 
@@ -30,8 +29,7 @@ the stun wears off.
 
 ### bitECS
 
-Components are arrays indexed by entity id, and systems are plain functions
-over the world.
+Components are arrays indexed by entity id. Systems are plain functions.
 
 ```ts twoslash title="stun.ts"
 import { addComponent, Not, query, removeComponent, type World } from "bitecs"
@@ -69,8 +67,7 @@ const move = (world: World) => {
 
 ### Koota
 
-Components are traits with default values, and a query updates them in
-place.
+Components are traits with defaults, updated in place by a query.
 
 ```ts twoslash title="stun.ts"
 import { Not, trait, type World } from "koota"
@@ -109,8 +106,8 @@ const move = (world: World) => {
 
 ### Miniplex
 
-An entity is an object, and a component is one of its keys. Queries are
-declared once and stay up to date.
+An entity is an object, and a component is one of its keys. Queries stay
+up to date.
 
 ```ts twoslash title="stun.ts"
 import { World } from "miniplex"
@@ -153,8 +150,8 @@ const move = () => {
 
 ### Ritmo
 
-Each system declares what it reads, writes, and queues. The runtime gives
-it exactly that, and nothing else.
+Each system declares what it reads, writes, and queues, and gets exactly
+that.
 
 ```ts twoslash title="stun.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -181,7 +178,11 @@ const Stun = Game.System(
   "Arena/Stun",
   {
     queries: {
-      calm: Game.Query({ selection: {}, with: [Guard], without: [Stunned] })
+      calm: Game.Query({
+        selection: {},
+        with: [Guard],
+        without: [Stunned]
+      })
     },
     events: { hits: Game.System.readEvent(Hit) },
 
@@ -240,38 +241,22 @@ const Move = Game.System(
 ```
 
 Ritmo's version is the longest. The extra lines are the declarations, and
-the next section is what they buy.
+the next section shows what they buy.
 
 ## When the code is wrong
 
 The other libraries trust the code: the mistakes below run, and show up
-later as a bug. Each claim about them is a test in the repository
+later as a bug. In Ritmo each one is caught where it is made.
+
+Each claim about the other libraries is a test in the repository
 ([`bench/compare/test/mistakes.test.ts`](https://github.com/typeonce-dev/ritmo/blob/main/bench/compare/test/mistakes.test.ts)),
 run against bitECS 0.4.0, Koota 0.6.6, and Miniplex 2.0.0.
 
 ### A system touches what it should not
 
-An agent asked to "freeze stunned guards" adds a line to the stun system. In
-Miniplex, as in bitECS and Koota, any code can change any component:
-
-```ts twoslash title="stun.ts"
-import { World } from "miniplex"
-type Entity = {
-  velocity?: { x: number; y: number }
-  guard?: true
-  stunned?: { frames: number }
-}
-const world = new World<Entity>()
-const calm = world.with("guard", "velocity").without("stunned")
-// ---cut---
-const stun = () => {
-  for (const entity of calm) {
-    world.addComponent(entity, "stunned", { frames: 30 })
-    // Runs: now every system that reads velocity sees this
-    entity.velocity = { x: 0, y: 0 } // [!code warning]
-  }
-}
-```
+An agent asked to "freeze stunned guards" adds one line to the stun
+system: `entity.velocity = { x: 0, y: 0 }`. In all three it runs, and every
+system that reads velocity now sees a write nobody declared.
 
 In Ritmo the same line does not compile, and the error says where the
 permission goes:
@@ -284,8 +269,10 @@ const Stunned = Descriptor.Component<number>()("Arena/Stunned")
 const Game = Schema.bind(Schema.fragment({ components: { Velocity, Guard, Stunned } }))
 // ---cut---
 // @errors: 2345
+const Calm = Game.Query({ selection: {}, with: [Guard], without: [Stunned] })
+
 const Stun = Game.System("Arena/Stun", {
-  queries: { calm: Game.Query({ selection: {}, with: [Guard], without: [Stunned] }) },
+  queries: { calm: Calm },
   commands: Game.System.commands(Game.System.inserts(Stunned))
 }, ({ queries, commands }) => {
   for (const match of queries.calm.each()) {
@@ -295,15 +282,14 @@ const Stun = Game.System("Arena/Stun", {
 })
 ```
 
-Adding the permission is a visible change to the system's spec. Tools read
-the specs too: `ritmo-devtools` lists who writes each component, so the new
-writer of `Velocity` shows up next to the systems that read it.
+Adding the permission is a visible change to the spec, and `ritmo-devtools`
+lists the new writer of `Velocity` next to the systems that read it.
 
 ### A reference outlives its entity
 
-A system remembers the guard it is following. The guard is despawned, and
-another entity is spawned. In bitECS the id is recycled, so the old
-reference now reads the new entity:
+A system remembers the guard it is following. The guard is despawned and
+another entity spawns. In bitECS the id is recycled, so the old reference
+reads the new entity:
 
 ```ts twoslash title="follow.ts"
 import { addComponent, addEntity, createWorld, removeEntity } from "bitecs"
@@ -323,12 +309,12 @@ Health.value[crate] = 99
 Health.value[guard] // [!code warning]
 ```
 
-Koota's old handle reports `isAlive() === false`, yet `get` still returns the
-new entity's data. A removed Miniplex entity is an object that keeps taking
-writes, outside the world.
+Koota's old handle reports `isAlive() === false`, yet `get` still returns
+the new entity's data. A removed Miniplex entity is an object that keeps
+taking writes, outside the world.
 
-Ritmo never reuses an id. Following one is a lookup, and a lookup that
-depends on the world says it can fail:
+Ritmo never reuses an id. Following one is a lookup, and the lookup says it
+can fail:
 
 ```ts twoslash title="follow.ts"
 import { Descriptor, Entity, Schema } from "@typeonce/ritmo"
@@ -355,14 +341,14 @@ const Follow = Game.System("Arena/Follow", {
 })
 ```
 
-A query match kept instead of the id throws on its next use, and the message
-says to keep the id.
+A query match kept instead of the id throws on its next use, and the
+message says to keep the id.
 
 ### A system fails halfway
 
-A purchase takes the gold, then finds the item sold out. In all three other
-libraries, the gold taken before the throw stays taken. A Ritmo system
-returns its failure as a value, and everything it wrote is rolled back:
+A purchase takes the gold, then finds the item sold out. In all three, the
+gold taken before the throw stays taken. A Ritmo system returns its failure
+as a value, and everything it wrote is rolled back:
 
 ```ts twoslash title="buy.ts"
 import { Descriptor, Result, Schema } from "@typeonce/ritmo"
@@ -391,10 +377,10 @@ const ticked = runtime.tick(Game.Schedule(Buy))
 
 ### A save file is broken
 
-A player's save was edited by hand, or written by an older version. bitECS's
+A save was edited by hand, or written by an older version. bitECS's
 snapshot deserializer reads the bytes back as they are, and Koota and
-Miniplex leave saving to the game. Ritmo checks every value against the
-component's schema, and changes nothing unless all of it is valid:
+Miniplex leave saving to the game. Ritmo checks every value against its
+schema and changes nothing unless all of it is valid:
 
 ```ts twoslash title="load.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -422,10 +408,10 @@ old one before it is checked.
 
 ### Logic reads the clock or the dice
 
-A replay, a headless test, and a bug report all need the game to play the
-same way twice. Nothing stops game code from calling `Math.random()` in the
-other libraries. In Ritmo, the repository's lint rules catch it, and the
-message names the replacement:
+A replay, a test, and [online play](/features/rollback/) all need the game
+to play the same way twice. Nothing stops `Math.random()` in the other
+libraries. In Ritmo, the lint rules catch it, and the message names the
+replacement:
 
 ```text
 error ritmo(use-random-for-randomness): Math.random() cannot be seeded or
@@ -434,33 +420,27 @@ saved, so the run cannot replay. Draw from the world's Random resource:
 `rng: Game.System.writeResource(Rng)`), then `random.next()`, ...
 ```
 
-### Why this scales
-
-Each mistake above is local in Ritmo: the compiler checks a change against
-every declaration it touches, and a failure names the fix. A game with
-hundreds of systems stays one where an agent can change one system without
-reading the others, because the others' declarations are what the change is
-checked against.
+Each mistake is caught where it is made, against the declarations of the
+systems around it. That is what lets an agent change one system in a game
+of hundreds without reading the others.
 
 ## Performance
 
 Ritmo gives up some speed for its guarantees. On the
 [community ECS benchmark](https://github.com/noctjs/ecs-benchmark) it runs
-close to Miniplex, and well behind bitECS's raw arrays (`pnpm bench:compare`
+close to Miniplex and well behind bitECS's raw arrays (`pnpm bench:compare`
 in the [repository](https://github.com/typeonce-dev/ritmo/tree/main/bench/compare)
-runs it). What the runtime does that the others do not:
+runs it). The work the others skip:
 
 - **Every write keeps the old value** until the system finishes, so a
   failing system can be rolled back.
-- **A change is a different value**, found by comparing old and new when the
-  system commits, so `changed` filters never see a write that changed
-  nothing.
-- **Every read and write through a query match is checked**: the match must
-  come from this run, and its entity must still hold the component.
-- **Structural changes are queued**: spawns, despawns, inserts, and removes
-  wait for `applyDeferred()`, so no system sees the world change shape mid-run.
+- **A change is a different value**: old and new are compared when the
+  system commits, so `changed` never sees a write that changed nothing.
+- **Every access through a query match is checked**: the match must come
+  from this run, and its entity must still hold the component.
+- **Structural changes are queued** until `applyDeferred()`, so no system
+  sees the world change shape mid-run.
 - **Values are immutable**: an object component is replaced, not edited in
-  place, and a number component is stored unboxed so its writes allocate
+  place. A number component is stored unboxed, so its writes allocate
   nothing.
-- **Each system declares its access**, which costs lines, not time: the checks
-  are done by the compiler.
+- **Declared access costs lines, not time**: the compiler does those checks.
