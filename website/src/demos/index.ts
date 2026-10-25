@@ -68,7 +68,7 @@ export const demos = {
   composition: {
     title: "Composition",
     description: "A village fire made of components: four small systems read what each villager holds, and the fire comes out of that.",
-    controls: "Each rule lights up while it acts. Burning and Wet are components a system inserts or removes.",
+    controls: "Each villager is a stack of component blocks: a system inserting one drops it on, removing one knocks it off. Each rule shows the blocks its query asks for.",
     source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/composition",
     // Takes no input: starts on its own when scrolled into view.
     autoplay: true,
