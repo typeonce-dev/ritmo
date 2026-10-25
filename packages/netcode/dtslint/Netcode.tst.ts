@@ -72,7 +72,7 @@ describe("Netcode.rollback", () => {
   it("rejects a schedule that cannot be rewound", () => {
     // @ts-expect-error NetTypes/Remember keeps local state, which a rewind cannot put back
     Netcode.rollback(runtime, { ...options, simulate: Game.Schedule(Capture, Remember) })
-    // @ts-expect-error NetTypes/Sound is neither a snapshot() source nor plain data
+    // @ts-expect-error NetTypes/Sound is neither a snapshot() source, plain data, nor Checkpoint.rewindable
     Netcode.rollback(runtime, { ...options, simulate: Game.Schedule(Capture, Noisy) })
   })
 

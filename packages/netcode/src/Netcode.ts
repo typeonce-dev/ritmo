@@ -146,9 +146,10 @@ export interface Desynced {
 }
 
 /**
- * The runtime let go of a checkpoint the session needed: something else
- * took or rewound checkpoints on the same runtime. The session stops until
- * `resync()`.
+ * A rollback could not rewind: the runtime let go of a checkpoint the
+ * session needed (something else took or rewound checkpoints on the same
+ * runtime), or a `Checkpoint.rewindable` service failed to restore
+ * (`RestoreFailed`). The session stops until `resync()`.
  */
 export interface CheckpointLost {
   readonly _tag: "CheckpointLost"

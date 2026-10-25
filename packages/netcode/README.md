@@ -47,7 +47,7 @@ FixedLoop.start({
 })
 ```
 
-What does not compile: a rollback `simulate` that cannot be rewound (a service with effects, `local` state), a schedule whose requirements the runtime does not provide, and a runtime that cannot save (a component or resource without a schema). What fails at construction, as a typed `Result`: a seat out of range, seats the runtime does not provide or another session took, and a `maxRollback` larger than the checkpoints the runtime keeps.
+What does not compile: a rollback `simulate` that cannot be rewound (a service with effects, `local` state; a library that keeps its own world, like a physics engine, is provided through `Checkpoint.rewindable` from `@typeonce/ritmo` instead), a schedule whose requirements the runtime does not provide, and a runtime that cannot save (a component or resource without a schema). What fails at construction, as a typed `Result`: a seat out of range, seats the runtime does not provide or another session took, and a `maxRollback` larger than the checkpoints the runtime keeps.
 
 When checksums differ, `advance` fails with `Desynced` until `resync()`. With `keepSnapshots: true` it carries this peer's save of that tick; `Desync.compare(mine, theirs)` from [`@typeonce/ritmo-devtools`](https://github.com/typeonce-dev/ritmo/blob/main/packages/devtools/README.md) lists what differs.
 
