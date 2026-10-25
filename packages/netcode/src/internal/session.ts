@@ -20,6 +20,10 @@
  * older than the checkpoints the runtime keeps (checked when made).
  *
  * Lockstep: a tick runs only with every seat's input; nothing is guessed.
+ *
+ * Hidden pages (`hidden.ts`): a seat played around has idle input after its
+ * last sent one, on every peer, and counts as confirmed once that input
+ * arrived; the others play on without waiting for it.
  */
 import type { HostClock } from "@typeonce/ritmo"
 import type * as Checkpoint from "@typeonce/ritmo/Checkpoint"
@@ -28,9 +32,10 @@ import type { Descriptor } from "@typeonce/ritmo/Descriptor"
 import * as Result from "@typeonce/ritmo/Result"
 import type * as Snapshot from "@typeonce/ritmo/Snapshot"
 
-import type { Advanced, Ended, Halted, InvalidOptions, Seats, Session, SessionError, Status } from "../Netcode.ts"
+import type { Advanced, Ended, Halted, HiddenOptions, InvalidOptions, Seats, Session, SessionError, Status } from "../Netcode.ts"
 import * as Events from "./events.ts"
 import { isHalted } from "./halted.ts"
+import * as Hidden from "./hidden.ts"
 import type { NetworkLink } from "../NetworkLink.ts"
 import { canonical, decode, encode, stateOf } from "./seats.ts"
 import * as Wire from "./wire.ts"
@@ -61,6 +66,7 @@ export interface MakeOptions {
   readonly keepSnapshots?: boolean
   readonly maxRollback?: number
   readonly predict?: (previous: unknown) => unknown
+  readonly hidden?: HiddenOptions
 }
 
 type Mode = "rollback" | "lockstep"
@@ -94,6 +100,15 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   if (!wholeNumber(every, 1)) return invalid("checksumEvery", every, "a whole number of ticks, 1 or more")
   const timeoutMS = options.timeoutMS ?? 5000
   if (!(timeoutMS > 0 && Number.isFinite(timeoutMS))) return invalid("timeoutMS", timeoutMS, "a positive number of milliseconds")
+  const hiddenOptions = options.hidden
+  if (hiddenOptions !== undefined) {
+    const visibility = hiddenOptions.visibility as Partial<HiddenOptions["visibility"]> | undefined
+    if (typeof visibility?.hidden !== "function" || typeof visibility.subscribe !== "function") {
+      return invalid("hidden.visibility", visibility, "a Visibility: BrowserVisibility.make(document) in the browser, MemoryVisibility.make() in tests")
+    }
+    if (!(hiddenOptions.afterMS >= 0 && Number.isFinite(hiddenOptions.afterMS))) return invalid("hidden.afterMS", hiddenOptions.afterMS, "a number of milliseconds, 0 or more")
+    if (hiddenOptions.then !== "stall" && hiddenOptions.then !== "resync-on-return") return invalid("hidden.then", hiddenOptions.then, "\"stall\" or \"resync-on-return\"")
+  }
   const maxRollback = options.maxRollback ?? 8
   if (mode === "rollback") {
     if (!wholeNumber(maxRollback, 1)) return invalid("maxRollback", maxRollback, "a whole number of ticks, 1 or more")
@@ -116,6 +131,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     const encoded = encode(codec, value)
     return encoded.ok ? canonical(encoded.value) : `unencodable:${canonical(value)}`
   }
+  const idleKey = keyOf(idle)
   const encodeLocal = (value: unknown): unknown => {
     const encoded = encode(codec, value)
     if (!encoded.ok) throw new Error(`Netcode: the local input does not encode with the input schema: ${encoded.error}`)
@@ -175,15 +191,27 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     settled = now
     for (const ledger of ledgers.values()) ledger.settle(previous, now)
   }
+  // Hidden pages.
+  const tracker = Hidden.make(count)
+  const graceMS = hiddenOptions?.afterMS ?? 0
+  /** Per seat, whether it was played around when last looked at. */
+  const wasAway: Array<boolean> = Array.from({ length: count }, () => false)
+  let unsubscribe: (() => void) | undefined
 
   const broadcast = (message: Wire.Message): void => {
     const text = Wire.write(message)
     for (const link of options.links) link.send(text)
   }
 
+  /** Another seat this peer plays around: its input after `tracker.last` is idle. */
+  const playedAround = (other: number): boolean => other !== seat && Hidden.away(tracker, other)
+
+  /** A seat played around whose real input all arrived: nothing more to wait for. */
+  const filled = (other: number): boolean => playedAround(other) && contiguous[other]! >= tracker.last[other]!
+
   const confirmed = (): number => {
     let lowest = Infinity
-    for (let other = 0; other < count; other++) lowest = Math.min(lowest, contiguous[other]!)
+    for (let other = 0; other < count; other++) if (!filled(other)) lowest = Math.min(lowest, contiguous[other]!)
     return lowest
   }
 
@@ -205,6 +233,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   }
 
   const inputFor = (other: number, tick: number): unknown => {
+    if (tick > tracker.last[other]! && playedAround(other)) return idle
     const known = inputs[other]!.get(tick)
     return known !== undefined ? known : guess(other, tick)
   }
@@ -214,6 +243,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     const known = inputs[other]!
     // Known already: confirmed (a save confirms the ticks before its floor), or out of order.
     if (tick <= contiguous[other]! || known.has(tick)) return
+    // Played around: idle after its last input, whatever arrives.
+    if (tick > tracker.last[other]! && playedAround(other)) return
     known.set(tick, input)
     extend(other)
     if (mode !== "rollback" || tick >= next) return
@@ -231,6 +262,26 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
 
   const end = (error: Ended): void => {
     ended ??= error
+    unsubscribe?.()
+    unsubscribe = undefined
+  }
+
+  /** Rollback: a seat now played around ran ticks after its last input with a guess that was not idle. */
+  const lookAway = (): void => {
+    for (let other = 0; other < count; other++) {
+      const now = playedAround(other)
+      if (now && !wasAway[other] && mode === "rollback") {
+        const ran = used[other]!
+        for (let at = tracker.last[other]! + 1; at < next; at++) {
+          const before = ran.get(at)
+          if (before !== undefined && before !== idleKey) {
+            wrong = wrong === undefined ? at : Math.min(wrong, at)
+            break
+          }
+        }
+      }
+      wasAway[other] = now
+    }
   }
 
   const compare = (tick: number): void => {
@@ -243,7 +294,9 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
         return
       }
     }
-    if (theirs.size === count - 1) {
+    let all = true
+    for (let other = 0; other < count; other++) if (other !== seat && !playedAround(other) && !theirs.has(other)) all = false
+    if (all) {
       verified = Math.max(verified, tick)
       sums.delete(tick)
       remoteSums.delete(tick)
@@ -282,7 +335,9 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   const canRun = (tick: number): boolean => {
     if (!inputs[seat]!.has(tick)) return false
     if (mode === "rollback") return tick <= confirmed() + maxRollback
-    for (let other = 0; other < count; other++) if (!inputs[other]!.has(tick)) return false
+    for (let other = 0; other < count; other++) {
+      if (!inputs[other]!.has(tick) && !(filled(other) && tick > tracker.last[other]!)) return false
+    }
     return true
   }
 
@@ -298,7 +353,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   }
 
   /** Restores a save every peer restores at `tick`, and runs again up to where this peer was. */
-  const applySync = (newEpoch: number, tick: number, save: unknown): void => {
+  const applySync = (newEpoch: number, tick: number, save: unknown, returned: ReadonlyArray<number>): void => {
     const restored = runtime.restore(save)
     if (!restored.ok) {
       end({ _tag: "SyncFailed", error: restored.error })
@@ -329,6 +384,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     }
     for (let at = tick; at < floorTick; at++) sent.set(at, encodeLocal(idle))
     localNext = Math.max(localNext, floorTick)
+    Hidden.synced(tracker, returned, floorTick)
+    for (let other = 0; other < count; other++) wasAway[other] = playedAround(other)
     if (mode === "rollback") runUpTo(previous)
   }
 
@@ -341,8 +398,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     }
     // Restore what the others will parse, not the object itself, so every peer restores the same data.
     const save: unknown = JSON.parse(JSON.stringify(saved.value))
-    syncMessage = { k: "sync", from: seat, epoch: epoch + 1, tick: next, save }
-    applySync(syncMessage.epoch, syncMessage.tick, save)
+    syncMessage = { k: "sync", from: seat, epoch: epoch + 1, tick: next, save, returned: tracker.shown.slice() }
+    applySync(syncMessage.epoch, syncMessage.tick, save, syncMessage.returned)
     broadcast(syncMessage)
     syncSentAt.fill(clock.now())
   }
@@ -368,7 +425,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
         if (host && epoch > 0 && message.epoch === epoch) pendingSync = true
         return
       case "sync":
-        if (other === 0 && message.epoch > epoch) applySync(message.epoch, message.tick, message.save)
+        if (other === 0 && message.epoch > epoch) applySync(message.epoch, message.tick, message.save, message.returned)
         return
       case "inputs": {
         acks[other] = message.acks
@@ -395,6 +452,12 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       }
       case "ping":
         broadcast({ k: "pong", from: seat, epoch, to: other, at: message.at })
+        Hidden.pinged(tracker, other, message.shown)
+        if (host && epoch > 0 && Hidden.returned(tracker, other)) pendingSync = true
+        return
+      case "hidden":
+        Hidden.announced(tracker, message, floorTick)
+        if (host && epoch > 0 && Hidden.returned(tracker, other)) pendingSync = true
         return
       case "pong": {
         if (message.to !== seat) return
@@ -424,8 +487,11 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     if (epoch === 0) return
     const now = clock.now()
     for (let other = 0; other < count; other++) {
-      if (other !== seat && now - lastHeard[other]! > timeoutMS) {
-        end({ _tag: "Disconnected", seat: other, reason: "timeout", detail: `seat ${other} sent nothing for ${timeoutMS} ms` })
+      if (other === seat) continue
+      const limit = Hidden.hidden(tracker, other) ? timeoutMS + graceMS : timeoutMS
+      if (now - lastHeard[other]! > limit) {
+        const what = limit === timeoutMS ? "sent nothing" : "hid and sent nothing"
+        end({ _tag: "Disconnected", seat: other, reason: "timeout", detail: `seat ${other} ${what} for ${limit} ms` })
         return
       }
     }
@@ -449,11 +515,28 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     for (const tick of remoteSums.keys()) if (tick < done - every * 4) remoteSums.delete(tick)
   }
 
+  /** This seat's inputs not yet acknowledged by every seat it waits on, from `start`. */
+  const inputsMessage = (): Wire.Inputs => {
+    let acked = Infinity
+    // A seat played around acknowledges nothing until its save: the others' inputs move on without it.
+    for (let other = 0; other < count; other++) if (other !== seat && !playedAround(other)) acked = Math.min(acked, acks[other]![seat]!)
+    const start = Math.max(floorTick, acked + 1)
+    const payload: Array<unknown> = []
+    for (let tick = start; tick < localNext && payload.length < maxInputsPerMessage; tick++) {
+      const input = sent.get(tick)
+      if (input === undefined) break
+      payload.push(input)
+    }
+    return { k: "inputs", from: seat, epoch, next, acks: contiguous.slice(), start, inputs: payload }
+  }
+
   const sendAll = (): void => {
     const now = clock.now()
     if (now - lastPing >= pingEveryMS) {
       lastPing = now
-      broadcast({ k: "ping", from: seat, epoch, at: now })
+      broadcast({ k: "ping", from: seat, epoch, at: now, shown: tracker.shown[seat]! })
+      // Repeated: the announcement may have been lost, and seat 0 needs it to answer the return.
+      if (Hidden.hidden(tracker, seat) || Hidden.away(tracker, seat)) broadcast(Hidden.message(tracker, seat, epoch))
     }
     if (epoch === 0) {
       broadcast({ k: "hello", from: seat, epoch })
@@ -463,17 +546,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       lastResyncAsk = now
       broadcast({ k: "resync", from: seat, epoch })
     }
-    let start = floorTick
-    let acked = Infinity
-    for (let other = 0; other < count; other++) if (other !== seat) acked = Math.min(acked, acks[other]![seat]!)
-    start = Math.max(start, acked + 1)
-    const payload: Array<unknown> = []
-    for (let tick = start; tick < localNext && payload.length < maxInputsPerMessage; tick++) {
-      const input = sent.get(tick)
-      if (input === undefined) break
-      payload.push(input)
-    }
-    broadcast({ k: "inputs", from: seat, epoch, next, acks: contiguous.slice(), start, inputs: payload })
+    broadcast(inputsMessage())
     // A checksum is final once every input before its tick is real.
     const done = confirmed()
     for (const [tick, { sum }] of sums) {
@@ -521,7 +594,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     const now = clock.now()
     let slowest = Infinity
     for (let other = 0; other < count; other++) {
-      if (other === seat) continue
+      if (other === seat || playedAround(other)) continue
       const known = remoteNext[other]
       if (known === undefined) return 0
       const oneWay = (roundTrip[other] ?? 0) / 2
@@ -534,6 +607,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     if (ended !== undefined) return Result.failure(ended)
     readLinks()
     if (ended !== undefined) return Result.failure(ended)
+    lookAway()
     if (epoch === 0) {
       if (host && heard.size === count - 1) performSync()
       if (ended !== undefined) return Result.failure(ended)
@@ -541,6 +615,11 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
         sendAll()
         return Result.success({ _tag: "Waiting" })
       }
+    }
+    // Played around: wait for the save that answers this seat's return.
+    if (Hidden.away(tracker, seat)) {
+      sendAll()
+      return Result.success({ _tag: "Waiting" })
     }
     if (host && pendingSync) performSync()
     if (ended !== undefined) return Result.failure(ended)
@@ -610,13 +689,43 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       rollbacks,
       dropped,
       ahead: ahead(),
-      roundTripMS: roundTrip.map((value, other) => other === seat ? 0 : value)
+      roundTripMS: roundTrip.map((value, other) => other === seat ? 0 : value),
+      hidden: tracker.hides.map((_, other) => Hidden.hidden(tracker, other))
     }),
     events: (descriptor) => {
       let ledger = ledgers.get(descriptor)
       if (ledger === undefined) ledgers.set(descriptor, ledger = Events.make({ schema: runtime.schema, inspect: runtime.inspect, settled: () => settled }, descriptor))
       return ledger.reader(next) as never
     }
+  }
+
+  if (hiddenOptions !== undefined) {
+    const visibility = hiddenOptions.visibility
+    const resyncs = hiddenOptions.then === "resync-on-return"
+    const hide = (): void => {
+      // What the others have not acknowledged goes out first: the announcement says where this seat's input ends.
+      let last = localNext - 1
+      if (epoch > 0) {
+        const message = inputsMessage()
+        broadcast(message)
+        last = message.start + message.inputs.length - 1
+      }
+      Hidden.hide(tracker, seat, last, resyncs)
+    }
+    if (visibility.hidden()) hide()
+    unsubscribe = visibility.subscribe((nowHidden) => {
+      if (ended !== undefined || nowHidden === Hidden.hidden(tracker, seat)) return
+      if (nowHidden) {
+        hide()
+        // Now: a hidden page's frames stop, so this may be the last message for a while.
+        broadcast(Hidden.message(tracker, seat, epoch))
+        return
+      }
+      Hidden.show(tracker, seat)
+      // This peer read nothing while hidden: the others' silence does not count, and they hear at once that it is back.
+      lastHeard.fill(clock.now())
+      lastPing = -Infinity
+    })
   }
   return Result.success(session)
 }
