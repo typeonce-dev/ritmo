@@ -162,7 +162,7 @@ describe("Netcode.syncTest", () => {
   it("rejects a schedule that cannot be rewound, with rollback's fix", () => {
     // @ts-expect-error NetTypes/Remember keeps local state, which a rewind cannot put back
     Netcode.syncTest(runtime, { ...syncOptions, simulate: Game.Schedule(Capture, Remember) })
-    // @ts-expect-error NetTypes/Sound is neither a snapshot() source nor plain data
+    // @ts-expect-error NetTypes/Sound is neither a snapshot() source, plain data, nor Checkpoint.rewindable
     Netcode.syncTest(runtime, { ...syncOptions, simulate: Game.Schedule(Capture, Noisy) })
   })
 

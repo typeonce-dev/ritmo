@@ -64,10 +64,10 @@ export const play = (plan: NetworkPlan, timeline: ReadonlyArray<ReadonlyArray<un
     if (!seats.ok) return { kind: "invalid", message: `the seats' idle input: ${seats.error.reason}` }
     const unknown: Array<string> = []
     const playback: Replay.Playback = {
-      source: <const SourceName extends string, Data>(descriptor: Descriptor.Descriptor<"service", SourceName, Source<Data>>): Source<Data> => {
+      source: <const SourceName extends string, Value extends Source<unknown>>(descriptor: Descriptor.Descriptor<"service", SourceName, Value>): Source<Replay.SourceData<Value>> => {
         if (descriptor.name !== plan.name) unknown.push(descriptor.name)
         // `Fuzz.seats` checked that this service is a `Netcode.Source` of the seats' input.
-        return seats.value.source as unknown as Source<Data>
+        return seats.value.source as unknown as Source<Replay.SourceData<Value>>
       },
       constant: () => undefined
     }
