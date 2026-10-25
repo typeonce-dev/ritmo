@@ -514,6 +514,7 @@ export interface CommandAccess<
 }
 
 export namespace CommandAccess {
+  /** Any command access, whatever it permits; a bound for generic code, not something a system declares. */
   export type Any = CommandAccess<any, any, any, any, any, any>
 }
 

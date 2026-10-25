@@ -85,6 +85,7 @@ import type * as Machine from "./Machine.ts"
 import * as Query from "./Query.ts"
 import type { QueryMatch, ReadonlyValue } from "./Query.ts"
 import * as Relation from "./Relation.ts"
+import * as RelationErrors from "./internal/relations.ts"
 import type * as Requirement from "./Requirement.ts"
 import * as Result from "./Result.ts"
 import * as Schedule from "./Schedule.ts"
@@ -430,21 +431,13 @@ type RequirementErrorsOfSchedule<
   ? RequirementErrorsFor<Requirement.Of<Selected>, S, Services, Resources, Machines>
   : never
 
-export type ValidateSchedules<
-  Schedules extends ReadonlyArray<ExecutableScheduleDefinition<any, any, any, any, any, AnyScheduleOrder>>,
-  Services extends Record<string, unknown>,
-  Resources extends object,
-  Machines extends object
-> = {
-  readonly [K in keyof Schedules]:
-    Schedules[K] & ValidateSchedule<
-      Extract<Schedules[K], ExecutableScheduleDefinition<any, any, any, any, any, AnyScheduleOrder>>,
-      Services,
-      Resources,
-      Machines
-    >
-}
-
+/**
+ * The check `runtime.tick(...)` applies to its schedules, for a package that
+ * takes a schedule to run on a runtime (`Netcode.rollback`'s `simulate`):
+ * `unknown` when the runtime provides every service, resource, and machine
+ * the schedules need; otherwise a `__fixRuntimeRequirements__` member naming
+ * each missing one, so the call does not compile.
+ */
 export type ValidateScheduleArray<
   Schedules extends ReadonlyArray<ExecutableScheduleDefinition<any, any, any, any, any, AnyScheduleOrder>>,
   Services extends Record<string, unknown>,
@@ -508,8 +501,6 @@ export type ValidateInspector<
   : {
       readonly __fixRuntimeRequirements__: RequirementErrorsOfInspector<Selected, Services, Resources, Machines>
     }
-
-export type AnyRequirements = Requirement.Requirement
 
 /** One runtime requirement that is not currently provisioned. */
 export interface MissingRuntimeRequirement {
@@ -971,7 +962,7 @@ const makeValidatedRuntime = <
       recordEffect({ kind: "relationFailure", entity: sourceId, relation: relation.name, error: error._tag })
     }
     relationFailures.append(relation.key, world.currentTick(), [
-      Relation.mutationFailure(
+      RelationErrors.mutationFailure(
         relation,
         operation,
         world.entityIdOf(sourceId) as Entity.EntityId<S, Root>,
@@ -1269,11 +1260,11 @@ const makeValidatedRuntime = <
     relation: Relation.Relation.Any
   ): Result.Result<Entity.EntityId<S, Root>, Relation.Relation.LookupError> => {
     if (!world.records.has(target)) {
-      return Result.failure(Relation.missingEntityError(target))
+      return Result.failure(RelationErrors.missingEntityError(target))
     }
     const targetId = world.relationTarget(relation, target)
     if (targetId === undefined) {
-      return Result.failure(Relation.missingRelationError(target, relation.name))
+      return Result.failure(RelationErrors.missingRelationError(target, relation.name))
     }
     return Result.success(entityId(targetId))
   }
@@ -1283,14 +1274,14 @@ const makeValidatedRuntime = <
     related: relatedTarget,
     relatedSources(target, relation) {
       if (!world.records.has(target)) {
-        return Result.failure(Relation.missingEntityError(target))
+        return Result.failure(RelationErrors.missingEntityError(target))
       }
       return Result.success(world.relatedSourceIds(relation, target).map(entityId))
     },
     parent: relatedTarget,
     ancestors(target, relation) {
       if (!world.records.has(target)) {
-        return Result.failure(Relation.missingEntityError(target))
+        return Result.failure(RelationErrors.missingEntityError(target))
       }
       const ancestors: Array<Entity.EntityId<S, Root>> = []
       let current = world.relationTarget(relation, target)
@@ -1302,7 +1293,7 @@ const makeValidatedRuntime = <
     },
     descendants(target, relation, options) {
       if (!world.records.has(target)) {
-        return Result.failure(Relation.missingEntityError(target))
+        return Result.failure(RelationErrors.missingEntityError(target))
       }
       const descendants: Array<Entity.EntityId<S, Root>> = []
       if (options?.order === "breadth") {
@@ -1327,7 +1318,7 @@ const makeValidatedRuntime = <
     },
     root(target, relation) {
       if (!world.records.has(target)) {
-        return Result.failure(Relation.missingEntityError(target))
+        return Result.failure(RelationErrors.missingEntityError(target))
       }
       let current: number = target
       let parentId = world.relationTarget(relation, current)
@@ -1360,7 +1351,7 @@ const makeValidatedRuntime = <
         return resolve(handle as Entity.Handle<Root, any>, query, reader)
       },
       children(target, relation) {
-        if (!world.records.has(target)) return Result.failure(Relation.missingEntityError(target))
+        if (!world.records.has(target)) return Result.failure(RelationErrors.missingEntityError(target))
         return Result.success(matching(world.relatedSourceIds(relation, target).map(entityId)))
       },
       descendants(target, relation, options) {

@@ -342,11 +342,15 @@ export interface TransitionScheduleDefinition<
  * Type-level and value-level helpers for finite-state machines.
  */
 export namespace StateMachine {
+  /** Any state machine, whatever its states and game; a bound for generic code. */
   export type Any = StateMachineDefinition<string, StateDefinitions, unknown, unknown>
   /** The names of `M`'s states. */
   export type State<M extends Any> = keyof M["states"] & string
+  /** The game root a machine belongs to (the `Game` whose `Game.StateMachine` made it). */
   export type Root<M extends Any> = M extends StateMachineDefinition<string, StateDefinitions, infer R> ? R : never
+  /** Any run condition of the game rooted at `Root` (`Game.Condition.inState(...)`, `not`, `or`). */
   export type AnyCondition<Root = unknown> = Condition<Root>
+  /** Any transition schedule (`Game.Schedule.onEnter` / `onExit` / `onTransition`) of the game rooted at `Root`. */
   export type AnyTransitionSchedule<S extends Schema.Any = Schema.Any, Root = unknown> =
     TransitionScheduleDefinition<S, Any, Requirement.Requirement, Root, SystemFailure>
 }

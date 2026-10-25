@@ -128,8 +128,11 @@ export type Handle<
   }
 >
 
+/** Type-level helpers for entity handles. */
 export namespace Handle {
+  /** The game root a handle belongs to. */
   export type Root<T extends import("./Entity.ts").Handle<any, any>> = T extends import("./Entity.ts").Handle<infer R, any> ? R : never
+  /** The component a handle was made for (`Game.Entity.handle(id, Player)`), or `undefined` for a plain handle. */
   export type Intent<T extends import("./Entity.ts").Handle<any, any>> =
     T extends import("./Entity.ts").Handle<any, infer I extends Descriptor<"component", string, any> | undefined> ? I : never
 }
