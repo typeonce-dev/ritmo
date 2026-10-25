@@ -269,6 +269,8 @@ export interface SystemDescription {
   readonly removed: ReadonlyArray<string>
   readonly despawned: boolean
   readonly relationFailures: ReadonlyArray<string>
+  /** Relations whose edges dropped by a target's despawn it reads (`Game.System.readDroppedRelations`). */
+  readonly droppedRelations: ReadonlyArray<string>
   /** Events and resources read with `Game.System.thisTick`, and query slots as `queries.<slot>`. */
   readonly thisTick: ReadonlyArray<string>
   readonly services: ReadonlyArray<string>
@@ -501,7 +503,7 @@ export interface StreamReaderStatus {
 
 /** One stream as `streams()` reports it: retained entries and each reader's state. */
 export interface StreamStatus {
-  readonly kind: "event" | "transitionEvent" | "relationFailure"
+  readonly kind: "event" | "transitionEvent" | "relationFailure" | "droppedRelation"
   /** The event, machine, or relation name. */
   readonly stream: string
   /** Retained entries. */
@@ -557,7 +559,7 @@ export interface MachineWrite {
  * entries dropped at capacity before the system read them.
  */
 export interface MissedRead {
-  readonly kind: "event" | "transitionEvent" | "relationFailure" | "removed" | "despawned"
+  readonly kind: "event" | "transitionEvent" | "relationFailure" | "droppedRelation" | "removed" | "despawned"
   readonly stream: string
 }
 
@@ -571,6 +573,8 @@ export type Effect =
   | { readonly kind: "relate"; readonly entity: number; readonly relation: string; readonly target: number }
   | { readonly kind: "unrelate"; readonly entity: number; readonly relation: string }
   | { readonly kind: "relationFailure"; readonly entity: number; readonly relation: string; readonly error: string }
+  /** An edge from `entity` to `target` removed because `target` despawned (`Game.System.readDroppedRelations`). */
+  | { readonly kind: "relationDropped"; readonly entity: number; readonly relation: string; readonly target: number }
   /** A command skipped because it would leave `component` without `missing` (`Schema.requires`). */
   | {
       readonly kind: "requirementViolated"

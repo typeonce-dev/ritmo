@@ -151,7 +151,7 @@ session.whyResource(Score)                // latest changes to a resource
 session.journal({ frames: [180, 185], entity: 12, kinds: ["write", "effect"] })
 session.journal({ system: "Game/Move", last: 10, verbose: true })
 session.system("Game/Move")               // declared access, stats, recent lines
-session.streams()                         // event/transition/relation-failure retention
+session.streams()                         // event/transition/relation-failure/dropped-relation retention
 session.report()                          // per-system timing and warnings
 ```
 
@@ -181,7 +181,9 @@ f186 update  -                   transition Game/Flow Playing -> Paused applied
   values. Failed systems show `(rolled back)`.
 - `queued ...` then `applyDeferred: ...`: a command queued by a system, then
   its structural effect when a marker applied it. The system named on the
-  effect line is the one that queued it.
+  effect line is the one that queued it. A despawn also lists each edge it
+  dropped: `Game/Targeting from e7 to e12 dropped: e12 despawned` (what
+  `Game.System.readDroppedRelations` delivers).
 - `skipped: <condition> is false`: a run condition held the system back;
   `discarded N Event` means messages published meanwhile are lost to it.
 - `missed ...`: the system could not see entries dropped before it ran.

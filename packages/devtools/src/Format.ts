@@ -160,6 +160,7 @@ export const system = (input: Debug.SystemDescription): string => {
   add("reads removed", input.removed)
   if (input.despawned) lines.push("  reads despawned")
   add("reads relation failures", input.relationFailures)
+  add("reads dropped relations", input.droppedRelations)
   add("services", input.services.filter((name) => !input.consumes.includes(name)))
   add("consumes (drains each run)", input.consumes)
   add("may spawn", input.commands.spawns)
@@ -317,6 +318,10 @@ const effect = (input: Debug.Effect, options: ValueOptions, labels: Labels | und
       return `unrelate ${id} ${input.relation}`
     case "relationFailure":
       return `relation failure ${id} ${input.relation}: ${input.error}`
+    case "relationDropped": {
+      const target = entity(input.target, labels)
+      return `${input.relation} from ${id} to ${target} dropped: ${target} despawned`
+    }
     case "requirementViolated":
       return `skipped ${input.command} ${id}: ${input.component} requires ${input.missing}`
     case "staleTarget":

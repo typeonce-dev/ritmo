@@ -675,6 +675,14 @@ export interface RelationFailureRead<R extends Relation.Relation.Any> {
 }
 
 /**
+ * Declares read access to the edges of a relation the runtime dropped
+ * because their target despawned.
+ */
+export interface DroppedRelationRead<R extends Relation.Relation.Any> {
+  readonly relation: R
+}
+
+/**
  * Declares read access to removed-component lifecycle records.
  *
  * Each run returns the entities whose component was removed since the
@@ -709,11 +717,53 @@ export const readRemoved = <D extends Descriptor<"component", string, any>>(
 })
 
 /**
- * Declares read access to relation-mutation failure records.
+ * Declares read access to relation-mutation failure records: the `relate` and
+ * `reorderChildren` commands of one relation that failed when applied, since
+ * this system's previous run. To react to an edge the runtime removed because
+ * its target despawned, read {@link readDroppedRelations} instead.
  */
 export const readRelationFailures = <R extends Relation.Relation.Any>(
   relation: R
 ): RelationFailureRead<R> => ({
+  relation
+})
+
+/**
+ * Declares read access to the edges of a relation that the runtime dropped
+ * because their target despawned, for the spec's `droppedRelations`.
+ *
+ * A relation stores a handle to another entity, and a handle is not proof
+ * the entity is alive: when the target despawns, every edge to it is
+ * removed at that `applyDeferred()`, and nothing else tells the sources.
+ * Each run returns, once, the `{ source, target }` of the edges dropped
+ * since this system's previous run, so a chaser whose target died can
+ * pick another one or go idle. Like events, two readers each see every
+ * record; a system skipped by `when` drops the records published meanwhile,
+ * one paused by `pauseWhen` reads them when it runs again, and a reader that
+ * fell behind by more than `Runtime.streamCapacity` records sees
+ * `lagged() === true`.
+ *
+ * Only a target's despawn records an edge. Removing an edge with
+ * `commands.unrelate`, or relating the source to another target, records
+ * nothing (the system that queued it already knows), and neither does a
+ * source's own despawn (read {@link readDespawned} for that). A
+ * `Descriptor.Hierarchy` never records: its children despawn with their
+ * parent. To react to a relate or reorder that failed instead, read
+ * {@link readRelationFailures}.
+ *
+ * @example
+ * ```ts
+ * const DropTargets = Game.System("Game/DropTargets", {
+ *   droppedRelations: { lost: Game.System.readDroppedRelations(Targeting) },
+ *   commands: Game.System.commands(Game.System.inserts(Idle))
+ * }, ({ droppedRelations, commands }) => {
+ *   for (const { source } of droppedRelations.lost.all()) commands.insert(source, [Idle, {}])
+ * })
+ * ```
+ */
+export const readDroppedRelations = <R extends Relation.Relation.Any>(
+  relation: R
+): DroppedRelationRead<R> => ({
   relation
 })
 
@@ -781,6 +831,27 @@ export interface RelationFailureReadView<
   Root = unknown
 > {
   all(): ReadonlyArray<Relation.Relation.MutationFailure<R, S, Root>>
+  /**
+   * Whether entries published since this system's previous run were dropped
+   * before it read them. Entries wait for every reading system, so this only
+   * happens when a reader has not run for so long that the stream exceeded
+   * its capacity (see `Runtime.streamCapacity`), or for inspectors, which do
+   * not hold entries.
+   */
+  lagged(): boolean
+}
+
+/**
+ * A read-only stream of the edges of one relation dropped because their
+ * target despawned (see {@link readDroppedRelations}).
+ */
+export interface DroppedRelationReadView<
+  R extends Relation.Relation.Any = Relation.Relation.Any,
+  S extends Schema.Any = Schema.Any,
+  Root = unknown
+> {
+  /** The edges dropped since this system's previous run, oldest first. */
+  all(): ReadonlyArray<Relation.Relation.Dropped<R, S, Root>>
   /**
    * Whether entries published since this system's previous run were dropped
    * before it read them. Entries wait for every reading system, so this only
@@ -965,6 +1036,8 @@ export interface SystemAccessInput {
   readonly removed?: Record<string, RemovedRead<Descriptor<"component", string, any>>>
   readonly despawned?: Record<string, DespawnedRead>
   readonly relationFailures?: Record<string, RelationFailureRead<Relation.Relation.Any>>
+  /** Edges dropped because their target despawned: `Game.System.readDroppedRelations(R)`. */
+  readonly droppedRelations?: Record<string, DroppedRelationRead<Relation.Relation.Any>>
   /**
    * The commands the system may queue: `Game.System.commands(...)` with
    * `spawns`, `inserts`, `removes`, `despawns`, `despawnsScope`, and
@@ -973,7 +1046,8 @@ export interface SystemAccessInput {
   readonly commands?: CommandAccess.Any
   /**
    * Run conditions that skip the system: while one fails, the system does not
-   * run and the events, transition events, and relation failures published
+   * run and the events, transition events, relation failures, and dropped
+   * relations published
    * meanwhile are dropped for it. Use it for a mode change after which those
    * messages are stale (menu, game over); use `pauseWhen` instead for a freeze
    * whose messages stay valid. `Schedule.when(...)` adds conditions to a whole
@@ -1088,6 +1162,7 @@ export type SystemSpec<
   readonly removed: AccessField<Access, "removed", {}>
   readonly despawned: AccessField<Access, "despawned", {}>
   readonly relationFailures: AccessField<Access, "relationFailures", {}>
+  readonly droppedRelations: AccessField<Access, "droppedRelations", {}>
   readonly when: AccessField<Access, "when", readonly []>
   readonly pauseWhen: AccessField<Access, "pauseWhen", readonly []>
   readonly transitions: AccessField<Access, "transitions", {}>
@@ -1173,6 +1248,13 @@ type RelationFailureContext<Spec extends AnySystemSpec> = {
       : never
 }
 
+type DroppedRelationContext<Spec extends AnySystemSpec> = {
+  readonly [K in keyof Spec["droppedRelations"]]:
+    Spec["droppedRelations"][K] extends DroppedRelationRead<infer R>
+      ? DroppedRelationReadView<R, Spec["schema"], Spec["__schemaRoot"]>
+      : never
+}
+
 /**
  * Derives the transition view context from a system spec.
  */
@@ -1214,6 +1296,7 @@ export interface SystemContext<Spec extends AnySystemSpec> {
   readonly removed: RemovedContext<Spec>
   readonly despawned: DespawnedContext<Spec>
   readonly relationFailures: RelationFailureContext<Spec>
+  readonly droppedRelations: DroppedRelationContext<Spec>
   readonly transitions: TransitionContext<Spec>
   readonly services: ServiceContext<Spec>
   /** The commands the spec declares (`commands: Game.System.commands(...)`). */
@@ -1453,6 +1536,7 @@ export function System(
     removed: spec.removed ?? {},
     despawned: spec.despawned ?? {},
     relationFailures: spec.relationFailures ?? {},
+    droppedRelations: spec.droppedRelations ?? {},
     when: spec.when ?? [],
     pauseWhen: spec.pauseWhen ?? [],
     transitions: spec.transitions ?? {},

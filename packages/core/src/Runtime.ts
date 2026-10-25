@@ -103,6 +103,7 @@ import type {
   QueryIteration,
   QueryLookups,
   RelationFailureReadView,
+  DroppedRelationReadView,
   RemovedReadView,
   TransitionEventReadView,
   MachineReadView,
@@ -763,8 +764,8 @@ export interface Runtime<
 }
 
 /**
- * Most entries one event, transition-event, relation-failure, removed, or
- * despawned stream keeps for readers that have not run yet. Past it the
+ * Most entries one event, transition-event, relation-failure,
+ * dropped-relation, removed, or despawned stream keeps for readers that have not run yet. Past it the
  * oldest entries are dropped, and readers that missed them see
  * `lagged() === true` (or a `missed` read in the debug trace).
  */
@@ -843,7 +844,7 @@ const makeValidatedRuntime = <
   const activeTransitions = new Map<symbol, Machine.TransitionSnapshot>()
 
   /**
-   * Event, transition-event, and relation-failure logs. Entries are stamped
+   * Event, transition-event, relation-failure, and dropped-relation logs. Entries are stamped
    * with the change tick at which they were published; each reader sees the
    * entries published after its previous completed run. Entries are kept for
    * the current and previous frame, and beyond that until every system that
@@ -853,6 +854,7 @@ const makeValidatedRuntime = <
   const events = Streams.make<unknown>(streamCapacity)
   const transitionEvents = Streams.make<Machine.TransitionSnapshot>(streamCapacity)
   const relationFailures = Streams.make<Relation.Relation.MutationFailure<Relation.Relation.Any, S, Root>>(streamCapacity)
+  const droppedRelations = Streams.make<Relation.Relation.Dropped<Relation.Relation.Any, S, Root>>(streamCapacity)
 
   /**
    * Commands queued by systems and not yet applied. They persist across
@@ -977,6 +979,17 @@ const makeValidatedRuntime = <
       )
     ])
   }
+
+  // Every edge a target's despawn removes, however the despawn was queued:
+  // one record per edge, read by `Game.System.readDroppedRelations`.
+  world.setDroppedEdge((sourceId, relation, targetId) => {
+    if (tracing) recordEffect({ kind: "relationDropped", entity: sourceId, relation: relation.name, target: targetId })
+    droppedRelations.append(relation.key, world.currentTick(), [{
+      relation,
+      source: world.entityIdOf(sourceId) as Entity.EntityId<S, Root>,
+      target: world.entityIdOf(targetId) as Entity.EntityId<S, Root>
+    }])
+  })
 
   /**
    * With `debug`, the relations commands have tried to relate or
@@ -1660,6 +1673,18 @@ const makeValidatedRuntime = <
     }
   })
 
+  const makeDroppedRelationReadView = <R extends Relation.Relation.Any>(
+    relation: R,
+    reader: ReaderState
+  ): DroppedRelationReadView<R, S, Root> => ({
+    all() {
+      return droppedRelations.since(relation.key, reader.streamSince) as unknown as ReadonlyArray<Relation.Relation.Dropped<R, S, Root>>
+    },
+    lagged() {
+      return droppedRelations.lagged(relation.key, reader.streamSince, reader.registeredAt)
+    }
+  })
+
   const makeMachineReadView = <M extends Machine.StateMachine.Any>(stateMachine: M): MachineReadView<M> => ({
     get: () => currentMachines.get(stateMachine.key) as ReadonlyValue<Machine.CurrentValue<M>>,
     is: (state) => stateOf(currentMachines.get(stateMachine.key)) === state
@@ -1805,6 +1830,7 @@ const makeValidatedRuntime = <
       removed: mapRecord(spec.removed as Record<string, any>, (access) => watch(makeRemovedReadView(access.descriptor, reader), `removed ${access.descriptor.name}`)),
       despawned: mapRecord(spec.despawned as Record<string, any>, () => watch(makeDespawnedReadView(reader), "despawned")),
       relationFailures: mapRecord(spec.relationFailures as Record<string, any>, (access) => watch(makeRelationFailureReadView(access.relation, reader), `relation failures ${access.relation.name}`)),
+      droppedRelations: mapRecord(spec.droppedRelations as Record<string, any>, (access) => watch(makeDroppedRelationReadView(access.relation, reader), `dropped relations ${access.relation.name}`)),
       services: mapRecord(spec.services as Record<string, any>, (access) =>
         providedServices[access.descriptor.name as keyof Services]),
       // The queue serves every declared permission set; the spec's types narrow it.
@@ -1828,7 +1854,7 @@ const makeValidatedRuntime = <
   const streamReaders = new Map<Streams.Cursor, { readonly system: string; readonly reader: ReaderState }>()
 
   interface ReadStream {
-    readonly kind: "event" | "transitionEvent" | "relationFailure"
+    readonly kind: "event" | "transitionEvent" | "relationFailure" | "droppedRelation"
     readonly store: Streams.Streams<unknown>
     readonly key: symbol
     readonly name: string
@@ -1846,6 +1872,9 @@ const makeValidatedRuntime = <
     }
     for (const access of Object.values(spec.relationFailures as Record<string, { readonly relation: Relation.Relation.Any }>)) {
       result.push({ kind: "relationFailure", store: relationFailures, key: access.relation.key, name: access.relation.name })
+    }
+    for (const access of Object.values(spec.droppedRelations as Record<string, { readonly relation: Relation.Relation.Any }>)) {
+      result.push({ kind: "droppedRelation", store: droppedRelations, key: access.relation.key, name: access.relation.name })
     }
     return result
   }
@@ -1962,6 +1991,9 @@ const makeValidatedRuntime = <
     }
     for (const access of Object.values(spec.relationFailures as Record<string, { readonly relation: Relation.Relation.Any }>)) {
       relationFailures.register(access.relation.key, reader)
+    }
+    for (const access of Object.values(spec.droppedRelations as Record<string, { readonly relation: Relation.Relation.Any }>)) {
+      droppedRelations.register(access.relation.key, reader)
     }
     // Removed/despawned reads use the change-detection cursor, so a system
     // skipped by its run conditions keeps them, like `added`/`changed`.
@@ -2461,6 +2493,7 @@ const makeValidatedRuntime = <
     events.trim(boundary)
     transitionEvents.trim(boundary)
     relationFailures.trim(boundary)
+    droppedRelations.trim(boundary)
   }
 
   /**
@@ -2821,6 +2854,7 @@ const makeValidatedRuntime = <
     events.clear()
     transitionEvents.clear()
     relationFailures.clear()
+    droppedRelations.clear()
     world.advanceTick()
     world.despawnAll()
     // Exactly the save's: ids allocated after a restore do not depend on the world it replaced.
@@ -2867,6 +2901,7 @@ const makeValidatedRuntime = <
     readonly relationFailures: Streams.StreamMark
     /** Each rewindable service's save, in `rewindables` order; `undefined` when the runtime has none. */
     readonly rewindables: ReadonlyArray<unknown> | undefined
+    readonly droppedRelations: Streams.StreamMark
     /** The rewound schedule's systems (their state keys), with each reader's positions then (`undefined`: not run yet). */
     readonly readers: ReadonlyMap<SystemDefinition<any, any, any>, readonly [since: number, lastRun: number, streamSince: number, streamLastRun: number] | undefined>
     released: Checkpoint.Released["reason"] | undefined
@@ -2897,6 +2932,7 @@ const makeValidatedRuntime = <
     events.release(runtimeMarks.map((mark) => mark.events))
     transitionEvents.release(runtimeMarks.map((mark) => mark.transitionEvents))
     relationFailures.release(runtimeMarks.map((mark) => mark.relationFailures))
+    droppedRelations.release(runtimeMarks.map((mark) => mark.droppedRelations))
   }
 
   /** The systems a schedule runs, transition bundles included, by the key their state is kept under. */
@@ -2940,6 +2976,7 @@ const makeValidatedRuntime = <
       transitionEvents: transitionEvents.mark(),
       relationFailures: relationFailures.mark(),
       rewindables: rewindables === undefined ? undefined : RewindableInternal.saveAll(rewindables),
+      droppedRelations: droppedRelations.mark(),
       readers,
       released: undefined
     }
@@ -3013,6 +3050,7 @@ const makeValidatedRuntime = <
     events.rewind(mark.events, mark.world.tick)
     transitionEvents.rewind(mark.transitionEvents, mark.world.tick)
     relationFailures.rewind(mark.relationFailures, mark.world.tick)
+    droppedRelations.rewind(mark.droppedRelations, mark.world.tick)
     releaseStreams()
 
     const inside = new Set<ReaderState>()
@@ -3160,6 +3198,7 @@ const makeValidatedRuntime = <
     inspectStore("event", events, debugNames!.events)
     inspectStore("transitionEvent", transitionEvents as Streams.Streams<unknown>, debugNames!.machines)
     inspectStore("relationFailure", relationFailures as Streams.Streams<unknown>, debugNames!.relations)
+    inspectStore("droppedRelation", droppedRelations as Streams.Streams<unknown>, debugNames!.relations)
     return result
   }
 

@@ -190,6 +190,7 @@ export const describeSystem = (system: AnySystem, placements: ReadonlyArray<stri
     removed: names(spec.removed as Record<string, { readonly descriptor: Descriptor.Any }>, (access) => access.descriptor.name),
     despawned: Object.keys(spec.despawned).length > 0,
     relationFailures: names(spec.relationFailures as Record<string, { readonly relation: Relation.Relation.Any }>, (access) => access.relation.name),
+    droppedRelations: names(spec.droppedRelations as Record<string, { readonly relation: Relation.Relation.Any }>, (access) => access.relation.name),
     thisTick: [
       ...[...Object.values(spec.events as Record<string, ThisTickAccess>), ...Object.values(spec.resources as Record<string, ThisTickAccess>)]
         .filter((access) => access.thisTick === true)
