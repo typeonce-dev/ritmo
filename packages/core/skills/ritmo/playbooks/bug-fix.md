@@ -1,14 +1,13 @@
 # Bug fix
 
-1. Reproduce headless before changing code: build the simulation on a runtime made with `debug: { hostClock: HostClock.test() }`, script the input, and drive it with a `Session` from `@typeonce/ritmo-devtools` (its README has the loop).
-2. Read the lints at the top of `describe()` first; they often name the cause.
-3. Give the session `labels` for the entities the bug report mentions (the player, the enemy that clips through a wall), so every line names them. Encode the bug as an `Invariant` and `run` until it breaks. Explain the wrong value with `why(entity, Component)` and `journal(...)`. When the writing system is not the culprit (it computed from a wrong input), raise `depth` (`why(entity, Component, { depth: 3 })`) to see what it declared it reads and who produced each; those lines are possible causes, so confirm the one you suspect with `journal(...)`.
-   - When the wrong value appears within one frame, step it: run to the frame before, then `session.step("update")`, `until(System)` stops before the system you suspect, `dump` / `why` show the world there, `next()` runs one step, `finish()` reports the frame as `run` does.
-4. When the input that breaks it is unknown, fuzz it: `Fuzz.run(make, { schedule, inputs: [Fuzz.input(Source, { generate, neutral })], invariants, frames, seed })` with the replay factory (a browser game's `Source` is its `InputCapture.SourceOf<...>` controls service, drawn with `Actions.random(random, devices)` and resting at `Actions.idle(devices)`). A `Found` error carries a shrunk `replay`; save it, and the test is `Replay.session(make, file, { invariants }).play()` stopping at the invariant until the fix. `Flaky` means the simulation reads something besides its input: run `Determinism.check` first.
-5. When a script cannot reproduce it, record a play session with `Replay.recorder` in the dev build and open the file headless with `Replay.session`. When the bug shows in one browser and not in Node or another, run `ritmo-devtools verify <entry> <replay> --engines node,chromium,webkit,firefox` on that replay: it names the first tick and value the engines disagree on, usually a `Math` call that should be `Ops`.
-6. Fix the system that writes the wrong value. Never patch the symptom in UI or render code.
-7. Turn the reproduction into a test next to the game.
-8. When the same class of bug could come back, encode it: a type, a lint rule in the game's config, or an invariant in the tests.
-   - When the wrong value was an impossible combination (a grounded body that still moves up, hitstun outside a hit), fix the model rather than adding a guard: make the states a `Descriptor.EntityState`, so the combination cannot be written.
+**Goal:** the wrong value is reproduced headless, explained, fixed in the system that wrote it, and kept fixed by a test.
 
-**Done when** the test fails without the fix, passes with it, and the game's check passes.
+**Principles:** prove it headless; make impossible states unrepresentable; make the next mistake fail loudly.
+
+1. Reproduce headless before changing code: a runtime on a test host clock, scripted input, driven by a devtools `Session` (the `@typeonce/ritmo-devtools` README has the debugging loop). Read the lints at the top of `describe()` first; they often name the cause.
+2. Encode the bug as an `Invariant` and run until it breaks. Explain the wrong value with `why` and `journal`, raising `depth` when the writer computed from a wrong input; step through one frame when the value goes wrong within it.
+3. When the breaking input is unknown, fuzz it and keep the shrunk replay. When a script cannot reproduce it, record a play session. When it shows in one browser only, verify that replay across engines. The devtools README covers each.
+4. Fix the system that writes the wrong value, never the symptom in UI or render code. When the value was an impossible combination (a grounded body moving up, hitstun outside a hit), fix the model so it cannot be written, not with a guard.
+5. Turn the reproduction into a test next to the game. When the same class of bug could come back, also encode it as a type, a lint rule, or an invariant.
+
+**Check:** the test fails without the fix and passes with it, and the game's check passes.

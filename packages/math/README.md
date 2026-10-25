@@ -34,7 +34,7 @@ Values come in already validated: a position is a component the game's own schem
 
 Every helper that needs a non-exact function (`cos`, `sin`, `atan2`, `exp`, `hypot`) calls [`Ops`](https://github.com/typeonce-dev/ritmo/blob/main/packages/core/README.md) from `@typeonce/ritmo`, so a session recorded in one browser replays on any other engine. `Angle`, `Box2`, `Segment2`, `perpendicular`, and the rest use only operations every engine rounds exactly. Game code that needs other math calls `Ops` directly; the `ritmo/use-ops-for-math` rule of [`@typeonce/oxlint-plugin-ritmo`](https://github.com/typeonce-dev/ritmo/blob/main/packages/oxlint-plugin/README.md) reports a `Math` call left in simulation code, and `oxlint --fix` rewrites it.
 
-A broad phase (a spatial grid) is not here: the [skill](https://github.com/typeonce-dev/ritmo/blob/main/packages/core/skills/ritmo/playbooks/spatial-grid.md) has one to copy into the game, sized to its own data.
+A broad phase (a spatial grid) is not here: the [skill](https://github.com/typeonce-dev/ritmo/blob/main/packages/core/skills/ritmo/references/spatial-grid.md) has one to copy into the game, sized to its own data.
 
 Released together with [`@typeonce/ritmo`](https://github.com/typeonce-dev/ritmo/blob/main/packages/core/README.md), always with the same version.
 

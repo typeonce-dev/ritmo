@@ -1,10 +1,11 @@
 # Refactor
 
-1. Before moving code, pin the behaviour: the headless tests pass, and a `Determinism.check` or a recorded scripted run gives a baseline to compare against.
-2. Keep the simulation in one folder covered by one glob in the simulation override. `ritmo-devtools lint` reports any module the simulation loads from outside it.
-3. Keep each shared cache, pool, registry, and long-lived host object single, with one owner.
-4. Move state held in module variables to its home ([`state-and-upgrades.md`](state-and-upgrades.md)).
-5. Split large files along what changes together: one closed set per module, a file per system once systems grow, a module per screen.
-6. Encode the new boundaries: a `no-restricted-imports` rule per folder whose message names where the code belongs.
+**Goal:** the structure changes and the behaviour does not.
 
-**Done when** the tests pass unchanged, the scripted run matches the baseline, and the game's check passes.
+**Principles:** each piece of state has an owner and a lifetime; the simulation is the game; make the next mistake fail loudly.
+
+1. Pin the behaviour before moving code: the headless tests pass, and a `Determinism.check` or a recorded scripted run gives a baseline to compare against.
+2. Move along what changes together: one closed set per module, a file per system once systems grow, a module per screen. Keep the simulation in its one folder (`ritmo-devtools lint` reports a module it loads from outside), each shared cache, pool, or registry single with one owner, and state from module variables moved to its home ([`state-and-upgrades.md`](state-and-upgrades.md)).
+3. Encode the new boundaries: a `no-restricted-imports` rule per folder whose message names where the code belongs.
+
+**Check:** the tests pass unchanged, the scripted run matches the baseline, and the game's check passes.
