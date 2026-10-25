@@ -129,9 +129,9 @@ every change: where the docs are and how to structure the game.
 
 To try a mechanic first, ask your agent for a prototype. The
 [prototype skill](./packages/core/skills/ritmo-prototype/SKILL.md) gets a
-playable toy in front of you fast, checks in seconds that the mechanic is
-not broken, and leaves the fun to you; when you keep it, it graduates to the
-full checks.
+playable toy in front of you every round, checks only that it compiles and
+loads, and asks you one question you answer by playing; when you keep it, it
+graduates to the full checks.
 
 ## Games built with Ritmo
 

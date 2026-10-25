@@ -62,7 +62,7 @@ const skillFiles = Object.keys(markdown)
     const heading = /^# (.+)$/m.exec(markdown[path] ?? "")?.[1]
     if (heading === undefined) throw new Error(`llms.txt: ${path} has no heading`)
     if (file === "skills/ritmo/SKILL.md") return shipped(core, file, "Ritmo skill", "routes each change to its playbook and holds the principles; use it for every change")
-    if (file === "skills/ritmo-prototype/SKILL.md") return shipped(core, file, "Ritmo prototype skill", "replaces the checks while a game is a prototype: a playable toy fast, a check of seconds, and graduation")
+    if (file === "skills/ritmo-prototype/SKILL.md") return shipped(core, file, "Ritmo prototype skill", "replaces the checks while a game is a prototype: a playable build every round, the human as playtester, and graduation")
     return shipped(core, file, `${file.includes("/references/") ? "Reference" : "Playbook"}: ${heading}`, "")
   })
 

@@ -11,19 +11,29 @@
 - **Fantasy:** what the player should feel, in plain words ("untouchable", "clever", "cozy").
 - **Verb:** the one action the toy is about.
 - **Loop:** the 30 seconds the player repeats, as actions ("spot a gap, dash through, turn, again").
-- **Fun looks like:** what a player does when it works, so a readout can show it ("chains three dashes without stopping").
+- **Fun looks like:** what a player does when it works ("chains three dashes without stopping").
 - **Not yet:** what this prototype leaves out on purpose.
 
 ## Log
-### Round 1: <what changed>
-- Built: what the round added or changed, and the variants.
-- Evidence: the readout lines and the fuzz result.
-- Asked: the question in the reply.
-- Verdict: keep, tweak, pivot, or kill, in the human's words.
-- Next: what the verdict asks for.
+- Round 1, `slow-tells` / `tight-tells`: attack tiles light up, then land. Asked: step out on the light or the fill? Verdict: "on the light, it's free" (tweak). Next: tiles follow until a late lock.
 ```
 
-- **One question.** A prototype that tries to answer two answers neither; start a second one instead.
+## The question at the end of a round
+
+The human answers by playing, so the question points at one moment they will meet, names what they see on screen, and gives two or three answers, each of which already decides the next round:
+
+> In `early-lock` and `late-lock`, when the tiles turn solid red, do you
+> (a) step out in time and want to step back in, (b) get hit before you can react, or (c) were you already out before the lock?
+> (a) keeps the timing and builds the punish, (b) moves the lock earlier, (c) makes the attack catch a player who leaves early.
+
+- **One moment, by what is on screen:** "when the tiles turn solid red", not "the dodge".
+- **Compare the round's variants:** "which one", not "is it good".
+- **Answers are behaviour, not opinion:** what the player did ("got hit", "was already out"), which they remember after one play. Never "is it fun", "how does it feel", or a rating.
+- **Each answer names the next change,** so the verdict needs no follow-up.
+
+## Guidance
+
+- **One question per prototype.** A prototype that tries to answer two answers neither; start a second one instead.
 - **The fantasy comes first.** Pick the verb and the feedback for the feeling, not the other way round. Theme and art do not fix a loop that is not fun.
 - **The loop is repeated, and varied later.** If the 30 seconds are not fun, more content will not make the game fun.
 - **Cut early.** A verdict of kill is a result: record why, so the next prototype does not ask it again.

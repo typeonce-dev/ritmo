@@ -53,7 +53,7 @@ for (const directory of packages) {
     throw new Error(`${manifest.name} tarball contains test or build-info files`)
   }
   if (directory === "core") {
-    for (const required of ["package/skills/ritmo/SKILL.md", "package/skills/ritmo/playbooks/mechanic.md", "package/skills/ritmo/references/spatial-grid.ts", "package/skills/ritmo-prototype/SKILL.md", "package/skills/ritmo-prototype/references/play.ts", "package/SETUP.md"]) {
+    for (const required of ["package/skills/ritmo/SKILL.md", "package/skills/ritmo/playbooks/mechanic.md", "package/skills/ritmo/references/spatial-grid.ts", "package/skills/ritmo-prototype/SKILL.md", "package/SETUP.md"]) {
       if (!listing.includes(required)) throw new Error(`${manifest.name} tarball is missing ${required}`)
     }
   }
