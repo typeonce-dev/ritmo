@@ -169,6 +169,11 @@
         "medianMs": 0.6286,
         "score": 0.1803
       },
+      "render/sync-hierarchy-1k-changed-of-10k": {
+        "minMs": 1.231,
+        "medianMs": 1.354,
+        "score": 0.409
+      },
       "render/sync-spawn-despawn-500": {
         "minMs": 2.4451,
         "medianMs": 2.8999,

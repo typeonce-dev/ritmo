@@ -134,7 +134,8 @@ const session = Session.make(runtime, { hostClock, schedules: { setup: Game.Sche
 const ran = session.run("setup")
 const controls = Controls.actions({ buttons: ["jump"] }).merge({ keyboard: Keyboard.scripted({ jump: [" "] }, [{ frame: 0, press: ["jump"] }]) })
 const registry = NodeRegistry.make<string>({ attach: () => {}, detach: () => {} })
-const sprites = PixiNodeRegistry.make<{ destroy(): void }>({ addChild: () => {}, removeChild: () => {} })
+interface PixiNode { destroy(): void; addChild(child: PixiNode): void; removeChild(child: PixiNode): void }
+const sprites = PixiNodeRegistry.make<PixiNode>({ addChild: () => {}, removeChild: () => {} })
 const cell = Scalar.Positive.result(8)
 const grid = cell.ok ? SpatialGrid.make(cell.value) : undefined
 grid?.insert(0, 1, 1, 1)
