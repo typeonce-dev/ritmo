@@ -1,0 +1,52 @@
+---
+// A claim and its proof: one large line saying what you get, a short
+// caption, and the proof (a demo, a snippet, or real output) in the slot.
+// Feature pages are a column of these, so a reader skimming the titles
+// gets the whole pitch, and each proof sits right under its claim.
+interface Props {
+  /** The claim, as one sentence a reader could repeat. */
+  title: string
+  /** The anchor for links to this claim; defaults to the title, slugified. */
+  id?: string
+}
+
+const { title, id } = Astro.props
+const anchor = id ?? title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+---
+
+<section class="claim">
+  <h2 id={anchor} class="claim-title"><a href={`#${anchor}`}>{title}</a></h2>
+  <div class="claim-body"><slot /></div>
+</section>
+
+<style>
+  .claim {
+    margin: 2.4rem 0;
+    padding: 1.4rem 1.5rem 0.4rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--raised) 35%, transparent);
+  }
+  .claim-title {
+    margin: 0 0 0.6rem;
+    padding: 0;
+    border: 0;
+    font-size: 1.3rem;
+    text-wrap: balance;
+  }
+  .claim-title a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .claim-title a:hover {
+    color: var(--accent);
+  }
+  .claim-body :global(> p:first-child) {
+    margin-top: 0;
+    color: var(--muted);
+  }
+  .claim-body :global(pre) {
+    margin-left: -0.25rem;
+    margin-right: -0.25rem;
+  }
+</style>

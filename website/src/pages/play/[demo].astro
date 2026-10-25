@@ -44,22 +44,30 @@ const demo = demos[id]
       // keyboard) from the first frame. The page that embeds this one can
       // also start it (its "Play" buttons), with a "ritmo:start" message.
       let started = false
-      const begin = async () => {
+      const begin = async (focus = true) => {
         if (started) return
         started = true
         start.disabled = true
-        window.focus()
+        // An autoplayed demo starts without the focus: the reader keeps the page.
+        if (focus) window.focus()
         const demo: Demo = await demos[id].load()
         await demo.mount(stage)
         start.remove()
       }
-      start.addEventListener("click", begin)
+      start.addEventListener("click", () => void begin())
       window.addEventListener("message", (event) => {
-        if (event.origin === location.origin && event.data === "ritmo:start") void begin()
+        if (event.origin !== location.origin) return
+        if (event.data === "ritmo:start") void begin()
+        if (event.data === "ritmo:autoplay") void begin(false)
       })
     </script>
 
     <style>
+      /* Astro's dev toolbar would cover the bottom of every frame in dev; the built site has none. */
+      :global(astro-dev-toolbar) {
+        display: none !important;
+      }
+
       html,
       body {
         margin: 0;

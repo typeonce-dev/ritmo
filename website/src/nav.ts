@@ -13,6 +13,20 @@ export const sections = [
     ]
   },
   {
+    title: "Features",
+    pages: [
+      { href: "/features/bugs/", title: "Bugs found before players" },
+      { href: "/features/devices/", title: "Every device, one player" },
+      { href: "/features/replays/", title: "Replays that become tests" },
+      { href: "/features/states/", title: "States that can't go wrong" },
+      { href: "/features/determinism/", title: "Same game everywhere" },
+      { href: "/features/composition/", title: "Entities that change shape" },
+      { href: "/features/multiplayer/", title: "Local multiplayer" },
+      { href: "/features/rollback/", title: "Online multiplayer" },
+      { href: "/features/rebinding/", title: "Rebinding" }
+    ]
+  },
+  {
     title: "Learn",
     pages: [
       { href: "/docs/concepts/", title: "Concepts" },
@@ -23,23 +37,9 @@ export const sections = [
     ]
   },
   {
-    title: "Features",
-    pages: [
-      { href: "/features/devices/", title: "Every device, one player" },
-      { href: "/features/rebinding/", title: "Rebinding" },
-      { href: "/features/multiplayer/", title: "Local multiplayer" },
-      { href: "/features/replays/", title: "Replays that become tests" },
-      { href: "/features/determinism/", title: "Same game everywhere" },
-      { href: "/features/rollback/", title: "Online multiplayer" },
-      { href: "/features/states/", title: "States that can't go wrong" },
-      { href: "/features/composition/", title: "Entities that change shape" }
-    ]
-  },
-  {
     title: "More",
     pages: [
       { href: "/examples/", title: "Examples" },
-      { href: "/roadmap/", title: "Roadmap" },
       { href: "/brand/", title: "Brand" }
     ]
   }

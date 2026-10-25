@@ -140,3 +140,64 @@ describe("loading a corrupted save", () => {
     expect(Loaded.value.filter((value) => value !== undefined)).not.toEqual([10])
   })
 })
+
+describe("a system that writes what it never declared", () => {
+  // Nothing declares a system's access in any of the three: a loop over one
+  // query writes any other component, and nothing stops it.
+  it("runs in all three", () => {
+    const bit = B.createWorld()
+    const Position = { x: [] as Array<number> }
+    const Velocity = { x: [] as Array<number> }
+    const eid = B.addEntity(bit)
+    B.addComponent(bit, eid, Position)
+    B.addComponent(bit, eid, Velocity)
+    for (const id of B.query(bit, [Position])) Velocity.x[id] = 7
+    expect(Velocity.x[eid]).toBe(7)
+
+    const koota = createWorld()
+    const KPosition = trait({ x: 0 })
+    const KVelocity = trait({ x: 0 })
+    const entity = koota.spawn(KPosition, KVelocity)
+    for (const found of koota.query(KPosition)) found.set(KVelocity, { x: 7 })
+    expect(entity.get(KVelocity)).toEqual({ x: 7 })
+
+    const mini = new World<{ position?: { x: number }; velocity?: { x: number } }>()
+    const added = mini.add({ position: { x: 0 }, velocity: { x: 0 } })
+    for (const found of mini.with("position")) found.velocity = { x: 7 }
+    expect(added.velocity).toEqual({ x: 7 })
+  })
+})
+
+describe("logic that calls Math.random()", () => {
+  // None of the three has a notion of simulation code, so nothing reports it.
+  it("runs in all three", () => {
+    const bit = B.createWorld()
+    const Roll = { value: [] as Array<number> }
+    B.addComponent(bit, B.addEntity(bit), Roll)
+    for (const id of B.query(bit, [Roll])) Roll.value[id] = Math.random()
+    expect(Roll.value.every((value) => value >= 0 && value < 1)).toBe(true)
+
+    const koota = createWorld()
+    const KRoll = trait({ value: -1 })
+    const entity = koota.spawn(KRoll)
+    for (const found of koota.query(KRoll)) found.set(KRoll, { value: Math.random() })
+    expect(entity.get(KRoll)!.value).toBeGreaterThanOrEqual(0)
+
+    const mini = new World<{ roll?: number }>()
+    const added = mini.add({ roll: -1 })
+    for (const found of mini.with("roll")) found.roll = Math.random()
+    expect(added.roll).toBeGreaterThanOrEqual(0)
+  })
+})
+
+describe("saving and loading a world", () => {
+  // bitECS ships serializers (checked above); Koota and Miniplex ship none,
+  // so a save format, and checking one when it loads, is the game's to write.
+  it("Koota and Miniplex export no snapshot or serializer", async () => {
+    const koota = await import("koota")
+    const miniplex = await import("miniplex")
+    const saving = (names: ReadonlyArray<string>) => names.filter((name) => /serial|snapshot|save|load/i.test(name))
+    expect(saving(Object.keys(koota))).toEqual([])
+    expect(saving(Object.keys(miniplex))).toEqual([])
+  })
+})

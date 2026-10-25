@@ -208,3 +208,9 @@ pre code {
   color: var(--muted);
 }
 
+
+/* Printed output (```text fences) wraps instead of scrolling; code keeps its line breaks. */
+.article pre.astro-code[data-language="text"] {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -38,12 +38,66 @@ export const demos = {
     source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/rollback",
     load: () => import("./rollback/game.ts")
   },
+  netcode: {
+    title: "Rollback, playing itself",
+    description: "Two bot peers of one match over a fake network whose latency rises: each guesses the other's input, rolls back when the guess was wrong, and agrees on every tick.",
+    controls: "Watch the latency rise: outlined ticks ran on a guess, lit ones ran again after a rollback, the green line is the last tick both checksums agree on.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/netcode",
+    // Takes no input: starts on its own when scrolled into view.
+    autoplay: true,
+    load: () => import("./netcode/game.ts")
+  },
+  fuzz: {
+    title: "Fuzzer",
+    description: "The fuzzer plays the ball at random until it breaks a planted rule, then shrinks the run to the few frames that still break it.",
+    controls: "Watch it search, break the rule, and shrink. Press the button for another seed.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/fuzz",
+    // Takes no input: starts on its own when scrolled into view.
+    autoplay: true,
+    load: () => import("./fuzz/game.ts")
+  },
+  states: {
+    title: "States",
+    description: "The same script plays two fighters: one keeps its body in a record and drifts up after a guard, one keeps it in an entity state and cannot.",
+    controls: "Watch both jump and land, then the guard: the left fighter rises for good, the right one has no speed on the ground to set.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/states",
+    // Takes no input: starts on its own when scrolled into view.
+    autoplay: true,
+    load: () => import("./states/game.ts")
+  },
+  composition: {
+    title: "Composition",
+    description: "A village fire made of components: four small systems read what each villager holds, and the fire comes out of that.",
+    controls: "Each villager is a stack of component blocks: a system inserting one drops it on, removing one knocks it off. Each rule shows the blocks its query asks for.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/composition",
+    // Takes no input: starts on its own when scrolled into view.
+    autoplay: true,
+    load: () => import("./composition/game.ts")
+  },
+  determinism: {
+    title: "Determinism",
+    description: "Two copies of a seeded world stay one picture; two copies of a world that calls Math.random() split at the first gust.",
+    controls: "Watch the checksums under each pair: the left ones stay equal, the right ones part.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/determinism",
+    // Takes no input: starts on its own when scrolled into view.
+    autoplay: true,
+    load: () => import("./determinism/game.ts")
+  },
   replay: {
     title: "Controls, recorded",
     description: "The same ball, recording the last ten seconds as a replay you can open on the spot.",
     controls: "Move and dash for a while, then press Replay in the corner.",
     source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/controls",
     load: () => import("./controls/replay.ts")
+  },
+  why: {
+    title: "Headless session",
+    description: "A devtools session plays a scripted run of the ball, stops on the frame that breaks a rule, and says why the ball is there.",
+    controls: "Watch the trace record each write, the run stop inside the red zone, and why() name the dash that put it there.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/why",
+    // Takes no input: starts on its own when scrolled into view.
+    autoplay: true,
+    load: () => import("./why/game.ts")
   }
 } as const
 

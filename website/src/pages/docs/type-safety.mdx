@@ -1,130 +1,55 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Type safety
-description: The mistakes Ritmo turns into compile errors, and the fix each error names.
+description: Ten mistakes a coding agent makes, each a red underline in the editor, and the fix Ritmo writes into the error.
 ---
 
-Every snippet compiles against the current release. The red line is the
-error your editor shows, cut to the fix Ritmo writes into it.
+import Claim from "../../components/Claim.astro"
 
-```ts twoslash title="schema.ts"
-import { Descriptor, Schema } from "@typeonce/ritmo"
+In most game code these mistakes run, and show up later as a bug. In Ritmo
+each one is a red underline, and the error says what to change. Every card
+is a real snippet with the error your editor shows; hover any name for its
+type.
 
-const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Health = Descriptor.Component<number>()("Arena/Health")
-const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
-const Noise = Descriptor.Component<number>()("Arena/Noise")
+<Claim title="A system that needs a service will not run without it">
 
-const Game = Schema.bind(
-  Schema.fragment({
-    components: { Position, Health, Enemy, Noise },
-
-    // Every enemy has a position and health
-    requires: [Schema.requires(Enemy, Position, Health)] // [!code highlight]
-  })
-)
-```
-
-## Systems get only what they declare
+An agent adds a logger to a system and forgets to give it to the runtime.
+The tick does not compile, and the error names the service and where it
+goes.
 
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
-const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Game = Schema.bind(Schema.fragment({ components: { Position } }))
-// ---cut---
-// @errors: 2339
-// Declared as a read...
-const Moving = Game.Query({
-  selection: { position: Game.Query.read(Position) } // [!code highlight]
-})
-
-Game.System("Arena/Move", { queries: { moving: Moving } }, ({ queries }) => {
-  for (const { data } of queries.moving.each()) {
-    // ...so there is nothing to write with
-    data.position.set({ x: 1, y: 1 })
-  }
-})
-```
-
-```ts title="fix"
-selection: { position: Game.Query.read(Position) } // [!code --]
-selection: { position: Game.Query.write(Position) } // [!code ++]
-```
-
-## Spawns need permission
-
-```ts twoslash
-import { Descriptor, Schema } from "@typeonce/ritmo"
-const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
 const Health = Descriptor.Component<number>()("Arena/Health")
-const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
-const Noise = Descriptor.Component<number>()("Arena/Noise")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy, Noise }, requires: [Schema.requires(Enemy, Position, Health)] }))
-// ---cut---
-// @errors: 2379
-Game.System(
-  "Arena/SpawnWave",
-  // May spawn Position, Health and Enemy...
-  { commands: Game.System.commands(Game.System.spawns(Position, Health, Enemy)) }, // [!code highlight]
-
-  ({ commands }) => {
-    // ...but not Noise
-    commands.spawn(Game.Command.spawn([Position, { x: 0, y: 0 }], [Noise, 1]))
-  }
-)
-```
-
-## Entities spawn complete
-
-`Schema.requires(Enemy, Position, Health)` makes half an enemy impossible.
-
-```ts twoslash
-import { Descriptor, Schema } from "@typeonce/ritmo"
-const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Health = Descriptor.Component<number>()("Arena/Health")
-const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy }, requires: [Schema.requires(Enemy, Position, Health)] }))
-// ---cut---
-// @errors: 2379
-Game.System(
-  "Arena/SpawnWave",
-  { commands: Game.System.commands(Game.System.spawns(Position, Health, Enemy)) },
-
-  ({ commands }) => {
-    // An enemy with no Health
-    commands.spawn(Game.Command.spawn([Enemy, {}], [Position, { x: 0, y: 0 }]))
-  }
-)
-```
-
-## Handles, not raw ids
-
-```ts twoslash
-import { Descriptor, Schema } from "@typeonce/ritmo"
-const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Health = Descriptor.Component<number>()("Arena/Health")
-const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }))
+const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 // ---cut---
 // @errors: 2345
-Game.System(
-  "Arena/Cull",
-  { commands: Game.System.commands(Game.System.despawns(Enemy)) },
-  ({ commands }) => {
-    // Which entity is 12? Nothing proves it is an Enemy
-    commands.despawn(12)
-  }
+const Logger = Descriptor.Service<{ log(message: string): void }>()(
+  "Arena/Logger"
 )
+
+const Report = Game.System(
+  "Arena/Report",
+  { services: { logger: Game.System.service(Logger) } }, // [!code highlight]
+  ({ services }) => services.logger.log("tick")
+)
+
+// This runtime has no Logger
+const made = Game.Runtime.make({ services: Game.Runtime.services() })
+
+if (made.ok) made.value.tick(Game.Schedule(Report))
 ```
 
 ```ts title="fix"
-commands.despawn(12) // [!code --]
-commands.despawn(match.entity) // a handle from a query with Enemy // [!code ++]
+services: Game.Runtime.services() // [!code --]
+services: Game.Runtime.services(Game.Runtime.service(Logger, console)) // [!code ++]
 ```
 
-## The tick order is checked
+</Claim>
 
-`Aim` wants this tick's spawns, so they must land first.
+<Claim title="Systems run in an order that works">
+
+`Aim` reads this tick's spawns, but nothing applies them before it runs.
+The schedule is checked, and the error says what to add and where.
 
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -158,44 +83,148 @@ runtime.tick(Game.Schedule(SpawnWave, Aim)) // [!code --]
 runtime.tick(Game.Schedule(SpawnWave, Game.Schedule.applyDeferred(), Aim)) // [!code ++]
 ```
 
-## Services are provided up front
+</Claim>
+
+<Claim title="A new kind of entity is never a surprise">
+
+A system lists the components it may spawn. Spawning anything else names
+the list to add it to, so every new kind of entity is a visible change to a
+spec.
 
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
 const Health = Descriptor.Component<number>()("Arena/Health")
-const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+const Noise = Descriptor.Component<number>()("Arena/Noise")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy, Noise }, requires: [Schema.requires(Enemy, Position, Health)] }))
 // ---cut---
-// @errors: 2345
-const Logger = Descriptor.Service<{ log(message: string): void }>()("Arena/Logger")
+// @errors: 2379
+Game.System(
+  "Arena/SpawnWave",
+  // May spawn Position, Health and Enemy...
+  {
+    commands: Game.System.commands( // [!code highlight]
+      Game.System.spawns(Position, Health, Enemy) // [!code highlight]
+    ) // [!code highlight]
+  },
 
-const Report = Game.System(
-  "Arena/Report",
-  { services: { logger: Game.System.service(Logger) } }, // [!code highlight]
-  ({ services }) => services.logger.log("tick")
+  ({ commands }) => {
+    // ...but not Noise
+    commands.spawn(Game.Command.spawn([Position, { x: 0, y: 0 }], [Noise, 1]))
+  }
 )
+```
 
-// This runtime has no Logger
-const made = Game.Runtime.make({ services: Game.Runtime.services() })
+</Claim>
 
-if (made.ok) made.value.tick(Game.Schedule(Report))
+<Claim title="A read cannot write">
+
+A query declared as a read hands the system no way to write. The value has
+no `set`.
+
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Game = Schema.bind(Schema.fragment({ components: { Position } }))
+// ---cut---
+// @errors: 2339
+// Declared as a read...
+const Moving = Game.Query({
+  selection: { position: Game.Query.read(Position) } // [!code highlight]
+})
+
+Game.System("Arena/Move", { queries: { moving: Moving } }, ({ queries }) => {
+  for (const { data } of queries.moving.each()) {
+    // ...so there is nothing to write with
+    data.position.set({ x: 1, y: 1 })
+  }
+})
 ```
 
 ```ts title="fix"
-services: Game.Runtime.services() // [!code --]
-services: Game.Runtime.services(Game.Runtime.service(Logger, console)) // [!code ++]
+selection: { position: Game.Query.read(Position) } // [!code --]
+selection: { position: Game.Query.write(Position) } // [!code ++]
 ```
 
-## Input is drained once
+</Claim>
+
+<Claim title="Half an enemy cannot spawn">
+
+`Schema.requires(Enemy, Position, Health)` in the arena makes every enemy
+whole: a spawn that misses a required component names it.
 
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
-import { Keyboard } from "@typeonce/ritmo-browser"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy }, requires: [Schema.requires(Enemy, Position, Health)] }))
+// ---cut---
+// @errors: 2379
+Game.System(
+  "Arena/SpawnWave",
+  {
+    commands: Game.System.commands(
+      Game.System.spawns(Position, Health, Enemy)
+    )
+  },
+
+  ({ commands }) => {
+    // An enemy with no Health
+    commands.spawn(Game.Command.spawn([Enemy, {}], [Position, { x: 0, y: 0 }]))
+  }
+)
+```
+
+</Claim>
+
+<Claim title="A number is not an entity">
+
+A despawn takes a handle from a query that proves what the entity is. A raw
+id proves nothing, and the error says what to pass.
+
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }))
+// ---cut---
+// @errors: 2345
+Game.System(
+  "Arena/Cull",
+  { commands: Game.System.commands(Game.System.despawns(Enemy)) },
+  ({ commands }) => {
+    // Which entity is 12? Nothing proves it is an Enemy
+    commands.despawn(12)
+  }
+)
+```
+
+```ts title="fix"
+commands.despawn(12) // [!code --]
+commands.despawn(match.entity) // a handle from a query with Enemy // [!code ++]
+```
+
+</Claim>
+
+<Claim title="Input is read once per tick">
+
+Each `snapshot()` starts a new press window, so a second reader would steal
+presses from the first. The message is in the type: drain it with
+`consumeService`, or read the resource the capture writes.
+
+```ts twoslash
+import { Descriptor, Schema } from "@typeonce/ritmo"
+import { InputCapture, Keyboard } from "@typeonce/ritmo-browser"
 const Health = Descriptor.Component<number>()("Arena/Health")
 const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 const keys = { jump: [" "] } as const
 // ---cut---
 // @errors: 2684
-const KeyboardInput = Descriptor.Service<Keyboard.Actions<typeof keys>>()("Arena/Keyboard")
+type KeyboardSource = InputCapture.SourceOf<Keyboard.Actions<typeof keys>>
+const KeyboardInput = Descriptor.Service<KeyboardSource>()("Arena/Keyboard")
 
 const Jump = Game.System(
   "Arena/Jump",
@@ -209,10 +238,15 @@ const Jump = Game.System(
 { resources: { input: Game.System.readResource(Input) } } // [!code ++]
 ```
 
-Each `snapshot()` starts a new press window, so two readers would split the
-presses. Systems read the resource `InputCapture.system` writes.
+Systems read the resource `InputCapture.system` writes. See [Loop, input,
+rendering](/docs/browser/#input).
 
-## Names are unique
+</Claim>
+
+<Claim title="Two values cannot share a name">
+
+A name identifies a value in saves, replays, and devtools output. A
+descriptor copied and never renamed does not get past `Schema.fragment`.
 
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -225,7 +259,12 @@ const Speed = Descriptor.Component<number>()("Arena/Position") // [!code error]
 const Game = Schema.bind(Schema.fragment({ components: { Position, Speed } }))
 ```
 
-## Closed values
+</Claim>
+
+<Claim title="A state comes with all of its data">
+
+A step rate is a whole number of steps per second, and a game over always
+has a winner. Values that make no sense do not compile.
 
 ```ts twoslash
 import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
@@ -242,7 +281,11 @@ const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 const step = Clock.hz(59.94)
 
 // A state is one of the listed states, with all of its data
-const Flow = Game.StateMachine("Arena/Flow", { Menu: {}, Playing: {}, GameOver: codec(S.Struct({ winner: S.String })) })
+const Flow = Game.StateMachine("Arena/Flow", {
+  Menu: {},
+  Playing: {},
+  GameOver: codec(S.Struct({ winner: S.String }))
+})
 
 Game.System(
   "Arena/EndRound",
@@ -251,7 +294,12 @@ Game.System(
 )
 ```
 
-## Failures are values
+</Claim>
+
+<Claim title="What can fail says so">
+
+Making a runtime depends on what you pass it at runtime, so it returns a
+`Result` to check, never an exception.
 
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -263,5 +311,38 @@ const made = Game.Runtime.make({ services: Game.Runtime.services() })
 //    ^?
 ```
 
-The compiler can't see `Math.random()` inside a system. The
-[lint rules](/docs/devtools/#lints) catch that kind of mistake.
+</Claim>
+
+## The arena they share
+
+Every card uses this schema. The highlighted line is the rule behind
+"Half an enemy cannot spawn".
+
+```ts twoslash title="schema.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+
+const Position = Descriptor.Component<{ x: number; y: number }>()(
+  "Arena/Position"
+)
+const Health = Descriptor.Component<number>()("Arena/Health")
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+const Noise = Descriptor.Component<number>()("Arena/Noise")
+
+const Game = Schema.bind(
+  Schema.fragment({
+    components: { Position, Health, Enemy, Noise },
+
+    // Every enemy has a position and health
+    requires: [Schema.requires(Enemy, Position, Health)] // [!code highlight]
+  })
+)
+```
+
+## What the compiler cannot see
+
+The compiler cannot see `Math.random()` inside a system. The [lint
+rules](/docs/devtools/#lints) catch that kind of mistake, with the
+replacement in the message, and [headless runs](/docs/devtools/) catch what
+is left.
+
+Next: [Loop, input, rendering](/docs/browser/) puts a world on a page.

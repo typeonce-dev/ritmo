@@ -1,20 +1,30 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Loop, input, rendering
-description: Put a Ritmo world on a page, with a fixed-step loop, keyboard and gamepad, and a renderer.
+description: Put a Ritmo world on a page with a fixed-step loop, every input device, and any renderer, while the rules stay headless.
 ---
 
 import Game from "../../components/Game.astro"
 
-The simulation never touches the page. The page is a **host** that runs the
-loop, reads input and draws.
+The game below has two parts: the rules, which run unchanged in Node
+tests, and a host that runs the loop, reads input, and draws. This page
+writes the host.
 
 <Game id="top-down" />
 
+Walk with the arrows, WASD, or a gamepad stick, and press E or space near a
+part to pick it up. The rules are the headless systems from
+`integration/top-down`. Swap the keyboard for a script and the same rules
+run in a test, frame for frame.
+
+After this page you can put the world from [Getting started](/docs/) in a
+browser, with a fixed-step loop, keyboard and gamepad controls, and a
+renderer.
+
 ## The loop
 
-Fixed updates whatever the frame rate, then one `render`. Long frames are
-clamped.
+Each animation frame runs as many fixed updates as the time owes, then one
+`render`. A 144 Hz screen and a 60 Hz one run the same ticks.
 
 ```ts twoslash title="main.ts"
 import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
@@ -41,32 +51,49 @@ const loop = FixedLoop.start({
 })
 ```
 
-A renderer with its own ticker plugs in through `FixedLoop.source`.
+Long frames are clamped. A renderer with its own ticker plugs in through
+`FixedLoop.source`.
 
 ## Input
 
 Systems see **actions**, never keys. A button action is pressed and held
-(jump); a vector action is a direction of length at most 1 (move). Each
-device binds them, and the devices merge into one source.
+(jump). A vector action is a direction of length at most 1 (move). Each
+device binds them, and the devices merge into one source. See [Every
+device, one player](/features/devices/).
 
 ```ts twoslash title="input.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 // ---cut---
-import { Controls, Gamepad, InputCapture, Keyboard } from "@typeonce/ritmo-browser"
+import {
+  Controls,
+  Gamepad,
+  InputCapture,
+  Keyboard
+} from "@typeonce/ritmo-browser"
 
 // What the player can do, whatever the device
 const Actions = Controls.actions({ buttons: ["jump"], vectors: ["move"] }) // [!code highlight]
 
 // How each device triggers it
 const keys = {
-  move: Keyboard.vector({ up: ["ArrowUp", "w"], down: ["ArrowDown", "s"], left: ["ArrowLeft", "a"], right: ["ArrowRight", "d"] }),
+  move: Keyboard.vector({
+    up: ["ArrowUp", "w"],
+    down: ["ArrowDown", "s"],
+    left: ["ArrowLeft", "a"],
+    right: ["ArrowRight", "d"]
+  }),
   jump: [" "]
 } as const
 const buttons = {
-  move: Gamepad.vector({ stick: "left", up: ["dpadUp"], down: ["dpadDown"], left: ["dpadLeft"], right: ["dpadRight"] }),
+  move: Gamepad.vector({
+    stick: "left",
+    up: ["dpadUp"],
+    down: ["dpadDown"],
+    left: ["dpadLeft"],
+    right: ["dpadRight"]
+  }),
   jump: ["south"]
 } as const
-
 
 // Keyboard and gamepad merged into one source
 const makeControls = (devices: {
@@ -74,14 +101,17 @@ const makeControls = (devices: {
   readonly gamepad: Gamepad.Actions<typeof buttons>
 }) => Actions.merge(devices)
 
-// The input source is a service; each update copies its snapshot into a resource.
-const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("Example/Controls")
-const Input = Descriptor.TransientResource<
-  InputCapture.SnapshotOf<typeof ControlsInput>
->()("Example/Input")
+// The input source is a service: the merge's snapshot() only, so a replay
+// or the fuzzer can provide it too. Each update copies the snapshot into a
+// resource that systems read.
+type ControlsSource = InputCapture.SourceOf<ReturnType<typeof makeControls>>
+const ControlsInput = Descriptor.Service<ControlsSource>()("Example/Controls")
+type Snapshot = InputCapture.SnapshotOf<typeof ControlsInput>
+const Input = Descriptor.TransientResource<Snapshot>()("Example/Input")
 ```
 
-One snapshot per update, so every system sees the same input:
+`InputCapture.system` takes one snapshot per update, so every system sees
+the same input:
 
 ```ts twoslash title="jump.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -90,7 +120,7 @@ const Actions = Controls.actions({ buttons: ["jump"], vectors: ["move"] })
 const keys = { move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }), jump: [" "] } as const
 const buttons = { move: Gamepad.vector({ stick: "left" }), jump: ["south"] } as const
 const makeControls = (devices: { readonly keyboard: Keyboard.Actions<typeof keys>; readonly gamepad: Gamepad.Actions<typeof buttons> }) => Actions.merge(devices)
-const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("Example/Controls")
+const ControlsInput = Descriptor.Service<InputCapture.SourceOf<ReturnType<typeof makeControls>>>()("Example/Controls")
 const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("Example/Input")
 const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
 // ---cut---
@@ -115,37 +145,69 @@ const Jump = Game.System(
 )
 ```
 
+The page and a test differ only in where the keyboard comes from:
+
 ```ts
 const keyboard = Keyboard.actions(window, keys) // in the page
-const keyboard = Keyboard.scripted(keys, [{ frame: 0, press: ["jump", "move.right"] }]) // in a test
+const keyboard = Keyboard.scripted(keys, [
+  { frame: 0, press: ["jump", "move.right"] }
+]) // in a test
 ```
 
 `Pointer` and `Touch` work the same way.
 
 Only the capture takes snapshots: each `snapshot()` starts a new press
 window, so a second caller would steal presses. Calling it through
-`Game.System.service` does not compile; a system that drains a source itself
-declares it with `Game.System.consumeService`, and `describe()` warns
-(`service-consumed-twice`) when one source is drained in two places.
+`Game.System.service` does not compile. A system that drains a source itself
+declares it with `Game.System.consumeService`.
 
 ### Local multiplayer
 
 Players are slots. No device belongs to a player until someone presses
 join on it: the first device to join is `p1`, the next `p2`. Two
 `Keyboard.actions` over different keys are two keyboard players, and
-`Gamepad.pads` lets every pad join on its own.
+`Gamepad.pads` lets every pad join on its own. [Local
+multiplayer](/features/multiplayer/) has the demo.
 
 ```ts twoslash title="players.ts"
 import { Descriptor } from "@typeonce/ritmo"
 import { Controls, Gamepad, InputCapture, Keyboard } from "@typeonce/ritmo-browser"
 // ---cut---
-const Actions = Controls.actions({ buttons: ["join", "back", "jump"], vectors: ["move"] })
-// Any button joins (that press does nothing else); back leaves while joining is open
-const Players = Controls.players(Actions, { slots: ["p1", "p2"], join: "any", leave: "back" }) // [!code highlight]
+const Actions = Controls.actions({
+  buttons: ["join", "back", "jump"],
+  vectors: ["move"]
+})
+// Any button joins (that press does nothing else);
+// back leaves while joining is open
+const Players = Controls.players(Actions, { // [!code highlight]
+  slots: ["p1", "p2"], // [!code highlight]
+  join: "any", // [!code highlight]
+  leave: "back" // [!code highlight]
+}) // [!code highlight]
 
-const wasd = { move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }), join: [" "], back: ["q"], jump: [" "] } as const
-const arrows = { move: Keyboard.vector({ up: ["ArrowUp"], down: ["ArrowDown"], left: ["ArrowLeft"], right: ["ArrowRight"] }), join: ["Enter"], back: ["Backspace"], jump: ["Enter"] } as const
-const pad = { move: Gamepad.vector({ stick: "left" }), join: ["south"], back: ["east"], jump: ["south"] } as const
+const wasd = {
+  move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }),
+  join: [" "],
+  back: ["q"],
+  jump: [" "]
+} as const
+const arrows = {
+  move: Keyboard.vector({
+    up: ["ArrowUp"],
+    down: ["ArrowDown"],
+    left: ["ArrowLeft"],
+    right: ["ArrowRight"]
+  }),
+  join: ["Enter"],
+  back: ["Backspace"],
+  jump: ["Enter"]
+} as const
+const pad = {
+  move: Gamepad.vector({ stick: "left" }),
+  join: ["south"],
+  back: ["east"],
+  jump: ["south"]
+} as const
 
 const makePlayers = (devices: {
   readonly left: Keyboard.Actions<typeof wasd>
@@ -153,11 +215,14 @@ const makePlayers = (devices: {
   readonly pads: Gamepad.Pads<typeof pad>
 }) => Players.pool(devices)
 
-const PlayersInput = Descriptor.Service<ReturnType<typeof makePlayers>>()("Example/Players")
-const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof PlayersInput>>()("Example/Input")
+// The service is the pool's snapshot() only, so replays can provide it too
+type PlayersSource = InputCapture.SourceOf<ReturnType<typeof makePlayers>>
+const PlayersInput = Descriptor.Service<PlayersSource>()("Example/Players")
+type Snapshot = InputCapture.SnapshotOf<typeof PlayersInput>
+const Input = Descriptor.TransientResource<Snapshot>()("Example/Input")
 
 // In a system: input = resources.input.get()
-declare const input: InputCapture.SnapshotOf<typeof PlayersInput>
+declare const input: Snapshot
 if (input.p2.event === "joined") {
   // spawn the second player
 }
@@ -168,19 +233,23 @@ if (input.p2.device === "pads") {
 }
 ```
 
-A system opens joining with `setJoining(true)` (once for drop-in play, or
-on a join screen) and frees a slot with `leave("p2")` (a pause menu). A
-player who is in from the start is seated without a press, from a setup
-system: `seat("p1", "right")` (a pool name), or `seat("p1", { pads: 0 })` for the first
-pad; it returns `{ ok: false, reason }` when the slot or device is taken. A
-pad that disconnects keeps its slot (`connected: false`) and returns to it.
-The town on the home page plays this way: player 1 is seated on the
-arrows, and WASD or a gamepad joins player 2.
+From a system, the pool is controlled with three calls:
+
+- `setJoining(true)` opens joining, once for drop-in play or only on a join
+  screen.
+- `leave("p2")` frees a slot, from a pause menu for example.
+- `seat("p1", "right")` seats a player without a press, or
+  `seat("p1", { pads: 0 })` for the first pad. A taken slot or device comes
+  back as `{ ok: false, reason }`.
+
+A pad that disconnects keeps its slot (`connected: false`) and returns to
+it.
 
 ## Rendering
 
-One node per entity: created when it appears, updated when it moves,
-destroyed when it goes. You say what a node is.
+Ritmo does not draw. `RenderSync` keeps one node per entity: created when
+it appears, updated when it moves, destroyed when it goes. You say what a
+node is.
 
 ```ts twoslash title="render.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -193,7 +262,8 @@ import { RenderSync } from "@typeonce/ritmo-render"
 import type { NodeRegistry } from "@typeonce/ritmo-render"
 import { Graphics } from "pixi.js"
 
-const WallNodes = Descriptor.Service<NodeRegistry.NodeRegistry<Graphics>>()("TopDown/WallNodes")
+const WallNodes =
+  Descriptor.Service<NodeRegistry.NodeRegistry<Graphics>>()("TopDown/WallNodes")
 
 const RenderWalls = RenderSync.system(Game, {
   name: "TopDown/RenderWalls",
@@ -201,9 +271,12 @@ const RenderWalls = RenderSync.system(Game, {
   transform: Position,
   registry: WallNodes,
   select: { collider: Game.Query.read(Collider) },
-  create: ({ data }) => { // [!code highlight]
+  create: ({ data }) => {
+    // [!code highlight]
     const { width, height } = data.collider.get()
-    return new Graphics().rect(-width / 2, -height / 2, width, height).fill(0x262a31)
+    return new Graphics()
+      .rect(-width / 2, -height / 2, width, height)
+      .fill(0x262a31)
   },
   apply: (node, { transform }) => node.position.set(transform.x, transform.y) // [!code highlight]
 })
@@ -215,9 +288,14 @@ The system needs a `NodeRegistry`, not Pixi. The page picks the renderer:
 Game.Runtime.service(WallNodes, PixiNodeRegistry.make(wallLayer))
 ```
 
-Any renderer works: `NodeRegistry.make({ attach, detach })`. Full host:
+Any renderer works: `NodeRegistry.make({ attach, detach })` is a few lines
+for Three.js or a canvas. The full host of the demo above is
 [`website/src/demos/top-down`](https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/top-down).
 
-A part that moves with an entity, like a turret on a tank, is a child entity in a
-`Descriptor.Hierarchy`. Pass it as `hierarchy: Attached` and the child's node is added under
-its parent's node, so its `Position` is relative to the parent and the renderer composes the two.
+A part that moves with an entity, like a turret on a tank, is a child entity
+in a `Descriptor.Hierarchy`. Pass it as `hierarchy`, and the child's node is
+added under its parent's node. Its `Position` is relative to the parent, and
+the renderer composes the two.
+
+Next: [Headless debugging](/docs/devtools/), the same game run without a
+page.

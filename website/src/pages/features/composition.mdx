@@ -1,85 +1,105 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Entities that change shape
-description: Add and remove components while the game runs, and link entities into trees and graphs, with every change landing at one known point.
+description: Add and remove components while the game runs and link entities into trees and graphs, with every change landing at one known point.
 ---
 
-The schema lists every kind of component a game has. Which ones an entity
-holds changes all game long: a guard gets stunned and recovers, a sword is
-put in a hand, an archer picks a target.
+import Claim from "../../components/Claim.astro"
+import Game from "../../components/Game.astro"
 
-## Add and remove at runtime
+A villager catches fire. A sword is put in a hand. An archer's target
+falls. What an entity holds, and what it is linked to, changes all game
+long, and Ritmo keeps each change safe to reason about.
 
-A system inserts and removes components with commands, and its spec says
-which ones. Here a hit stuns every guard that is not stunned already:
+<Game id="composition" ratio="16 / 9" />
 
-```ts twoslash title="stun.ts"
+`Burning` and `Wet` are components. Each rule is one system, and it acts
+only on the villagers that hold what its query asks for.
+
+<Claim title="A system adds only what its spec names">
+
+The spark is a `Burning` component, inserted by a command. The spec lists
+the components a system may insert or remove; any other insert does not
+compile.
+
+```ts twoslash title="ignite.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 
-const Velocity = Descriptor.Component<{ x: number; y: number }>()("Arena/Velocity")
-const Guard = Descriptor.Component<{}>()("Arena/Guard")
-const Stunned = Descriptor.Component<{ frames: number }>()("Arena/Stunned")
-const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
+const Villager = Descriptor.Tag("Village/Villager")
+const Burning = Descriptor.Tag("Village/Burning")
+const Wet = Descriptor.Tag("Village/Wet")
+const Spark = Descriptor.Event<{}>()("Village/Spark")
 
-const Game = Schema.bind(Schema.fragment({ components: { Velocity, Guard, Stunned }, events: { Hit } }))
+const Game = Schema.bind(Schema.fragment({ components: { Villager, Burning, Wet }, events: { Spark } }))
 // ---cut---
 // @errors: 2345
-const Stun = Game.System(
-  "Arena/Stun",
+const Ignite = Game.System(
+  "Village/Ignite",
   {
     queries: {
-      guards: Game.Query({ selection: {}, with: [Guard], without: [Stunned] })
+      dry: Game.Query({ selection: {}, with: [Villager], without: [Burning] })
     },
-    events: { hits: Game.System.readEvent(Hit) },
+    events: { sparks: Game.System.readEvent(Spark) },
 
     // The only component this system may add
-    commands: Game.System.commands(Game.System.inserts(Stunned)) // [!code highlight]
+    commands: Game.System.commands(Game.System.inserts(Burning)) // [!code highlight]
   },
 
   ({ queries, events, commands }) => {
-    if (events.hits.all().length === 0) return
-    for (const match of queries.guards.each()) {
-      commands.insert(match.entity, [Stunned, { frames: 30 }])
+    if (events.sparks.all().length === 0) return
+    for (const match of queries.dry.each()) {
+      commands.insert(match.entity, [Burning, {}])
 
       // Not declared, so it does not compile
-      commands.insert(match.entity, [Velocity, { x: 0, y: 0 }])
+      commands.insert(match.entity, [Wet, {}])
     }
   }
 )
 ```
 
-Removing works the same way: `Game.System.removes(Stunned)` in the spec,
-`commands.remove(match.entity, Stunned)` in the body.
+Removing works the same way: `Game.System.removes(Burning)` in the spec,
+`commands.remove(match.entity, Burning)` in the body. That is all `Douse`
+does.
 
-## Every change lands at one point
+</Claim>
 
-Inserts, removes, spawns, and despawns are queued and applied together at
-the next `applyDeferred()`. While a system runs, no entity gains or loses a
-component, so a loop never sees an entity change shape under it. After that
-point, queries see the new shape: a movement query with `without: [Stunned]`
-skips the guard from then on.
+<Claim title="No loop sees an entity change shape under it">
+
+Inserts, removes, spawns, and despawns wait for the next `applyDeferred()`
+and land there together. The first villager in the demo, tick by tick: on
+the spark's tick it still strolls, and from the next one `Panic` runs it.
+
+```text title="the first villager, from the demo's world in Node"
+tick 89  x 84.4  Villager, Position, Velocity
+tick 90  x 84.9  Villager, Position, Velocity, Burning
+tick 91  x 86.1  Villager, Position, Velocity, Burning
+tick 92  x 87.3  Villager, Position, Velocity, Burning
+```
 
 ```ts twoslash title="update.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
-const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Velocity = Descriptor.Component<{ x: number; y: number }>()("Arena/Velocity")
-const Guard = Descriptor.Component<{}>()("Arena/Guard")
-const Stunned = Descriptor.Component<{ frames: number }>()("Arena/Stunned")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity, Guard, Stunned } }))
-const Stun = Game.System("Arena/Stun", { commands: Game.System.commands(Game.System.inserts(Stunned)) }, () => {})
+const Position = Descriptor.Component<{ x: number; y: number }>()("Village/Position")
+const Velocity = Descriptor.Component<{ x: number; y: number }>()("Village/Velocity")
+const Burning = Descriptor.Tag("Village/Burning")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity, Burning } }))
+const Ignite = Game.System("Village/Ignite", { commands: Game.System.commands(Game.System.inserts(Burning)) }, () => {})
+const Panic = Game.System("Village/Panic", {}, () => {})
 // ---cut---
-const Move = Game.System(
-  "Arena/Move",
+const Wander = Game.System(
+  "Village/Wander",
   {
     queries: {
-      movers: Game.Query({
-        selection: { position: Game.Query.write(Position), velocity: Game.Query.read(Velocity) },
-        without: [Stunned] // [!code highlight]
+      strolling: Game.Query({
+        selection: {
+          position: Game.Query.write(Position),
+          velocity: Game.Query.read(Velocity)
+        },
+        without: [Burning] // [!code highlight]
       })
     }
   },
   ({ queries }) => {
-    for (const { data } of queries.movers.each()) {
+    for (const { data } of queries.strolling.each()) {
       const { x, y } = data.position.get()
       const velocity = data.velocity.get()
       data.position.set({ x: x + velocity.x, y: y + velocity.y })
@@ -87,48 +107,64 @@ const Move = Game.System(
   }
 )
 
-// The stun lands at applyDeferred(): this tick the guard still moves, the next it does not
-const update = Game.Schedule(Stun, Move, Game.Schedule.applyDeferred())
+// Burning lands at applyDeferred(): this tick the villager still
+// strolls, the next Panic has it
+const update = Game.Schedule(Ignite, Wander, Panic, Game.Schedule.applyDeferred())
 ```
 
-## Reacting to a change
+</Claim>
 
-A query with `Game.Query.added(Stunned)` matches the entities that gained
-the component since this system last ran, and `Game.System.readRemoved`
-lists the ones that lost it. Each system sees each change once, on its own
-next run.
+<Claim title="Each system hears each change once">
 
-```ts twoslash title="feedback.ts"
+`Game.Query.added(Burning)` matches the entities that gained the component
+since this system last ran; `Game.System.readRemoved` lists the ones that
+lost it. The demo counts every removal it hears: the first villager is
+doused on tick 433, and counted once.
+
+```text title="the first villager reaching the fountain"
+tick 432  x 495.3  Villager, Position, Velocity, Burning  heard 8
+tick 433  x 496.5  Villager, Position, Velocity, Wet  heard 9
+tick 434  x 497.0  Villager, Position, Velocity, Wet  heard 10
+tick 435  x 497.5  Villager, Position, Velocity, Wet  heard 10
+```
+
+`heard` counts the whole village, so tick 434 is a second villager doused
+right behind the first.
+
+```ts twoslash title="hiss.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
-const Stunned = Descriptor.Component<{ frames: number }>()("Arena/Stunned")
-const Game = Schema.bind(Schema.fragment({ components: { Stunned } }))
+const Burning = Descriptor.Tag("Village/Burning")
+const Game = Schema.bind(Schema.fragment({ components: { Burning } }))
 // ---cut---
-const Feedback = Game.System(
-  "Arena/Feedback",
+const Hiss = Game.System(
+  "Village/Hiss",
   {
     queries: {
-      dazed: Game.Query({
-        selection: { stunned: Game.Query.read(Stunned) },
-        filters: [Game.Query.added(Stunned)] // [!code highlight]
+      lit: Game.Query({
+        selection: {},
+        with: [Burning],
+        filters: [Game.Query.added(Burning)] // [!code highlight]
       })
     },
-    removed: { recovered: Game.System.readRemoved(Stunned) } // [!code highlight]
+    removed: { doused: Game.System.readRemoved(Burning) } // [!code highlight]
   },
   ({ queries, removed }) => {
-    for (const match of queries.dazed.each()) {
-      // show stars over match.entity
+    for (const match of queries.lit.each()) {
+      // play the whoosh at match.entity
     }
-    for (const entityId of removed.recovered.all()) {
-      // clear the stars
+    for (const entityId of removed.doused.all()) {
+      // play the hiss
     }
   }
 )
 ```
 
-## A sword in a hand
+</Claim>
+
+<Claim title="A sword goes where its hand goes">
 
 `Descriptor.Hierarchy` links a child to its parent. The runtime keeps the
-reverse side (the parent's children) in step, keeps the children in order,
+reverse side (the knight's `Children`) in step, keeps children in order,
 and despawns them with their parent.
 
 ```ts twoslash title="arm.ts"
@@ -137,31 +173,50 @@ const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Positio
 const Hand = Descriptor.Component<{}>()("Arena/Hand")
 // ---cut---
 // The edge, and the reverse side the runtime maintains
-const { relation: ChildOf } = Descriptor.Hierarchy("Arena/ChildOf", "Arena/Children")
+const { relation: ChildOf } = Descriptor.Hierarchy(
+  "Arena/ChildOf",
+  "Arena/Children"
+)
 
-const Game = Schema.bind(Schema.fragment({
-  components: { Position, Hand },
-  relations: { ChildOf } // [!code highlight]
-}))
+const Game = Schema.bind(
+  Schema.fragment({
+    components: { Position, Hand },
+    relations: { ChildOf } // [!code highlight]
+  })
+)
 
 const Arm = Game.System(
   "Arena/Arm",
-  { commands: Game.System.commands(Game.System.spawns(Position, Hand), Game.System.relates(ChildOf)) },
+  {
+    commands: Game.System.commands(
+      Game.System.spawns(Position, Hand),
+      Game.System.relates(ChildOf)
+    )
+  },
   ({ commands }) => {
-    const hand = commands.spawn(Game.Command.spawn([Position, { x: 0, y: 0 }], [Hand, {}]))
+    const hand = commands.spawn(
+      Game.Command.spawn([Position, { x: 0, y: 0 }], [Hand, {}])
+    )
 
     // The sword is spawned already in the hand
     commands.spawn(
-      Game.Command.relate(Game.Command.spawn([Position, { x: 4, y: 0 }]), ChildOf, hand) // [!code highlight]
+      Game.Command.relate(
+        Game.Command.spawn([Position, { x: 4, y: 0 }]),
+        ChildOf,
+        hand
+      ) // [!code highlight]
     )
   }
 )
 ```
 
-Following an edge returns a `Result`, because the parent may be gone by the
-time a system asks. A link the runtime refuses, such as an entity parented
-to itself or a cycle, does not throw: it becomes a typed failure that any
-system can read.
+</Claim>
+
+<Claim title="A missing parent is a value, not a crash">
+
+Following an edge returns a `Result`, because the parent may be gone by
+the time a system asks. A link the runtime refuses, such as an entity
+parented to itself or a cycle, becomes a typed failure any system can read.
 
 ```ts twoslash title="follow.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -173,7 +228,10 @@ const Follow = Game.System(
   "Arena/Follow",
   {
     queries: {
-      held: Game.Query({ selection: { position: Game.Query.read(Position) }, withRelations: [ChildOf] })
+      held: Game.Query({
+        selection: { position: Game.Query.read(Position) },
+        withRelations: [ChildOf]
+      })
     },
     relationFailures: { childOf: Game.System.readRelationFailures(ChildOf) }
   },
@@ -189,40 +247,42 @@ const Follow = Game.System(
     }
 
     for (const failure of relationFailures.childOf.all()) {
+      // A refused relate or unrelate, named:
+      // "HierarchyCycle", "DuplicateChild", "MissingTargetEntity", ...
       const refused = failure.error._tag
-      //    ^?
     }
   }
 )
 ```
 
-## Links between any two entities
+</Claim>
 
-`Descriptor.Relation` is a plain edge with a reverse lookup and no tree: an
-archer targeting a guard, a key opening a door. Despawning the target clears
-the edge, so `lookup.related(archer, Targeting)` turns into a
-`MissingRelation` failure instead of pointing at an entity that is gone.
+<Claim title="An archer hears once that its target fell">
 
-```ts twoslash title="schema.ts"
-import { Descriptor, Schema } from "@typeonce/ritmo"
-// ---cut---
-const { relation: Targeting } = Descriptor.Relation("Arena/Targeting", "Arena/TargetedBy")
-```
-
-The archers do not have to check every tick whether their guard still
-exists. Each edge a despawn clears is a record that every system reading it
-sees once, so an archer whose guard fell can stand down at that moment.
+`Descriptor.Relation` is a plain edge with a reverse lookup and no tree.
+Despawning the target clears the edge, and each cleared edge is a record
+every reader sees once. The archer stands down at that moment, without
+checking its target every tick.
 
 ```ts twoslash title="stand-down.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Idle = Descriptor.Tag("Arena/Idle")
-const { relation: Targeting } = Descriptor.Relation("Arena/Targeting", "Arena/TargetedBy")
-const Game = Schema.bind(Schema.fragment({ components: { Idle }, relations: { Targeting } }))
 // ---cut---
+const { relation: Targeting } = Descriptor.Relation(
+  "Arena/Targeting",
+  "Arena/TargetedBy"
+)
+
+const Game = Schema.bind(
+  Schema.fragment({ components: { Idle }, relations: { Targeting } })
+)
+
 const StandDown = Game.System(
   "Arena/StandDown",
   {
-    droppedRelations: { lost: Game.System.readDroppedRelations(Targeting) }, // [!code highlight]
+    droppedRelations: {
+      lost: Game.System.readDroppedRelations(Targeting) // [!code highlight]
+    },
     commands: Game.System.commands(Game.System.inserts(Idle))
   },
   ({ droppedRelations, commands }) => {
@@ -233,12 +293,18 @@ const StandDown = Game.System(
 )
 ```
 
-## What it buys
+</Claim>
 
-- Entities gain and lose components freely, and only the systems that say so
-  can do it.
-- Changes land at one known point, so no loop sees a half-changed world,
-  and each system hears about each change once.
-- Trees and links stay consistent: reverse sides, child order, and
-  despawning a parent's children are kept by the runtime. A broken link is
-  a value to handle, not a crash.
+<Claim title="Rewound and replayed with everything else">
+
+Components and relation edges are part of the world's snapshot. A rollback
+rewinds them with the rest of the world, and a replay applies the same
+changes at the same point of every tick, on every machine.
+
+</Claim>
+
+See [Online multiplayer](/features/rollback/) and
+[Same game everywhere](/features/determinism/) for what that buys. For data
+that changes inside one component, see
+[States that can't go wrong](/features/states/); the full model of commands
+and `applyDeferred()` is in [Concepts](/docs/concepts/#commands).

@@ -1,21 +1,24 @@
 ---
 layout: ../layouts/Docs.astro
 title: Examples
-description: Games made with Ritmo, running in the page and in the wild.
+description: Games made with Ritmo, two running in this page on the packages you install, and three shipped by people building with it.
 ---
 
 import Game from "../components/Game.astro"
+
+Two games run below on the packages you install: the rules headless, the
+page only a host. Click one to start it, and bring a friend or a gamepad.
+
+<Game id="town" ratio="3 / 2" />
 
 ## Town
 
 A Game Boy-style overworld: walk tile by tile, read the signs, talk to the
 villagers, alone or with a friend who joins on WASD or a gamepad
-(`Controls.players`). The rules are headless systems with a `Mode` state machine
-(`Exploring` / `Talking`). Art: the CC0
+([local multiplayer](/features/multiplayer/)). The rules are headless
+systems with a `Mode` state machine (`Exploring` / `Talking`). Art: the CC0
 [Ninja Adventure](https://pixel-boy.itch.io/ninja-adventure-asset-pack) pack
 by Pixel-boy and AAA.
-
-<Game id="town" ratio="3 / 2" />
 
 ## Top-down
 
@@ -24,7 +27,6 @@ Five parts to find. The rules are
 the same schedules its headless tests run.
 
 <Game id="top-down" />
-
 
 ## Games built with Ritmo
 
@@ -42,3 +44,16 @@ open-world car-theft game in isometric pixel art, set in the real valleys of
 Lunigiana on a map built from survey data, rendered with Three.js.
 [Play it](https://gta-lunigiana.fedemas.dev) or read
 [its source](https://github.com/mastro993/gta-lunigiana).
+
+## Smaller demos, on the pages they prove
+
+- [Two peers rolling back](/features/rollback/) over a fake network you can
+  slow down.
+- [The fuzzer](/features/bugs/) breaking a rule and shrinking the run to a few
+  frames.
+- [Two fighters](/features/states/), one with a state bug and one that
+  cannot have it.
+- [A headless session](/docs/devtools/) stopping on a broken rule and
+  saying why.
+- [One ball, every controller](/features/devices/), and [the same ball,
+  rebindable](/features/rebinding/) or [recorded](/features/replays/).

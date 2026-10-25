@@ -1,0 +1,163 @@
+---
+layout: ../../layouts/Docs.astro
+title: Bugs found before players
+description: Ritmo plays your game headless, hunts for broken rules, and hands back each failure as a few frames of replay that are already a test.
+---
+
+import Claim from "../../components/Claim.astro"
+import Game from "../../components/Game.astro"
+
+Most game bugs are found by someone playing, and by then the moment is
+gone. Ritmo plays the game first, and keeps the moment.
+
+<Game id="fuzz" ratio="16 / 9" />
+
+The ball has one rule: never enter the red zone. Ritmo plays it with random
+input until the rule breaks, then cuts the run down to the frames that
+still break it. Everything runs in this tab, with the same code a test runs
+in Node.
+
+<Claim title="Random play finds the bug">
+
+Write the rule once, as an invariant. `Fuzz.run` plays the game with seeded
+random input, from the same controls a player uses, and checks the rule
+after every frame.
+
+```ts twoslash title="fuzz.test.ts"
+import { Game } from "@typeonce/ritmo-integration-top-down/schema.ts"
+import { PlayerPositionQuery } from "@typeonce/ritmo-integration-top-down/queries.ts"
+import { Invariant } from "@typeonce/ritmo-devtools"
+const NeverLeftOfStart = Invariant.fromInspector(Game.Inspector("never left of start", { queries: { player: PlayerPositionQuery } }, ({ queries }) => {
+  const position = queries.player.each()[0]?.data.position.get()
+  return position === undefined || position.x >= 640 ? undefined : `player at x ${position.x}`
+}))
+// ---cut---
+import { Fuzz } from "@typeonce/ritmo-devtools"
+import { FuzzedControls } from "@typeonce/ritmo-integration-top-down/fuzz.ts"
+import {
+  makeReplaySimulation
+} from "@typeonce/ritmo-integration-top-down/simulation.ts"
+
+const found = Fuzz.run(makeReplaySimulation, {
+  schedule: "update",
+  setup: "setup",
+  inputs: [FuzzedControls], // input any real device could report
+  invariants: [NeverLeftOfStart],
+  frames: 1800,
+  seed: 1
+})
+```
+
+</Claim>
+
+<Claim title="A thousand frames become thirty">
+
+The run that breaks the rule is long and noisy. Ritmo drops frames and
+calms inputs down, keeping each change only while the rule still breaks.
+From the demo above, with seed 1:
+
+```text title="found.error.shrink"
+{ attempts: 249, steps: 35, fromFrames: 1022, toFrames: 31 }
+```
+
+Thirty-one frames of moving right, and nothing else. That is the bug.
+
+</Claim>
+
+<Claim title="The replay is the test">
+
+The shrunk input comes back as an ordinary [replay](/features/replays/).
+Save it next to the tests: it fails until the bug is fixed, and guards the
+fix after.
+
+```ts twoslash title="regression.test.ts"
+import { Invariant, Replay } from "@typeonce/ritmo-devtools"
+import { makeReplaySimulation } from "@typeonce/ritmo-integration-top-down/simulation.ts"
+import { Game } from "@typeonce/ritmo-integration-top-down/schema.ts"
+import { PlayerPositionQuery } from "@typeonce/ritmo-integration-top-down/queries.ts"
+const NeverLeftOfStart = Invariant.fromInspector(Game.Inspector("never left of start", { queries: { player: PlayerPositionQuery } }, ({ queries }) => {
+  const position = queries.player.each()[0]?.data.position.get()
+  return position === undefined || position.x >= 640 ? undefined : `player at x ${position.x}`
+}))
+declare const file: Replay.ReplayFile
+// ---cut---
+const opened = Replay.session(makeReplaySimulation, file, {
+  invariants: [NeverLeftOfStart]
+})
+
+// "invariant" until the bug is fixed, "completed" after
+if (opened.ok) opened.value.play().data.run.stop.reason
+```
+
+</Claim>
+
+<Claim title="Every rollback checked, on its tick" id="rollback-checked-on-every-tick">
+
+Online, a rollback runs ticks again. State kept outside the world does not
+come back, and the peers drift apart minutes later. A sync test rewinds
+after every tick, runs it again, and names the first tick that comes out
+different.
+
+```ts twoslash title="sync.test.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+import { InputCapture } from "@typeonce/ritmo-browser"
+import { Netcode } from "@typeonce/ritmo-netcode"
+interface PlayerInput { readonly dx: number; readonly fire: boolean }
+const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("Game/Seats")
+const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("Game/Inputs")
+const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }))
+const Capture = InputCapture.system(Game, { name: "Game/Capture", source: Seats, resource: Inputs })
+declare const seats: Netcode.Seats<PlayerInput>
+const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Seats, seats.source)), resources: { Inputs: [] } }).value!
+const simulate = Game.Schedule(Capture)
+declare const input: PlayerInput
+// ---cut---
+const test = Netcode.syncTest(runtime, { simulate, seats, rewind: 8 })
+
+if (test.ok) {
+  const advanced = test.value.advance(input)
+  if (!advanced.ok && advanced.error._tag === "RewindDiffers") {
+    advanced.error.tick // the first tick a rewind did not put back
+  }
+}
+```
+
+The fuzzer plays online matches too: give `Fuzz.run` a `network` with
+latency and packet loss, and a desync is one more broken rule, shrunk like
+any other.
+
+</Claim>
+
+<Claim title="Every browser agrees, or you hear which tick">
+
+Chrome, Safari, and Firefox may round `Math.sin` differently, and they do.
+`verify` plays a recorded match in Node and in real browsers, and names the
+first value they disagree on.
+
+```sh title="terminal"
+ritmo-devtools verify replay/target.ts replay/match.json \
+  --engines node,chromium,webkit,firefox
+```
+
+```text title="output, when a browser disagrees"
+tick 3: webkit differs from node in e1 VerifyFixture/Position.x (6 -> 7)
+```
+
+</Claim>
+
+<Claim title="Libraries checked before you build on them">
+
+Lint keeps your code exact, but it does not read `node_modules`. `scan`
+reads every file the simulation imports and lists what could differ across
+engines, file and line.
+
+```text title="ritmo-devtools scan src/simulation/index.ts"
+fake-physics (2 findings)
+  node_modules/fake-physics/index.js:4:17  ritmo/use-ops-for-math  Math.sin
+  node_modules/fake-physics/index.js:6:32  ritmo/use-random-for-randomness  Math.random
+```
+
+</Claim>
+
+Next: why the game plays the [same everywhere](/features/determinism/), and
+how to ask a run [why a value changed](/docs/devtools/).
