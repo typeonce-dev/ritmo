@@ -1,27 +1,34 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Replays that become tests
-description: Keep the last seconds of play as a file, open it headless, ask what happened, and keep the moment that matters as a test.
+description: Save the last seconds of play as a file, open it headless, ask what happened, and keep the moment that matters as a test.
 ---
 
 import Game from "../../components/Game.astro"
 
-Move and dash for a few seconds, then press **Replay** in the corner. The
-last ten seconds open as a fresh world, right in this tab, play back tick
-by tick, and answer questions about what happened.
+A bug seen once in a playtest is the hardest kind to fix: by the time
+someone reads the report, the moment is gone. A replay keeps it, plays it
+back exactly, and turns it into a test once you find the cause.
 
 <Game id="replay" />
 
-A bug seen once in a playtest is the hardest kind to fix: by the time
-someone reads the report, the moment is gone. A replay keeps it. It is
-small (plain JSON, a few kilobytes a second), it plays back exactly, and
-once the bug is found the few ticks that show it become an ordinary test.
+Move and dash for a few seconds, then press **Replay** in the corner. The
+last ten seconds open as a fresh world in this tab, play back tick by tick,
+and answer questions about what happened.
 
-## Recording
+## What you get
+
+- The last seconds of play as plain JSON, a few kilobytes a second.
+- Saved on a key, on a failed tick, or the moment a rule breaks.
+- A headless world in Node that plays it back and checks itself.
+- Answers to why a value changed, frame by frame.
+- A few ticks cut out as a regression test.
+
+## The moment is saved for you
 
 In a development build, a recorder keeps a rolling window of the
-simulation's updates. It saves on demand, when a tick fails, or when a
-rule you wrote breaks.
+simulation's updates. It saves on demand, when a tick fails, or when a rule
+you wrote breaks.
 
 ```ts twoslash title="dev.ts"
 import { Clock, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
@@ -60,7 +67,7 @@ recorder.save("the boss walked through the wall")
 `ReplayVitePlugin.plugin()` in the Vite config receives the files and
 prints where it wrote each one.
 
-## Asking it what happened
+## Ask it what happened
 
 The replay opens in Node as a normal headless world. The game builds itself
 with the recorded input in place of the devices, and a debug session runs
@@ -114,25 +121,21 @@ f82 update  Controls/MoveBall  resource Controls/Dashes 0 -> 1
 f137 update  Controls/MoveBall  resource Controls/Dashes 1 -> 2
 ```
 
-In a browser game, the controls service is declared as only the merged
-controls' snapshot, `InputCapture.SourceOf<...>`. One descriptor then
-serves every case: the page provides the live devices, a test provides
-scripted ones, and a replay provides what it recorded.
-
-The page keeps the merge itself, to rebind it. The same descriptor lets the
-[fuzzer](/features/bugs/) drive the game with random input a real player
-could have produced.
-
 "Checkpoints match" is the replay checking itself: the file holds hashes of
 the world as it was recorded, and the replayed world matched every one.
 All the questions of [headless debugging](/docs/devtools/) work here:
 `why`, `journal`, invariants that stop the run on the first bad frame.
 
-## From replay to test
+In a browser game, the controls service is declared as the merged controls'
+snapshot only, `InputCapture.SourceOf<...>`. One descriptor then serves
+every case: the page provides the live devices, a test scripted ones, and a
+replay what it recorded. The [fuzzer](/features/bugs/) uses it too.
 
-A replay is something to read, not to keep. Once the bug is found, cut the
-ticks that show it into a small replay of its own, with its own start, and
-keep that next to a test:
+## The moment becomes a test
+
+A long replay is something to read, not to keep. Once you find the bug, cut
+the ticks that show it into a small replay with its own start, and keep that
+next to a test:
 
 ```ts twoslash title="debug.ts"
 import { Replay, Verify } from "@typeonce/ritmo-devtools"
@@ -147,12 +150,15 @@ const small = Replay.extract(make, file, { from: 1400, to: 1412 })
 const same = await Verify.acrossEngines(make, file)
 ```
 
-## Why it can work at all
+## A replay that cannot work does not compile
 
 The simulation reads only what is in the world: time from its clock,
 randomness from a seeded generator, and input through services that hand
 out plain snapshots. So the input is all a replay needs to store.
 
 A service that is not plain data could not be replayed, so it is a compile
-error that names it, not a replay that silently goes wrong. The same
-property makes the game play the [same on every device](/features/determinism/).
+error that names it, not a replay that silently goes wrong.
+
+The same property makes the game play the
+[same on every device](/features/determinism/). The
+[fuzzer](/features/bugs/) makes replays too, by playing the game for you.

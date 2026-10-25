@@ -1,18 +1,25 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Bugs found before players
-description: Ritmo plays the game first. Seeded runs hunt for broken rules, rollback is checked every tick, and every browser must agree. A failure comes back as a test.
+description: Ritmo plays your game headless, hunts for broken rules, and hands back each failure as a few frames of replay that are already a test.
 ---
 
-Most game bugs are found by someone playing. By then the moment is gone:
-nobody remembers which keys, in which order, on which frame.
+Most game bugs are found by someone playing, and by then the moment is
+gone: nobody remembers which keys, in which order, on which frame.
 
-Ritmo plays the game before anyone else does. It runs it headless, thousands
-of frames at a time, against the rules the game says must always hold. When
-one breaks, you get back the few frames that break it, as a file that is
-already a test.
+Ritmo plays the game first. It runs it headless, thousands of frames at a
+time, against the rules your game says must always hold. When one breaks,
+you get back the few frames that break it, as a file that is already a test.
 
-## Seeded play that shrinks to a test
+## What you get
+
+- Bugs found in Node, with no browser and no player.
+- Each failure shrunk to the shortest input that still shows it.
+- A regression test for free: the shrunk replay is the test.
+- Rollback checked on every tick, so peers never drift apart online.
+- Proof that Node and every browser play your game the same.
+
+## Random play, shrunk to a few frames
 
 An **invariant** is a rule the game keeps on every frame: the player stays
 inside the world, the score never goes down. `Fuzz.run` plays the game with
@@ -28,7 +35,9 @@ import { PlayerPositionQuery } from "@typeonce/ritmo-integration-top-down/querie
 // ---cut---
 import { Fuzz, Invariant } from "@typeonce/ritmo-devtools"
 import { FuzzedControls } from "@typeonce/ritmo-integration-top-down/fuzz.ts"
-import { makeReplaySimulation } from "@typeonce/ritmo-integration-top-down/simulation.ts"
+import {
+  makeReplaySimulation
+} from "@typeonce/ritmo-integration-top-down/simulation.ts"
 
 const NeverLeftOfStart = Invariant.fromInspector(
   Game.Inspector(
@@ -62,16 +71,17 @@ if (!found.ok && found.error._tag === "Found") {
 ```
 
 The run that breaks the rule is long and noisy. Ritmo **shrinks** it: it
-drops frames and calms inputs down, keeping each change only if the rule
-still breaks. Here everything goes except one frame of walking left.
+drops frames and calms inputs toward neutral, keeping each change only if
+the rule still breaks. Here everything goes except one frame of walking
+left.
 
 The input is generated from the same controls the page reads, so every
 press is one a real keyboard, gamepad, or touch screen could make.
 
-## The replay is the test
+## The bug stays fixed
 
 The shrunk input is an ordinary [replay](/features/replays/). Save it next
-to the tests, and open it with the same invariant:
+to your tests and open it with the same invariant:
 
 ```ts twoslash title="regression.test.ts"
 import { Invariant, Replay } from "@typeonce/ritmo-devtools"
@@ -100,10 +110,9 @@ Nobody wrote the input by hand.
 
 ## Rollback checked on every tick
 
-An online match rolls back and runs ticks again whenever real input
-arrives late. A rollback game is only as good as the code it rewinds: state
-kept outside the world, such as a counter in a module, does not come back,
-and the peers drift apart minutes later.
+An [online match](/features/rollback/) rolls back whenever real input
+arrives late. State the rewind cannot reach, such as a counter in a module,
+does not come back, and the peers drift apart minutes later.
 
 A **sync test** finds that on the tick it happens. It runs one peer with no
 network, rewinds after every tick, runs the ticks again, and checks the
@@ -146,19 +155,19 @@ if (test.ok) {
 }
 ```
 
-The same fuzzer runs online matches too: give `Fuzz.run` a `network` with
+The fuzzer plays online matches too. Give `Fuzz.run` a `network` with
 latency, jitter, and packet loss, and every seat plays as its own peer. A
 desync becomes one more broken rule, shrunk like any other.
 
 ## Every browser must agree
 
-Chrome, Safari, and Firefox are allowed to round `Math.sin` differently,
-and they do. A game that replays on one browser can drift on another,
-which is how an online match splits in two.
+Chrome, Safari, and Firefox may round `Math.sin` differently, and they do.
+A game that replays on one browser can drift on another, which is how an
+online match splits in two.
 
 Ritmo's math gives the same bits everywhere. `ritmo-devtools verify` checks
 that it holds for your game: it plays a recorded match in Node and in real
-browsers and names the first tick they disagree on.
+browsers, and names the first tick they disagree on.
 
 ```sh
 ritmo-devtools verify replay/target.ts replay/match.json \
@@ -166,31 +175,23 @@ ritmo-devtools verify replay/target.ts replay/match.json \
 ```
 
 Ritmo runs this on every change to its own code, against a recorded online
-match. See [Same game everywhere](/features/determinism/) for how the game
-stays exact.
+match.
 
-## Libraries you bring
+## Libraries checked before you build on them
 
-Lint rules keep the game's own code exact, but they do not read
-`node_modules`. A physics or geometry library may call `Math.sin` or
-`Math.random` inside. `ritmo-devtools scan` reads every file the simulation
-imports and lists them, file and line, before any gameplay is built on top:
+Lint rules keep your own code exact, but they do not read `node_modules`.
+A physics or geometry library may call `Math.sin` or `Math.random` inside.
+`ritmo-devtools scan` reads every file the simulation imports and lists
+those calls, file and line:
 
 ```sh
 ritmo-devtools scan src/simulation/index.ts
 ```
 
-The skill tells the agent what to do with each finding: copy the library
-into the game and let `oxlint --fix` rewrite it, pick another one, or
-bring a library that is exact on its own.
+For each finding, the Ritmo skill tells your coding agent what to do: copy
+the library into the game and let `oxlint --fix` rewrite it, pick another
+one, or bring a library that is exact on its own.
 
-## What this adds up to
-
-- **The agent finds the bug.** Fuzzing runs in Node, with no browser and no
-  player.
-- **The bug stays fixed.** The shrunk replay is a test, run on every change.
-- **Online play holds up.** Sync tests and cross-engine checks catch drift
-  before two players ever meet.
-
-[Headless debugging](/docs/devtools/) shows how to ask a run why a value
-changed.
+[Same game everywhere](/features/determinism/) shows how a game stays
+exact. [Headless debugging](/docs/devtools/) shows how to ask a run why a
+value changed.
