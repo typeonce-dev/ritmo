@@ -42,7 +42,7 @@ export default defineRule({
     },
     messages: {
       floatTimer:
-        "`{{text}}` counts a timer by `dt` in floating point: rounding error builds up each tick, so it ends a step early or late, and the float it saves means nothing once the fixed step changes. Store the step it ends on instead: `ready: Clock.deadline(time, Clock.duration(step, seconds))` in the component or resource (its schema narrows with `Clock.isDeadline(step)`), and check `Clock.reached(time, ready)` each tick (`Clock.remaining(time, ready)` for a readout, `Clock.every(time, duration)` for something that repeats, `Clock.elapsed(time)` for seconds since the start)."
+        "`{{text}}` counts a timer by `dt` in floating point: rounding error builds up each tick, so it ends a step early or late, and the float it saves means nothing once the fixed step changes. Store the step it ends on instead: `ready: Clock.deadline(time, Clock.duration(step, seconds))` in the component or resource (its schema narrows with `Clock.isDeadline(step)`), and check `Clock.reached(time, ready)` each tick (`Clock.remaining(time, ready)` for a readout, `Clock.every(time, duration)` for something that repeats, `Clock.elapsed(time)` for seconds since the start). A timer that must stop while the world clock runs (hit-stop, a menu over gameplay) is measured against a second clock that holds: `Clock.resource(\"Game/GameplayTime\", step)` advanced by `Clock.system(Game, { name, resource, hold: [paused] })`, so its deadlines wait with it. Only time scaled by a fraction (a 0.3x slow motion) is a real float: keep it and disable this line with the reason."
     },
     schema: []
   },

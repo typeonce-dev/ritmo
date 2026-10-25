@@ -1,9 +1,9 @@
 import plugin from "@typeonce/oxlint-plugin-ritmo"
 import { tester } from "./tester.ts"
 
-const rule = plugin.rules["handle-tick-result"]!
+const rule = plugin.rules["handle-runtime-result"]!
 
-tester.run("handle-tick-result", rule, {
+tester.run("handle-runtime-result", rule, {
   valid: [
     "const ran = runtime.tick(update); if (!ran.ok) report(ran.error)",
     "if (!runtime.tick(setup).ok) throw new Error(\"setup failed\")",
@@ -16,7 +16,18 @@ tester.run("handle-tick-result", rule, {
     "town.restore(snapshot)",
     "run.tick(60)",
     "app.ticker.tick()",
-    "runtime.tick()"
+    "runtime.tick()",
+    // Kept as a Result, or read through it
+    "const saved = runtime.snapshot(); if (saved.ok) persist(saved.value)",
+    "if (runtime.checksum().ok) mark()",
+    "state.save = runtime.snapshot()",
+    "const load = () => runtime.restore(save)",
+    "function save() { return runtime.snapshot() }",
+    "const saved = cached ?? runtime.snapshot()",
+    "void runtime.snapshot()",
+    // Other libraries' methods of the same name
+    "persist(store.snapshot())",
+    "log(`${runtime.checksum(file)}`)"
   ],
   invalid: [
     {
@@ -36,6 +47,18 @@ tester.run("handle-tick-result", rule, {
     { code: "runtime.rewind(history.get(wrong))", errors: [{ messageId: "rewind", data: { call: "runtime.rewind" } }] },
     { code: "this.runtime.tryTick(schedule)", errors: [{ messageId: "tick", data: { call: "this.runtime.tryTick" } }] },
     { code: "gameRuntime.tick(update)", errors: [{ messageId: "tick", data: { call: "gameRuntime.tick" } }] },
+    {
+      // inkline-town: a save written through a parameter typed unknown saved the Result itself
+      code: "persist(runtime.snapshot())",
+      errors: [{ messageId: "unchecked", data: { call: "runtime.snapshot" } }]
+    },
+    { code: "storage.setItem(\"save\", JSON.stringify(runtime.snapshot()))", errors: [{ messageId: "unchecked", data: { call: "runtime.snapshot" } }] },
+    { code: "log(`hash ${runtime.checksum()}`)", errors: [{ messageId: "unchecked", data: { call: "runtime.checksum" } }] },
+    { code: "send({ hash: runtime.checksum() })", errors: [{ messageId: "unchecked", data: { call: "runtime.checksum" } }] },
+    { code: "upload(runtime.snapshot() as unknown)", errors: [{ messageId: "unchecked", data: { call: "runtime.snapshot" } }] },
+    { code: "results.push(runtime.tick(update))", errors: [{ messageId: "unchecked", data: { call: "runtime.tick" } }] },
+    { code: "\"hash \" + runtime.checksum()", errors: [{ messageId: "unchecked", data: { call: "runtime.checksum" } }] },
+    { code: "runtime.snapshot()", errors: [{ messageId: "dropped", data: { call: "runtime.snapshot" } }] },
     {
       code: "world.tick(update)",
       options: [{ runtimePattern: "^world$" }],

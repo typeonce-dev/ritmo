@@ -158,6 +158,11 @@ export type ClockSchedule<S extends Schema.Any, Root, R, Name extends string, Ho
  * `step + 1` and `dt = 1 / hz`. A plugin: list it in the schedule like any
  * system, before every system that reads the time this tick.
  *
+ * For time that stops while the world keeps running (gameplay frozen in
+ * hit-stop while effects play on), give the game a second clock resource
+ * with its own `Clock.system` and `hold`, and measure those deadlines
+ * against it.
+ *
  * It is two systems: `<name>/Hold` sets `dt` to 0 while held, and `<name>`
  * advances otherwise. Gating one system with `when` instead would leave the
  * last advancing tick's `dt` (and `every`) in place for the whole pause.

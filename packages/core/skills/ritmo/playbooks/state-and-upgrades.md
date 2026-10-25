@@ -14,7 +14,7 @@
 4. To upgrade Ritmo, read each package's `CHANGELOG.md` from the installed version up, apply each breaking entry's fix, then fix the remaining compile errors as their messages say.
    Compile errors find most breaks. These still compile, so check each one the upgrade crosses:
    - 0.11: keyboard and pointer snapshots group their fields (`{ actions, vectors, used, ... }`). Code that walks a snapshot, like `Object.values(snapshot)`, now walks the groups: read `snapshot.actions`, or `snapshot.used` for "the player touched this device".
-   - 0.13: `runtime.snapshot()` returns a `Result` (and `runtime.checksum()`, new in 0.14, does too). A call site typed `unknown` or `any` (a save function, a log) passes the `Result` itself: check `.ok` and pass `.value`.
+   - 0.13: `runtime.snapshot()` returns a `Result` (and `runtime.checksum()`, new in 0.14, does too). A call site typed `unknown` or `any` (a save function, a log) passes the `Result` itself: check `.ok` and pass `.value` (`ritmo/handle-runtime-result` reports these).
    - 0.13: `dump().machines[name].current` is the machine's value, not its state name: compare `.current._tag`.
    - 0.13: saves of snapshot format 2 are rejected before migrations run; the `Snapshot.version` JSDoc says how to rewrite one.
    - 0.15: the devtools monitor and its "Save replay" button are gone: bind `recorder.save(reason)` to a key in the host.

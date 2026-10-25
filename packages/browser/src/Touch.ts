@@ -104,9 +104,9 @@ export interface StickZone {
  * button has the same name (a name is either a vector a stick drives or an
  * action a button reports).
  */
-export type StickNamed<K extends string, B extends string> = K extends B
+export type StickNamed<K extends string, B extends string, H extends string = K> = K extends B
   ? `${K} names both a stick and a button: give them different names`
-  : StickZone | null
+  : K extends H ? StickZone | null : StickZone
 
 /** A round on-screen button of a {@link Layout}; it reports the action named like its key. */
 export interface ButtonZone {
@@ -129,13 +129,11 @@ export interface SwipeZone {
  * The touch controls, returned by the layout function {@link actions} calls
  * with the element's size. The stick and button names are fixed by the
  * first layout; a control the game hides keeps its name with a `null` zone.
- *
- * A game that never hides a control can skip the `null` checks when it
- * draws: keep the layout function as its own constant and call it with the
- * size. Its inferred return type has the zones exactly as written, none of
- * them `null`; `Touch.actions` accepts it as a `Layout` all the same.
+ * `H` names the controls whose zone may be `null`: `actions` infers it from
+ * the layout function, so a control it never hides has a zone that is never
+ * `null` in `view().layout`.
  */
-export interface Layout<B extends string, V extends string = never> {
+export interface Layout<B extends string, V extends string = never, H extends B | V = B | V> {
   /**
    * The floating sticks, each keyed by the vector it drives (`move`, `aim`);
    * `{}` for buttons only. A finger that is not on a button goes to the
@@ -143,15 +141,23 @@ export interface Layout<B extends string, V extends string = never> {
    * so where regions overlap the earlier key wins. `null` hides a stick:
    * it takes no finger and reports a resting vector.
    */
-  readonly sticks: { readonly [K in V]: StickNamed<K, B> }
+  readonly sticks: { readonly [K in V]: StickNamed<K, B, H> }
   /**
    * The buttons, each keyed by the action it reports. `null` hides a
    * button: it takes no finger and reports nothing held.
    */
-  readonly buttons: { readonly [K in B]: ButtonZone | null }
+  readonly buttons: { readonly [K in B]: K extends H ? ButtonZone | null : ButtonZone }
   /** Optional: fingers here report their movement, for turning or looking around. */
   readonly swipe?: SwipeZone
 }
+
+// The keys of a zone record whose value may be `null`.
+type NullableKeys<Zones> = { [K in keyof Zones]-?: null extends Zones[K] ? K : never }[keyof Zones]
+
+/** The controls a layout function can hide: the names whose zone it may return as `null`. */
+export type Hideable<L> = L extends { readonly sticks: infer S; readonly buttons: infer Bs }
+  ? Extract<NullableKeys<S> | NullableKeys<Bs>, string>
+  : never
 
 /** The element's size in CSS pixels, passed to the layout function. */
 export interface Size {
@@ -224,8 +230,9 @@ export interface StickView {
 }
 
 /** Live control positions for drawing, in CSS pixels. Reading it consumes nothing. */
-export interface View<B extends string, V extends string = never> {
-  readonly layout: Layout<B, V>
+export interface View<B extends string, V extends string = never, H extends B | V = B | V> {
+  /** The layout in use; only the controls in `H`, the ones the layout function can hide, may be `null`. */
+  readonly layout: Layout<B, V, H>
   /** Each stick while a thumb holds it, `null` otherwise. */
   readonly sticks: { readonly [K in V]: StickView | null }
   readonly buttons: { readonly [K in B]: { readonly held: boolean; readonly aim: Vector | null } }
@@ -237,11 +244,11 @@ export interface View<B extends string, V extends string = never> {
  * `Controls` (through `lacking(...)` for actions with no on-screen
  * control). There is no `rebind`: the layout is the binding.
  */
-export interface Actions<B extends string, V extends string = never> extends System.Consumes<"snapshot"> {
+export interface Actions<B extends string, V extends string = never, H extends B | V = B | V> extends System.Consumes<"snapshot"> {
   /** Returns the controls' state and starts a new press/release window. */
   snapshot(): Snapshot<B, V>
   /** The live state for drawing. */
-  view(): View<B, V>
+  view(): View<B, V, H>
   /** Removes the event listeners and restores the element's `touch-action`. */
   dispose(): void
 }
@@ -386,12 +393,12 @@ interface StickTrack {
  * held controls when the page loses focus. Use `Pointer.actions` for mouse
  * and pen input.
  */
-export const actions = <const B extends string, const V extends string = never>(
+export const actions = <const B extends string, const V extends string = never, L extends Layout<B, V> = Layout<B, V>>(
   target: TouchTarget,
   blurHost: BlurHost,
-  layout: (size: Size) => Layout<B, V>,
+  layout: (size: Size) => Layout<B, V> & L,
   options: ActionsOptions = {}
-): Actions<B, V> => {
+): Actions<B, V, Hideable<L>> => {
   const pointerTypes = options.pointerTypes ?? ["touch"]
   const sizeOf = (): Size => {
     const rect = target.getBoundingClientRect()
@@ -561,7 +568,8 @@ export const actions = <const B extends string, const V extends string = never>(
     },
     view() {
       return {
-        layout: current,
+        // `current` is what the layout function returned, so its zones are `null` only where `Hideable<L>` says.
+        layout: current as unknown as Layout<B, V, Hideable<L>>,
         sticks: byName(stickNames, stickView),
         buttons: byName(names, (name) => {
           const button = buttons.get(name)!
