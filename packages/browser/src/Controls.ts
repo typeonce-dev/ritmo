@@ -31,6 +31,13 @@
  * devices inside the `merge(...)` call, so nothing else takes their
  * snapshots. A game with one device captures that device directly instead.
  *
+ * Declare the input service as `InputCapture.SourceOf<...>` the merge (its
+ * `snapshot()` only), and keep the merge in the host to rebind and dispose
+ * it. The snapshot is plain data, so the same descriptor replays
+ * (`playback.source(ControlsInput)`) and fuzzes: `Fuzz.input(ControlsInput,
+ * { generate: (random) => Actions.random(random, devices), neutral:
+ * Actions.idle(devices) })`.
+ *
  * A merge is one player on every device. For local multiplayer, where each
  * device belongs to the player who joined with it, declare
  * `Controls.players(Actions, { slots, join, leave })` and capture its
@@ -60,7 +67,8 @@
  *   readonly gamepad: Gamepad.Actions<typeof padBindings>
  * }) => Actions.merge(devices)
  *
- * const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("Game/Controls")
+ * // Only the snapshot: a replay or the fuzzer provides it in place of the devices.
+ * const ControlsInput = Descriptor.Service<InputCapture.SourceOf<ReturnType<typeof makeControls>>>()("Game/Controls")
  * const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("Game/Input")
  * const CaptureInput = InputCapture.system(Game, { name: "Game/CaptureInput", source: ControlsInput, resource: Input })
  *
@@ -332,7 +340,66 @@ export interface ActionSet<A extends string, V extends string = never> {
    * (`Keyboard.idle(...)`, ...) under its device name.
    */
   idle<const Devices extends Readonly<Record<string, DeviceSnapshot<string, string>>>>(devices: Devices): Snapshot<A, V, Devices, never>
+  /**
+   * A merged snapshot with every action drawn from `random`, for fuzzing the
+   * input source (`Fuzz.input`'s `generate`, which hands over the
+   * generator). Each button is in a state a merge can report (idle, held,
+   * just pressed, tapped, or just released) and each vector is zero, one of
+   * the eight directions, or a tilt shorter than 1. Device data stays as
+   * given (pass the same idle snapshots as to {@link idle}), every action is
+   * available, and no device is last used. Use {@link idle} for the input of
+   * a player who does nothing.
+   */
+  random<const Devices extends Readonly<Record<string, DeviceSnapshot<string, string>>>>(
+    random: Draw,
+    devices: Devices
+  ): Snapshot<A, V, Devices, never>
 }
+
+/** A generator `random` draws from: ritmo-math's `Random`, as `Fuzz.input`'s `generate` hands it over. */
+export interface Draw {
+  /** Uniform in [0, 1). */
+  next(): number
+}
+
+/** The button states a merge can report, `idle` first. */
+const buttonStates: ReadonlyArray<ActionState> = [
+  { held: false, pressed: false, released: false },
+  { held: true, pressed: false, released: false },
+  { held: true, pressed: true, released: false },
+  { held: false, pressed: true, released: true },
+  { held: false, pressed: false, released: true }
+]
+
+/** Idle half the time, otherwise one of the other states a merge reports. */
+const randomButton = (random: Draw): ActionState =>
+  random.next() < 0.5 ? buttonStates[0]! : buttonStates[1 + Math.floor(random.next() * 4)]!
+
+const diagonal = Math.SQRT1_2
+
+/** The eight directions a d-pad or keys report, each of length 1. */
+const directions: ReadonlyArray<Vector> = [
+  { x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 },
+  { x: diagonal, y: diagonal }, { x: -diagonal, y: diagonal }, { x: diagonal, y: -diagonal }, { x: -diagonal, y: -diagonal }
+]
+
+/** Zero, a full direction, or a stick's tilt shorter than 1, a third of the time each. */
+const randomVector = (random: Draw): Vector => {
+  const kind = Math.floor(random.next() * 3)
+  if (kind === 0) return zero
+  if (kind === 1) return directions[Math.floor(random.next() * directions.length)]!
+  const x = random.next() * 2 - 1
+  const y = random.next() * 2 - 1
+  const length = Math.sqrt(x * x + y * y)
+  if (length === 0) return zero
+  const tilt = random.next()
+  return { x: (x / length) * tilt, y: (y / length) * tilt }
+}
+
+const randomInput = (random: Draw, buttons: ReadonlyArray<string>, vectors: ReadonlyArray<string>) => ({
+  actions: Object.fromEntries(buttons.map((name) => [name, randomButton(random)])),
+  vectors: Object.fromEntries(vectors.map((name) => [name, randomVector(random)]))
+})
 
 const idleState: ActionState = { held: false, pressed: false, released: false }
 
@@ -447,7 +514,17 @@ export const actions = <const Buttons extends readonly [string, ...Array<string>
       available: everyAvailable() as Snapshot<A, V, never>["available"],
       devices,
       lastUsed: null
-    })
+    }),
+    random: (random, devices) => {
+      const input = randomInput(random, list, vectorList)
+      return {
+        actions: input.actions as Snapshot<A, V, never>["actions"],
+        vectors: input.vectors as Snapshot<A, V, never>["vectors"],
+        available: everyAvailable() as Snapshot<A, V, never>["available"],
+        devices,
+        lastUsed: null
+      }
+    }
   }
 }
 
@@ -573,6 +650,21 @@ export interface PlayerSet<A extends string, V extends string, S extends string,
    * `Gamepad.idle(...)` for pads) under its pool name.
    */
   idle<const Devices extends Readonly<Record<string, DeviceSnapshot<string, string>>>>(devices: Devices): PlayersSnapshot<A, V, S, Devices>
+  /**
+   * Every player's input for one fuzzed frame (`Fuzz.input`'s `generate`,
+   * which hands over the generator and the frame). The slots in `seats`
+   * are held through the named pool device from the first frame, as
+   * `pool.seat` in setup does: frame 1 reports their `event: "joined"`
+   * with idle input, and every later frame draws their actions as the
+   * action set's `random` does. The other slots stay empty and joining
+   * stays closed. Pass each device's idle snapshot under its pool name, as
+   * to {@link idle}; use {@link idle} for the neutral input.
+   */
+  random<const Devices extends Readonly<Record<string, DeviceSnapshot<string, string>>>>(
+    random: Draw,
+    frame: number,
+    options: { readonly devices: Devices; readonly seats: { readonly [K in S]?: keyof Devices & string } }
+  ): PlayersSnapshot<A, V, S, Devices>
 }
 
 /** Rejects a slot named like the snapshot's own field. */
@@ -640,6 +732,29 @@ export const players = <
   return {
     slots,
     idle: () => ({ joining: false, ...Object.fromEntries(slots.map((slot) => [slot, empty(null)])) }) as never,
+    random: (random, frame, { devices, seats }) => {
+      const seated: Readonly<Record<string, string | undefined>> = seats
+      const result: Record<string, unknown> = { joining: false }
+      for (const slot of slots) {
+        const device = seated[slot]
+        if (device === undefined) {
+          result[slot] = empty(null)
+          continue
+        }
+        const joined = frame <= 1
+        result[slot] = {
+          ...idleInput(),
+          ...(joined ? {} : randomInput(random, buttons, vectors)),
+          joined: true,
+          device,
+          connected: true,
+          event: joined ? "joined" : null,
+          devices: { [device]: devices[device] }
+        }
+      }
+      // The checked signature carries the slot and device types; every slot is filled above.
+      return result as never
+    },
     pool(devices) {
       const entries = Object.entries(devices as Readonly<Record<string, PoolEntry>>).map(([name, entry]) => {
         const unit = isLacking(entry) ? entry.device : entry

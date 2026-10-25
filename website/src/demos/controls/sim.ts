@@ -70,7 +70,7 @@ export const makeControls = (devices: {
  * keeps the whole merge (to rebind it); a replay provides its recorded
  * snapshots in its place.
  */
-export type ControlsSource = Pick<ReturnType<typeof makeControls>, "snapshot">
+export type ControlsSource = InputCapture.SourceOf<ReturnType<typeof makeControls>>
 
 export const ControlsInput = Descriptor.Service<ControlsSource>()("Controls/Input")
 

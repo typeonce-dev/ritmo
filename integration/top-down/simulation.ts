@@ -1,7 +1,8 @@
 /**
  * The top-down game without a browser: the simulation schedules on a
  * runtime that needs only a keyboard, a mouse, a gamepad, and a frame context, with
- * the debug handle attached.
+ * the debug handle attached. `makeReplaySimulation` builds the same runtime
+ * over a replay's (or the fuzzer's) input instead of devices.
  *
  * Tests, benchmarks, and coding agents drive it directly:
  *
@@ -16,15 +17,17 @@
  * }
  * ```
  */
-import type { HostClock } from "@typeonce/ritmo"
+import { HostClock } from "@typeonce/ritmo"
 import * as Result from "@typeonce/ritmo/Result"
+import type { InputCapture } from "@typeonce/ritmo-browser"
+import type { Replay } from "@typeonce/ritmo-devtools"
 
 import { FIXED_STEP_SECONDS } from "./constants.ts"
 import { initialMachines, initialResources } from "./runtime.ts"
 import { ControlsInput, FrameContext, Game } from "./schema.ts"
 import { setupWorldSchedule, simulationSchedule } from "./schedules.ts"
 import { makeControls } from "./types.ts"
-import type { FrameContextValue, GamepadInput as GamepadInputValue, KeyboardInput as KeyboardInputValue, MouseInput as MouseInputValue } from "./types.ts"
+import type { ControlsValue, FrameContextValue, GamepadInput as GamepadInputValue, KeyboardInput as KeyboardInputValue, MouseInput as MouseInputValue } from "./types.ts"
 
 export interface TopDownSimulationOptions {
   readonly keyboard: KeyboardInputValue
@@ -42,16 +45,16 @@ export const defaultFrameContext: FrameContextValue = {
   deltaSeconds: FIXED_STEP_SECONDS
 }
 
-export const createTopDownSimulation = (options: TopDownSimulationOptions) => {
-  const frame = options.frame ?? defaultFrameContext
+/** The runtime over one input source: merged devices, live or scripted, or a replay's or the fuzzer's input. */
+const makeRuntime = (controls: InputCapture.SourceOf<ControlsValue>, hostClock: HostClock.HostClock, frame: FrameContextValue) => {
   const made = Game.Runtime.make({
     services: Game.Runtime.services(
-      Game.Runtime.service(ControlsInput, makeControls({ keyboard: options.keyboard, mouse: options.mouse, gamepad: options.gamepad })),
+      Game.Runtime.service(ControlsInput, controls),
       Game.Runtime.service(FrameContext, frame)
     ),
     resources: initialResources(frame),
     machines: initialMachines(),
-    debug: { hostClock: options.hostClock }
+    debug: { hostClock }
   })
   return Result.match(made, {
     onSuccess: (runtime) => {
@@ -60,4 +63,29 @@ export const createTopDownSimulation = (options: TopDownSimulationOptions) => {
     },
     onFailure: () => Result.failure({ message: "Invalid top-down runtime resources." })
   })
+}
+
+export const createTopDownSimulation = (options: TopDownSimulationOptions) =>
+  makeRuntime(
+    makeControls({ keyboard: options.keyboard, mouse: options.mouse, gamepad: options.gamepad }),
+    options.hostClock,
+    options.frame ?? defaultFrameContext
+  )
+
+/**
+ * The same game over a replay's input, for `Replay.session` and `Fuzz.run`:
+ * the recorded (or fuzzed) controls snapshots stand in for the devices, and
+ * the setup and update schedules are named as the recorder and the fuzzer
+ * name them.
+ *
+ * ```ts
+ * const replay = Replay.session(makeReplaySimulation, file, { invariants: [PlayerInsideWorld] })
+ * const found = Fuzz.run(makeReplaySimulation, { schedule: "update", setup: "setup", inputs: [FuzzedControls], frames: 300, seed: 1 })
+ * ```
+ */
+export const makeReplaySimulation = (playback: Replay.Playback) => {
+  const hostClock = HostClock.test()
+  const made = makeRuntime(playback.source(ControlsInput), hostClock, defaultFrameContext)
+  if (!made.ok) throw new Error(made.error.message)
+  return { runtime: made.value.runtime, schedules: { setup: setupWorldSchedule, update: simulationSchedule }, hostClock }
 }
