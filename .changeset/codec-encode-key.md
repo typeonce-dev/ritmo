@@ -18,5 +18,12 @@
   ```
 
   A transforming schema without it fails with `give it a ~encode schema back to the saved form`.
-- **Zod values that transform** (a `Date`, a `Map`) save through the new `playbooks/zod.md` helper, which builds `"~encode"` from Zod's own `safeEncode`: `Descriptor.ConstructedComponent(codec(z.codec(z.iso.datetime(), z.date(), { decode, encode })))`. Valibot and ArkType transforms only decode, so their saved values stay plain.
+- **Values that transform** (a `Date`, a `Map`) save through a `"~encode"` from any library. Zod's comes from the new `playbooks/zod.md` helper, built on Zod's own `safeEncode`: `Descriptor.ConstructedComponent(codec(z.codec(z.iso.datetime(), z.date(), { decode, encode })))`. With Valibot, ArkType, or any other Standard Schema library, write the reverse schema by hand:
+
+  ```ts
+  const Born = Descriptor.ConstructedComponent({
+    "~standard": v.pipe(v.string(), v.isoTimestamp(), v.transform((text) => new Date(text)))["~standard"],
+    "~encode": v.pipe(v.date(), v.transform((date) => date.toISOString()))
+  })("Game/Born")
+  ```
 - **Handles and ritmo-math values inside a game's schema** are built from their guards with a schema that narrows to the guard's type: `z.unknown().refine(Entity.isHandle(Root))` in Zod, `v.pipe(v.unknown(), v.guard(...))` in Valibot, `type("unknown").narrow(...)` in ArkType, `Schema.declare(...)` in Effect. The docs said `z.custom(guard)`, which types the value as `unknown`.

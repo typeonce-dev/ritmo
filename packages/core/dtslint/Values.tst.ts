@@ -126,6 +126,26 @@ describe("schema libraries", () => {
     expect<Descriptor.Descriptor.Value<typeof EffectMap>>().type.toBe<ReadonlyMap<string, number>>()
   })
 
+  it("saves a transforming Valibot or ArkType schema through a hand-written ~encode, and names the fix without it", () => {
+    const decode = v.pipe(v.string(), v.isoTimestamp(), v.transform((text) => new Date(text)))
+    const ValibotDate = Descriptor.ConstructedResource({
+      "~standard": decode["~standard"],
+      "~encode": v.pipe(v.date(), v.transform((date) => date.toISOString()))
+    })("Values/ValibotDate")
+    expect<Descriptor.Descriptor.Value<typeof ValibotDate>>().type.toBe<Date>()
+    expect<Descriptor.Descriptor.Raw<typeof ValibotDate>>().type.toBe<string>()
+    // @ts-expect-error give it a ~encode schema back to the saved form
+    Descriptor.ConstructedResource(decode)
+    const ArkTypeDate = Descriptor.ConstructedResource({
+      "~standard": type("string.date.iso").pipe((text) => new Date(text))["~standard"],
+      "~encode": type("Date").pipe((date) => date.toISOString())
+    })("Values/ArkTypeDate")
+    expect<Descriptor.Descriptor.Value<typeof ArkTypeDate>>().type.toBe<Date>()
+    const backwards = { "~standard": decode["~standard"], "~encode": v.pipe(v.date(), v.transform((date) => date.getTime())) }
+    // @ts-expect-error its ~encode does not return the saved form the schema decodes
+    Descriptor.ConstructedResource(backwards)
+  })
+
   it("stores a handle through the forms the skill names, each narrowing to the guard's type", () => {
     const Root = Schema.defineRoot("Values")
     const isHandle = Entity.isHandle(Root)

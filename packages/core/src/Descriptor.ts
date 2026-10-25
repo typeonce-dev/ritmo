@@ -132,8 +132,10 @@ export namespace StandardSchema {
  * A schema whose value is already its saved form (plain numbers, strings,
  * arrays, and objects) needs no `"~encode"`, so a Zod, Valibot, or ArkType
  * schema passes as it is. A schema that transforms its value does not
- * compile without one: build it with the skill's helper for the library
- * (`playbooks/zod.md`, `playbooks/effect.md`). The key starts with `~`, like
+ * compile without one: build it with the skill's helper for Zod or Effect
+ * (`playbooks/zod.md`, `playbooks/effect.md`), or write the reverse schema
+ * with any library (`{ "~standard": decode["~standard"], "~encode": back }`).
+ * The key starts with `~`, like
  * Standard Schema's own, so it never collides with a library's methods (Zod
  * schemas have an `encode()` method). `runtime.snapshot()` runs
  * `"~encode"`, and `runtime.restore(...)` and the raw APIs (`setRaw`,
@@ -145,6 +147,11 @@ export namespace StandardSchema {
  * const Position = Descriptor.ConstructedComponent(z.object({ x: z.number(), y: z.number() }))("Game/Position")
  * // A value that transforms: the schema and its "~encode" (Effect, through the playbook's `codec`)
  * const Inventory = Descriptor.ConstructedComponent(codec(Schema.ReadonlyMap(Schema.String, Schema.Int)))("Game/Inventory")
+ * // Any library: the reverse schema by hand (Valibot here)
+ * const Born = Descriptor.ConstructedComponent({
+ *   "~standard": v.pipe(v.string(), v.isoTimestamp(), v.transform((text) => new Date(text)))["~standard"],
+ *   "~encode": v.pipe(v.date(), v.transform((date) => date.toISOString()))
+ * })("Game/Born")
  * ```
  */
 export type Codec<Type, Encoded = Type> = StandardSchema<Encoded, Type> & {
@@ -185,7 +192,7 @@ export type CodecRejection<S> = S extends StandardSchema<infer Encoded, infer Ty
       : "its ~encode does not return the saved form the schema decodes: make ~encode the schema's inverse"
     : "its ~encode does not take the value the schema decodes: make ~encode the schema's inverse"
   : [Type] extends [Encoded] ? PlainEncoded<Encoded>
-  : "this schema changes its value when it decodes (an Option, a Map, a Date, a class): give it a ~encode schema back to the saved form (the skill's codec helper for Zod or Effect)"
+  : "this schema changes its value when it decodes (an Option, a Map, a Date, a class): give it a ~encode schema back to the saved form (the skill's codec helper for Zod or Effect, or the reverse schema by hand)"
   : never
 
 /** The schema argument of a constructed descriptor, or the message naming what is wrong with it. */

@@ -208,9 +208,10 @@ Effect). A constructed descriptor takes one. Raw input and saves are checked
 by it, and `runtime.snapshot()` saves each value in the schema's encoded form.
 A Zod, Valibot, or ArkType schema of plain data passes as it is. A value that
 changes shape when saved (a `Map`, an `Option`, a `Date`) needs a schema with
-a `"~encode"` back, and Ritmo says so if it is missing: the Ritmo skill has a
+a `"~encode"` back, and Ritmo says so if it is missing. The Ritmo skill has a
 helper for Zod and one for Effect that build it from the library's own
-encoding.
+encoding; with any other library, `"~encode"` is the reverse schema, written
+by hand.
 
 With Effect, one helper in the game turns any schema into that shape:
 
