@@ -1,5 +1,197 @@
 # @typeonce/ritmo
 
+## 0.15.0
+
+### Minor Changes
+
+- 3a195b7: **Cooldowns and timers are deadlines: the step they end on, exact through saves and rollback.** A timer counted down by `dt` drifts by a rounded float every tick, and the float it saves means nothing once the fixed step changes. `Clock.Deadline<Hz>` is the absolute step a duration ends on, a plain number branded with the clock's rate:
+
+  ```ts
+  // ready: Clock.Deadline<60> | null, its schema narrowing with Clock.isDeadline(step)
+  const Weapon = Descriptor.ConstructedComponent(
+    z.object({ ready: z.unknown().refine(Clock.isDeadline(step)).nullable() })
+  )("Game/Weapon");
+
+  const time = resources.time.get();
+  const { ready } = data.weapon.get();
+  if (ready === null || Clock.reached(time, ready)) {
+    fire();
+    data.weapon.set({ ready: Clock.deadline(time, Clock.duration(step, 0.5)) });
+  }
+  ```
+
+  - `Clock.deadline(time, duration)`, `Clock.reached(time, deadline)`, and `Clock.remaining(time, deadline)` (whole steps left, for a readout). A deadline of a 60 Hz clock does not compile against a 30 Hz `Time`, and a raw number is not a deadline.
+  - `Clock.isDeadline(step)` is the guard for a game's schema, like `Entity.isHandle`: any whole number of steps, 0 or more.
+  - New lint rule `ritmo/no-float-timers` for simulation files: reports `timer -= dt`, `cooldown - time.dt`, and the like, and names `Clock.deadline` / `Clock.reached`. `position.x += velocity.x * dt` is integration and is not reported. Turn it on in the simulation override of `.oxlintrc.json`: `"ritmo/no-float-timers": "error"`.
+
+- d01a735: **Zod schemas work with Ritmo: the schema back to the saved form is under `"~encode"`, not `encode`.** Zod (from 4.1) gives every schema an `encode()` method, which Ritmo read as its encode schema: `Descriptor.ConstructedComponent(z.object(...))` did not compile, and with a cast `runtime.snapshot()` threw `Cannot read properties of undefined (reading 'validate')`. The key now starts with `~`, like Standard Schema's own `~standard`, so no library's methods collide with it. A Zod, Valibot, or ArkType schema of plain data passes as it is; Ritmo's tests now save and load a schema of each, and of Effect, through JSON.
+
+  - **Breaking: a codec carries its encode schema as `"~encode"`.** The Effect helper from the skill's `playbooks/effect.md` (or a hand-written codec) renames the key:
+
+    ```diff
+     return {
+       "~standard": Schema.toStandardSchemaV1(json)["~standard"],
+    -  encode: Schema.toStandardSchemaV1(Schema.flip(json))
+    +  "~encode": Schema.toStandardSchemaV1(Schema.flip(json))
+     }
+    ```
+
+    A transforming schema without it fails with `give it a ~encode schema back to the saved form`.
+
+  - **Values that transform** (a `Date`, a `Map`) save through a `"~encode"` from any library. Zod's comes from the new `playbooks/zod.md` helper, built on Zod's own `safeEncode`: `Descriptor.ConstructedComponent(codec(z.codec(z.iso.datetime(), z.date(), { decode, encode })))`. With Valibot, ArkType, or any other Standard Schema library, write the reverse schema by hand:
+
+    ```ts
+    const Born = Descriptor.ConstructedComponent({
+      "~standard": v.pipe(
+        v.string(),
+        v.isoTimestamp(),
+        v.transform((text) => new Date(text))
+      )["~standard"],
+      "~encode": v.pipe(
+        v.date(),
+        v.transform((date) => date.toISOString())
+      ),
+    })("Game/Born");
+    ```
+
+  - **Handles and deadlines inside a game's schema** are built from their guards with a schema that narrows to the guard's type: `z.unknown().refine(Entity.isHandle(Root))` in Zod, `v.pipe(v.unknown(), v.guard(...))` in Valibot, `type("unknown").narrow(...)` in ArkType, `Schema.declare(...)` in Effect. The docs said `z.custom(guard)`, which types the value as `unknown`.
+
+- 45458dc: **A stream of the relation edges a target's despawn dropped.** When the target of a `Descriptor.Relation` despawns, the runtime removes every edge to it. A system now reads those edges once, with the same rules as `readRelationFailures`: each reader sees what was dropped since its own previous run, a reader gated by `when` drops what was published meanwhile, one under `pauseWhen` reads it later, a reader that fell behind by more than `Runtime.streamCapacity` records sees `lagged() === true`, and checkpoints rewind it.
+
+  ```ts
+  const DropTargets = Game.System(
+    "Game/DropTargets",
+    {
+      droppedRelations: { lost: Game.System.readDroppedRelations(Targeting) },
+      commands: Game.System.commands(Game.System.inserts(Idle)),
+    },
+    ({ droppedRelations, commands }) => {
+      for (const { source } of droppedRelations.lost.all())
+        commands.insert(source, [Idle, {}]);
+    }
+  );
+  ```
+
+  - Records are `Relation.Relation.Dropped`: `{ relation, source, target }` as entity ids. Only a target's despawn records an edge: `commands.unrelate`, relating the source elsewhere, and the source's own despawn record nothing. A `Descriptor.Hierarchy` records nothing, since its children despawn with their parent.
+  - Inspectors can read `droppedRelations` too.
+  - Debug traces carry a `relationDropped` effect on the despawn that dropped the edge, and devtools journals it as `Game/Targeting from e7 to e12 dropped: e12 despawned`. `describe()` lists a system's `droppedRelations` (`reads dropped relations: ...` in devtools), and `streams()` reports the `droppedRelation` streams.
+  - **Breaking for code that switches over debug types:** `Debug.Effect` has a new `relationDropped` kind, `Debug.StreamStatus["kind"]` and `Debug.MissedRead["kind"]` have a new `droppedRelation` kind, and `Debug.SystemDescription` has a new `droppedRelations` field. Add the case to an exhaustive `switch`, and the field to a hand-built `SystemDescription`.
+
+- c75daff: **Breaking: `Ops` and `Random` moved from `@typeonce/ritmo-math` into `@typeonce/ritmo`.** Determinism belongs to the runtime: every simulation needs same-bits math and a seeded generator, with or without the 2D helpers. The modules are unchanged; only the import path moves, and `@typeonce/ritmo-math` no longer exports them. The `Ops` header now states that its list is closed: the 22 functions engines may approximate and `**`; everything else on `Math` is already exact. `@typeonce/ritmo-devtools` and `@typeonce/ritmo-netcode` no longer depend on `@typeonce/ritmo-math`.
+
+  ```diff
+  - import { Ops, Random } from "@typeonce/ritmo-math"
+  + import { Ops, Random } from "@typeonce/ritmo"
+  - import * as Random from "@typeonce/ritmo-math/Random"
+  + import * as Random from "@typeonce/ritmo/Random"
+  - import * as Ops from "@typeonce/ritmo-math/Ops"
+  + import * as Ops from "@typeonce/ritmo/Ops"
+  ```
+
+  `oxlint --fix` with `ritmo/use-ops-for-math` adds the new import where a `Math` call is rewritten; other imports need the path changed by hand.
+
+- b77b17d: **A library that keeps its own world (Rapier, Box2D) can run inside a rewound schedule: `Checkpoint.rewindable`.** `runtime.checkpoint(simulate)` refused any service that is not a `snapshot()` source or plain data, since a rewind would call it again for every tick run again. A rewindable service gives a typed `save` and `restore`: every checkpoint keeps its `save` output (freed when the checkpoint is released), and `runtime.rewind` restores it and makes the result `current`.
+
+  ```ts
+  const physics = Checkpoint.rewindable(world, {
+    save: (world) => world.takeSnapshot(),
+    restore: (bytes) => {
+      const restored = RAPIER.World.restoreSnapshot(bytes);
+      return restored === undefined
+        ? Result.failure({ _tag: "CorruptSnapshot" as const })
+        : Result.success(restored);
+    },
+  });
+  const Physics = Descriptor.Service<typeof physics>()("Game/Physics");
+  // Systems read `services.physics.current` each run; `runtime.checkpoint(simulate)` compiles.
+  ```
+
+  - Cost: one `save` per checkpoint for each rewindable service the runtime was given, one `restore` per rewind. A runtime without one pays nothing.
+  - A failing `restore` fails the rewind with the new `RewindError` member `RestoreFailed { service, error }`, changing nothing. `runtime.rewind` types it by each service's name and `restore` error; a runtime without rewindable services never returns it. `RewindError` takes the failures as a parameter (`RewindError<never>` for none); bare `RewindError` covers every runtime. Netcode reports it as `CheckpointLost`.
+  - Not in saves or checksums: `runtime.snapshot()` does not include a rewindable service, `runtime.restore(save)` (and a netcode resync) leaves it as it is, and `runtime.checksum()` does not cover it. Mirror what gameplay reads from the library into components.
+
+  **Breaking (types only):** bare `Checkpoint.RewindError` (and so `Netcode.CheckpointLost["error"]`) now includes `RestoreFailed`. An exhaustive `switch` on its `_tag` adds the case; one over `runtime.rewind(...)`'s own result needs nothing for a runtime without rewindable services:
+
+  ```diff
+    switch (error._tag) {
+      case "OtherRuntime": ...
+      case "Released": ...
+  +   case "RestoreFailed": console.error(error.service, error.error); break
+    }
+  ```
+
+- c20f20b: **Descriptor metadata: a field's unit, range, and hint next to its schema.** Every component and resource constructor (`Component`, `ConstructedComponent`, `TransientComponent`, `Resource`, `ConstructedResource`, `TransientResource`) takes an optional `meta` option keyed by the value's top-level fields. Each field gets `unit?: string`, `range?: readonly [min, max]` (number fields only), and `hint?: string` (one sentence an agent reads).
+
+  ```ts
+  const Health = Descriptor.ConstructedComponent(z.object({ hp: z.number() }))(
+    "Game/Health",
+    {
+      meta: {
+        hp: {
+          unit: "points",
+          range: [0, 100],
+          hint: "Hit points left; 0 despawns the entity.",
+        },
+      },
+    }
+  );
+  const Tuning = Descriptor.Resource<{ speed: number }>()("Game/Tuning", {
+    meta: { speed: { unit: "px/s", range: [0, 400] } },
+  });
+  ```
+
+  - A key that is not a field of the value does not compile (`not a field of this value`, with the value's fields under `fields`); `range` on a non-number field does not compile (`` `range` is only for number fields``); a key other than `unit`, `range`, or `hint` does not compile. A malformed option from an unchecked caller throws, naming the descriptor.
+  - Metadata never replaces validation: the schema still decides what is valid, and snapshots do not save it. It is checked once at the constructor, frozen, and listed by `runtime.debug.describe()` as `meta` on every `ComponentDescription` and `ResourceDescription` (`{}` when none).
+  - Resource constructors now take an options argument (`ResourceOptions`); `ComponentOptions` gains `meta`. New types: `FieldMeta`, `MetaField`, `CheckedMeta`, `CheckedOptions`, `MetaInput`.
+  - Devtools: `session.report()` raises an `out-of-range` warning for every write (system writes, resources, spawns, inserts) of a number outside its declared range: `e1 Game/Health.hp written as 120, declared range [0, 100] by Game/Heal at frame 42`. The scan runs only in debug sessions; production runtimes never read the metadata.
+  - Devtools: `session.describe()` lists each field's metadata under its component or resource; `Format.fieldMeta(field, meta)` prints one field's line. The monitor's Entity tab shows units next to values and each field's unit, range, and hint in the value's tooltip.
+
+- 01959dd: Step one frame a system at a time.
+
+  - `session.step(name)` begins one frame of a named schedule and returns a `SteppedFrame`: `until(System)` runs the steps before that system and stops there, `next()` runs exactly one step (a system or a marker), `check()` asks the invariants mid-frame, and `finish()` runs the rest and returns the same `RunResult` as `run(name, { frames: 1 })`, with labels and invariants evaluated at the end of the frame. `until` takes the system value, and only a system the schedule runs as a step compiles. `journal`, `why`, and `dump` show the partial frame.
+  - Core: `runtime.debug.beginFrame(schedule)` returns a `Debug.FrameCursor` (`next()`, `remaining()`) for the frame `tryTick(schedule)` would run, with the same commits, markers, reader cursors, and trace and host events. While a frame is open, `tick`, `tryTick`, `send`, `snapshot`, `checksum`, `restore`, `checkpoint`, `rewind`, and another `beginFrame` throw; `session.run` and `session.step` throw until `finish()`.
+  - `Format.step` prints one schedule step.
+  - `Session.Session` takes a third type parameter, the record of schedules, which `Session.make` infers.
+
+### Patch Changes
+
+- 637fa1f: **Adaptive input delay.** `inputDelay` is a fixed number of ticks, and the right value depends on a connection that changes during a match. Give `adaptiveDelay` instead and the session moves the delay within the bounds from the measured round trip:
+
+  ```ts
+  Netcode.rollback(runtime, { ...options, adaptiveDelay: { min: 1, max: 4 } });
+  session.status().inputDelay; // the delay in use
+  ```
+
+  - The delay starts at `max` and moves to `ceil(roundTripMS / 2 / step ms)` for the slowest other seat (the smoothed round trip), clamped to the bounds, once that target held for 4 measurements in a row (one every 250 ms).
+  - Each seat moves only its own delay. Every input message already names its tick, so a change needs no agreement and no protocol change; seats may run different delays. A rise leaves the ticks it skips idle (`seats.idle`); a fall drops the local input for as many frames (`Advanced.input` is `undefined`), so no tick gets two inputs.
+  - Every peer must give the same `inputDelay`, or the same `adaptiveDelay.max`: after a save, that many ticks are idle for every seat.
+  - Giving both `inputDelay` and `adaptiveDelay` does not compile (`give inputDelay or adaptiveDelay, not both`). Bounds that are not whole numbers with `0 <= min <= max` fail with `InvalidOptions` (`field: "adaptiveDelay"`).
+  - `Status` gains `inputDelay` (the delay in use) and `delayChanges` (how many times it moved).
+  - `MemoryNetworkLink` links gain `setLatency(ms)`, to change a peer's latency mid-match in tests.
+  - The netcode playbook recommends `adaptiveDelay` for play over the internet.
+  - **Breaking: `inputDelay` moved from `Netcode.Options` to the new `Netcode.Delay`.** Options passed inline to `rollback` and `lockstep` are unchanged. Where options are typed by hand, add the delay type:
+
+    ```diff
+    - const options: Netcode.Options<PlayerInput> = { seats, seat, links, hostClock, step, inputDelay: 3 }
+    + const options: Netcode.Options<PlayerInput> & Netcode.Delay = { seats, seat, links, hostClock, step, inputDelay: 3 }
+    ```
+
+- 44e9b42: **Effects under rollback: `session.events(Event)` hands host code the simulation's events as confirmed, predicted, and withdrawn streams.** A rolled-back tick runs again and publishes its events again, so a sound played from an event played once per run, and every game de-duplicated events by confirmed tick by hand. A session now owns that: each `session.events(descriptor)` call is one host reader, pulled after the session advanced.
+
+  ```ts
+  const hits = session.events(Hit); // an event of the runtime's schema
+  for (const { tick } of hits.withdrawn()) particles.cancel(tick); // a rollback undid this tick's hits
+  for (const { tick, value } of hits.predicted())
+    particles.burst(tick, value.at); // may still be undone
+  for (const { value } of hits.confirmed()) sounds.play(value.kind); // exactly once per hit
+  const lost = hits.lost(); // EventsLost when the reader fell more than Netcode.eventWindow ticks behind
+  ```
+
+  - `confirmed()` hands out each event once, when its tick can no longer run again (a lockstep session confirms every tick it runs). `predicted()` hands out events of ticks that may still be rolled back, stamped with the tick. A tick a rollback runs again keeps what was handed out when its events are the same (plain data, compared by value); otherwise `withdrawn()` names it and its new events are predicted again. A resync withdraws every predicted tick.
+  - An event outside the runtime's schema does not compile. `Netcode.Session` takes the schema's events as a third type parameter (`never` by default): a session annotated as `Netcode.Session<Input, TickError>` reads none. Annotate it with the events to read, `Netcode.Session<Input, TickError, typeof Hit>`, or let `Netcode.rollback(...)` infer it.
+  - New exports: `EventStreams`, `EventRecord`, `Withdrawn`, `EventsLost`, `eventWindow`.
+  - Replaces acting on events once `status().confirmed` passed their tick: the `Checkpoint` docs and the netcode playbook now point to `session.events(...)`.
+
 ## 0.14.0
 
 ### Minor Changes

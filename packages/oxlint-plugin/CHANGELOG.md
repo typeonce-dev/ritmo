@@ -1,5 +1,42 @@
 # @typeonce/oxlint-plugin-ritmo
 
+## 0.15.0
+
+### Minor Changes
+
+- 3a195b7: **Cooldowns and timers are deadlines: the step they end on, exact through saves and rollback.** A timer counted down by `dt` drifts by a rounded float every tick, and the float it saves means nothing once the fixed step changes. `Clock.Deadline<Hz>` is the absolute step a duration ends on, a plain number branded with the clock's rate:
+
+  ```ts
+  // ready: Clock.Deadline<60> | null, its schema narrowing with Clock.isDeadline(step)
+  const Weapon = Descriptor.ConstructedComponent(
+    z.object({ ready: z.unknown().refine(Clock.isDeadline(step)).nullable() })
+  )("Game/Weapon");
+
+  const time = resources.time.get();
+  const { ready } = data.weapon.get();
+  if (ready === null || Clock.reached(time, ready)) {
+    fire();
+    data.weapon.set({ ready: Clock.deadline(time, Clock.duration(step, 0.5)) });
+  }
+  ```
+
+  - `Clock.deadline(time, duration)`, `Clock.reached(time, deadline)`, and `Clock.remaining(time, deadline)` (whole steps left, for a readout). A deadline of a 60 Hz clock does not compile against a 30 Hz `Time`, and a raw number is not a deadline.
+  - `Clock.isDeadline(step)` is the guard for a game's schema, like `Entity.isHandle`: any whole number of steps, 0 or more.
+  - New lint rule `ritmo/no-float-timers` for simulation files: reports `timer -= dt`, `cooldown - time.dt`, and the like, and names `Clock.deadline` / `Clock.reached`. `position.x += velocity.x * dt` is integration and is not reported. Turn it on in the simulation override of `.oxlintrc.json`: `"ritmo/no-float-timers": "error"`.
+
+- c75daff: **`oxlint --fix` does the whole job for `ritmo/use-ops-for-math`.** The rule points at `Ops` from `@typeonce/ritmo` (it moved from `@typeonce/ritmo-math`), and its fix now adds `import { Ops } from "@typeonce/ritmo"` when the file has none, once per file, after the last import (a `const { Ops } = require("@typeonce/ritmo")` in CommonJS, for vendored code). `x **= y` is fixed to `x = Ops.pow(x, y)` when `x` is a variable. `ritmo/use-random-for-randomness` names `Random` from `@typeonce/ritmo` the same way.
+
+  **Aliasing `Math` is reported.** `const { sin } = Math`, `const M = Math`, passing `Math` to a function, `globalThis.Math.sin`, and `Math[name]` with a computed key hid a non-exact call from the rule; each is now reported (without a fix). Exact members (`Math.PI`, `Math.abs`, `const { floor } = Math`) stay valid.
+
+  **New rule `ritmo/no-brand-cast`.** A cast to a branded type (`raw as ItemId` where `ItemId` comes from `.brand()`, `Schema.brand`, `Brand.Branded`, or a Ritmo brand such as `Random.State` or `Clock.Deadline`) skips the check the brand stands for. The rule reports it in simulation code and names the fix: decode through the schema, or the Ritmo constructor (`Random.seed`, `Clock.deadline`, `Game.Entity.handle`). Turn it on in the simulation override:
+
+  ```json
+  {
+    "files": ["src/simulation/**"],
+    "rules": { "ritmo/no-brand-cast": "error" }
+  }
+  ```
+
 ## 0.14.0
 
 ### Minor Changes
