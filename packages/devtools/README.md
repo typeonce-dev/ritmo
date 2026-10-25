@@ -73,7 +73,9 @@ headless with a `Session`.
 4. **Explain.** `session.why(entity, Component)` and
    `session.whyResource(Resource)` show the latest changes and which system
    made them; `why` also names the systems whose declared `spawns` could
-   have spawned the entity. `session.journal({ frames: [from, to], entity })`
+   have spawned the entity. When the writer only passed on a wrong input,
+   raise `depth` to follow what it declared it reads, one system further
+   back per step. `session.journal({ frames: [from, to], entity })`
    shows everything that touched an entity around the failure.
    `session.report()` lists warnings the trace collected and the current
    entity counts per component. `run()` prints the warnings it raised.
@@ -147,6 +149,7 @@ frame.finish()                            // the rest of the frame, reported lik
 session.describe()                        // schema, schedules, access, lints
 session.dump({ with: [Player], limit: 5 })// entities, resources, machines, pending commands
 session.why(12, Position)                 // latest changes to e12 Position
+session.why(12, Health, { depth: 3 })     // and, under each, the declared reads behind it, two levels back
 session.whyResource(Score)                // latest changes to a resource
 session.journal({ frames: [180, 185], entity: 12, kinds: ["write", "effect"] })
 session.journal({ system: "Game/Move", last: 10, verbose: true })
@@ -191,6 +194,33 @@ f186 update  -                   transition Game/Flow Playing -> Paused applied
   see them, marked `(unchanged)`.
 - Large objects print only their changed paths:
   `~ up.held: false -> true, left.held: false -> true`.
+
+`why` and `whyResource` with `depth` above 1 indent, under each change,
+what the writing system declared it reads, with the latest traced fact that
+could have produced it; each `depth` step goes one system further back:
+
+```
+e12 Game/Health is now 40; last 1 changes (oldest first):
+could have spawned it: Game/SpawnEnemy
+indented: what each writing system declared it reads, and the latest fact that could have produced it (declared: possible causes, not observed reads)
+f181 update  Game/ApplyDamage  write e12 Game/Health 70 -> 40
+  read Game/Damage [{amount:30}] (declared), emitted by Game/Hitscan at f181
+    read Game/Position of 14 matching entities now (declared; the trace does not say which it read)
+    read resource Game/Aim {target:12} (declared), written by Game/AimAtNewest at f180
+  read e12 Game/Armor 5 (declared), spawned by Game/SpawnEnemy at f3
+```
+
+- The trace records writes, not reads, so every indented line is a
+  possible cause, marked `(declared)`, not a read that was observed.
+- An event read lists what was published to it since the system's previous
+  run, and by whom (`runtime.send` for the host). A component in the query
+  that wrote the value is read on the same entity: its latest change before
+  the run. A resource or machine: its latest change or transition.
+- A query over other entities says only how many match now: the trace does
+  not say which one the system used. Use `journal` to narrow it down.
+- A system already in the chain prints `(cycle: not followed)`; `limit`
+  caps the reads under each line (`…+N more declared reads`). In `.data`,
+  these lines have `kind: "read"` and `depth` 1 or more.
 
 ## Report warnings
 
