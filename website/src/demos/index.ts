@@ -38,6 +38,15 @@ export const demos = {
     source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/rollback",
     load: () => import("./rollback/game.ts")
   },
+  netcode: {
+    title: "Rollback, playing itself",
+    description: "Two bot peers of one match over a fake network whose latency rises: each guesses the other's input, rolls back when the guess was wrong, and agrees on every tick.",
+    controls: "Watch the latency rise: outlined ticks ran on a guess, lit ones ran again after a rollback, the green line is the last tick both checksums agree on.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/netcode",
+    // Takes no input: starts on its own when scrolled into view.
+    autoplay: true,
+    load: () => import("./netcode/game.ts")
+  },
   fuzz: {
     title: "Fuzzer",
     description: "The fuzzer plays the ball at random until it breaks a planted rule, then shrinks the run to the few frames that still break it.",
