@@ -144,6 +144,9 @@ importers:
       '@typeonce/ritmo':
         specifier: workspace:^
         version: link:../core
+      '@typeonce/ritmo-math':
+        specifier: workspace:^
+        version: link:../math
 
   packages/math:
     dependencies:
