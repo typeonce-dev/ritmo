@@ -11,9 +11,13 @@
  * - `Clock.duration(step, 0.5)` is a span in whole steps; `Clock.every(t, d)`
  *   is true on the step each period begins after the start (steps `d`,
  *   `2d`, ...); `Clock.elapsed(t)` is exact.
+ * - `Clock.deadline(t, d)` is the step a duration ends on, stored in a
+ *   component or resource for a cooldown or timer; `Clock.reached(t, ready)`
+ *   checks it each tick.
  *
  * Time is counted in steps, never accumulated in floating point: elapsed
- * seconds are `step / hz`.
+ * seconds are `step / hz`, and a timer is a deadline, not a float counted
+ * down by `dt`.
  *
  * @example
  * ```ts
@@ -302,7 +306,7 @@ export type ValidSteps<N extends number> =
 /**
  * A whole number of steps of `step` as a duration: `Clock.durationOfSteps(Clock.hz(60), 3)`.
  * Use it when the length is counted in steps (an animation of 3 frames, a
- * cooldown stored as steps); use `duration` for literal seconds and
+ * cooldown of 8 steps); use `duration` for literal seconds and
  * `durationRaw` for seconds from data. A count cannot round, so nothing can
  * fail for a positive whole number: a literal zero, negative, or fraction is
  * a compile error, and a computed one throws.
@@ -324,3 +328,87 @@ export const steps = (duration: Duration): number => duration.steps
  */
 export const every = <Hz extends number>(time: Time<Hz>, duration: Duration<NoInfer<Hz>>): boolean =>
   time.dt > 0 && time.step % duration.steps === 0
+
+// ── Deadlines ───────────────────────────────────────────────────────────
+
+declare const deadlineBrand: unique symbol
+
+/**
+ * The step a duration ends on: an absolute step of one clock rate, stored as
+ * a plain number. A cooldown, a respawn timer, or a buff's end is a deadline
+ * kept in a component or resource and checked with `reached`, never a float
+ * counted down by `dt` each tick (which drifts, and saves a number that
+ * means nothing once the step length changes).
+ *
+ * It is absolute rather than a count of steps left: it is written once, when
+ * it is set, and stays valid through a save, a restore, and a rollback
+ * without being recomputed, because the clock resource it is measured
+ * against is saved and rewound with it. A held clock (`hold`) does not
+ * advance, so a deadline waits through a pause.
+ *
+ * `Hz` exists only at the type level: a deadline of a 60 Hz clock does not
+ * type-check against a 30 Hz `Time`. Make one with `deadline`, and validate a
+ * saved one with `isDeadline`. An entity with nothing pending holds `null`
+ * (`ready: Clock.Deadline<60> | null`), not a made-up step.
+ */
+export type Deadline<Hz extends number = number> = number & DeadlineBrand<Hz>
+
+/** The type-level part of a `Deadline`: the clock rate it was made at. */
+export interface DeadlineBrand<Hz extends number> {
+  readonly [deadlineBrand]: Hz
+}
+
+/**
+ * The step `duration` from now ends on: `time.step + steps(duration)`. Store
+ * it, and check it each tick with `reached`. The duration must be of the
+ * clock's own rate.
+ *
+ * @example
+ * ```ts
+ * const time = resources.time.get()
+ * const { ready } = data.weapon.get()
+ * if (ready === null || Clock.reached(time, ready)) {
+ *   fire()
+ *   data.weapon.set({ ready: Clock.deadline(time, Clock.duration(step, 0.5)) })
+ * }
+ * ```
+ */
+export const deadline = <Hz extends number>(time: Time<Hz>, duration: Duration<NoInfer<Hz>>): Deadline<Hz> =>
+  (time.step + duration.steps) as Deadline<Hz>
+
+/**
+ * Whether the clock has reached `deadline`: true on its step and every step
+ * after, so a deadline that passed while a system did not run (gated by
+ * `when`) is still reached. Use `every` for something that repeats.
+ */
+export const reached = <Hz extends number>(time: Time<Hz>, deadline: Deadline<NoInfer<Hz>>): boolean =>
+  time.step >= deadline
+
+/**
+ * The whole steps left until `deadline`, 0 once it is reached. For a readout
+ * (a cooldown bar is `remaining(time, ready) / steps(cooldown)`, seconds are
+ * `remaining(time, ready) / time.hz`); to decide, use `reached`.
+ */
+export const remaining = <Hz extends number>(time: Time<Hz>, deadline: Deadline<NoInfer<Hz>>): number =>
+  Math.max(0, deadline - time.step)
+
+/**
+ * Checks that untrusted data is a deadline of `step`'s clock: a guard to
+ * build a deadline schema with the game's schema library, so a component or
+ * resource that stores one validates it on restore, as `Entity.isHandle`
+ * does for handles. Any whole number of steps, 0 or more, passes; the rate
+ * cannot be checked at runtime, it is the type's (a save of another rate is
+ * already refused by the clock resource). A deadline is a number, so it
+ * needs no `"~encode"`.
+ *
+ * @example
+ * ```ts
+ * const isReady = Clock.isDeadline(step)
+ * // Zod
+ * const Weapon = Descriptor.ConstructedComponent(z.object({ ready: z.unknown().refine(isReady).nullable() }))("Game/Weapon")
+ * // Effect
+ * const Weapon = Descriptor.ConstructedComponent(codec(Schema.Struct({ ready: Schema.NullOr(Schema.declare(isReady)) })))("Game/Weapon")
+ * ```
+ */
+export const isDeadline = <Hz extends number>(_step: Step<Hz>): (raw: unknown) => raw is Deadline<Hz> =>
+  (raw: unknown): raw is Deadline<Hz> => typeof raw === "number" && Number.isSafeInteger(raw) && raw >= 0

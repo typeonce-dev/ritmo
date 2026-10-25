@@ -1,4 +1,4 @@
-import { Descriptor, Entity, Result, Schema } from "@typeonce/ritmo"
+import { Clock, Descriptor, Entity, Result, Schema } from "@typeonce/ritmo"
 import * as Codecs from "../test/codecs.ts"
 import type { Handle } from "@typeonce/ritmo/Entity"
 import { type } from "arktype"
@@ -158,5 +158,18 @@ describe("schema libraries", () => {
     expect<Descriptor.Descriptor.Value<typeof arktype>["target"]>().type.toBe<Handle>()
     const effect = Descriptor.ConstructedComponent(effectCodec(S.Struct({ target: S.declare(isHandle) })))("Values/EffectTarget")
     expect<Descriptor.Descriptor.Value<typeof effect>["target"]>().type.toBe<Handle>()
+  })
+
+  it("stores a deadline through the forms the skill names, each narrowing to the guard's rate", () => {
+    const isDeadline = Clock.isDeadline(Clock.hz(60))
+    type Ready = Clock.Deadline<60> | null
+    const zod = Descriptor.ConstructedComponent(z.object({ ready: z.unknown().refine(isDeadline).nullable() }))("Values/ZodReady")
+    expect<Descriptor.Descriptor.Value<typeof zod>["ready"]>().type.toBe<Ready>()
+    const valibot = Descriptor.ConstructedComponent(v.object({ ready: v.nullable(v.pipe(v.unknown(), v.guard(isDeadline))) }))("Values/ValibotReady")
+    expect<Descriptor.Descriptor.Value<typeof valibot>["ready"]>().type.toBe<Ready>()
+    const arktype = Descriptor.ConstructedComponent(type({ ready: type("unknown").narrow(isDeadline).or("null") }))("Values/ArkTypeReady")
+    expect<Descriptor.Descriptor.Value<typeof arktype>["ready"]>().type.toBe<Ready>()
+    const effect = Descriptor.ConstructedComponent(effectCodec(S.Struct({ ready: S.NullOr(S.declare(isDeadline)) })))("Values/EffectReady")
+    expect<Descriptor.Descriptor.Value<typeof effect>["ready"]>().type.toBe<Ready>()
   })
 })
