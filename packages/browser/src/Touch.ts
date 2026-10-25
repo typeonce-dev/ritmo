@@ -129,6 +129,11 @@ export interface SwipeZone {
  * The touch controls, returned by the layout function {@link actions} calls
  * with the element's size. The stick and button names are fixed by the
  * first layout; a control the game hides keeps its name with a `null` zone.
+ *
+ * A game that never hides a control can skip the `null` checks when it
+ * draws: keep the layout function as its own constant and call it with the
+ * size. Its inferred return type has the zones exactly as written, none of
+ * them `null`; `Touch.actions` accepts it as a `Layout` all the same.
  */
 export interface Layout<B extends string, V extends string = never> {
   /**

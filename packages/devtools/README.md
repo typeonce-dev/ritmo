@@ -246,6 +246,11 @@ export const lintTarget = async () => {
 }
 ```
 
+A debug script that needs the same runtime and host schedules (a
+`scripts/debug.ts` that builds a `Session`) imports `lintTarget` and calls
+it, instead of repeating the wiring: `const { runtime, schedules } = await
+lintTarget()`.
+
 When nothing needs describing, the simulation's own entry module can export
 `lintTarget` instead.
 

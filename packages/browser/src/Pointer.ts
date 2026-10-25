@@ -174,6 +174,9 @@ export interface Snapshot<B extends Bindings> {
  * A pointer bound to actions, built with {@link actions} (live),
  * {@link scripted}, or {@link recording}. Capture it with
  * `InputCapture.system(...)`, or group it with the keyboard in `Controls`.
+ *
+ * In a test, build one with {@link scripted} rather than writing the object
+ * by hand: a hand-written double must also implement `rebind` and `dispose`.
  */
 export interface Actions<B extends Bindings> extends System.Consumes<"snapshot"> {
   /** Returns the pointer state and starts a new press/release window. */

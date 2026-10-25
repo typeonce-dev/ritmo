@@ -117,9 +117,12 @@ const beauty = base * repeat ** n                              // reported
 
 // instead
 import { Ops } from "@typeonce/ritmo"
-const turn = Ops.atan2(Ops.sin(b - a), Ops.cos(b - a))
+import { Angle } from "@typeonce/ritmo-math"
+const turn = Angle.wrap(b - a)       // the signed turn from a to b, exact
 const beauty = base * Ops.pow(repeat, n)
 ```
+
+Before porting a formula to `Ops`, look for the helper that names it: `Angle.wrap` and `Angle.turnToward` in [`@typeonce/ritmo-math`](https://github.com/typeonce-dev/ritmo/blob/main/packages/math/README.md) need no transcendental call at all.
 
 `Math.sqrt`, `abs`, `min`, `max`, `floor`, `ceil`, `round`, `trunc`, `sign`, `+ - * /`, and `x ** 2` are exact everywhere and are not reported (`Math.PI`, `Math["floor"]`, and `const { abs, PI } = Math` neither).
 

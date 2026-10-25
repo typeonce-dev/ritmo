@@ -47,4 +47,9 @@ describe("Desync.compare", () => {
     expect(compared.text).toContain("7 differences (mine -> theirs):")
     expect(compared.text).toContain("  e1 Game/Position.y: 2 -> 3")
   })
+
+  it("prints -0 with its sign, so a -0 / 0 difference does not read 0 -> 0", () => {
+    const theirs = save({ resources: { "Game/Score": [-0, 1] } })
+    expect(Desync.compare(save({}), theirs).text).toContain("resource Game/Score[0]: 0 -> -0")
+  })
 })

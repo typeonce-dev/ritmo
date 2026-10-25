@@ -27,6 +27,15 @@ describe("Netcode.rollback", () => {
     }
   })
 
+  it("reports in each advance the ticks its rollback ran again", () => {
+    const match = play({ mode: "rollback", latencyMS: 60, jitterMS: 40 })
+    for (const peer of match.peers) {
+      const reported = peer.results.reduce((sum, result) => sum + (result._tag === "Ran" ? result.again : 0), 0)
+      expect(peer.session.status().again).toBeGreaterThan(0)
+      expect(reported).toBe(peer.session.status().again)
+    }
+  })
+
   it("agrees over a lossy link: inputs are sent again until acknowledged", () => {
     const match = play({ mode: "rollback", latencyMS: 40, jitterMS: 60, loss: 0.2, seed: 11 })
     for (const peer of match.peers) {

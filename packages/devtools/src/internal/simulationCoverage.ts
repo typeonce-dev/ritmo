@@ -132,5 +132,6 @@ export const format = (coverage: Coverage): string =>
     : coverage.uncovered.map((file) =>
       `uncovered-simulation-module  ${file}\n`
       + `  The simulation loads this file, but the simulation rules in ${configName} do not cover it.\n`
-      + `  Add it to the simulation override's "files", or stop importing values from it.`
+      + `  Add it to the simulation override's "files", or stop importing values from it.\n`
+      + `  A host module (render, input glue) imported at the top of the lint entry is loaded too: import it inside lintTarget instead.`
     ).join("\n")

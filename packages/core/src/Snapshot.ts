@@ -104,7 +104,12 @@ export interface EntitySnapshot {
  * entity outside its scope. Version 2 saved a machine as its state's name
  * (`"Playing"`), where version 3 saves the state with its fields
  * (`{ _tag: "Playing", level: 2 }`). Older versions are rejected
- * (`UnsupportedVersion`).
+ * (`UnsupportedVersion`), before `Snapshot.migrations` run.
+ *
+ * A version 2 save from a game with no machines is a version 3 save with
+ * the old number: set `version: 3` before `restore`. A game with machines
+ * also rewrites each machine name to `{ _tag: name }`, adding the fields of
+ * states that have them.
  */
 export const version = 3
 
@@ -120,7 +125,12 @@ export interface WorldSnapshot {
   /** The next id the runtime will allocate. */
   readonly nextEntity: number
   readonly entities: ReadonlyArray<EntitySnapshot>
-  /** Per relation name: `[target, sources in order]` pairs. */
+  /**
+   * Per relation name: `[target, sources]` pairs, sorted by target id
+   * whatever order the targets were related in, so the same world always
+   * writes the same save. Each target's sources keep the order they were
+   * related in (a hierarchy's child order).
+   */
   readonly relations: Readonly<Record<string, ReadonlyArray<readonly [number, ReadonlyArray<number>]>>>
   /** Resource values by descriptor name. */
   readonly resources: Readonly<Record<string, unknown>>

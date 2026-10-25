@@ -4,7 +4,9 @@
  * The walk does not depend on how the data was built: object keys are
  * hashed in sorted order, so `{ x, y }` and `{ y, x }` hash the same, while
  * array, `Map`, and `Set` order counts. Every value is tagged with its type,
- * so `"1"` and `1` differ, and `-0` differs from `0`.
+ * so `"1"` and `1` differ. `-0` hashes as `0`, as a save does: JSON writes
+ * `-0` as `0`, so a world read back from a save or a replay file must hash
+ * the same as the one that wrote it.
  *
  * The hash is two 32-bit lanes (cyrb53's mixing), printed as 16 hex digits:
  * a fingerprint for spotting worlds that differ, not a cryptographic hash.
@@ -29,7 +31,7 @@ const walk = (lanes: Lanes, value: unknown): void => {
     case "boolean":
       return feed(lanes, value ? "t" : "f")
     case "number":
-      return feed(lanes, `d${Object.is(value, -0) ? "-0" : String(value)};`)
+      return feed(lanes, `d${String(value)};`)
     case "bigint":
       return feed(lanes, `b${String(value)};`)
     case "string":

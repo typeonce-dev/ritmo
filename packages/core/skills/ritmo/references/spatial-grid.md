@@ -7,6 +7,12 @@ When many bodies test each other every step (separation, pickups, hits, sensing)
 - The grid returns candidates; the exact test (`Collide2.overlapsCircleCircle`, `Box2.overlapsCircle`) decides.
 
 ```ts
+/** For authored constants: a failure here is a typo, so it throws with the error. */
+const made = <A, E>(result: Result.Result<A, E>): A => {
+  if (!result.ok) throw new Error(`authored value rejected: ${JSON.stringify(result.error)}`)
+  return result.value
+}
+
 const Separate = Game.System("Game/Separate", {
   local: () => ({ grid: made(SpatialGrid.make(32)), bodies: new Array<Vec2.Vec2>() }),
   queries: { bodies: Game.Query({ selection: { position: Game.Query.write(Position), body: Game.Query.read(Body) } }) }
@@ -26,6 +32,6 @@ const Separate = Game.System("Game/Separate", {
 })
 ```
 
-`made` throws on a `Result` failure: the cell size is an authored constant, so a failure is a typo.
+`made` (above) throws on a `Result` failure: the cell size is an authored constant, so a failure is a typo. Use it only for constants; a value that comes from a save or content stays a `Result` the game handles.
 
 **Check:** a headless test compares `forEachIn` with a brute-force pass over all bodies on a seeded random world, and checks that a rebuild after `clear` forgets the previous step.
