@@ -24,7 +24,7 @@
  * Immutable arithmetic, measurement, and steering helpers.
  */
 
-import * as Ops from "./Ops.ts"
+import * as Ops from "@typeonce/ritmo/Ops"
 
 /**
  * A two-dimensional vector in world units.

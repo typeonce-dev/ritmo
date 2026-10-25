@@ -6,7 +6,6 @@
     "@typeonce/ritmo": "workspace:*",
     "@typeonce/ritmo-browser": "workspace:*",
     "@typeonce/ritmo-devtools": "workspace:*",
-    "@typeonce/ritmo-math": "workspace:*",
     "@typeonce/ritmo-netcode": "workspace:*"
   },
   "devDependencies": {

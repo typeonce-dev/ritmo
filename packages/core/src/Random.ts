@@ -33,11 +33,11 @@
  * @categoryDescription Resource
  * Keeping the state in a world resource.
  */
-import type * as Brand from "@typeonce/ritmo/Brand"
-import type { WriteCell } from "@typeonce/ritmo/Query"
-import type { StandardSchema } from "@typeonce/ritmo/Descriptor"
-import * as Result from "@typeonce/ritmo/Result"
-import { codecOf } from "./internal/codec.ts"
+import type * as Brand from "./Brand.ts"
+import type { StandardSchema } from "./Descriptor.ts"
+import { standard } from "./internal/schema.ts"
+import type { WriteCell } from "./Query.ts"
+import * as Result from "./Result.ts"
 
 /**
  * A generator. Every draw advances `state`.
@@ -184,9 +184,8 @@ export const is = (raw: unknown): raw is State => isState(raw)
  *
  * @category Resource
  */
-export const codec: StandardSchema<number, State> = codecOf<number, State>(
-  (raw) => isState(raw) ? Result.success(raw) : Result.failure({ _tag: "InvalidRandomState", value: raw }),
-  "a generator state: an unsigned 32-bit integer"
+export const codec: StandardSchema<number, State> = standard<State>(
+  (raw) => isState(raw) ? Result.success(raw) : Result.failure("Expected a generator state: an unsigned 32-bit integer")
 )
 
 /**

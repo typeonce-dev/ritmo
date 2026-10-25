@@ -31,7 +31,7 @@
  * Making a flow field.
  */
 import { type Box2, overlapsCircle } from "./Box2.ts"
-import * as Ops from "./Ops.ts"
+import * as Ops from "@typeonce/ritmo/Ops"
 import type * as Scalar from "./Scalar.ts"
 import type { Vec2 } from "./Vec2.ts"
 

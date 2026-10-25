@@ -12,9 +12,8 @@
  * the tick being run, filled by a `Netcode` session (confirmed input, or a
  * guess) or, for the reference runtime, by the test.
  */
-import { Clock, Descriptor, Entity, Schema } from "@typeonce/ritmo"
+import { Clock, Descriptor, Entity, Random, Schema } from "@typeonce/ritmo"
 import { InputCapture } from "@typeonce/ritmo-browser"
-import { Random } from "@typeonce/ritmo-math"
 import { Netcode } from "@typeonce/ritmo-netcode"
 
 import { guard, integer, nullable, struct, tuple } from "./codecs.ts"

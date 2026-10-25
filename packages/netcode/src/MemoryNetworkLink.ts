@@ -21,9 +21,8 @@
  * const [left, right] = links.value
  * ```
  */
-import type { HostClock } from "@typeonce/ritmo"
+import { type HostClock, Random } from "@typeonce/ritmo"
 import * as Result from "@typeonce/ritmo/Result"
-import { Random } from "@typeonce/ritmo-math"
 
 import * as NetworkLink from "./NetworkLink.ts"
 

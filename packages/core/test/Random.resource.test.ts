@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import { Descriptor, Result, Schema } from "@typeonce/ritmo"
-import { Random } from "@typeonce/ritmo-math"
-import { worldOf } from "../../core/test/saved.ts"
+import { Descriptor, Random, Result, Schema } from "@typeonce/ritmo"
+import { worldOf } from "./saved.ts"
 
 const Rng = Descriptor.ConstructedResource(Random.codec)("RandomResource/Rng")
 const Game = Schema.bind(Schema.fragment({ resources: { Rng } }))
@@ -41,5 +40,15 @@ describe("Random as a resource", () => {
     expect(runtime.restore(saved).ok).toBe(true)
     expect(runtime.restore({ ...saved, resources: { "RandomResource/Rng": -1 } }).ok).toBe(false)
     expect(Random.seed(-1)).toBe(0xffffffff)
+  })
+
+  it("validates untrusted input of any shape through the codec and the guard", () => {
+    const validate = (raw: unknown) => Random.codec["~standard"].validate(raw)
+    expect(validate(7)).toEqual({ value: 7 })
+    for (const raw of [2 ** 32, -1, 1.5, "1", null]) {
+      expect(Random.is(raw)).toBe(false)
+      expect(validate(raw)).toEqual({ issues: [{ message: "Expected a generator state: an unsigned 32-bit integer" }] })
+    }
+    expect(Random.result(-1)).toEqual(Result.failure({ _tag: "InvalidRandomState", value: -1 }))
   })
 })

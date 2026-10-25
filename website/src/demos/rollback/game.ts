@@ -3,11 +3,10 @@
 // links with the latency picked in the corner. You play seat 0; a bot plays
 // seat 1. Both views run the same match: when your input reaches the other
 // peer late, it rolls back and runs the ticks again, and the HUD counts it.
-import type { HostClock } from "@typeonce/ritmo"
+import { type HostClock, Random } from "@typeonce/ritmo"
 import * as FixedLoop from "@typeonce/ritmo/FixedLoop"
 import * as Result from "@typeonce/ritmo/Result"
 import { BrowserHostClock, BrowserTickSource, Keyboard } from "@typeonce/ritmo-browser"
-import { Random } from "@typeonce/ritmo-math"
 import { MemoryNetworkLink, Netcode } from "@typeonce/ritmo-netcode"
 import { arena, draw, Game, idle, makeRuntime, Player, playerInput, Position, setup, simulate, step } from "@typeonce/ritmo-integration-netcode/game.ts"
 import type { PlayerInput, Screen } from "@typeonce/ritmo-integration-netcode/game.ts"

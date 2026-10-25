@@ -72,7 +72,6 @@
   },
   "dependencies": {
     "@typeonce/ritmo": "workspace:^",
-    "@typeonce/ritmo-math": "workspace:^",
     "@typeonce/ritmo-netcode": "workspace:^"
   },
   "peerDependencies": {

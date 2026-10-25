@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { Descriptor, HostClock, Schema } from "@typeonce/ritmo"
 import { Controls, Gamepad, InputCapture, Keyboard, Pointer, Touch } from "@typeonce/ritmo-browser"
-import * as Random from "@typeonce/ritmo-math/Random"
+import * as Random from "@typeonce/ritmo/Random"
 
 const idle = { held: false, pressed: false, released: false }
 const keyBindings = { jump: [" "], pause: ["Escape"] } as const

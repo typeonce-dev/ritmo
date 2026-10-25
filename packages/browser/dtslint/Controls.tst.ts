@@ -1,7 +1,7 @@
 import { Descriptor, Schema } from "@typeonce/ritmo"
 import type { Descriptor as DescriptorOf } from "@typeonce/ritmo/Descriptor"
 import { Controls, Gamepad, InputCapture, Keyboard, Pointer, Touch } from "@typeonce/ritmo-browser"
-import * as Random from "@typeonce/ritmo-math/Random"
+import * as Random from "@typeonce/ritmo/Random"
 import { describe, expect, it } from "tstyche"
 
 declare const host: Keyboard.KeyboardHost & Gamepad.GamepadHost

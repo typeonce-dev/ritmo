@@ -7,8 +7,8 @@
  * their results into a checked sum so the work cannot be optimized away.
  */
 import type { BenchCase } from "../../core/bench/harness.ts"
-import { Descriptor, Schema } from "@typeonce/ritmo"
-import { Aabb, Box2, Collide2, FlowField, InputAxis, Ops, Random, Scalar, Segment2, SpatialGrid, Vec2, Vector2 } from "@typeonce/ritmo-math"
+import { Random } from "@typeonce/ritmo"
+import { Aabb, Box2, Collide2, FlowField, InputAxis, Scalar, Segment2, SpatialGrid, Vec2, Vector2 } from "@typeonce/ritmo-math"
 
 const N = 10_000
 
@@ -238,61 +238,8 @@ const moveCircleSegments: BenchCase = {
   }
 }
 
-const randomNext: BenchCase = {
-  name: "math/random-next-100k",
-  description: "Draw 100,000 random numbers",
-  setup: () => {
-    const random = Random.make(1)
-    return {
-      run: () => {
-        let total = 0
-        for (let draw = 0; draw < 100_000; draw++) total += random.next()
-        check(total)
-      }
-    }
-  }
-}
 
-const randomDraw: BenchCase = {
-  name: "math/random-draw-resource-100k",
-  description: "Draw 100,000 random numbers from a resource in one system",
-  setup: () => {
-    const Rng = Descriptor.ConstructedResource(Random.codec)("Bench/Rng")
-    const Game = Schema.bind(Schema.fragment({ resources: { Rng } }))
-    const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Rng: Random.seed(1) } })
-    if (!made.ok) throw new Error("bench runtime")
-    const runtime = made.value
-    const schedule = Game.Schedule(Game.System("Bench/Draw", { resources: { rng: Game.System.writeResource(Rng) } }, ({ resources }) => {
-      const random = Random.draw(resources.rng)
-      let total = 0
-      for (let draw = 0; draw < 100_000; draw++) total += random.next()
-      check(total)
-    }))
-    return { run: () => { runtime.tick(schedule) } }
-  }
-}
 
-const opsSteer: BenchCase = {
-  name: "math/ops-steer-10k",
-  description: "Aim 10k bodies with Ops.atan2, step along the heading with Ops.cos/sin, and measure with Vec2.length",
-  setup: () => {
-    const positions = vectors(N)
-    const targets = vectors(N).reverse()
-    return {
-      run: () => {
-        let total = 0
-        for (let index = 0; index < N; index++) {
-          const position = positions[index]!
-          const target = targets[index]!
-          const heading = Ops.atan2(target.y - position.y, target.x - position.x)
-          const next = { x: position.x + Ops.cos(heading) * 2.5, y: position.y + Ops.sin(heading) * 2.5 }
-          total += Vec2.length(next) * Ops.exp(-0.1)
-        }
-        check(total)
-      }
-    }
-  }
-}
 
 export const cases: ReadonlyArray<BenchCase> = [
   vectorOps,
@@ -304,8 +251,5 @@ export const cases: ReadonlyArray<BenchCase> = [
   flowFieldSearch,
   flowFieldWay,
   moveCircle,
-  moveCircleSegments,
-  randomNext,
-  randomDraw,
-  opsSteer
+  moveCircleSegments
 ]

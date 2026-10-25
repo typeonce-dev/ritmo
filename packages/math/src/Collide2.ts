@@ -31,7 +31,7 @@
  * Moving a circle through walls with sliding.
  */
 import type { Box2 } from "./Box2.ts"
-import * as Ops from "./Ops.ts"
+import * as Ops from "@typeonce/ritmo/Ops"
 import type { Segment2 } from "./Segment2.ts"
 import type { Vec2 } from "./Vec2.ts"
 

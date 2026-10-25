@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { Result } from "@typeonce/ritmo"
-import { Aabb, InputAxis, Random, Scalar, Size2, Vector2 } from "@typeonce/ritmo-math"
+import { Aabb, InputAxis, Scalar, Size2, Vector2 } from "@typeonce/ritmo-math"
 
 describe("helpers", () => {
   it("matches explicit success and failure branches", () => {
@@ -184,6 +184,5 @@ describe("helpers", () => {
     expect(Aabb.is({ position: null, size: { width: 1, height: 1 } })).toBe(false)
     expect(Size2.is({ width: 1 })).toBe(false)
     expect(validate(Scalar.Positive.codec, 0)).toEqual({ issues: [{ message: "Expected a finite number above 0" }] })
-    expect(validate(Random.codec, 2 ** 32)).toEqual({ issues: [{ message: "Expected a generator state: an unsigned 32-bit integer" }] })
   })
 })

@@ -99,10 +99,10 @@ writeFileSync(path.join(consumer, "tsconfig.json"), JSON.stringify({
 }, null, 2))
 
 const program = `
-import { Clock, Descriptor, FixedLoop, HostClock, Schema } from "@typeonce/ritmo"
+import { Clock, Descriptor, FixedLoop, HostClock, Ops, Random, Schema } from "@typeonce/ritmo"
 import * as Result from "@typeonce/ritmo/Result"
 import * as Vector2 from "@typeonce/ritmo-math/Vector2"
-import { Collide2, FlowField, Ops, Random, Scalar, Segment2, SpatialGrid } from "@typeonce/ritmo-math"
+import { Collide2, FlowField, Scalar, Segment2, SpatialGrid } from "@typeonce/ritmo-math"
 import { BrowserHostClock, BrowserTickSource, Controls, Keyboard } from "@typeonce/ritmo-browser"
 import * as Browser from "@typeonce/ritmo-browser"
 import { NodeRegistry } from "@typeonce/ritmo-render"

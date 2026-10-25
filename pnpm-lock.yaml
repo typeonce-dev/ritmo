@@ -101,9 +101,6 @@ importers:
       '@typeonce/ritmo-devtools':
         specifier: workspace:*
         version: link:../../packages/devtools
-      '@typeonce/ritmo-math':
-        specifier: workspace:*
-        version: link:../../packages/math
       '@typeonce/ritmo-netcode':
         specifier: workspace:*
         version: link:../../packages/netcode
@@ -147,9 +144,6 @@ importers:
       '@typeonce/ritmo':
         specifier: workspace:^
         version: link:../core
-      '@typeonce/ritmo-math':
-        specifier: workspace:^
-        version: link:../math
       '@typeonce/ritmo-netcode':
         specifier: workspace:^
         version: link:../netcode
@@ -172,9 +166,6 @@ importers:
       '@typeonce/ritmo':
         specifier: workspace:^
         version: link:../core
-      '@typeonce/ritmo-math':
-        specifier: workspace:^
-        version: link:../math
     devDependencies:
       '@typeonce/ritmo-browser':
         specifier: workspace:*

@@ -2,7 +2,7 @@ import { codecOf } from "./codec.ts"
 import * as Result from "@typeonce/ritmo/Result"
 import * as Scalar from "../Scalar.ts"
 import type * as Vector2 from "../Vector2.ts"
-import * as Ops from "../Ops.ts"
+import * as Ops from "@typeonce/ritmo/Ops"
 
 const make = (x: Scalar.Finite, y: Scalar.Finite): Vector2.Vector2 => ({ x, y }) as Vector2.Vector2
 

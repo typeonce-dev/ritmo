@@ -65,8 +65,7 @@
     "check": "tsc -b tsconfig.json --pretty false"
   },
   "dependencies": {
-    "@typeonce/ritmo": "workspace:^",
-    "@typeonce/ritmo-math": "workspace:^"
+    "@typeonce/ritmo": "workspace:^"
   },
   "engines": {
     "node": ">=20"

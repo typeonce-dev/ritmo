@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import { Random, Scalar, SpatialGrid } from "@typeonce/ritmo-math"
+import { Random } from "@typeonce/ritmo"
+import { Scalar, SpatialGrid } from "@typeonce/ritmo-math"
 
 const cellSize = (value: number): Scalar.Positive => {
   const size = Scalar.Positive.result(value)

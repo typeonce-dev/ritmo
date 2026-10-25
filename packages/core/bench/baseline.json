@@ -149,17 +149,17 @@
         "medianMs": 5.78,
         "score": 1.836
       },
-      "math/random-next-100k": {
+      "random/next-100k": {
         "minMs": 0.7917,
         "medianMs": 0.8074,
         "score": 0.2672
       },
-      "math/random-draw-resource-100k": {
+      "random/draw-resource-100k": {
         "minMs": 3.5241,
         "medianMs": 4.045,
         "score": 1.1876
       },
-      "math/ops-steer-10k": {
+      "ops/steer-10k": {
         "minMs": 0.8757,
         "medianMs": 0.8948,
         "score": 0.2955

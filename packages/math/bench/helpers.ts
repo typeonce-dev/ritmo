@@ -7,7 +7,8 @@
  * every step: rebuild and query a spatial grid over 1,000 bodies, follow a
  * flow field, move bodies through walls, and draw random numbers.
  */
-import { Box2, Collide2, FlowField, Random, Scalar, SpatialGrid } from "@typeonce/ritmo-math"
+import { Random } from "@typeonce/ritmo"
+import { Box2, Collide2, FlowField, Scalar, SpatialGrid } from "@typeonce/ritmo-math"
 
 const positive = (value: number): Scalar.Positive => {
   const checked = Scalar.Positive.result(value)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { Ops } from "@typeonce/ritmo-math"
+import { Ops } from "@typeonce/ritmo"
 
 // Inputs come from integer draws assembled into doubles bit by bit, never from
 // the engine's own Math functions, so every platform feeds the same numbers.

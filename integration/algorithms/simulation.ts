@@ -9,7 +9,8 @@
  * - Shots sweep against the walls and the chasers, so a fast shot hits the
  *   first thing on its path instead of skipping past it.
  */
-import { Collide2, FlowField, Random, Scalar, SpatialGrid, Vec2 } from "@typeonce/ritmo-math"
+import { Random } from "@typeonce/ritmo"
+import { Collide2, FlowField, Scalar, SpatialGrid, Vec2 } from "@typeonce/ritmo-math"
 import { Body, Chaser, Frame, Game, Hits, Player, Position, Rng, Shot, Walls } from "./schema.ts"
 
 const positive = (value: number): Scalar.Positive => {
