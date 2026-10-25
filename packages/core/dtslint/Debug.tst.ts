@@ -1,4 +1,6 @@
-import { Debug, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
+import { Debug, Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
+import type * as Runtime from "@typeonce/ritmo/Runtime"
+import type * as System from "@typeonce/ritmo/System"
 import { describe, expect, it } from "tstyche"
 import * as Codecs from "../test/codecs.ts"
 
@@ -85,3 +87,23 @@ describe("Debug.serviceLints", () => {
   })
 })
 
+
+describe("debug.beginFrame", () => {
+  it("returns a cursor typed with the schedule's failures, or why the frame did not begin", () => {
+    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.standard } }).value
+    const Fail = Game.System("DebugTypes/Fail", {}, () => Result.failure("Broken" as const))
+    const begun = debugged.debug.beginFrame(Game.Schedule(Fail))
+    expect(begun).type.toBe<Result.Result<Debug.FrameCursor<System.SystemFailure<"DebugTypes/Fail", "Broken">>, Runtime.MissingRuntimeRequirements | Runtime.TickOrderViolation>>()
+    if (begun.ok) {
+      expect(begun.value.next()).type.toBe<Result.Result<Debug.StepOutcome, System.SystemFailure<"DebugTypes/Fail", "Broken">>>()
+      expect(begun.value.remaining()).type.toBe<ReadonlyArray<Debug.StepDescription>>()
+    }
+  })
+
+  it("rejects a schedule of another schema", () => {
+    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.standard } }).value
+    const foreign = OtherGame.Schedule(OtherGame.System("DebugTypes/ForeignStep", {}, () => {}))
+    expect(debugged.debug.beginFrame).type.not.toBeCallableWith(foreign)
+    expect(debugged.debug.beginFrame).type.toBeCallableWith(Game.Schedule(Game.System("DebugTypes/OwnStep", {}, () => {})))
+  })
+})
