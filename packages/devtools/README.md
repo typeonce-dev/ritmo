@@ -316,8 +316,60 @@ Replay.verify(make, file.value)           // replays twice: nondeterminism shows
 Replay.extract(make, file.value, { from: 1400, to: 1412 }) // a small replay for a test
 ```
 
+`Replay.session(make, file, { invariants })` checks invariants after every
+replayed tick, so `play()` stops where one breaks, as a `Session` run does.
+
 A replay recorded with another schema fails with "replay recorded with an
 older schema".
+
+## Fuzzing
+
+`Fuzz.run` finds a bug before anyone plays into it: seeded random input,
+run headless against the game's invariants, until an invariant breaks, a
+system fails, or something throws. It then shrinks the failing input to the
+few frames that still fail the same way, and returns them as a replay file.
+
+```ts
+import { Fuzz, Replay } from "@typeonce/ritmo-devtools"
+import * as ReplayNodeSink from "@typeonce/ritmo-devtools/ReplayNodeSink"
+
+// One fuzzed snapshot() source: a value of its type for each frame, and the idle value.
+const Pads = Fuzz.input(PadInput, {
+  generate: (random, frame) => ({ key: random.integer(0, 5), aim: random.range(-1, 1) }),
+  neutral: { key: 0, aim: 0 }
+})
+// `make` is the replay factory (above): it builds the game on playback.source(PadInput).
+const found = Fuzz.run(make, {
+  schedule: "update", setup: "setup",       // setup is ticked once first, every input neutral
+  inputs: [Pads], invariants: [HealthNeverNegative],
+  frames: 3000, runs: 10, seed: 7           // run i draws from seed 7 + i
+})
+if (!found.ok && found.error._tag === "Found") {
+  ReplayNodeSink.make({ directory: ".replays" }).save(found.error.replay)
+  console.log(found.error.violation)       // InvariantViolated | SystemFailed | Defect
+  console.log(found.error.shrink)          // { attempts, steps, fromFrames: 1412, toFrames: 4 }
+}
+```
+
+- `random` is a seeded `Random` from `@typeonce/ritmo-math`; the same seed
+  draws the same input, so a found bug's `seed` with `runs: 1` finds it
+  again. Every source `make` asks `playback.source` for must be a fuzzed
+  input; give plain-data services (rules, config) directly.
+- Shrinking drops ranges of frames, then moves each remaining value to
+  `neutral` (whole, then one field at a time), re-running the simulation for
+  every candidate. `shrinkAttempts` (500) bounds it.
+- The error side is `Found` (with the shrunk `replay`, `seed`, `frame`, and
+  `reproduces`: whether `Replay.session` replays it to the same violation),
+  `Flaky` (the same input did not fail again: run `Determinism.check`),
+  `InvalidOptions`, or `Unreplayable` (the world after setup cannot be saved).
+
+The shrunk replay is the regression test:
+
+```ts
+const file = Replay.parse(JSON.parse(readFileSync(".replays/....json", "utf8")))
+const opened = file.ok ? Replay.session(make, file.value, { invariants: [HealthNeverNegative] }) : file
+expect(opened.ok && opened.value.play().data.run.stop.reason).toBe("completed") // fails until the fix
+```
 
 ## Recording a browser session
 
