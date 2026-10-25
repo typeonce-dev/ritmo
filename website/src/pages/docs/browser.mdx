@@ -1,21 +1,25 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Loop, input, rendering
-description: Put a Ritmo world on a page, with a fixed-step loop, keyboard and gamepad, and a renderer.
+description: Put a Ritmo world on a page with a fixed-step loop, every input device, and any renderer, while the rules stay headless.
 ---
 
 import Game from "../../components/Game.astro"
 
-The simulation never touches the page. The page is a **host**: it runs the
-loop, reads input, and draws. After this page you can put the world from
-[Getting started](/docs/) in a browser, with a fixed-step loop, keyboard and
-gamepad controls, and a renderer.
+The game below has two parts: the rules, which run unchanged in Node
+tests, and a host that runs the loop, reads input, and draws. This page
+writes the host.
 
 <Game id="top-down" />
 
 Walk with the arrows, WASD, or a gamepad stick, and press E or space near a
-part to pick it up. The rules are the headless
-systems from `integration/top-down`; only this host is new.
+part to pick it up. The rules are the headless systems from
+`integration/top-down`. Swap the keyboard for a script and the same rules
+run in a test, frame for frame.
+
+After this page you can put the world from [Getting started](/docs/) in a
+browser, with a fixed-step loop, keyboard and gamepad controls, and a
+renderer.
 
 ## The loop
 

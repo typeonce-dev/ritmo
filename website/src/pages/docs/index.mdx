@@ -1,13 +1,18 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Getting started
-description: Install Ritmo, describe a world, spawn an entity, and watch it move over sixty ticks.
+description: Install Ritmo, describe a world, and run sixty ticks in Node, in five short steps. Then pick what to build next.
 ---
-By the end of this page you have a world, an entity that moves, and a loop
-that runs it for one second of game time. The same code runs in a test, in
-Node, and on a page.
 
-Hover any name in the code to see its type.
+Five short steps take you from an empty folder to a world that ticks
+sixty times in Node and prints where its entity ended up:
+
+```text title="node main.ts"
+[ { x: 30, y: 0 } ]
+```
+
+The same code runs in a test, in a script, and on a page. Hover any name
+in the code to see its type.
 
 ## Install
 
@@ -15,23 +20,9 @@ Hover any name in the code to see its type.
 pnpm add @typeonce/ritmo
 ```
 
-Ritmo needs TypeScript 5.9 or newer with `strict` on. The add-ons are
-released with the same version, and you install them when the game needs
-them:
-
-| Package | What it gives you |
-|---|---|
-| `@typeonce/ritmo` | The runtime, the fixed step, seeded `Random`, and `Ops` math that returns the same bits everywhere |
-| `@typeonce/ritmo-math` | 2D helpers on plain data: vectors, angles, swept circles, a flow field |
-| `@typeonce/ritmo-browser` | The browser loop, keyboard, gamepad, pointer, and touch input |
-| `@typeonce/ritmo-render` | One renderer node per entity, kept in sync |
-| `@typeonce/ritmo-pixi` | The Pixi adapter for `ritmo-render` |
-| `@typeonce/ritmo-netcode` | [Online multiplayer](/features/rollback/) with rollback or lockstep |
-| `@typeonce/ritmo-devtools` | Headless sessions, the fuzzer, determinism checks, `ritmo-devtools lint` |
-| `@typeonce/oxlint-plugin-ritmo` | Lint rules that keep game logic deterministic and headless |
-
-Working with a coding agent? [Set the project up with
-it](/docs/with-an-agent/) instead: it installs the checks too.
+Ritmo needs TypeScript 5.9 or newer with `strict` on. Working with a coding
+agent? [Set the project up with it](/docs/with-an-agent/) instead: it
+installs the checks too.
 
 ## Describe the world
 
@@ -214,19 +205,40 @@ console.log(runtime.inspect(Positions))
 ```
 
 Thirty units per second for sixty steps of 1/60 s: the entity is at 30, on
-every machine, every run.
+every machine, every run. That is what makes [replays, tests, and online
+play](/features/determinism/) hold.
 
-## Where to go next
+## What you can build next
 
-That is a whole game loop with no page in it. From here:
+That is a whole game loop with no page in it. Each of these starts from
+the world you just wrote:
 
-- **[Loop, input, rendering](/docs/browser/)**: put this world on a page,
-  with a keyboard, a gamepad, and a renderer.
-- **[Concepts](/docs/concepts/)**: queries, events, commands, and state
-  machines, in order.
-- **[Bugs found before players](/features/bugs/)**: a fuzzer plays the game
-  and hands you each failure as a replay that is already a test.
-- **[Same game everywhere](/features/determinism/)**: why that 30 is the
-  same bits in every browser and on every CPU.
-- **[Online multiplayer](/features/rollback/)**: the same schedule, ticked by
+- **[Play it online](/features/rollback/)**: the same schedule, ticked by
   two peers over WebRTC, with rollback when inputs arrive late.
+- **[Let a fuzzer find the bugs](/features/bugs/)**: it plays the game and
+  hands you each failure as a replay that is already a test.
+- **[Ask why a value changed](/docs/devtools/)**: run the game headless and
+  read which system wrote it, frame by frame.
+- **[Put it on a page](/docs/browser/)**: a fixed-step loop, keyboard,
+  gamepad, and a renderer.
+- **[Give it every controller](/features/devices/)**: keyboard, gamepad,
+  mouse, and touch as one player, or [two on one
+  screen](/features/multiplayer/).
+
+To understand the pieces first, read [Concepts](/docs/concepts/) in order.
+
+## Add-ons
+
+Every package is released with the same version. Install one when the game
+needs it:
+
+| Package | What it gives you |
+|---|---|
+| `@typeonce/ritmo` | The runtime, the fixed step, seeded `Random`, and `Ops` math that returns the same bits everywhere |
+| `@typeonce/ritmo-math` | 2D helpers on plain data: vectors, angles, swept circles, a flow field |
+| `@typeonce/ritmo-browser` | The browser loop, keyboard, gamepad, pointer, and touch input |
+| `@typeonce/ritmo-render` | One renderer node per entity, kept in sync |
+| `@typeonce/ritmo-pixi` | The Pixi adapter for `ritmo-render` |
+| `@typeonce/ritmo-netcode` | [Online multiplayer](/features/rollback/) with rollback or lockstep |
+| `@typeonce/ritmo-devtools` | Headless sessions, the fuzzer, determinism checks, `ritmo-devtools lint` |
+| `@typeonce/oxlint-plugin-ritmo` | Lint rules that keep game logic deterministic and headless |
