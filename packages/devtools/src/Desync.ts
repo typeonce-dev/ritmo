@@ -8,6 +8,8 @@
  * difference, entities by id (and label, given `labels`) and values by path, so an agent can see which
  * component or resource went apart first, then find the system that wrote
  * it with a `Session`'s `why` on a headless rerun.
+ * The same goes for the two saves a `Netcode.syncTest`'s `RewindDiffers`
+ * carries (`keepSnapshots: true`): the first run's and the one after a rewind.
  *
  * @module Desync
  * @docGroup devtools

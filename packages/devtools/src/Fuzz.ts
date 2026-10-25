@@ -19,6 +19,15 @@
  * config) directly. Use `Determinism.check` to check that the same input
  * repeats; use `Session` to explain a failure by hand.
  *
+ * With `network`, the same `run` fuzzes a rollback game over a faulty
+ * network: every seat of a `seats` input is its own peer, a fresh runtime
+ * from `make`, joined to the others by a seeded `MemoryNetworkLink`
+ * (latency, jitter, loss) and driven by a `Netcode.rollback` session. A
+ * desync, or any other session failure, is a `SessionFailed` violation, and
+ * shrinking shrinks the input timeline with the network seed fixed. Run
+ * `Netcode.syncTest` first: it finds state a rewind cannot put back on one
+ * peer, faster.
+ *
  * @module Fuzz
  * @docGroup devtools
  *
@@ -41,7 +50,12 @@ import * as Result from "@typeonce/ritmo/Result"
 import type { AnyScheduleOrder, ExecutableScheduleDefinition, Source } from "@typeonce/ritmo/Schedule"
 import type { Schema } from "@typeonce/ritmo/Schema"
 import type * as Snapshot from "@typeonce/ritmo/Snapshot"
+import type * as Checkpoint from "@typeonce/ritmo/Checkpoint"
+import type * as CoreDescriptor from "@typeonce/ritmo/Descriptor"
 import * as Random from "@typeonce/ritmo-math/Random"
+import type * as Netcode from "@typeonce/ritmo-netcode/Netcode"
+
+import * as FuzzNetwork from "./internal/fuzzNetwork.ts"
 
 import type { Invariant } from "./Invariant.ts"
 import * as Rendered from "./Rendered.ts"
@@ -77,6 +91,70 @@ export const input = <const Name extends string, Value extends Source<unknown>>(
   }
 ): Input<Name, Replay.SourceData<Value>> => ({ name: descriptor.name, generate: options.generate, neutral: options.neutral })
 
+/**
+ * Every seat's input of a networked game, made with {@link seats}: per
+ * frame, one value per seat. Alone it fuzzes the seats source like any
+ * `input`; with `run`'s `network`, each seat's value is that peer's local
+ * input.
+ */
+export interface Seats<Name extends string = string, Data = unknown> extends Input<Name, ReadonlyArray<Data>> {
+  /** The schema remote input is decoded with, as given to `Netcode.seats`. */
+  readonly codec: CoreDescriptor.Codec<any, any>
+  /** How many seats: over a network, how many peers. */
+  readonly count: number
+  /** The input of a seat that pressed nothing, as given to `Netcode.seats`. */
+  readonly idle: Data
+}
+
+/**
+ * Declares how to fuzz the seats of a networked game: the
+ * `Netcode.Source` service its simulation captures, the input `codec` and
+ * `idle` input the game gives `Netcode.seats`, `count` seats, and
+ * `generate` for one seat's input on a frame. Pass it as the only input of a
+ * `run` with `network`; `make` provides the service with
+ * `playback.source(descriptor)` (over a network, that is the peer's
+ * `seats.source`). Use `input` for a game without seats.
+ */
+export const seats = <const Name extends string, const C extends CoreDescriptor.Codec<any, any>>(
+  descriptor: Descriptor<"service", Name, Netcode.Source<CoreDescriptor.CodecType<C>>>,
+  options: {
+    readonly codec: C & CoreDescriptor.CheckedCodec<C>
+    readonly count: number
+    readonly generate: (random: Random.Random, frame: number, seat: number) => NoInfer<CoreDescriptor.CodecType<C>>
+    readonly idle: NoInfer<CoreDescriptor.CodecType<C>>
+  }
+): Seats<Name, CoreDescriptor.CodecType<C>> => ({
+  name: descriptor.name,
+  codec: options.codec,
+  count: options.count,
+  idle: options.idle,
+  neutral: Array.from({ length: options.count }, () => options.idle),
+  generate: (random, frame) => Array.from({ length: options.count }, (_, seat) => options.generate(random, frame, seat))
+})
+
+/**
+ * How `run` joins the peers when it fuzzes over a network: the seeded link
+ * faults (`MemoryNetworkLink.make`'s), kept fixed while shrinking, and the
+ * `Netcode.rollback` options every peer's session takes.
+ */
+export interface Network {
+  /** The link's seed: drops and delays repeat for the same seed. */
+  readonly seed: number
+  readonly latencyMS: number
+  /** Up to this much extra delay per message (0 by default). */
+  readonly jitterMS?: number
+  /** The share of messages dropped, from 0 to 1 (0 by default). */
+  readonly loss?: number
+  /** The simulation's fixed step: the test clock moves one step per frame. */
+  readonly step: Clock.Step
+  /** Idle frames played after the fuzzed ones, so late input and checksums arrive (120 by default). */
+  readonly settle?: number
+  readonly inputDelay?: number
+  readonly maxRollback?: number
+  /** Ticks between checksum comparisons (10 by default here, to find a desync close to its cause). */
+  readonly checksumEvery?: number
+}
+
 /** What `run` fuzzes, how long, and how hard it shrinks. */
 export interface Options<
   Name extends string,
@@ -107,6 +185,13 @@ export type Violation =
   | { readonly _tag: "SystemFailed"; readonly system: string; readonly error: unknown }
   /** A system threw, or `invariant` names the invariant whose check threw (a bug in the check). */
   | { readonly _tag: "Defect"; readonly invariant: string | undefined; readonly error: unknown }
+  /**
+   * Over a `network`: the session of `seat` failed. `Desynced` is a
+   * determinism bug (`Desync.compare` its `snapshot` with the other seat's:
+   * the sessions keep them); `TickFailed` and `CheckpointLost` stop a real
+   * session too.
+   */
+  | { readonly _tag: "SessionFailed"; readonly seat: number; readonly error: Netcode.SessionError<unknown> }
 
 /** A bug the fuzzer found: the error side of `run`. */
 export interface Found {
@@ -114,9 +199,13 @@ export interface Found {
   readonly violation: Violation
   /** The seed of the run that found it: `run` with this `seed` and `runs: 1` finds it again. */
   readonly seed: number
-  /** The frame the shrunk timeline fails at: its length. */
+  /** The frame the shrunk timeline fails at: its length, or later over a `network` (the frame a peer saw it). */
   readonly frame: number
-  /** The shrunk timeline as a replay; `Replay.session(make, replay, { invariants })` plays it to the violation. */
+  /**
+   * The shrunk timeline as a replay; `Replay.session(make, replay, { invariants })` plays it to the violation.
+   * Over a `network`, it plays every seat's input on one runtime: step it to see what each tick did,
+   * and find the failure again with `run` and the same seeds.
+   */
   readonly replay: Replay.ReplayFile
   /**
    * Whether the replay, opened with `Replay.session`, hits the violation
@@ -124,7 +213,10 @@ export interface Found {
    * (transient components): reproduce it with `seed` instead.
    */
   readonly reproduces: boolean
-  /** How shrinking went: simulations run, candidates kept, and the failing frame before and after. */
+  /**
+   * How shrinking went: simulations run, candidates kept, and the frames of input before and after
+   * (the failing frame, but over a `network`, where a desync shows a few frames after its cause).
+   */
   readonly shrink: { readonly attempts: number; readonly steps: number; readonly fromFrames: number; readonly toFrames: number }
 }
 
@@ -162,7 +254,7 @@ export interface Passed {
 type Timeline = ReadonlyArray<ReadonlyArray<unknown>>
 
 type Outcome =
-  | { readonly kind: "passed" }
+  | { readonly kind: "passed"; readonly file?: Replay.ReplayFile | undefined }
   | { readonly kind: "violated"; readonly violation: Violation; readonly frame: number; readonly file: Replay.ReplayFile | undefined }
   | { readonly kind: "invalid"; readonly error: InvalidOptions | Unreplayable }
 
@@ -170,10 +262,12 @@ type Outcome =
 const signature = (violation: Violation): string =>
   violation._tag === "InvariantViolated" ? `invariant ${violation.invariant}`
   : violation._tag === "SystemFailed" ? `system ${violation.system}`
+  : violation._tag === "SessionFailed" ? `session ${violation.error._tag}`
   : `defect ${violation.invariant ?? ""}`
 
 const describe = (violation: Violation): string => {
   if (violation._tag === "InvariantViolated") return `invariant ${violation.invariant} broke: ${violation.message}`
+  if (violation._tag === "SessionFailed") return `seat ${violation.seat}'s session failed with ${violation.error._tag}${"tick" in violation.error ? ` at tick ${violation.error.tick}` : ""}`
   const error = violation.error instanceof Error ? violation.error.message : JSON.stringify(violation.error) ?? String(violation.error)
   if (violation._tag === "SystemFailed") return `${violation.system} failed: ${error}`
   return violation.invariant === undefined ? `a system threw: ${error}` : `invariant ${violation.invariant} threw: ${error}`
@@ -210,12 +304,30 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
 const simpler = (value: unknown, neutral: unknown): Array<unknown> => {
   if (same(value, neutral)) return []
   const candidates: Array<unknown> = [neutral]
+  // Every seat's input: one seat at a time.
+  if (Array.isArray(value) && Array.isArray(neutral) && value.length === neutral.length) {
+    value.forEach((item, index) => {
+      for (const candidate of simpler(item, neutral[index])) {
+        const next = value.map((other, at) => at === index ? candidate : other)
+        if (!same(next, neutral)) candidates.push(next)
+      }
+    })
+  }
   if (isRecord(value) && isRecord(neutral)) {
     const keys = Object.keys(value).filter((key) => !same(value[key], neutral[key]))
     if (keys.length > 1) for (const key of keys) candidates.push({ ...value, [key]: neutral[key] })
   }
   return candidates
 }
+
+/**
+ * Over a `network`: the only input is a `Fuzz.seats`, the fuzzed schedule
+ * must rewind and the runtime save (as for `Netcode.rollback`).
+ */
+type NetworkChecks<Net, S extends Schema.Any, Fuzzed> =
+  [Net] extends [Network]
+    ? { readonly inputs: readonly [Seats] } & Checkpoint.ValidateRewindable<Fuzzed> & Snapshot.Gate<S, unknown>
+    : unknown
 
 /**
  * Fuzzes `options.schedule` of the simulation `make` builds. Each run makes
@@ -226,6 +338,13 @@ const simpler = (value: unknown, neutral: unknown): Array<unknown> => {
  * replay; a schedule name that `make` does not return, an invariant that
  * reads what the runtime does not provide, or a schedule service that could
  * not be replayed does not compile.
+ *
+ * With `network`, every seat of the one `Fuzz.seats` input plays on its own
+ * peer (a fresh `make` each, seat 0 ticking `setup`) through
+ * `Netcode.rollback` over a seeded `MemoryNetworkLink`, and the invariants
+ * are checked on every peer after each frame. A session failure is a
+ * `SessionFailed` violation; a schedule that cannot be rewound, or a
+ * runtime that cannot save, does not compile.
  */
 export const run = <
   S extends Schema.Any,
@@ -235,12 +354,18 @@ export const run = <
   Resources extends object,
   Machines extends Record<string, unknown>,
   const Name extends keyof Schedules & string,
-  const Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>> = readonly []
+  const Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>> = readonly [],
+  const Net extends Network | undefined = undefined
 >(
   make: (playback: Replay.Playback) => Replay.Target<S, Root, Schedules, Services, Resources, Machines>,
   options: Options<Name, NoInfer<keyof Schedules & string>, Invariants>
     & Session.ValidateInvariants<Invariants, Services, Resources, Machines>
     & Replay.ValidateRecordable<Schedules[Name]>
+    & {
+      /** Fuzz every seat as its own peer over a seeded faulty network, with `Netcode.rollback` sessions. */
+      readonly network?: Net
+    }
+    & NetworkChecks<Net, S, Schedules[Name]>
 ): Result.Result<Rendered.Rendered<Passed>, FuzzError> => {
   const invalid = (message: string) => Result.failure<FuzzError>({ _tag: "InvalidOptions", message })
   const runs = options.runs ?? 10
@@ -255,9 +380,27 @@ export const run = <
   const neutral: ReadonlyArray<unknown> = inputs.map((entry) => entry.neutral)
   // `run`'s signature checked the invariants against this runtime's provisions.
   const invariants = (options.invariants ?? []) as readonly []
+  const network: Network | undefined = options.network
+  let plan: FuzzNetwork.NetworkPlan | undefined
+  if (network !== undefined) {
+    const only = inputs[0]!
+    if (inputs.length !== 1 || !("codec" in only) || !("count" in only)) return invalid("over a network, give inputs exactly one Fuzz.seats")
+    const seated = only as Seats
+    const settle = network.settle ?? 120
+    if (!Number.isSafeInteger(settle) || settle < 0) return invalid("network.settle must be a whole number, 0 or more")
+    plan = {
+      name: seated.name, codec: seated.codec, count: seated.count, idle: seated.idle,
+      make, schedule: options.schedule, setup: options.setup, invariants: options.invariants ?? [],
+      step: network.step, seed: network.seed, latencyMS: network.latencyMS, jitterMS: network.jitterMS ?? 0, loss: network.loss ?? 0, settle,
+      inputDelay: network.inputDelay, maxRollback: network.maxRollback, checksumEvery: network.checksumEvery ?? 10
+    }
+  }
 
-  /** Runs one fresh simulation over `timeline`; `record` also saves it as a replay with that reason. */
-  const simulate = (timeline: Timeline, record: ((violation: Violation, frame: number) => string) | undefined): Outcome => {
+  /**
+   * Runs one fresh simulation over `timeline`; `record` also saves it as a replay with that reason
+   * (a text: saved even when it passes).
+   */
+  const simulateOne = (timeline: Timeline, record: ((violation: Violation, frame: number) => string) | string | undefined): Outcome => {
     let current = neutral
     const asked = new Set<string>()
     const unknown: Array<string> = []
@@ -308,11 +451,25 @@ export const run = <
     session.close()
     const found = violationOf(played.data.stop)
     const frame = ticked + 1
-    const file = found === undefined || found._tag === "InvalidOptions" || record === undefined ? undefined : recorder?.save(record(found, frame))
+    const reason = found?._tag === "InvalidOptions" || record === undefined ? undefined
+      : typeof record === "string" ? record
+      : found === undefined ? undefined
+      : record(found, frame)
+    const file = reason === undefined ? undefined : recorder?.save(reason)
     recorder?.stop()
-    if (found === undefined) return { kind: "passed" }
+    if (found === undefined) return { kind: "passed", file }
     if (found._tag === "InvalidOptions") return { kind: "invalid", error: found }
     return { kind: "violated", violation: found, frame, file }
+  }
+
+  /** Over the network: every seat on its own peer. The replay plays the same timeline on one runtime. */
+  const simulate = (timeline: Timeline, record: ((violation: Violation, frame: number) => string) | undefined): Outcome => {
+    if (plan === undefined) return simulateOne(timeline, record)
+    const played = FuzzNetwork.play(plan, timeline)
+    if (played.kind === "invalid") return { kind: "invalid", error: { _tag: "InvalidOptions", message: played.message } }
+    if (played.kind === "passed") return played
+    const one = record === undefined ? undefined : simulateOne(timeline.slice(0, played.frame), record(played.violation, played.frame))
+    return { kind: "violated", violation: played.violation, frame: played.frame, file: one?.kind === "invalid" ? undefined : one?.file }
   }
 
   for (let index = 0; index < runs; index++) {
@@ -363,7 +520,8 @@ export const run = <
         }
       }
     }
-    const final = simulate(best, (violation, frame) => `fuzz seed ${seed}: ${describe(violation)} at frame ${frame} (shrunk from ${first.frame} frames)`)
+    const final = simulate(best, (violation, frame) =>
+      `fuzz seed ${seed}${network === undefined ? "" : ` over network seed ${network.seed}`}: ${describe(violation)} at frame ${frame} (shrunk from ${Math.min(first.frame, timeline.length)} frames)`)
     if (final.kind !== "violated" || final.file === undefined || signature(final.violation) !== target) {
       return Result.failure({ _tag: "Flaky", violation: first.violation, seed, frame: first.frame })
     }
@@ -376,7 +534,7 @@ export const run = <
       frame: final.frame,
       replay: final.file,
       reproduces: replayed !== undefined && replayed._tag !== "InvalidOptions" && signature(replayed) === target,
-      shrink: { attempts, steps, fromFrames: first.frame, toFrames: final.frame }
+      shrink: { attempts, steps, fromFrames: Math.min(first.frame, timeline.length), toFrames: best.length }
     })
   }
   return Result.success(Rendered.make(

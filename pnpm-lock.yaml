@@ -150,6 +150,9 @@ importers:
       '@typeonce/ritmo-math':
         specifier: workspace:^
         version: link:../math
+      '@typeonce/ritmo-netcode':
+        specifier: workspace:^
+        version: link:../netcode
     devDependencies:
       playwright:
         specifier: ^1.64.1
