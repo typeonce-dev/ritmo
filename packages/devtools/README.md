@@ -12,8 +12,10 @@ if (!result.ok) throw new Error(JSON.stringify(result))
 
 The factory returns `{ runtime, schedules }`, with a fresh debug runtime on
 every call. A difference reports its frame, value path, and the first system
-or schedule marker found by a diagnostic rerun. This checks the supplied
-inputs on the current JavaScript engine.
+or schedule marker found by a diagnostic rerun; inside an entity, it names
+the entity (`entity`) and, given `labels` (the session's labels inspector),
+its `label`. This checks the supplied inputs on the current JavaScript
+engine.
 
 Debug sessions for `ritmo` runtimes: run schedules headless, keep a trace
 history, and ask what happened as text. Built for coding agents first; the
@@ -61,7 +63,9 @@ if (runtime.debug !== undefined) Monitor.attach({ debug: runtime.debug }, { sche
 3. **Reproduce.** Script the input with `Keyboard.scripted(bindings, timeline)`
    (or replay a recorded browser session), add an invariant that encodes the
    bug (`Invariant.fromInspector(Game.Inspector(...))`, returning a message
-   when violated), and `session.run("update", { frames: 600 })`. The run stops at the
+   when violated), and `session.run("update", { frames: 600 })`. Give the
+   session `labels` for the entities the bug is about, so every line says
+   `player e12` instead of `e12`. The run stops at the
    first frame the invariant fails, a system fails, or a system throws.
 4. **Explain.** `session.why(entity, Component)` and
    `session.whyResource(Resource)` show the latest changes and which system
@@ -100,12 +104,18 @@ const HealthNeverNegative = Invariant.fromInspector(Game.Inspector("health >= 0"
   const health = queries.player.each().map((match) => match.data.health.get())
   return health.some((value) => value < 0) ? `health ${health.join(", ")}` : undefined
 }))
+// Labels name entities in every line: `player e12` instead of `e12`. An
+// inspector returning entity id -> label; any other return does not compile.
+const Labels = Game.Inspector("labels", {
+  queries: { players: Game.Query({ selection: { player: Game.Query.read(Player) } }) }
+}, ({ queries }) => new Map(queries.players.each().map((match) => [match.entity.id, "player"] as const)))
 
 const session = Session.make(runtime, {
   hostClock,                              // times run(); the runtime's clock
   schedules: { setup, update },           // names used by run() and in traces
   describe: { render },                   // described and linted, never run (needs a renderer)
   invariants: [HealthNeverNegative],      // checked after every frame of every run
+  labels: Labels,                         // evaluated after every frame; despawned entities keep theirs
   history: 600                            // frames kept for journal/why
 })
 
@@ -141,7 +151,10 @@ f186 update  -                   transition Game/Flow Playing -> Paused applied
 - `f185`: frame number, counting every `tick`/`tryTick` call from 1, setup
   included. Keyboard timeline frames count input snapshots from 0 instead, so
   with one setup frame, timeline frame `n` is read in session frame `n + 2`.
-  `e12`: entity 12. `&e12`: a stored handle to entity 12.
+  `e12`: entity 12; `player e12` when the session's `labels` name it (the
+  label it had at the end of that line's frame). `&e12`: a stored handle to
+  entity 12. Write entities as `e${id}` in invariant messages and the run
+  summary labels them too.
 - The schedule path shows nesting, for example `update > onEnter(Game/Flow=Paused)`.
 - `write`: a component a system's write query changed to a different value
   (writing back an equal value is not recorded). `resource`,
@@ -262,9 +275,9 @@ carries its own. `Desync.compare` lists what differs, entities by id and
 values by path, in a stable order:
 
 ```ts
-console.log(Desync.compare(mine.snapshot, theirs.snapshot))
+console.log(Desync.compare(mine.snapshot, theirs.snapshot, { labels: runtime.inspect(Labels) }))
 // 2 differences (mine -> theirs):
-//   entity 12 Game/Position.x: 40 -> 41
+//   player e12 Game/Position.x: 40 -> 41
 //   resource Game/Rng: 1730 -> 2210
 ```
 
@@ -312,6 +325,7 @@ const file = Replay.parse(JSON.parse(readFileSync(".replays/....json", "utf8")))
 const replay = file.ok ? Replay.session(make, file.value) : file
 replay.value.play()                       // run the ticks; reports checkpoint divergence
 replay.value.session.why(12, Position)    // a normal Session over the replayed frames
+Replay.session(make, file.value, { labels: Labels }) // names entities, as in Session.make
 Replay.verify(make, file.value)           // replays twice: nondeterminism shows up
 Replay.extract(make, file.value, { from: 1400, to: 1412 }) // a small replay for a test
 ```
