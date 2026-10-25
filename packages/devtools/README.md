@@ -76,6 +76,14 @@ headless with a `Session`.
    shows everything that touched an entity around the failure.
    `session.report()` lists warnings the trace collected and the current
    entity counts per component. `run()` prints the warnings it raised.
+   When the wrong value appears within one frame, between two systems,
+   step that frame: run up to the frame before it, then
+   `const frame = session.step("update")`, `frame.until(ApplyDamage)` stops
+   before that system, `session.dump(...)` / `why` / `journal` show the
+   world and the partial frame, `frame.next()` runs one step (a system or
+   a marker), and `frame.finish()` runs the rest and reports the frame as
+   `run` does, invariants included. `frame.check()` asks the invariants
+   mid-frame, where one may legitimately fail until a later marker applies.
 5. **Fix and keep it.** Rerun the same script, then turn it into a test next
    to the game so the bug stays fixed.
 
@@ -126,6 +134,14 @@ const run = session.run("update", { frames: 300, until: (frame) => frame === 120
 run.data.ok                               // true when completed or `until` returned true
 run.data.stop                             // { reason: "completed" | "until" | "failure" | "defect"
                                           //   | "invariant" | "missingRequirements" | "tickOrder", frame, ... }
+
+const frame = session.step("update")      // one frame, a step at a time; refuses run/tick until finished
+frame.until(ApplyDamage)                  // runs the steps before the system value; Result: reached, or
+                                          //   { reason: "failure" | "defect" | "frameEnded" | "notAhead" | ... }
+session.dump({ entities: [12] })          // the world between two systems (journal and why show the partial frame)
+frame.next()                              // exactly one step: a system or a marker
+frame.check()                             // invariants now (may fail mid-frame); Result
+frame.finish()                            // the rest of the frame, reported like run(name): labels, invariants
 
 session.describe()                        // schema, schedules, access, lints
 session.dump({ with: [Player], limit: 5 })// entities, resources, machines, pending commands
