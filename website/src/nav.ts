@@ -15,15 +15,15 @@ export const sections = [
   {
     title: "Features",
     pages: [
-      { href: "/features/rollback/", title: "Online multiplayer" },
-      { href: "/features/determinism/", title: "Same game everywhere" },
       { href: "/features/bugs/", title: "Bugs found before players" },
-      { href: "/features/replays/", title: "Replays that become tests" },
       { href: "/features/devices/", title: "Every device, one player" },
-      { href: "/features/multiplayer/", title: "Local multiplayer" },
-      { href: "/features/rebinding/", title: "Rebinding" },
+      { href: "/features/replays/", title: "Replays that become tests" },
       { href: "/features/states/", title: "States that can't go wrong" },
-      { href: "/features/composition/", title: "Entities that change shape" }
+      { href: "/features/determinism/", title: "Same game everywhere" },
+      { href: "/features/composition/", title: "Entities that change shape" },
+      { href: "/features/multiplayer/", title: "Local multiplayer" },
+      { href: "/features/rollback/", title: "Online multiplayer" },
+      { href: "/features/rebinding/", title: "Rebinding" }
     ]
   },
   {

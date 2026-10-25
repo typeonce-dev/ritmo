@@ -220,12 +220,13 @@ every machine, every run.
 
 That is a whole game loop with no page in it. From here:
 
-- **[Online multiplayer](/features/rollback/)**: the same schedule, ticked by
-  two peers over WebRTC, with rollback when inputs arrive late.
-- **[Same game everywhere](/features/determinism/)**: why that 30 is the
-  same bits in every browser and on every CPU.
-- **[Bugs found before players](/features/bugs/)**: a fuzzer plays the game
-  and hands you each failure as a replay that is already a test.
+- **[Loop, input, rendering](/docs/browser/)**: put this world on a page,
+  with a keyboard, a gamepad, and a renderer.
 - **[Concepts](/docs/concepts/)**: queries, events, commands, and state
   machines, in order.
-- **[Loop, input, rendering](/docs/browser/)**: put this world on a page.
+- **[Bugs found before players](/features/bugs/)**: a fuzzer plays the game
+  and hands you each failure as a replay that is already a test.
+- **[Same game everywhere](/features/determinism/)**: why that 30 is the
+  same bits in every browser and on every CPU.
+- **[Online multiplayer](/features/rollback/)**: the same schedule, ticked by
+  two peers over WebRTC, with rollback when inputs arrive late.
