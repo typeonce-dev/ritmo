@@ -333,6 +333,14 @@ Replay.extract(make, file.value, { from: 1400, to: 1412 }) // a small replay for
 `Replay.session(make, file, { invariants })` checks invariants after every
 replayed tick, so `play()` stops where one breaks, as a `Session` run does.
 
+`playback.source(descriptor)` takes any `snapshot()`-only source service:
+`Schedule.Source<T>`, `Netcode.Source<T>`, or browser input declared as
+`InputCapture.SourceOf<...>` (a device, a `Controls` merge, or a pool; see
+[the browser README](https://github.com/typeonce-dev/ritmo/blob/main/packages/browser/README.md)).
+A service declared as the whole device, with `rebind` and `dispose`, is a
+compile error naming that fix: a replay can only stand in for its
+`snapshot()`, so the page keeps the device to rebind it.
+
 A replay recorded with another schema fails with "replay recorded with an
 older schema".
 
@@ -365,6 +373,12 @@ if (!found.ok && found.error._tag === "Found") {
 }
 ```
 
+- A browser game fuzzes through the same descriptor its page and replays
+  read: `Fuzz.input(ControlsInput, { generate: (random) =>
+  Actions.random(random, devices), neutral: Actions.idle(devices) })` draws
+  merged input a real merge could report (button states, vectors of length
+  at most 1); `Players.random(random, frame, { devices, seats })` does it
+  for a local multiplayer pool.
 - `random` is a seeded `Random` from `@typeonce/ritmo-math`; the same seed
   draws the same input, so a found bug's `seed` with `runs: 1` finds it
   again. Every source `make` asks `playback.source` for must be a fuzzed
