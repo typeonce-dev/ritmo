@@ -63,6 +63,11 @@ const demo = demos[id]
     </script>
 
     <style>
+      /* Astro's dev toolbar would cover the bottom of every frame in dev; the built site has none. */
+      astro-dev-toolbar {
+        display: none !important;
+      }
+
       html,
       body {
         margin: 0;

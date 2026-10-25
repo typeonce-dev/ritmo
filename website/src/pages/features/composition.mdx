@@ -242,8 +242,9 @@ const Follow = Game.System(
     }
 
     for (const failure of relationFailures.childOf.all()) {
+      // A refused relate or unrelate, named:
+      // "HierarchyCycle", "DuplicateChild", "MissingTargetEntity", ...
       const refused = failure.error._tag
-      //    ^?
     }
   }
 )
