@@ -192,6 +192,28 @@ writeFileSync(path.join(consumer, "lint.mjs"), `import { HostClock, Schema } fro
 const lintOutput = run(path.join(consumer, "node_modules", ".bin", "ritmo-devtools"), ["lint", "lint.mjs"], consumer)
 if (!lintOutput.includes("0 warnings")) throw new Error(`published lint CLI failed: ${lintOutput}`)
 
+// Node alone: the consumer installs neither playwright nor vite, the optional peers browser engines need.
+writeFileSync(path.join(consumer, "verify.mjs"), [
+  `import { writeFileSync } from "node:fs"`,
+  `import { Clock, HostClock, Schema } from "@typeonce/ritmo"`,
+  `import { Replay } from "@typeonce/ritmo-devtools"`,
+  `const step = Clock.hz(1)`,
+  `const Time = Clock.resource("Pack/Time", step)`,
+  `const Game = Schema.bind(Schema.fragment({ resources: { Time } }))`,
+  `const update = Game.Schedule(Clock.system(Game, { name: "Pack/Clock", resource: Time }))`,
+  `const make = (hostClock) => Game.Runtime.make({ services: Game.Runtime.services(), resources: { Time: Clock.start(step) }, debug: { hostClock } }).value`,
+  `export const replayTarget = () => { const hostClock = HostClock.test(); return { runtime: make(hostClock), schedules: { update }, hostClock } }`,
+  `if (process.argv[2] === "record") {`,
+  `  const runtime = make(HostClock.test())`,
+  `  const recorder = Replay.recorder(runtime, { schedule: update, name: "update", keep: 10, step, every: 2, sink: Replay.memorySink(), hostClock: HostClock.test() })`,
+  `  for (let tick = 0; tick < 6; tick++) runtime.tick(update)`,
+  `  writeFileSync("replay.json", JSON.stringify(recorder.save("pack check")))`,
+  `}`
+].join("\n"))
+run("node", ["verify.mjs", "record"], consumer)
+const verifyOutput = run(path.join(consumer, "node_modules", ".bin", "ritmo-devtools"), ["verify", "verify.mjs", "replay.json", "--engines", "node"], consumer)
+if (!verifyOutput.includes("verified 6 ticks of update on node")) throw new Error(`published verify CLI failed: ${verifyOutput}`)
+
 step("run the published oxlint plugin")
 writeFileSync(path.join(consumer, ".oxlintrc.json"), JSON.stringify({
   jsPlugins: ["@typeonce/oxlint-plugin-ritmo"],

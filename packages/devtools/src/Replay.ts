@@ -599,7 +599,8 @@ export const session = <
 /**
  * Replays twice and compares the world after every tick: different hashes
  * mean the simulation reads something the replay does not hold (wall time,
- * `Math.random`, host state).
+ * `Math.random`, host state). This checks one engine; `Verify.acrossEngines`
+ * also plays the replay in real browsers and names the values that differ.
  */
 export const verify = <S extends Schema.Any, Root>(
   make: (playback: Playback) => Target<S, Root>,

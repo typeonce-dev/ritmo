@@ -82,6 +82,14 @@ if (!result.ok) {
 }
 ```
 
+Across engines, `ritmo-devtools verify` plays a replay in Node, Chromium,
+WebKit, and Firefox and names the first tick and value they disagree on.
+Ritmo's own CI runs it on every change, on a recorded online match:
+
+```sh
+ritmo-devtools verify replay/target.ts replay/match.json --engines node,chromium,webkit,firefox
+```
+
 ## What it buys
 
 - [Replays](/features/replays/) that play back exactly, from a few
