@@ -94,9 +94,9 @@ describe("Runtime debug handle", () => {
 
     const description = runtime.debug.describe()
     expect(description.components).toEqual([
-      { name: "Debug/Position", storage: "plain", immutable: false, requires: [] },
-      { name: "Debug/Tagged", storage: "plain", immutable: false, requires: [] },
-      { name: "Debug/Sprite", storage: "transient", immutable: false, requires: [] }
+      { name: "Debug/Position", storage: "plain", immutable: false, requires: [], meta: {} },
+      { name: "Debug/Tagged", storage: "plain", immutable: false, requires: [], meta: {} },
+      { name: "Debug/Sprite", storage: "transient", immutable: false, requires: [], meta: {} }
     ])
     expect(description.machines).toEqual([{ name: "Debug/Flow", states: ["Menu", "Playing"], current: { _tag: "Menu" }, provided: true, within: undefined }])
     expect(description.scopes).toEqual([])

@@ -49,6 +49,7 @@
  * stop()
  * ```
  */
+import type { FieldMeta } from "./Descriptor.ts"
 import type { HostClock } from "./HostClock.ts"
 import type * as Machine from "./Machine.ts"
 import type * as Result from "./Result.ts"
@@ -185,6 +186,8 @@ export interface ComponentDescription {
   readonly immutable: boolean
   /** The components it directly requires (`Schema.requires`). */
   readonly requires: ReadonlyArray<string>
+  /** Its fields' declared unit, range, and hint (the constructor's `meta` option), by field; `{}` when none. */
+  readonly meta: Readonly<Record<string, FieldMeta>>
 }
 
 /** One schema resource, in `Description.resources`. */
@@ -193,6 +196,8 @@ export interface ResourceDescription {
   readonly storage: Storage
   /** Whether the resource currently has a value. */
   readonly present: boolean
+  /** Its fields' declared unit, range, and hint (the constructor's `meta` option), by field; `{}` when none. */
+  readonly meta: Readonly<Record<string, FieldMeta>>
 }
 
 /** One schema relation and its related side (`relatedName`), in `Description.relations`. */
