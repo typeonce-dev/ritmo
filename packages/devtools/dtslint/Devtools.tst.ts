@@ -293,3 +293,12 @@ describe("Session.step", () => {
     expect<Session.StepStop["reason"]>().type.toBe<"frameEnded" | "notAhead" | "failure" | "defect" | "missingRequirements" | "tickOrder">()
   })
 })
+
+describe("Format.fieldMeta", () => {
+  it("prints the field metadata describe() lists", () => {
+    expect(Format.fieldMeta("hp", { unit: "points", range: [0, 100] })).type.toBe<string>()
+    expect<Session.Warning["code"]>().type.toBeAssignableFrom<"out-of-range">()
+    // @ts-expect-error Type 'string' is not assignable to type 'readonly [min: number, max: number]'
+    Format.fieldMeta("hp", { range: "0..100" })
+  })
+})

@@ -21,7 +21,8 @@
  *   tracing: failed systems, missed reads, commands and next states still
  *   pending at the end of a frame, failed transitions, skipped systems that
  *   discarded messages, sent events no system reads, NaN or infinite numbers
- *   written anywhere, entity counts that keep growing through a run, and
+ *   written anywhere, numbers written outside a field's declared `range`
+ *   (the descriptor's `meta` option), entity counts that keep growing through a run, and
  *   failed tick results nobody read.
  *
  * Everything returns a `Rendered` value that prints as text.
@@ -61,7 +62,7 @@ import type { SystemDefinition } from "@typeonce/ritmo/System"
 import * as Format from "./Format.ts"
 import type { Invariant } from "./Invariant.ts"
 import * as Rendered from "./Rendered.ts"
-import { nonFinitePath } from "./internal/values.ts"
+import { nonFinitePath, rangesOf } from "./internal/values.ts"
 
 /**
  * What a session needs from a runtime: its debug handle, the dynamic
@@ -325,6 +326,7 @@ export interface Warning {
     | "sent-event-unread"
     | "system-failed"
     | "non-finite-value"
+    | "out-of-range"
     | "population-growing"
     | "ignored-failure"
   readonly message: string
@@ -660,6 +662,29 @@ export const make = <
     )
   }
 
+  /** The declared ranges of every component and resource field, by descriptor name, read from `describe()` on the first write. */
+  let ranges: ReturnType<typeof rangesOf> | undefined
+  const checkRange = (kind: "component" | "resource", system: string, subject: string, value: unknown, frame: number, entity?: number) => {
+    ranges ??= rangesOf(debug.describe())
+    const fields = ranges[kind].get(subject)
+    if (fields === undefined || typeof value !== "object" || value === null) return
+    for (const [field, min, max] of fields) {
+      const written = (value as Readonly<Record<string, unknown>>)[field]
+      // NaN and infinities are `non-finite-value` warnings.
+      if (typeof written !== "number" || !Number.isFinite(written) || (written >= min && written <= max)) continue
+      warn(
+        "out-of-range",
+        `range:${system}:${subject}.${field}`,
+        (labels) => `${entity === undefined ? "" : `${Format.entity(entity, labels)} `}${subject}.${field} written as ${Format.value(written)}, declared range [${Format.value(min)}, ${Format.value(max)}] by ${system} at frame ${frame}`,
+        frame
+      )
+    }
+  }
+  const checkComponent = (system: string, subject: string, value: unknown, frame: number, entity: number) => {
+    checkFinite(system, subject, value, frame, entity)
+    checkRange("component", system, subject, value, frame, entity)
+  }
+
   const record = (event: Debug.TraceEvent) => {
     if (event.type === "frame") {
       checkPending(current.frame)
@@ -679,8 +704,11 @@ export const make = <
           warn("system-failed", `failed:${event.system}`, `${event.system} ${event.outcome === "defect" ? "threw" : "failed"}: ${Format.value(event.error, format)}`, event.frame)
         } else {
           if (event.commands.length > 0) pending.set(event.system, (pending.get(event.system) ?? 0) + event.commands.length)
-          for (const write of event.writes) checkFinite(event.system, write.component, write.after, event.frame, write.entity)
-          for (const write of event.resources) checkFinite(event.system, write.resource, write.after, event.frame)
+          for (const write of event.writes) checkComponent(event.system, write.component, write.after, event.frame, write.entity)
+          for (const write of event.resources) {
+            checkFinite(event.system, write.resource, write.after, event.frame)
+            checkRange("resource", event.system, write.resource, write.after, event.frame)
+          }
           for (const emit of event.events) checkFinite(event.system, emit.event, emit.values, event.frame)
           for (const next of event.nextStates) {
             if (next.value === undefined) pendingStates.delete(next.machine)
@@ -720,13 +748,13 @@ export const make = <
           for (const effect of command.effects) {
             switch (effect.kind) {
               case "spawn":
-                for (const [component, value] of Object.entries(effect.components)) checkFinite(command.system, component, value, event.frame, effect.entity)
+                for (const [component, value] of Object.entries(effect.components)) checkComponent(command.system, component, value, event.frame, effect.entity)
                 break
               case "insert":
-                checkFinite(command.system, effect.component, effect.value, event.frame, effect.entity)
+                checkComponent(command.system, effect.component, effect.value, event.frame, effect.entity)
                 break
               case "overwrite":
-                checkFinite(command.system, effect.component, effect.after, event.frame, effect.entity)
+                checkComponent(command.system, effect.component, effect.after, event.frame, effect.entity)
                 break
             }
           }

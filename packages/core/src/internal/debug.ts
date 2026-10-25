@@ -12,6 +12,7 @@ import type * as Machine from "../Machine.ts"
 import type * as Query from "../Query.ts"
 import type * as Relation from "../Relation.ts"
 import * as Schedule from "../Schedule.ts"
+import { metaOf } from "./meta.ts"
 import * as OrderInternal from "./order.ts"
 import type { Schema } from "../Schema.ts"
 import type { SystemDefinition } from "../System.ts"
@@ -584,12 +585,14 @@ export const describe = (input: DescribeInput): Debug.Description => {
       immutable: DescriptorModule.isImmutable(descriptor),
       requires: [...new Set(input.schema.requires
         .filter((requirement) => requirement.component.name === descriptor.name)
-        .flatMap((requirement) => requirement.required.map((required) => required.name)))]
+        .flatMap((requirement) => requirement.required.map((required) => required.name)))],
+      meta: metaOf(descriptor)
     })),
     resources: resourceDescriptors.map((descriptor) => ({
       name: descriptor.name,
       storage: storageOf(descriptor),
-      present: input.hasResource(descriptor)
+      present: input.hasResource(descriptor),
+      meta: metaOf(descriptor)
     })),
     events: eventDescriptors.map((descriptor) => ({ name: descriptor.name })),
     relations: relations.map((relation) => ({

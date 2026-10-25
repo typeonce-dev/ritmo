@@ -256,14 +256,93 @@ export interface ComponentOptions {
    * update every frame.
    */
   readonly immutable?: true
+  /**
+   * What each field of the value means: its unit, its expected range, and a
+   * hint, keyed by the value's top-level fields (see {@link FieldMeta}).
+   * Display and devtools only: the schema still decides what is valid.
+   */
+  readonly meta?: MetaInput
 }
+
+/**
+ * Options of the resource descriptor constructors (`Resource`,
+ * `ConstructedResource`, `TransientResource`).
+ */
+export interface ResourceOptions {
+  /** What each field of the value means, as on a component (see {@link FieldMeta}). */
+  readonly meta?: MetaInput
+}
+
+/**
+ * What one field of a component or resource value means, declared in the
+ * constructor's `meta` option next to the value's type or schema:
+ *
+ * - `unit`: what the number counts (`"points"`, `"px/s"`, `"steps"`).
+ * - `range`: `[min, max]`, the values the field is expected to stay in;
+ *   only on number fields.
+ * - `hint`: one sentence on what the field is for, read by an agent.
+ *
+ * Metadata never replaces validation: the schema (or the value's type)
+ * decides what is valid, and `range` is advisory. A devtools session reports
+ * every write outside it as an `out-of-range` warning; production runtimes
+ * never read it. `describe()` lists it, the monitor shows it next to values,
+ * and snapshots do not save it.
+ *
+ * Keys are top-level fields only: a nested field (`stats.hp`) is described on
+ * its parent field with `hint`, or moved into its own component.
+ *
+ * @example
+ * ```ts
+ * const Health = Descriptor.ConstructedComponent(z.object({ hp: z.number(), regen: z.number() }))("Game/Health", {
+ *   meta: {
+ *     hp: { unit: "points", range: [0, 100], hint: "Hit points left; 0 despawns the entity." },
+ *     regen: { unit: "points/s", range: [0, 5] }
+ *   }
+ * })
+ * ```
+ */
+export interface FieldMeta {
+  readonly unit?: string
+  readonly range?: readonly [min: number, max: number]
+  readonly hint?: string
+}
+
+/** The loose shape of a `meta` option before {@link CheckedMeta} checks it against the value. */
+export type MetaInput = { readonly [field: string]: object }
+
+/** The fields of `Value` that `meta` can describe: its top-level string keys (none for a primitive or an array). */
+export type MetaField<Value> = [Value] extends [ReadonlyArray<unknown>] ? never
+  : [Value] extends [object] ? keyof Value & string
+  : never
+
+// Rejections are objects: a message string would intersect with the given literal to `never`.
+type CheckedFieldMeta<Field, Given> = {
+  readonly [Key in keyof Given]: Key extends "unit" | "hint" ? Given[Key] extends string ? string : { readonly __fixMeta__: "`unit` and `hint` are strings" }
+    : Key extends "range" ? [Exclude<Field, undefined>] extends [number] ? readonly [min: number, max: number]
+      : { readonly __fixMeta__: "`range` is only for number fields: describe this field with `unit` or `hint`" }
+    : { readonly __fixMeta__: "a field's meta has only `unit`, `range`, and `hint`" }
+}
+
+/**
+ * The `meta` argument for a value of type `Value`: each key a field of
+ * `Value` with its {@link FieldMeta}, or the message naming what is wrong
+ * (with the value's fields under `fields`).
+ */
+export type CheckedMeta<Value, Meta> = {
+  readonly [Field in keyof Meta]: Field extends MetaField<Value> & keyof Value ? CheckedFieldMeta<Value[Field], Meta[Field]>
+    : [MetaField<Value>] extends [never] ? { readonly __fixMeta__: "this value has no fields: meta describes the top-level fields of an object value" }
+    : { readonly __fixMeta__: "not a field of this value: meta keys are the value's top-level fields"; readonly fields: MetaField<Value> }
+}
+
+/** The options argument of a component or resource constructor for `Value`: `Options`, with its `meta` checked by {@link CheckedMeta}. */
+export type CheckedOptions<Value, Options> = Options extends { readonly meta: infer Meta } ? { readonly meta: CheckedMeta<Value, Meta> } : unknown
 
 /** The descriptor a component constructor returns for `Options`: `D`, plus `Immutable` when `immutable: true`. */
 export type WithComponentOptions<D, Options extends ComponentOptions> =
   Options extends { readonly immutable: true } ? D & Immutable : D
 
-const applyComponentOptions = <D extends object>(descriptor: D, options: ComponentOptions | undefined): D =>
-  options?.immutable === true ? { ...descriptor, immutable: true } : descriptor
+const applyComponentOptions = <D extends { readonly name: string }>(descriptor: D, options: ComponentOptions | undefined): D =>
+  withMeta(options?.immutable === true ? { ...descriptor, immutable: true } : descriptor, options?.meta)
 
 /**
  * Whether a component descriptor was declared `immutable: true` (readable by
@@ -382,7 +461,7 @@ type CheckedValue<Kind extends string, Value, Make> = [ValueRejection<Kind, Valu
  */
 export const Component = <Value>(): CheckedValue<"component", Value, <const Name extends string, const Options extends ComponentOptions = {}>(
   name: Name,
-  options?: Options
+  options?: Options & CheckedOptions<Value, Options>
 ) => WithComponentOptions<Descriptor<"component", Name, Value>, Options>> =>
   ((name: string, options?: ComponentOptions) => applyComponentOptions(makeDescriptor("component", name), options)) as never
 
@@ -394,19 +473,25 @@ export const Component = <Value>(): CheckedValue<"component", Value, <const Name
  *
  * Use this for every component a snapshot saves, and for values that should
  * never exist in the world in an unvalidated shape (vectors, sizes, ids).
- * `Raw` (what the raw APIs take) is the schema's saved form.
+ * `Raw` (what the raw APIs take) is the schema's saved form. The options
+ * are {@link ComponentOptions}: `immutable`, and `meta` for each field's
+ * unit, range, and hint ({@link FieldMeta}).
  *
  * @example
  * ```ts
  * const Position = Descriptor.ConstructedComponent(z.object({ x: z.number(), y: z.number() }))("Game/Position")
  * const Velocity = Descriptor.ConstructedComponent(Vector2.schema)("Game/Velocity")
+ * // A tuning value that says what its number means:
+ * const Health = Descriptor.ConstructedComponent(z.object({ hp: z.number() }))("Game/Health", {
+ *   meta: { hp: { unit: "points", range: [0, 100], hint: "Hit points left; 0 despawns the entity." } }
+ * })
  * ```
  */
 export const ConstructedComponent = <const S extends Codec<any, any>>(
   schema: S & CheckedCodec<S>
 ) => <const Name extends string, const Options extends ComponentOptions = {}>(
   name: Name,
-  options?: Options
+  options?: Options & CheckedOptions<CodecType<S>, Options>
 ): WithComponentOptions<ConstructedDescriptor<"component", Name, CodecType<S>, CodecEncoded<S>, SchemaIssues>, Options> =>
   applyComponentOptions(makeConstructedDescriptor("component", name, schema), options) as WithComponentOptions<ConstructedDescriptor<"component", Name, CodecType<S>, CodecEncoded<S>, SchemaIssues>, Options>
 
@@ -423,7 +508,7 @@ export const ConstructedComponent = <const S extends Codec<any, any>>(
  */
 export const TransientComponent = <Value>(): CheckedValue<"component", Value, <const Name extends string, const Options extends ComponentOptions = {}>(
   name: Name,
-  options?: Options
+  options?: Options & CheckedOptions<Value, Options>
 ) => WithComponentOptions<TransientDescriptor<"component", Name, Value>, Options>> =>
   ((name: string, options?: ComponentOptions) => applyComponentOptions(makeTransientDescriptor("component", name), options)) as never
 
@@ -620,17 +705,22 @@ export const isEntityState = (
  *
  * Use resources for singleton world data such as counters, configuration,
  * global timers, camera summaries, or transient per-frame aggregates that
- * should not be duplicated across entities.
+ * should not be duplicated across entities. The options are
+ * {@link ResourceOptions}: `meta` for each field's unit, range, and hint
+ * ({@link FieldMeta}), as on every resource constructor.
  *
  * @example
  * ```ts
  * // Store shared world state once and request it explicitly from systems.
  * const Score = Descriptor.Resource<number>()("Game/Score")
+ * const Tuning = Descriptor.Resource<{ speed: number }>()("Game/Tuning", { meta: { speed: { unit: "px/s", range: [0, 400] } } })
  * ```
  */
-export const Resource = <Value>(): CheckedValue<"resource", Value, <const Name extends string>(
-  name: Name
-) => Descriptor<"resource", Name, Value>> => ((name: string) => makeDescriptor("resource", name)) as never
+export const Resource = <Value>(): CheckedValue<"resource", Value, <const Name extends string, const Options extends ResourceOptions = {}>(
+  name: Name,
+  options?: Options & CheckedOptions<Value, Options>
+) => Descriptor<"resource", Name, Value>> =>
+  ((name: string, options?: ResourceOptions) => withMeta(makeDescriptor("resource", name), options?.meta)) as never
 
 /**
  * Defines a resource descriptor whose value is validated by a schema the
@@ -645,10 +735,11 @@ export const Resource = <Value>(): CheckedValue<"resource", Value, <const Name e
  */
 export const ConstructedResource = <const S extends Codec<any, any>>(
   schema: S & CheckedCodec<S>
-) => <const Name extends string>(
-  name: Name
+) => <const Name extends string, const Options extends ResourceOptions = {}>(
+  name: Name,
+  options?: Options & CheckedOptions<CodecType<S>, Options>
 ): ConstructedDescriptor<"resource", Name, CodecType<S>, CodecEncoded<S>, SchemaIssues> =>
-  makeConstructedDescriptor("resource", name, schema)
+  withMeta(makeConstructedDescriptor("resource", name, schema), options?.meta)
 
 /**
  * Defines a resource descriptor that snapshots skip. Restoring keeps its
@@ -659,9 +750,11 @@ export const ConstructedResource = <const S extends Codec<any, any>>(
  * const DeltaTime = Descriptor.TransientResource<number>()("Game/DeltaTime")
  * ```
  */
-export const TransientResource = <Value>(): CheckedValue<"resource", Value, <const Name extends string>(
-  name: Name
-) => TransientDescriptor<"resource", Name, Value>> => ((name: string) => makeTransientDescriptor("resource", name)) as never
+export const TransientResource = <Value>(): CheckedValue<"resource", Value, <const Name extends string, const Options extends ResourceOptions = {}>(
+  name: Name,
+  options?: Options & CheckedOptions<Value, Options>
+) => TransientDescriptor<"resource", Name, Value>> =>
+  ((name: string, options?: ResourceOptions) => withMeta(makeTransientDescriptor("resource", name), options?.meta)) as never
 
 /**
  * Defines an event descriptor.
@@ -756,6 +849,7 @@ export const Relation = <const Name extends string, const RelatedName extends st
 ) => makePair("relation", name, relatedName)
 import type { Construction } from "./internal/schema.ts"
 import { construction, constructionKey, standard } from "./internal/schema.ts"
+import { withMeta } from "./internal/meta.ts"
 import { makePair } from "./internal/relations.ts"
 import { stateCodec } from "./internal/states.ts"
 import * as ResultModule from "./Result.ts"

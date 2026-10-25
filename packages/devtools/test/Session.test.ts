@@ -2,6 +2,7 @@ import { inspect } from "node:util"
 import { describe, expect, it } from "vitest"
 import { Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
 import { Format, Invariant, Session } from "@typeonce/ritmo-devtools"
+import * as Codecs from "../../core/test/codecs.ts"
 
 const hostClock = HostClock.test()
 
@@ -280,6 +281,14 @@ describe("Format.system services", () => {
   })
 })
 
+describe("Format.fieldMeta", () => {
+  it("prints a field's unit, range, and hint on one line, leaving out what is not declared", () => {
+    expect(Format.fieldMeta("hp", { unit: "points", range: [0, 100], hint: "Hit points left." })).toBe("hp: points, range [0, 100], \"Hit points left.\"")
+    expect(Format.fieldMeta("speed", { range: [0, 0.12345] })).toBe("speed: range [0, 0.123]")
+    expect(Format.fieldMeta("name", { hint: "Shown above the bar." })).toBe("name: \"Shown above the bar.\"")
+  })
+})
+
 describe("Format.value", () => {
   it("prints compact values", () => {
     expect(Format.value({ x: 1.23456, list: [1, 2, 3], nested: { deep: { deeper: { deepest: 1 } } } })).toBe(
@@ -436,6 +445,46 @@ describe("Session risk checks", () => {
       "Risk/Normalize wrote a NaN or infinite number to Risk/Total.sum (first at f1; why() shows its history)",
       "Risk/Normalize wrote a NaN or infinite number to Risk/Blast[0].force (first at f1; why() shows its history)"
     ])
+  })
+
+  it("warns once per write outside a declared range, not for writes inside it", () => {
+    const Health = Descriptor.ConstructedComponent(Codecs.struct({ hp: Codecs.number, name: Codecs.string }))("Range/Health", {
+      meta: { hp: { unit: "points", range: [0, 100], hint: "Hit points left." } }
+    })
+    const Tuning = Descriptor.Resource<{ readonly speed: number }>()("Range/Tuning", { meta: { speed: { unit: "px/s", range: [0, 400] } } })
+    const RangeGame = Schema.bind(Schema.fragment({ components: { Health }, resources: { Tuning } }))
+    const SpawnHero = RangeGame.System("Range/SpawnHero", { commands: RangeGame.System.commands(RangeGame.System.spawns(Health)) }, ({ commands }) => {
+      commands.spawn(RangeGame.Command.spawn([Health, { hp: 50, name: "hero" }]))
+      commands.spawn(RangeGame.Command.spawn([Health, { hp: 150, name: "giant" }]))
+    })
+    let heal = 30
+    const Heal = RangeGame.System("Range/Heal", {
+      queries: { healthy: RangeGame.Query({ selection: { health: RangeGame.Query.write(Health) } }) },
+      resources: { tuning: RangeGame.System.writeResource(Tuning) }
+    }, ({ queries, resources }) => {
+      for (const { data } of queries.healthy.each()) {
+        const health = data.health.get()
+        if (health.name === "hero") data.health.set({ ...health, hp: health.hp + heal })
+      }
+      resources.tuning.set({ speed: 200 + heal })
+    })
+    const made = RangeGame.Runtime.make({ services: RangeGame.Runtime.services(), resources: { Tuning: { speed: 0 } }, debug: { hostClock } })
+    if (!made.ok) throw new Error("invalid fixture")
+    const session = Session.make(made.value, { hostClock, schedules: { setup: RangeGame.Schedule(SpawnHero, RangeGame.Schedule.applyDeferred()), update: RangeGame.Schedule(Heal) } })
+    expect(session.run("setup").data.warnings).toEqual({ "out-of-range": 1 })
+    // hp 80 and speed 230: in range.
+    expect(session.run("update").data.warnings).toEqual({})
+    heal = 300
+    // hp 380 and speed 500, then hp 680 and speed 500: four writes out of range.
+    expect(session.run("update", { frames: 2 }).data.warnings).toEqual({ "out-of-range": 4 })
+    const report = session.report().data.warnings.filter((warning) => warning.code === "out-of-range")
+    expect(report.map((warning) => [warning.message, warning.count])).toEqual([
+      ["e2 Range/Health.hp written as 150, declared range [0, 100] by Range/SpawnHero at frame 1", 1],
+      ["e1 Range/Health.hp written as 380, declared range [0, 100] by Range/Heal at frame 3", 2],
+      ["Range/Tuning.speed written as 500, declared range [0, 400] by Range/Heal at frame 3", 2]
+    ])
+    expect(session.describe().text).toContain("Range/Health (constructed)\n  hp: points, range [0, 100], \"Hit points left.\"")
+    expect(session.describe().text).toContain("Range/Tuning (plain)\n  speed: px/s, range [0, 400]")
   })
 
   it("warns about counts that rise through a whole run, not about bursts that are cleaned up", () => {

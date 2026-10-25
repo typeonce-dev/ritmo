@@ -11,6 +11,7 @@
  * @docGroup devtools
  */
 import type * as Debug from "@typeonce/ritmo/Debug"
+import type { FieldMeta } from "@typeonce/ritmo/Descriptor"
 import type * as Machine from "@typeonce/ritmo/Machine"
 
 /** How much of a nested value the text output prints. */
@@ -182,17 +183,33 @@ export const lintLines = (lints: ReadonlyArray<Debug.Lint>): Array<string> => [
   ...(lints.length === 0 ? ["(none)"] : lints.map((lint) => `${lint.severity} ${lint.code}: ${lint.message}`))
 ]
 
+/**
+ * One field's declared metadata (a constructor's `meta` option, listed by
+ * `describe()`) on one line: `hp: points, range [0, 100], "Hit points left."`.
+ */
+export const fieldMeta = (field: string, meta: FieldMeta): string => {
+  const parts = [
+    ...(meta.unit === undefined ? [] : [meta.unit]),
+    ...(meta.range === undefined ? [] : [`range [${formatNumber(meta.range[0])}, ${formatNumber(meta.range[1])}]`]),
+    ...(meta.hint === undefined ? [] : [JSON.stringify(meta.hint)])
+  ]
+  return `${field}: ${parts.join(", ")}`
+}
+
+const metaLines = (meta: Readonly<Record<string, FieldMeta>>): Array<string> =>
+  Object.entries(meta).map(([field, entry]) => `  ${fieldMeta(field, entry)}`)
+
 /** The static description as sections: lints, schema, schedules, systems, access. */
 export const description = (input: Debug.Description): string => {
   const lines: Array<string> = []
   lines.push("# Components")
   for (const component of input.components) {
     const notes = [component.storage, ...(component.immutable ? ["immutable"] : []), ...(component.requires.length > 0 ? [`requires ${component.requires.join(", ")}`] : [])]
-    lines.push(`${component.name} (${notes.join(", ")})`)
+    lines.push(`${component.name} (${notes.join(", ")})`, ...metaLines(component.meta))
   }
   lines.push("", "# Resources")
   for (const resource of input.resources) {
-    lines.push(`${resource.name} (${resource.storage}${resource.present ? "" : ", no value"})`)
+    lines.push(`${resource.name} (${resource.storage}${resource.present ? "" : ", no value"})`, ...metaLines(resource.meta))
   }
   if (input.events.length > 0) {
     lines.push("", "# Events")

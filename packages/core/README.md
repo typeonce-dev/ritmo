@@ -16,6 +16,21 @@ const Position = Descriptor.Component<{ x: number; y: number }>()("Example/Posit
 const Game = Schema.bind(Schema.fragment({ components: { Position } }))
 ```
 
+A component or resource can say what its number fields mean with `meta`:
+a unit, an expected range, and a one-sentence hint per top-level field.
+Keys are checked against the value's fields, and `range` compiles only on
+number fields. It is advisory, never validation: the schema decides what is
+valid, `describe()` lists the metadata, and a
+[devtools](https://github.com/typeonce-dev/ritmo/blob/main/packages/devtools/README.md)
+session warns (`out-of-range`) when a write leaves the range. Snapshots do
+not save it, and production runtimes never read it.
+
+```ts
+const Health = Descriptor.ConstructedComponent(z.object({ hp: z.number() }))("Example/Health", {
+  meta: { hp: { unit: "points", range: [0, 100], hint: "Hit points left; 0 despawns the entity." } }
+})
+```
+
 Modules are also importable by path, for example `@typeonce/ritmo/Result`.
 
 Agents: set up a project with `SETUP.md`, then follow the skill at `skills/ritmo/SKILL.md` on every change.
