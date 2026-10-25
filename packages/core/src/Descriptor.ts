@@ -729,7 +729,8 @@ export const hasConstructor = (descriptor: Descriptor.Any): descriptor is Descri
  * `related` is the reverse collection maintained by the runtime.
  *
  * Use hierarchy when the relationship must support ordered children,
- * ancestor/descendant traversal, and linked recursive despawn. Use
+ * ancestor/descendant traversal, and linked recursive despawn (children
+ * despawn with their parent, so no edge is reported dropped). Use
  * `Game.EntityScope(...)` instead when entities only share a lifetime (a
  * level, a menu) and need no tree, order, or traversal.
  */
@@ -744,6 +745,10 @@ export const Hierarchy = <const Name extends string, const RelatedName extends s
  * Use a general relation when you need direct source -> target edges plus
  * reverse lookup, but not hierarchy-only behavior such as tree traversal or
  * child reordering.
+ *
+ * When a target despawns, every edge to it is dropped and its sources stay;
+ * a system reads `Game.System.readDroppedRelations(relation)` to react (a
+ * chaser picks a new target) instead of checking the target each tick.
  */
 export const Relation = <const Name extends string, const RelatedName extends string>(
   name: Name,

@@ -433,6 +433,7 @@ interface BoundSystemAccess<S extends Schema.Any, Root> extends System.SystemAcc
   readonly transitionEvents?: Record<string, Machine.TransitionEventRead<Schema.BoundStateMachine<Root>>>
   readonly removed?: Record<string, System.RemovedRead<ComponentDescriptor<S>>>
   readonly relationFailures?: Record<string, System.RelationFailureRead<RelationDescriptor<S>>>
+  readonly droppedRelations?: Record<string, System.DroppedRelationRead<RelationDescriptor<S>>>
   readonly when?: ReadonlyArray<Machine.Condition<Root>>
   readonly pauseWhen?: ReadonlyArray<Machine.Condition<Root>>
   readonly transitions?: Record<string, Machine.TransitionRead<Schema.BoundStateMachine<Root>>>
@@ -454,6 +455,7 @@ interface BoundInspectorAccess<S extends Schema.Any, Root> extends Inspector.Ins
   readonly transitionEvents?: Record<string, Machine.TransitionEventRead<Schema.BoundStateMachine<Root>>>
   readonly removed?: Record<string, System.RemovedRead<ComponentDescriptor<S>>>
   readonly relationFailures?: Record<string, System.RelationFailureRead<RelationDescriptor<S>>>
+  readonly droppedRelations?: Record<string, System.DroppedRelationRead<RelationDescriptor<S>>>
 }
 
 type BoundScheduleEntry<S extends Schema.Any, Root> =
@@ -921,6 +923,12 @@ export namespace Schema {
       readDespawned: () => System.DespawnedRead
       /** The failed `relate` / `reorderChildren` commands of a relation since this system's previous run (`relationFailures`). */
       readRelationFailures: <R extends RelationDescriptor<S>>(relation: R) => System.RelationFailureRead<R>
+      /**
+       * The edges of a relation dropped because their target despawned, since
+       * this system's previous run (`droppedRelations`): react when a stored
+       * target is gone. Use `readRelationFailures` for a failed `relate`.
+       */
+      readDroppedRelations: <R extends RelationDescriptor<S>>(relation: R) => System.DroppedRelationRead<R>
       /**
        * Declares the commands a system may queue, for its spec's `commands`:
        * `Game.System.commands(Game.System.spawns(Enemy, Position), Game.System.despawns(Enemy))`.

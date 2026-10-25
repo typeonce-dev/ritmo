@@ -526,6 +526,8 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   const scopeMembers = new Map<symbol, Set<number>>()
 
   let hooks: WorldHooks | undefined
+  /** Told of each edge removed because its target despawned (the runtime's dropped-relation stream). */
+  let droppedEdge: ((sourceId: number, relation: Relation.Relation.Any, targetId: number) => void) | undefined
   /** Suppresses per-component and relation hooks inside spawns and despawns. */
   let hookDepth = 0
 
@@ -1485,6 +1487,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       } else {
         for (const sourceId of sources) {
           unrelate(sourceId, relation)
+          if (droppedEdge !== undefined) droppedEdge(sourceId, relation, id)
         }
       }
       unrelate(id, relation)
@@ -1599,9 +1602,13 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
    * Despawns every live entity (recorded like normal despawns).
    */
   const despawnAll = (): void => {
+    // Clearing the whole world drops no edge a system should react to.
+    const listener = droppedEdge
+    droppedEdge = undefined
     for (const id of [...records.keys()]) {
       destroyEntity(id)
     }
+    droppedEdge = listener
   }
 
   const nextEntityValue = (): number => nextEntity
@@ -1688,6 +1695,10 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     nextEntityValue,
     setNextEntity,
     forEachJournaled,
+    /** Installs the callback told of each edge a target's despawn removes. */
+    setDroppedEdge: (next: (sourceId: number, relation: Relation.Relation.Any, targetId: number) => void): void => {
+      droppedEdge = next
+    },
     setHooks: (next: WorldHooks | undefined): void => {
       hooks = next
       hookDepth = 0
