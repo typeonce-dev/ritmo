@@ -1,23 +1,5 @@
 # `@typeonce/ritmo-devtools`
 
-`Determinism.check` compares the same scripted simulation twice, including
-transient components that snapshots omit:
-
-```ts
-const result = Determinism.check(({ hostClock }) => makeSimulation(hostClock), {
-  schedule: "update", frames: 1800, hostClock: HostClock.test()
-})
-if (!result.ok) throw new Error(JSON.stringify(result))
-```
-
-The factory returns `{ runtime, schedules }`, with a fresh debug runtime on
-every call. A difference reports its frame, value path, and the first system
-or schedule marker found by a diagnostic rerun; inside an entity, it names
-the entity (`entity`) and, given `labels` (the session's labels inspector),
-its `label`. This checks the supplied inputs on the current JavaScript
-engine; [Verify across engines](#verify-across-engines) plays a replay in
-Node and real browsers.
-
 Debug sessions for `ritmo` runtimes: run schedules headless, keep a trace
 history, and ask what happened as text. Built for coding agents: every
 answer is text and data, and nothing draws in the page.
@@ -285,6 +267,26 @@ skipped and does not fail. The check needs Node 22.15 or later.
 The trace shows what systems wrote, not what they read. When a system writes
 a wrong value from correct inputs, the journal narrows the bug to that
 system (it runs, in order, and writes this value) and the rest is its code.
+
+## Determinism
+
+`Determinism.check` compares the same scripted simulation twice, including
+transient components that snapshots omit:
+
+```ts
+const result = Determinism.check(({ hostClock }) => makeSimulation(hostClock), {
+  schedule: "update", frames: 1800, hostClock: HostClock.test()
+})
+if (!result.ok) throw new Error(JSON.stringify(result))
+```
+
+The factory returns `{ runtime, schedules }`, with a fresh debug runtime on
+every call. A difference reports its frame, value path, and the first system
+or schedule marker found by a diagnostic rerun; inside an entity, it names
+the entity (`entity`) and, given `labels` (the session's labels inspector),
+its `label`. This checks the supplied inputs on the current JavaScript
+engine; [Verify across engines](#verify-across-engines) plays a replay in
+Node and real browsers.
 
 ## Desyncs
 
