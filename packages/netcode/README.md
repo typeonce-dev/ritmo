@@ -70,6 +70,23 @@ const lost = hits.lost() // a reader that stopped reading: EventsLost, never sil
 
 When checksums differ, `advance` fails with `Desynced` until `resync()`. With `keepSnapshots: true` it carries this peer's save of that tick; `Desync.compare(mine, theirs)` from [`@typeonce/ritmo-devtools`](https://github.com/typeonce-dev/ritmo/blob/main/packages/devtools/README.md) lists what differs.
 
+## Hidden tabs
+
+A browser stops a hidden tab's animation frames, so that peer sends nothing, and after `timeoutMS` the others end with `Disconnected`. With the `hidden` option, the session hears the moment its page hides (`Visibility`, a contract: `BrowserVisibility.make(document)` from [`@typeonce/ritmo-browser`](https://github.com/typeonce-dev/ritmo/blob/main/packages/browser/README.md), `MemoryVisibility.make()` in tests), tells the others, and they apply the policy:
+
+```ts
+const session = Netcode.rollback(runtime, {
+  ...options,
+  hidden: { visibility: BrowserVisibility.make(document), afterMS: 30_000, then: "resync-on-return" }
+})
+// The HUD: session.status().hidden[seat] is true while that seat's tab is hidden ("waiting for Ada").
+```
+
+- `"stall"`: the others wait for the hidden seat's input, as for a slow one (rollback runs `maxRollback` ticks on guesses, then stalls), and it goes on from where it stopped when it shows again.
+- `"resync-on-return"`: the others play on with idle input for the hidden seat after its last sent input. When it shows again, seat 0 sends a save and it restores it, as in `resync()`; until then its `advance` is `Waiting`. Seat 0 is never played around, since every save is its world: while seat 0 is hidden, the others wait for it.
+
+The bound: a hidden seat's silence counts only after `afterMS`, so a seat that hides and never returns (the tab was closed) ends the session with `Disconnected` at most `afterMS + timeoutMS` after it hid. Every peer passes the same `afterMS` and `then`; without `hidden`, a hidden peer is silent and times out as before. The session unsubscribes from the visibility once it ends. On return, `FixedLoop` drops the hidden time beyond `maxFrameSeconds` and `maxStepsPerFrame`, so the loop does not burst through the missed frames. Pausing a single-player game on a hidden tab is the game's own policy (read `BrowserVisibility` in host code).
+
 Released together with [`@typeonce/ritmo`](https://github.com/typeonce-dev/ritmo/blob/main/packages/core/README.md), always with the same version.
 
 Source: https://github.com/typeonce-dev/ritmo

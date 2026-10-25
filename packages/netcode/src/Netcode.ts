@@ -40,6 +40,10 @@
  * A frame the session cannot run (`Stalled`) drops its input, so feed it
  * state (held, aimed at) rather than one-frame edges.
  *
+ * A hidden browser tab stops its frames and goes silent: pass `hidden` (a
+ * `Visibility` and a {@link HiddenPolicy}) so it tells the others instead,
+ * and draw `status().hidden`.
+ *
  * @module Netcode
  * @docGroup netcode
  *

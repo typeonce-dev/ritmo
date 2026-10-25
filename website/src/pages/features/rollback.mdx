@@ -154,6 +154,44 @@ FixedLoop.start({
 })
 ```
 
+## Hidden tabs
+
+A browser stops a hidden tab's frames, so that peer goes silent, and after
+`timeoutMS` the others would end the match. Given the tab's visibility, a
+session tells the others the moment it hides, and they apply a policy
+instead: wait for it (`"stall"`), or play on with idle input for it and
+resync it when it returns (`"resync-on-return"`).
+
+```ts twoslash title="hidden.ts"
+import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
+import { BrowserHostClock, BrowserVisibility, InputCapture } from "@typeonce/ritmo-browser"
+import { Netcode, WebSocketNetworkLink } from "@typeonce/ritmo-netcode"
+interface PlayerInput { readonly dx: number; readonly fire: boolean }
+const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("Game/Seats")
+const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("Game/Inputs")
+const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }))
+const Capture = InputCapture.system(Game, { name: "Game/Capture", source: Seats, resource: Inputs })
+const simulate = Game.Schedule(Capture)
+declare const seats: Netcode.Seats<PlayerInput>
+const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Seats, seats.source)), resources: { Inputs: [] } }).value
+const step = Clock.hz(60)
+declare const socket: WebSocket
+declare const names: ReadonlyArray<string>
+// ---cut---
+const session = Netcode.rollback(runtime, {
+  simulate, seats, seat: 1, links: [WebSocketNetworkLink.make(socket)], hostClock: BrowserHostClock.make(window), step,
+  hidden: { // [!code highlight]
+    visibility: BrowserVisibility.make(document), // [!code highlight]
+    afterMS: 30_000, // a tab closed while hidden still ends the match, 30 s + timeoutMS later
+    then: "resync-on-return" // [!code highlight]
+  }
+})
+if (!session.ok) throw new Error(session.error.reason)
+
+// In the HUD: who everyone is waiting for.
+const away = session.value.status().hidden.flatMap((hidden, seat) => hidden ? [names[seat]] : [])
+```
+
 ## What cannot work does not compile
 
 A rollback runs ticks again, so whatever they call runs again: a sound would
