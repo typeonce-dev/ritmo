@@ -92,11 +92,10 @@ describe("SpatialGrid cell size", () => {
 })
 
 describe("SpatialGrid source", () => {
-  it("is the module the skill's spatial-grid playbook gives games to copy", () => {
-    const playbook = readFileSync(new URL("../../../packages/core/skills/ritmo/playbooks/spatial-grid.md", import.meta.url), "utf8")
+  it("is the module the skill's references/spatial-grid.ts gives games to copy", () => {
+    const reference = readFileSync(new URL("../../../packages/core/skills/ritmo/references/spatial-grid.ts", import.meta.url), "utf8")
     const source = readFileSync(new URL("../spatialGrid.ts", import.meta.url), "utf8")
-    const block = playbook.slice(playbook.lastIndexOf("```ts\n") + 6, playbook.lastIndexOf("\n```"))
     const code = (text: string) => text.slice(text.indexOf("import { Result }")).trimEnd()
-    expect(code(block)).toBe(code(source))
+    expect(code(reference)).toBe(code(source))
   })
 })
