@@ -1,19 +1,30 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Rebinding
-description: Let players remap the keyboard and the gamepad from a settings screen, and keep what they chose.
+description: Players remap the keyboard, mouse, and gamepad from a settings screen, and what they chose is checked and kept.
 ---
 
 import Game from "../../components/Game.astro"
 
-Open **Controls** in the corner, click a binding, and press the new key or
-pad button. Reload the page: your bindings are still there.
+A player wants dash on J, or on the other face button. Your game only ever
+reads actions, so rebinding swaps what is under them and no rule changes.
 
 <Game id="rebind" />
 
-Remapping is often the last feature a game gets, because the input code was
-written around fixed keys. Here the game only ever reads actions, so
-rebinding swaps what is under them while the rules stay as they are.
+Open **Controls** in the corner, click a binding, and press the new key or
+pad button. Reload the page: your bindings are still there.
+
+## What you get
+
+- One call per device swaps its bindings. Systems keep reading the same
+  actions.
+- A settings screen can wait for "press a key" and bind whatever comes
+  next, bound or not.
+- Saved bindings are checked against your actions when they load. A stale
+  or hand-edited file comes back as a reason, never a broken pad.
+- A binding to an action or button that does not exist does not compile.
+- [Replays](/features/replays/) record actions, not keys, so a rebind never
+  changes how a replay plays back.
 
 ## One call
 
@@ -123,3 +134,7 @@ gamepad.rebind({ ...pad, dash: ["A"] })
   an Xbox pad works on a PlayStation or a Nintendo one.
 - Touch controls have no `rebind`: on a touch screen the layout is the
   binding.
+
+Rebinding works on every device a merge holds: see
+[Every device, one player](/features/devices/). How a settings screen fits
+into the loop is in [Loop, input, rendering](/docs/browser/#input).
