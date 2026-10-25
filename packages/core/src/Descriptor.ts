@@ -59,6 +59,7 @@
  * ```
  */
 export type DescriptorTypeId = "~ritmo/Descriptor"
+/** The key under which a constructed descriptor carries its schema's raw and error types; never written by games. */
 export type DescriptorConstructionTypeId = "~ritmo/DescriptorConstruction"
 
 /**
@@ -113,9 +114,11 @@ export interface StandardSchema<Input, Output> {
 }
 
 export namespace StandardSchema {
+  /** What `validate` returns: the decoded `value`, or the `issues` that rejected the input. */
   export type Result<Output> =
     | { readonly value: Output; readonly issues?: undefined }
     | { readonly issues: ReadonlyArray<Issue> }
+  /** One reason a schema rejected its input, with the `path` to the bad field when there is one. */
   export interface Issue {
     readonly message: string
     readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }> | undefined
@@ -143,6 +146,8 @@ export namespace StandardSchema {
  *
  * @example
  * ```ts
+ * import { Schema } from "effect"
+ *
  * // A plain value: the schema as it is (Zod here; Valibot and ArkType alike)
  * const Position = Descriptor.ConstructedComponent(z.object({ x: z.number(), y: z.number() }))("Game/Position")
  * // A value that transforms: the schema and its "~encode" (Effect, through the playbook's `codec`)
@@ -359,7 +364,15 @@ export namespace Descriptor {
    * Any supported descriptor.
    */
   export type Any = Descriptor<DescriptorKind, string, any>
+  /**
+   * Any descriptor made from a schema (`ConstructedComponent`,
+   * `ConstructedResource`): its values are validated and saved.
+   */
   export type AnyConstructed = ConstructedDescriptor<DescriptorKind, string, any, any, any>
+  /**
+   * Any transient descriptor (`TransientComponent`, `TransientResource`):
+   * kept out of snapshots and checkpoints.
+   */
   export type AnyTransient = TransientDescriptor<"component" | "resource", string, any>
   /**
    * Extracts the runtime value associated with a descriptor.
@@ -369,9 +382,18 @@ export namespace Descriptor {
    * Extracts the descriptor name.
    */
   export type Name<T extends Any> = T extends Descriptor<infer _Kind, infer Name, infer _Value> ? Name : never
+  /**
+   * The raw input a constructed descriptor's schema decodes (what
+   * `Game.Command.entryRaw` and `setRaw` accept); `never` for a descriptor
+   * without a schema.
+   */
   export type Raw<T extends Any> = T extends ConstructedDescriptor<infer _Kind, infer _Name, infer _Value, infer Raw, infer _Error>
     ? Raw
     : never
+  /**
+   * The error a constructed descriptor's schema reports when raw input does
+   * not decode; `never` for a descriptor without a schema.
+   */
   export type ConstructionError<T extends Any> =
     T extends ConstructedDescriptor<infer _Kind, infer _Name, infer _Value, infer _Raw, infer Error>
       ? Error
@@ -670,10 +692,20 @@ type StateRejection<Definition> = Definition extends StandardSchema<infer _Encod
  *   air: z.object({ vy: z.number(), coyote: z.int() })
  * }, { transitions: { ground: ["air"], air: ["ground"] } })
  *
- * commands.spawn(Game.Command.spawn([Contact, { _tag: "ground", platform: null }]))
- * // in a system with a write slot `contact`:
- * data.contact.transition({ from: "ground", to: "air", data: { vy: 12, coyote: 0 } })
- * data.contact.update({ state: "air", data: (air) => ({ ...air, vy: air.vy - gravity }) })
+ * const Game = Schema.bind(Schema.fragment({ components: { Contact } }))
+ * const gravity = 0.5
+ *
+ * const Spawn = Game.System("Game/Spawn", { commands: Game.System.commands(Game.System.spawns(Contact)) }, ({ commands }) => {
+ *   commands.spawn(Game.Command.spawn([Contact, { _tag: "ground", platform: null }]))
+ * })
+ * const Jump = Game.System("Game/Jump", {
+ *   queries: { bodies: Game.Query({ selection: { contact: Game.Query.write(Contact) } }) }
+ * }, ({ queries }) => {
+ *   for (const { data } of queries.bodies.each()) {
+ *     data.contact.transition({ from: "ground", to: "air", data: { vy: 12, coyote: 0 } })
+ *     data.contact.update({ state: "air", data: (air) => ({ ...air, vy: air.vy - gravity }) })
+ *   }
+ * })
  * ```
  */
 export const EntityState = <

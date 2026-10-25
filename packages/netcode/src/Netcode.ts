@@ -52,12 +52,29 @@
  *
  * @example
  * ```ts
- * const seats = Netcode.seats(PlayerInput, { count: 2, idle }).value!
+ * declare const link: NetworkLink.NetworkLink
+ * declare const readInput: () => PlayerInput
+ * declare const drawScene: (alpha: number) => void
+ * declare const showDisconnected: (failure: unknown) => void
+ * // ---cut---
+ * // A saveable game (every component and resource constructed or transient)
+ * // that reads each seat's input from one source service.
+ * const PlayerInput = z.object({ dx: z.number(), fire: z.boolean() })
+ * type PlayerInput = z.infer<typeof PlayerInput>
  * const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("Game/Seats")
- * const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Seats, seats.source)), ... }).value
+ * const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("Game/Inputs")
+ * const Game = Schema.bind(Schema.fragment({ components: { Position }, resources: { Inputs } }), Root)
+ * const simulate = Game.Schedule(InputCapture.system(Game, { name: "Game/CaptureInput", source: Seats, resource: Inputs }))
+ *
+ * const seats = Netcode.seats(PlayerInput, { count: 2, idle: { dx: 0, fire: false } })
+ * if (!seats.ok) throw new Error(seats.error.reason)
+ * const runtime = Game.Runtime.make({
+ *   services: Game.Runtime.services(Game.Runtime.service(Seats, seats.value.source)),
+ *   resources: { Inputs: [] }
+ * }).value
  *
  * const session = Netcode.rollback(runtime, {
- *   simulate, seats, seat: 0, links: [link], hostClock: BrowserHostClock.make(window), step
+ *   simulate, seats: seats.value, seat: 0, links: [link], hostClock: BrowserHostClock.make(window), step
  * })
  * if (!session.ok) throw new Error(session.error.reason)
  *
@@ -65,7 +82,7 @@
  *   source: BrowserTickSource.make(window), step, maxFrameSeconds: 0.25, maxStepsPerFrame: 5,
  *   rate: session.value.rate,
  *   update: session.value.update({ input: readInput, onHalted: (error) => console.error(error) }),
- *   render: () => runtime.tick(draw),
+ *   render: (frame) => drawScene(frame.alpha),
  *   onFailure: (failure) => showDisconnected(failure)
  * })
  * ```

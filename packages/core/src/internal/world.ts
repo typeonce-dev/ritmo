@@ -30,6 +30,7 @@
 import type { Descriptor } from "../Descriptor.ts"
 import * as Entity from "../Entity.ts"
 import * as Relation from "../Relation.ts"
+import * as RelationErrors from "./relations.ts"
 import * as Result from "../Result.ts"
 import type { Schema } from "../Schema.ts"
 
@@ -1396,16 +1397,16 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     targetId: number
   ): Result.Result<void, Relation.Relation.MutationError> => {
     if (!records.has(sourceId)) {
-      return Result.failure(Relation.missingEntityError(sourceId))
+      return Result.failure(RelationErrors.missingEntityError(sourceId))
     }
     if (!records.has(targetId)) {
-      return Result.failure(Relation.missingTargetEntityError(sourceId, targetId, relation.name))
+      return Result.failure(RelationErrors.missingTargetEntityError(sourceId, targetId, relation.name))
     }
     if (!relation.allowSelf && sourceId === targetId) {
-      return Result.failure(Relation.selfRelationNotAllowedError(sourceId, relation.name))
+      return Result.failure(RelationErrors.selfRelationNotAllowedError(sourceId, relation.name))
     }
     if (relation.relationKind === "hierarchy" && wouldCreateHierarchyCycle(relation, sourceId, targetId)) {
-      return Result.failure(Relation.hierarchyCycleError(sourceId, targetId, relation.name))
+      return Result.failure(RelationErrors.hierarchyCycleError(sourceId, targetId, relation.name))
     }
 
     let targets = relationTargets.get(relation.key)
@@ -1431,7 +1432,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     childIds: ReadonlyArray<number>
   ): Result.Result<void, Relation.Relation.MutationError> => {
     if (!records.has(parentId)) {
-      return Result.failure(Relation.missingEntityError(parentId))
+      return Result.failure(RelationErrors.missingEntityError(parentId))
     }
 
     const currentChildren = relatedSourceIds(relation, parentId)
@@ -1439,23 +1440,23 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
 
     for (const childId of childIds) {
       if (!records.has(childId)) {
-        return Result.failure(Relation.missingChildEntityError(parentId, childId, relation.name))
+        return Result.failure(RelationErrors.missingChildEntityError(parentId, childId, relation.name))
       }
       if (seenChildren.has(childId)) {
-        return Result.failure(Relation.duplicateChildError(parentId, childId, relation.name))
+        return Result.failure(RelationErrors.duplicateChildError(parentId, childId, relation.name))
       }
       seenChildren.add(childId)
       if (relationTarget(relation, childId) !== parentId) {
-        return Result.failure(Relation.childNotRelatedToParentError(parentId, childId, relation.name))
+        return Result.failure(RelationErrors.childNotRelatedToParentError(parentId, childId, relation.name))
       }
     }
 
     if (currentChildren.length !== childIds.length) {
-      return Result.failure(Relation.childSetMismatchError(parentId, relation.name))
+      return Result.failure(RelationErrors.childSetMismatchError(parentId, relation.name))
     }
     for (const childId of currentChildren) {
       if (!seenChildren.has(childId)) {
-        return Result.failure(Relation.childSetMismatchError(parentId, relation.name))
+        return Result.failure(RelationErrors.childSetMismatchError(parentId, relation.name))
       }
     }
 

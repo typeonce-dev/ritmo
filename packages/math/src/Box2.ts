@@ -7,6 +7,10 @@
  *
  * @example
  * ```ts
+ * declare const x: number, y: number, width: number, height: number, radius: number
+ * declare const position: Vec2.Vec2
+ * declare const push: (position: Vec2.Vec2) => void
+ * // ---cut---
  * const wall = Box2.around(x, y, width / 2, height / 2)
  * if (Box2.overlapsCircle(wall, position, radius)) push(position)
  * ```

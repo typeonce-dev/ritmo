@@ -12,8 +12,10 @@
  * @example
  * ```ts
  * const Rng = Descriptor.ConstructedResource(Random.codec)("Game/Rng")
- * const runtime = Game.Runtime.make({ services, resources: { Rng: Random.seed(0x5eed) } })
+ * const Game = Schema.bind(Schema.fragment({ resources: { Rng } }))
+ * const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Rng: Random.seed(0x5eed) } })
  *
+ * const kinds = ["grunt", "archer"] as const
  * Game.System("Game/Spawn", { resources: { rng: Game.System.writeResource(Rng) } }, ({ resources }) => {
  *   const random = Random.draw(resources.rng)
  *   const angle = random.range(0, Math.PI * 2)

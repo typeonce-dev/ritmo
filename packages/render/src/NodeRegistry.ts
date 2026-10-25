@@ -16,16 +16,32 @@
  *
  * @example
  * ```ts
- * const meshes = NodeRegistry.make<Mesh>({
- *   attach: (mesh, parent) => (parent ?? scene).add(mesh),
+ * // Three.js, reduced to what the registry touches:
+ * interface Geometry { dispose(): void }
+ * declare class Mesh {
+ *   constructor(geometry: Geometry, material: object)
+ *   readonly geometry: Geometry
+ *   add(child: Mesh): void
+ *   removeFromParent(): void
+ * }
+ * declare const scene: { add(mesh: Mesh): void }
+ * declare const geometry: Geometry
+ * declare const turretGeometry: Geometry
+ * declare const material: object
+ * declare const tank: Entity.EntityId<typeof Game.schema>
+ * declare const turret: Entity.EntityId<typeof Game.schema>
+ * declare const despawned: Entity.EntityId<typeof Game.schema>
+ * // ---cut---
+ * const meshes = NodeRegistry.make({
+ *   attach: (mesh: Mesh, parent) => (parent ?? scene).add(mesh),
  *   detach: (mesh) => {
  *     mesh.removeFromParent()
  *     mesh.geometry.dispose()
  *   }
  * })
- * meshes.ensure(match.entity.id, () => new Mesh(geometry, material))
- * meshes.ensure(turretId, () => new Mesh(turretGeometry, material), match.entity.id)
- * meshes.remove(despawnedId)
+ * meshes.ensure(tank, () => new Mesh(geometry, material))
+ * meshes.ensure(turret, () => new Mesh(turretGeometry, material), tank) // under the tank's node
+ * meshes.remove(despawned)
  * meshes.clear()
  * ```
  */

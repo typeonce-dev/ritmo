@@ -17,24 +17,23 @@
  *
  * @example
  * ```ts
+ * declare const audioHost: { play: (sound: string) => void }
+ * // ---cut---
  * // Provide the host capabilities systems declared as services. Simulation
  * // time comes from `Clock` and randomness from the `Random` resource,
  * // never from a service.
  * const services = Game.Runtime.services(
  *   Game.Runtime.service(Audio, { play: (sound) => audioHost.play(sound) }),
- *   Game.Runtime.service(Nodes, nodeRegistry)
+ *   Game.Runtime.service(Logger, { log: (message) => console.log(message) })
  * )
  *
- * // make always returns a Result. Viewport is a constructed resource, so
+ * // make always returns a Result. Score is a constructed resource, so
  * // validating it can fail and the Result must be checked.
  * const runtime = Game.Runtime.make({
  *   services,
- *   resources: {
- *     viewport: { width: 800, height: 600 },
- *     rng: Random.seed(0x5eed)
- *   },
+ *   resources: { Time: Clock.start(step), Score: 0 },
  *   machines: Game.Runtime.machines(
- *     Game.Runtime.machine(GameFlow, { _tag: "Boot" })
+ *     Game.Runtime.machine(GameFlow, { _tag: "Menu" })
  *   )
  * })
  *
@@ -43,8 +42,8 @@
  * }
  *
  * // The runtime owns the world and executes explicit schedules.
- * runtime.value.tick(setupSchedule)
- * runtime.value.tick(updateSchedule)
+ * runtime.value.tick(setup)
+ * runtime.value.tick(update)
  * ```
  *
  * @module Runtime
@@ -86,6 +85,7 @@ import type * as Machine from "./Machine.ts"
 import * as Query from "./Query.ts"
 import type { QueryMatch, ReadonlyValue } from "./Query.ts"
 import * as Relation from "./Relation.ts"
+import * as RelationErrors from "./internal/relations.ts"
 import type * as Requirement from "./Requirement.ts"
 import * as Result from "./Result.ts"
 import * as Schedule from "./Schedule.ts"
@@ -132,10 +132,11 @@ import type {
  * const runtime = Game.Runtime.make({
  *   services: Game.Runtime.services(
  *     Game.Runtime.service(Logger, { log: console.log })
- *   )
- * }).value
+ *   ),
+ *   resources: { Time: Clock.start(step) }
+ * })
  *
- * runtime.tick(updateSchedule)
+ * if (runtime.ok) runtime.value.tick(update)
  * ```
  */
 
@@ -325,6 +326,7 @@ type ServiceEntriesToRecord<
  * export const makeRuntime = <const Services extends RuntimeServices>(services: Services) =>
  *   Game.Runtime.make({ services, resources: { Score: 0 } })
  *
+ * const Input = Descriptor.Service<Keyboard.Actions<typeof bindings>>()("Game/Input")
  * makeRuntime(Game.Runtime.services(Game.Runtime.service(Input, Keyboard.scripted(bindings, []))))
  * ```
  */
@@ -429,21 +431,13 @@ type RequirementErrorsOfSchedule<
   ? RequirementErrorsFor<Requirement.Of<Selected>, S, Services, Resources, Machines>
   : never
 
-export type ValidateSchedules<
-  Schedules extends ReadonlyArray<ExecutableScheduleDefinition<any, any, any, any, any, AnyScheduleOrder>>,
-  Services extends Record<string, unknown>,
-  Resources extends object,
-  Machines extends object
-> = {
-  readonly [K in keyof Schedules]:
-    Schedules[K] & ValidateSchedule<
-      Extract<Schedules[K], ExecutableScheduleDefinition<any, any, any, any, any, AnyScheduleOrder>>,
-      Services,
-      Resources,
-      Machines
-    >
-}
-
+/**
+ * The check `runtime.tick(...)` applies to its schedules, for a package that
+ * takes a schedule to run on a runtime (`Netcode.rollback`'s `simulate`):
+ * `unknown` when the runtime provides every service, resource, and machine
+ * the schedules need; otherwise a `__fixRuntimeRequirements__` member naming
+ * each missing one, so the call does not compile.
+ */
 export type ValidateScheduleArray<
   Schedules extends ReadonlyArray<ExecutableScheduleDefinition<any, any, any, any, any, AnyScheduleOrder>>,
   Services extends Record<string, unknown>,
@@ -507,8 +501,6 @@ export type ValidateInspector<
   : {
       readonly __fixRuntimeRequirements__: RequirementErrorsOfInspector<Selected, Services, Resources, Machines>
     }
-
-export type AnyRequirements = Requirement.Requirement
 
 /** One runtime requirement that is not currently provisioned. */
 export interface MissingRuntimeRequirement {
@@ -970,7 +962,7 @@ const makeValidatedRuntime = <
       recordEffect({ kind: "relationFailure", entity: sourceId, relation: relation.name, error: error._tag })
     }
     relationFailures.append(relation.key, world.currentTick(), [
-      Relation.mutationFailure(
+      RelationErrors.mutationFailure(
         relation,
         operation,
         world.entityIdOf(sourceId) as Entity.EntityId<S, Root>,
@@ -1268,11 +1260,11 @@ const makeValidatedRuntime = <
     relation: Relation.Relation.Any
   ): Result.Result<Entity.EntityId<S, Root>, Relation.Relation.LookupError> => {
     if (!world.records.has(target)) {
-      return Result.failure(Relation.missingEntityError(target))
+      return Result.failure(RelationErrors.missingEntityError(target))
     }
     const targetId = world.relationTarget(relation, target)
     if (targetId === undefined) {
-      return Result.failure(Relation.missingRelationError(target, relation.name))
+      return Result.failure(RelationErrors.missingRelationError(target, relation.name))
     }
     return Result.success(entityId(targetId))
   }
@@ -1282,14 +1274,14 @@ const makeValidatedRuntime = <
     related: relatedTarget,
     relatedSources(target, relation) {
       if (!world.records.has(target)) {
-        return Result.failure(Relation.missingEntityError(target))
+        return Result.failure(RelationErrors.missingEntityError(target))
       }
       return Result.success(world.relatedSourceIds(relation, target).map(entityId))
     },
     parent: relatedTarget,
     ancestors(target, relation) {
       if (!world.records.has(target)) {
-        return Result.failure(Relation.missingEntityError(target))
+        return Result.failure(RelationErrors.missingEntityError(target))
       }
       const ancestors: Array<Entity.EntityId<S, Root>> = []
       let current = world.relationTarget(relation, target)
@@ -1301,7 +1293,7 @@ const makeValidatedRuntime = <
     },
     descendants(target, relation, options) {
       if (!world.records.has(target)) {
-        return Result.failure(Relation.missingEntityError(target))
+        return Result.failure(RelationErrors.missingEntityError(target))
       }
       const descendants: Array<Entity.EntityId<S, Root>> = []
       if (options?.order === "breadth") {
@@ -1326,7 +1318,7 @@ const makeValidatedRuntime = <
     },
     root(target, relation) {
       if (!world.records.has(target)) {
-        return Result.failure(Relation.missingEntityError(target))
+        return Result.failure(RelationErrors.missingEntityError(target))
       }
       let current: number = target
       let parentId = world.relationTarget(relation, current)
@@ -1359,7 +1351,7 @@ const makeValidatedRuntime = <
         return resolve(handle as Entity.Handle<Root, any>, query, reader)
       },
       children(target, relation) {
-        if (!world.records.has(target)) return Result.failure(Relation.missingEntityError(target))
+        if (!world.records.has(target)) return Result.failure(RelationErrors.missingEntityError(target))
         return Result.success(matching(world.relatedSourceIds(relation, target).map(entityId)))
       },
       descendants(target, relation, options) {
@@ -3385,8 +3377,9 @@ const makeValidatedRuntime = <
  *     Game.Runtime.service(Logger, { log: console.log })
  *   ),
  *   resources: { Score: 0 },
- *   machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Menu" }))
- * }).value
+ *   machines: Game.Runtime.machines(Game.Runtime.machine(GameFlow, { _tag: "Menu" }))
+ * })
+ * if (!runtime.ok) throw new Error(JSON.stringify(runtime.error))
  * ```
  */
 export const make = <
@@ -3482,6 +3475,8 @@ const rejectRepeated = (names: ReadonlyArray<string>, kind: "service" | "machine
  *
  * @example
  * ```ts
+ * declare const audioHost: { play: (sound: string) => void }
+ * // ---cut---
  * // Bundle host capabilities once when building the runtime.
  * const services = Game.Runtime.services(
  *   Game.Runtime.service(Logger, { log: console.log }),

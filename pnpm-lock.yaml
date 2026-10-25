@@ -14,9 +14,27 @@ importers:
       '@typeonce/oxlint-plugin-ritmo':
         specifier: workspace:*
         version: link:packages/oxlint-plugin
+      '@typeonce/ritmo':
+        specifier: workspace:*
+        version: link:packages/core
+      '@typeonce/ritmo-browser':
+        specifier: workspace:*
+        version: link:packages/browser
+      '@typeonce/ritmo-devtools':
+        specifier: workspace:*
+        version: link:packages/devtools
       '@typeonce/ritmo-math':
         specifier: workspace:*
         version: link:packages/math
+      '@typeonce/ritmo-netcode':
+        specifier: workspace:*
+        version: link:packages/netcode
+      '@typeonce/ritmo-pixi':
+        specifier: workspace:*
+        version: link:packages/pixi
+      '@typeonce/ritmo-render':
+        specifier: workspace:*
+        version: link:packages/render
       '@types/node':
         specifier: ^25.5.0
         version: 25.5.0

@@ -30,6 +30,8 @@
  *
  * @example
  * ```ts
+ * declare const jump: () => void
+ * // ---cut---
  * const input = Keyboard.actions(window, {
  *   left: ["ArrowLeft", "a"],
  *   right: ["ArrowRight", "d"],
@@ -61,6 +63,8 @@
  *
  * @example
  * ```ts
+ * declare const saved: string
+ * // ---cut---
  * // Browser: record a session, then save `recorder.timeline()` as JSON.
  * const recorder = Keyboard.recording(Keyboard.actions(window, bindings))
  *
@@ -490,6 +494,9 @@ export interface Presses extends System.Consumes<"snapshot"> {
  *
  * @example
  * ```ts
+ * const input = Keyboard.actions(window, bindings)
+ * declare const current: Keyboard.Rebinding<typeof bindings>
+ * // ---cut---
  * const presses = Keyboard.presses(window)
  *
  * // While the settings screen waits for the new jump key:
@@ -743,6 +750,9 @@ export interface InvalidRebinding {
  *
  * @example
  * ```ts
+ * const input = Keyboard.actions(window, bindings)
+ * declare const stored: string
+ * // ---cut---
  * const saved = Keyboard.parseRebinding(bindings, JSON.parse(stored))
  * if (saved.ok) input.rebind(saved.value)
  * ```

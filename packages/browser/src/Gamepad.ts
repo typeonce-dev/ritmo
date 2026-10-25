@@ -34,6 +34,9 @@
  *
  * @example
  * ```ts
+ * declare const move: (direction: Controls.Vector) => void
+ * declare const attack: () => void
+ * // ---cut---
  * const pad = Gamepad.actions(window, {
  *   move: Gamepad.vector({ stick: "left", up: ["dpadUp"], down: ["dpadDown"], left: ["dpadLeft"], right: ["dpadRight"] }),
  *   attack: ["west"],
@@ -740,6 +743,10 @@ export type InvalidRebinding = ButtonsInternal.InvalidRebinding
  *
  * @example
  * ```ts
+ * const bindings = { move: Gamepad.vector({ stick: "left" }), jump: ["south"] } as const
+ * const pad = Gamepad.actions(window, bindings)
+ * declare const stored: string
+ * // ---cut---
  * const saved = Gamepad.parseRebinding(bindings, JSON.parse(stored))
  * if (saved.ok) pad.rebind(saved.value)
  * ```

@@ -38,10 +38,14 @@
  * const bindings = { left: ["ArrowLeft", "a"], right: ["ArrowRight", "d"], jump: [" "] } as const
  *
  * const KeyboardInput = Descriptor.Service<InputCapture.SourceOf<Keyboard.Actions<typeof bindings>>>()("Game/Keyboard")
- * const Input = Descriptor.TransientResource<Keyboard.Snapshot<typeof bindings>>()("Game/Input")
+ * const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof KeyboardInput>>()("Game/Input")
+ * const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
  *
  * const CaptureInput = InputCapture.system(Game, { name: "Game/CaptureInput", source: KeyboardInput, resource: Input })
- * const update = Game.Schedule(CaptureInput, Move, Jump)
+ * const Jump = Game.System("Game/Jump", { resources: { input: Game.System.readResource(Input) } }, ({ resources }) => {
+ *   if (resources.input.get().actions.jump.pressed) console.log("jump")
+ * })
+ * const update = Game.Schedule(CaptureInput, Jump)
  *
  * const runtime = Game.Runtime.make({
  *   services: Game.Runtime.services(Game.Runtime.service(KeyboardInput, Keyboard.actions(window, bindings))),
@@ -76,6 +80,10 @@ export interface Source<Value> extends System.Consumes<"snapshot"> {
  *
  * @example
  * ```ts
+ * const Actions = Controls.actions({ buttons: ["jump"] })
+ * const keys = { jump: [" "] } as const
+ * const pad = { jump: ["south"] } as const
+ * // ---cut---
  * const makeControls = (devices: { readonly keyboard: Keyboard.Actions<typeof keys>; readonly gamepad: Gamepad.Actions<typeof pad> }) =>
  *   Actions.merge(devices)
  * const ControlsInput = Descriptor.Service<InputCapture.SourceOf<ReturnType<typeof makeControls>>>()("Game/Controls")

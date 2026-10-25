@@ -500,7 +500,12 @@ export type ScheduleDefinition<
   Order extends AnyScheduleOrder = AnyScheduleOrder
 > = ExecutableScheduleDefinition<S, Needs, Root, CarriedNeeds, Failure, Order>
 
+/** Type-level helpers for schedules. */
 export namespace Schedule {
+  /**
+   * Any built schedule of schema `S`, whatever its order; what
+   * `Game.Schedule(...)` returns, before `runtime.tick(...)` checks it.
+   */
   export type Definition<
     S extends Schema.Any,
     Needs extends Requirement.Requirement = Requirement.Requirement,
@@ -508,7 +513,9 @@ export namespace Schedule {
     CarriedNeeds extends Requirement.Requirement = Needs,
     Failure extends SystemFailure = never
   > = ScheduleDefinition<S, Needs, Root, CarriedNeeds, Failure>
+  /** A marker step (`applyDeferred()`, `applyStateTransitions(...)`). */
   export type Step = ScheduleStep
+  /** The transition schedules `Game.Schedule.transitions(...)` bundles for one `applyStateTransitions(...)`. */
   export type TransitionBundle<
     S extends Schema.Any,
     Entries extends ReadonlyArray<StateMachine.AnyTransitionSchedule<S, any>> = ReadonlyArray<StateMachine.AnyTransitionSchedule<S, any>>,
@@ -563,9 +570,21 @@ export type EntryFailure<Entry> =
 export type CompositionFailure<Entries extends ReadonlyArray<ScheduleEntry>> =
   EntryFailure<Entries[number]>
 
+/**
+ * The requirements (services, resources, machines) a schedule of `Entries`
+ * needs: every entry's, nested schedules included. Hovers on a built
+ * schedule show it; `runtime.tick(...)` checks it against what the runtime
+ * provides.
+ */
 export type CompositionExactRequirements<Entries extends ReadonlyArray<ScheduleEntry>> =
   EntryNeeds<Entries[number]>
 
+/**
+ * The schedule built by `Game.Schedule(...entries)`: the entries'
+ * requirements, failures, and order, carried for `runtime.tick(...)`.
+ * Hovers show it; name a schedule with `const update = Game.Schedule(...)`,
+ * never with this type.
+ */
 export type AnonymousScheduleBuildFor<
   S extends Schema.Any,
   Entries extends ReadonlyArray<ScheduleEntry>,
@@ -597,6 +616,7 @@ export type ConditionalScheduleBuildFor<
   CompositionOrder<Entries>
 >
 
+/** What `Game.Schedule.transitions(...)` accepts: transition schedules, or bundles of them (flattened in place). */
 export type TransitionBundleInput<S extends Schema.Any = Schema.Any, Root = unknown> =
   | StateMachine.AnyTransitionSchedule<S, Root>
   | TransitionBundleDefinition<S, ReadonlyArray<StateMachine.AnyTransitionSchedule<S, Root>>, any, Root, any, any>
@@ -606,14 +626,17 @@ type FlattenTransitionEntry<Entry> =
     ? InnerEntries[number]
     : Extract<Entry, StateMachine.AnyTransitionSchedule<any, any>>
 
+/** The transition schedules of `Entries` with nested bundles flattened, as one bundle carries them. */
 export type FlattenTransitionEntries<
   Entries extends ReadonlyArray<TransitionBundleInput<any, any>>
 > = ReadonlyArray<FlattenTransitionEntry<Entries[number]>>
 
+/** The requirements of every transition schedule in a bundle; `applyStateTransitions(bundle)` carries them. */
 export type TransitionBundleRequirements<
   Entries extends ReadonlyArray<StateMachine.AnyTransitionSchedule<any, any>>
 > = Requirement.Of<Entries[number]>
 
+/** The expected failures of every transition schedule in a bundle; `applyStateTransitions(bundle)` carries them. */
 export type TransitionBundleFailure<
   Entries extends ReadonlyArray<StateMachine.AnyTransitionSchedule<any, any>>
 > = CarriedFailure<Entries[number]>
@@ -763,8 +786,14 @@ export const when = <
  *
  * @example
  * ```ts
- * const gameplay = Game.Schedule.when([Game.Condition.inState(Flow, "Playing")],
- *   Game.Schedule.pauseWhen([Game.Condition.not(frozen)], Move, Attack, ApplyHits)
+ * const HitStop = Game.StateMachine("Game/HitStop", { Running: {}, Frozen: {} })
+ * const ApplyHits = Game.System("Game/ApplyHits", { events: { hits: Game.System.readEvent(Hit) } }, ({ events }) => {
+ *   for (const hit of events.hits.all()) console.log(hit.amount)
+ * })
+ * // ---cut---
+ * const frozen = Game.Condition.inState(HitStop, "Frozen")
+ * const gameplay = Game.Schedule.when([Game.Condition.inState(GameFlow, "Playing")],
+ *   Game.Schedule.pauseWhen([Game.Condition.not(frozen)], Move, ApplyHits)
  * )
  * ```
  */

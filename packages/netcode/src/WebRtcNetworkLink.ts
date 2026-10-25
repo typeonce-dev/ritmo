@@ -14,10 +14,12 @@
  *
  * @example
  * ```ts
+ * declare const connection: RTCPeerConnection
+ * // The game's own start: `Netcode.rollback(runtime, { ...options, links })` (see `Netcode`).
+ * declare const startMatch: (links: ReadonlyArray<NetworkLink.NetworkLink>) => void
+ * // ---cut---
  * const channel = connection.createDataChannel("ritmo", { ordered: false, maxRetransmits: 0 })
- * channel.addEventListener("open", () => {
- *   const session = Netcode.rollback(runtime, { ...options, links: [WebRtcNetworkLink.make(channel)] })
- * })
+ * channel.addEventListener("open", () => startMatch([WebRtcNetworkLink.make(channel)]))
  * ```
  */
 import * as NetworkLink from "./NetworkLink.ts"

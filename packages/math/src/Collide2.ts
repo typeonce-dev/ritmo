@@ -13,6 +13,11 @@
  *
  * @example
  * ```ts
+ * declare const position: Vec2.Vec2, velocity: Vec2.Vec2
+ * declare const radius: number, dt: number
+ * declare const walls: ReadonlyArray<Box2.Box2>
+ * declare const bumpedWall: () => void
+ * // ---cut---
  * // Move a body by its velocity this step, sliding along the walls.
  * const moved = Collide2.moveCircle(position, Vec2.scale(velocity, dt), radius, { boxes: walls })
  * if (moved.blocked) bumpedWall()
@@ -252,6 +257,9 @@ export const sweepCircleSegment = (origin: Vec2, delta: Vec2, radius: number, se
  *
  * @example
  * ```ts
+ * declare const eye: Vec2.Vec2, target: Vec2.Vec2
+ * declare const walls: ReadonlyArray<Box2.Box2>
+ * // ---cut---
  * const sees = Collide2.sweepCircle(eye, Vec2.subtract(target, eye), 0, { boxes: walls }) === undefined
  * ```
  *
@@ -379,6 +387,10 @@ export const pushOut = (center: Vec2, radius: number, walls: Walls, skin: number
  *
  * @example
  * ```ts
+ * declare const position: Vec2.Vec2, delta: Vec2.Vec2
+ * declare const radius: number
+ * declare const nearbyWalls: ReadonlyArray<Segment2.Segment2>
+ * // ---cut---
  * // A map traced from survey data: every wall is a segment.
  * const moved = Collide2.moveCircle(position, delta, radius, { segments: nearbyWalls })
  * ```

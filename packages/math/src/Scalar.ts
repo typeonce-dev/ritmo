@@ -9,6 +9,9 @@
  *
  * @example
  * ```ts
+ * declare const current: number, topSpeed: number, acceleration: number, target: number, dt: number
+ * declare const view: { readonly zoom: number }
+ * // ---cut---
  * // Accelerate toward the top speed by at most `acceleration * dt` per step.
  * const speed = Scalar.moveToward(current, topSpeed, acceleration * dt)
  * // Ease a zoom toward its target the same way at any step rate.

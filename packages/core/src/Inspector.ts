@@ -105,8 +105,11 @@ export interface InspectorDefinition<
 
 /** Type-level helpers for built inspectors. */
 export namespace Inspector {
+  /** Any built inspector, whatever it reads; a bound for generic code such as devtools. */
   export type Any = InspectorDefinition<any, any, any, any, any>
+  /** What an inspector returns when it runs (`runtime.inspect(inspector)`). */
   export type Value<T extends Any> = T extends InspectorDefinition<any, infer Value, any, any, any> ? Value : never
+  /** The requirements (machines, services) the runtime must provide to run an inspector. */
   export type Needs<T extends Any> = T extends InspectorDefinition<any, any, any, any, infer Needs> ? Needs : never
 }
 
