@@ -1,5 +1,7 @@
 import { Descriptor, Schema } from "@typeonce/ritmo"
+import type { Descriptor as DescriptorOf } from "@typeonce/ritmo/Descriptor"
 import { Controls, Gamepad, InputCapture, Keyboard, Pointer, Touch } from "@typeonce/ritmo-browser"
+import * as Random from "@typeonce/ritmo-math/Random"
 import { describe, expect, it } from "tstyche"
 
 declare const host: Keyboard.KeyboardHost & Gamepad.GamepadHost
@@ -224,5 +226,31 @@ describe("one home for the shared input types", () => {
     type FromPointer = Pointer.ActionState
     expect<Controls.ActionState>().type.toBe<{ readonly held: boolean; readonly pressed: boolean; readonly released: boolean }>()
     expect<Controls.Vector>().type.toBe<{ readonly x: number; readonly y: number }>()
+  })
+
+  it("draws a fuzzed snapshot of the idle snapshot's type, from a generator", () => {
+    const random = Random.make(1)
+    const devices = { keyboard: Keyboard.idle(keyBindings), gamepad: Gamepad.idle(padBindings) }
+    expect(Actions.random(random, devices)).type.toBe<ReturnType<typeof Actions.idle<typeof devices>>>()
+    expect(Actions.random).type.toBeCallableWith(random, devices)
+    expect(Actions.random).type.not.toBeCallableWith({}, devices)
+    expect(Actions.random).type.not.toBeCallableWith(random, { keyboard: { pressed: true } })
+  })
+
+  it("declares the input service as the merge's snapshot() only: the merge provides it, systems still cannot drain it", () => {
+    const makeControls = (devices: { readonly keyboard: Keyboard.Actions<typeof keyBindings>; readonly gamepad: Gamepad.Actions<typeof padBindings> }) =>
+      Actions.merge(devices)
+    const ControlsInput = Descriptor.Service<InputCapture.SourceOf<ReturnType<typeof makeControls>>>()("ControlsTypes/Source")
+    expect<InputCapture.SnapshotOf<typeof ControlsInput>>().type.toBe<ReturnType<ReturnType<typeof makeControls>["snapshot"]>>()
+    // A replay's plain source and the live merge both provide it; the merge's rebind stays with the host.
+    expect<{ readonly snapshot: () => InputCapture.SnapshotOf<typeof ControlsInput> }>().type.toBeAssignableTo<DescriptorOf.Value<typeof ControlsInput>>()
+    expect(makeControls({ keyboard, gamepad })).type.toBeAssignableTo<DescriptorOf.Value<typeof ControlsInput>>()
+    // @ts-expect-error Property 'rebind' does not exist
+    ;({} as DescriptorOf.Value<typeof ControlsInput>).rebind
+    const Game = Schema.bind(Schema.fragment({}))
+    Game.System("ControlsTypes/Peek", { services: { controls: Game.System.service(ControlsInput) } }, ({ services }) => {
+      // @ts-expect-error snapshot() drains ControlsTypes/Source
+      services.controls.snapshot()
+    })
   })
 })

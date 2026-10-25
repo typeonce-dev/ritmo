@@ -25,6 +25,11 @@
  * `Game.System.service` (to rebind it, say) cannot call `snapshot()`.
  * Capture each source once and read the resource everywhere else.
  *
+ * Declare the source service as {@link SourceOf} the device (only its
+ * `snapshot()`), not as the device: the same descriptor then takes the live
+ * device in the page, a scripted one in tests, and the recorded or fuzzed
+ * input of `@typeonce/ritmo-devtools`' `Replay` and `Fuzz`.
+ *
  * @module InputCapture
  * @docGroup browser
  *
@@ -32,7 +37,7 @@
  * ```ts
  * const bindings = { left: ["ArrowLeft", "a"], right: ["ArrowRight", "d"], jump: [" "] } as const
  *
- * const KeyboardInput = Descriptor.Service<Keyboard.Actions<typeof bindings>>()("Game/Keyboard")
+ * const KeyboardInput = Descriptor.Service<InputCapture.SourceOf<Keyboard.Actions<typeof bindings>>>()("Game/Keyboard")
  * const Input = Descriptor.TransientResource<Keyboard.Snapshot<typeof bindings>>()("Game/Input")
  *
  * const CaptureInput = InputCapture.system(Game, { name: "Game/CaptureInput", source: KeyboardInput, resource: Input })
@@ -57,6 +62,26 @@ import type { Schema } from "@typeonce/ritmo/Schema"
 export interface Source<Value> extends System.Consumes<"snapshot"> {
   readonly snapshot: () => Value
 }
+
+/**
+ * The input service a game declares: the `snapshot()` of a device, a
+ * `Controls` merge, or a `Controls.players` pool, without its `rebind` and
+ * `dispose`. Declare the source service with it
+ * (`Descriptor.Service<InputCapture.SourceOf<typeof device>>()`), so the
+ * same descriptor is provided by the live devices in the page, by scripted
+ * devices in tests, by `playback.source(...)` in a replay, and by
+ * `Fuzz.input(...)` in the fuzzer. Keep the device itself in the host to
+ * rebind and dispose it. Use {@link Source} when the snapshot type is
+ * written out instead of taken from a device.
+ *
+ * @example
+ * ```ts
+ * const makeControls = (devices: { readonly keyboard: Keyboard.Actions<typeof keys>; readonly gamepad: Gamepad.Actions<typeof pad> }) =>
+ *   Actions.merge(devices)
+ * const ControlsInput = Descriptor.Service<InputCapture.SourceOf<ReturnType<typeof makeControls>>>()("Game/Controls")
+ * ```
+ */
+export type SourceOf<Device extends Source<unknown>> = Source<ReturnType<Device["snapshot"]>>
 
 type ServiceDescriptor = Descriptor<"service", string, any>
 type ResourceDescriptor = Descriptor<"resource", string, any>

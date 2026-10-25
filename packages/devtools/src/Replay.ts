@@ -395,13 +395,32 @@ export const parse = (data: unknown): Result.Result<ReplayFile, ReplayError> => 
   return Result.success(data as unknown as ReplayFile)
 }
 
+/** What a `snapshot()` source service returns: the data a replay records and a fuzzed input generates. */
+export type SourceData<Value extends Source<unknown>> = ReturnType<Value["snapshot"]>
+
+/**
+ * Rejects a source service a plain recorded source could not stand in for:
+ * one declared as the whole device, with more than `snapshot()` (`rebind`,
+ * `dispose`). Resolves to `unknown` for a `snapshot()`-only source.
+ */
+export type ValidateSource<Name extends string, Value extends Source<unknown>> =
+  Source<SourceData<Value>> extends Value
+    ? unknown
+    : `${Name} has more than snapshot(), so a replay cannot provide it: declare the service as only its snapshot() source (InputCapture.SourceOf<typeof device> for browser input), and keep the device in the host`
+
 /**
  * What a replay hands the game's `make` function: the recorded input, as
  * sources to provide in place of the live ones, and the recorded constants.
  */
 export interface Playback {
-  /** A source returning, call by call, what the recorded one returned at the current tick. */
-  readonly source: <const Name extends string, Data>(descriptor: Descriptor<"service", Name, Source<Data>>) => Source<Data>
+  /**
+   * A source returning, call by call, what the recorded one returned at the
+   * current tick. `descriptor` is a `snapshot()`-only source service
+   * (`Schedule.Source`, `InputCapture.SourceOf<...>`, `Netcode.Source`).
+   */
+  readonly source: <const Name extends string, Value extends Source<unknown>>(
+    descriptor: Descriptor<"service", Name, Value> & ValidateSource<Name, Value>
+  ) => Source<SourceData<Value>>
   /** A constant service's recorded value (`undefined` if it was not recorded). */
   readonly constant: <const Name extends string, Value>(descriptor: Descriptor<"service", Name, Value>) => unknown
 }

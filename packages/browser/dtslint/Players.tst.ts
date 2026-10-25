@@ -1,5 +1,6 @@
 import { Descriptor, Schema } from "@typeonce/ritmo"
 import { Controls, Gamepad, InputCapture, Keyboard } from "@typeonce/ritmo-browser"
+import * as Random from "@typeonce/ritmo-math/Random"
 import { describe, expect, it } from "tstyche"
 
 declare const host: Keyboard.KeyboardHost & Gamepad.GamepadHost
@@ -92,5 +93,14 @@ describe("Controls.players", () => {
       // @ts-expect-error snapshot() drains PlayersTypes/Players
       services.players.snapshot()
     })
+  })
+
+  it("draws fuzzed player input seated on the pool's devices", () => {
+    const random = Random.make(1)
+    const devices = { left: Keyboard.idle(leftKeys), right: Keyboard.idle(rightKeys), pads: Gamepad.idle(padKeys) }
+    expect(Players.random(random, 2, { devices, seats: { p1: "left" } })).type.toBe<ReturnType<typeof Players.idle<typeof devices>>>()
+    expect(Players.random).type.toBeCallableWith(random, 2, { devices, seats: { p1: "left", p2: "pads" } })
+    expect(Players.random).type.not.toBeCallableWith(random, 2, { devices, seats: { p1: "mouse" } })
+    expect(Players.random).type.not.toBeCallableWith(random, 2, { devices, seats: { p3: "left" } })
   })
 })

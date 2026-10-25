@@ -114,6 +114,13 @@ f82 update  Controls/MoveBall  resource Controls/Dashes 0 -> 1
 f137 update  Controls/MoveBall  resource Controls/Dashes 1 -> 2
 ```
 
+In a browser game, the controls service is declared as only the merged
+controls' snapshot, `InputCapture.SourceOf<...>`, so the page provides the
+live devices, a test provides scripted ones, and a replay provides what it
+recorded, all through the one descriptor. The page keeps the merge itself to
+rebind it. The same descriptor lets the fuzzer drive the game with seeded
+random input that a real player could have produced.
+
 "Checkpoints match" is the replay checking itself: the file holds hashes of
 the world as it was recorded, and the replayed world matched every one.
 All the questions of [headless debugging](/docs/devtools/) work here:

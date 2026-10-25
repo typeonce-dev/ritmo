@@ -1,6 +1,7 @@
 import { Descriptor, HostClock, Schema } from "@typeonce/ritmo"
 import type * as Result from "@typeonce/ritmo/Result"
 import type * as Schedule from "@typeonce/ritmo/Schedule"
+import type * as System from "@typeonce/ritmo/System"
 import type { Random } from "@typeonce/ritmo-math"
 import { Fuzz, Invariant, Replay, Rendered } from "@typeonce/ritmo-devtools"
 import { describe, expect, it } from "tstyche"
@@ -16,6 +17,9 @@ const Place = Descriptor.ConstructedComponent(Codecs.number)("FuzzTypes/Place")
 const Limit = Descriptor.ConstructedResource(Codecs.number)("FuzzTypes/Limit")
 const Pad = Descriptor.Service<Schedule.Source<{ readonly key: number }>>()("FuzzTypes/Pad")
 const Rules = Descriptor.Service<{ readonly speed: number }>()("FuzzTypes/Rules")
+interface MarkedSource extends System.Consumes<"snapshot"> {
+  readonly snapshot: () => { readonly key: number }
+}
 const Page = Descriptor.Service<{ readonly toast: (message: string) => void }>()("FuzzTypes/Page")
 const Game = Schema.bind(Schema.fragment({ components: { Place }, resources: { Limit } }))
 
@@ -45,6 +49,20 @@ describe("Fuzz.input", () => {
     Fuzz.input(Pad, { generate: () => ({ key: "a" }), neutral: { key: 0 } })
     // @ts-expect-error Property 'key' is missing
     Fuzz.input(Pad, { generate: () => ({ key: 1 }), neutral: {} })
+  })
+
+  it("fuzzes a source that marks snapshot() as draining, as every browser input source does", () => {
+    const Marked = Descriptor.Service<MarkedSource>()("FuzzTypes/Marked")
+    expect(Fuzz.input(Marked, { generate: () => ({ key: 1 }), neutral: { key: 0 } })).type.toBe<Fuzz.Input<"FuzzTypes/Marked", { readonly key: number }>>()
+    expect(Game.Runtime.service).type.toBeCallableWith(Marked, ({} as Replay.Playback).source(Marked))
+  })
+
+  it("rejects a source declared as the whole device, naming the fix", () => {
+    const Device = Descriptor.Service<{ readonly snapshot: () => { readonly key: number }; readonly rebind: (key: string) => void }>()("FuzzTypes/Device")
+    // @ts-expect-error FuzzTypes/Device has more than snapshot(), so a replay cannot provide it
+    Fuzz.input(Device, { generate: () => ({ key: 1 }), neutral: { key: 0 } })
+    // @ts-expect-error FuzzTypes/Device has more than snapshot(), so a replay cannot provide it
+    ;({} as Replay.Playback).source(Device)
   })
 
   it("fuzzes only snapshot() sources", () => {
