@@ -1,12 +1,25 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Entities that change shape
-description: Add and remove components while the game runs, and link entities into trees and graphs, with every change landing at one known point.
+description: Add and remove components while the game runs and link entities into trees and graphs, with every change landing at one known point.
 ---
 
-The schema lists every kind of component a game has. Which ones an entity
-holds changes all game long: a guard gets stunned and recovers, a sword is
-put in a hand, an archer picks a target.
+A guard gets stunned and recovers. A sword is put in a hand. An archer
+picks a target, and the target falls. Which components an entity holds,
+and what it is linked to, changes all game long, and Ritmo keeps every
+change safe to reason about.
+
+## What you get
+
+- A system adds or removes only the components its spec names. Any other
+  insert does not compile.
+- Every change lands at one point in the tick, so no loop sees an entity
+  change shape under it.
+- Each system hears about each change once, on its next run.
+- Parents and children stay in step: the runtime keeps the reverse side,
+  the child order, and despawns children with their parent.
+- A link to an entity that is gone is a typed failure to handle, never a
+  crash.
 
 ## Add and remove at runtime
 
@@ -222,18 +235,9 @@ const Follow = Game.System(
 ## Links between any two entities
 
 `Descriptor.Relation` is a plain edge with a reverse lookup and no tree: an
-archer targeting a guard, a key opening a door. Despawning the target clears
-the edge, so `lookup.related(archer, Targeting)` turns into a
+archer targeting a guard, a key opening a door. Despawning the target
+clears the edge, so `lookup.related(archer, Targeting)` turns into a
 `MissingRelation` failure instead of pointing at an entity that is gone.
-
-```ts twoslash title="schema.ts"
-import { Descriptor, Schema } from "@typeonce/ritmo"
-// ---cut---
-const { relation: Targeting } = Descriptor.Relation(
-  "Arena/Targeting",
-  "Arena/TargetedBy"
-)
-```
 
 The archers do not have to check every tick whether their guard still
 exists. Each edge a despawn clears is a record that every system reading it
@@ -242,13 +246,22 @@ sees once, so an archer whose guard fell can stand down at that moment.
 ```ts twoslash title="stand-down.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Idle = Descriptor.Tag("Arena/Idle")
-const { relation: Targeting } = Descriptor.Relation("Arena/Targeting", "Arena/TargetedBy")
-const Game = Schema.bind(Schema.fragment({ components: { Idle }, relations: { Targeting } }))
 // ---cut---
+const { relation: Targeting } = Descriptor.Relation(
+  "Arena/Targeting",
+  "Arena/TargetedBy"
+)
+
+const Game = Schema.bind(
+  Schema.fragment({ components: { Idle }, relations: { Targeting } })
+)
+
 const StandDown = Game.System(
   "Arena/StandDown",
   {
-    droppedRelations: { lost: Game.System.readDroppedRelations(Targeting) }, // [!code highlight]
+    droppedRelations: {
+      lost: Game.System.readDroppedRelations(Targeting) // [!code highlight]
+    },
     commands: Game.System.commands(Game.System.inserts(Idle))
   },
   ({ droppedRelations, commands }) => {
@@ -259,12 +272,14 @@ const StandDown = Game.System(
 )
 ```
 
-## What it buys
+## Safe to replay and roll back
 
-- Entities gain and lose components freely, and only the systems that say so
-  can do it.
-- Changes land at one known point, so no loop sees a half-changed world,
-  and each system hears about each change once.
-- Trees and links stay consistent: reverse sides, child order, and
-  despawning a parent's children are kept by the runtime. A broken link is
-  a value to handle, not a crash.
+Components and relation edges are part of the world's snapshot. A
+rollback rewinds them with everything else, and a replay applies the same
+changes at the same point of every tick, on every machine. See
+[Online multiplayer](/features/rollback/) and
+[Same game everywhere](/features/determinism/).
+
+For data that changes inside one component, see
+[States that can't go wrong](/features/states/). The full model of
+commands and `applyDeferred()` is in [Concepts](/docs/concepts/#commands).

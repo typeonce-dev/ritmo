@@ -6,20 +6,37 @@ description: Couch co-op in the browser. Players join by pressing a button on a 
 
 import Game from "../../components/Game.astro"
 
+Two players on one keyboard, four more on gamepads, one screen. Each player
+joins by pressing a button on a free device, and your game reads each one
+on their own.
+
+<Game id="town" ratio="3 / 2" />
+
 Player one walks with the arrows. For a second player, press any key on
 WASD, or any button on a gamepad, and they appear next to you. Q (or Ⓑ)
 leaves.
 
-<Game id="town" ratio="3 / 2" />
+## What you get
 
-A single player on many devices is a merge. Several players is a **pool**:
-each device belongs to whoever joined with it, and the game reads each
-player on their own.
+- Players are named slots. A press on a free device joins the first free
+  slot, and that press does nothing else.
+- Each slot reports its own actions, the device it holds, and when someone
+  joins or leaves.
+- A slot the game does not have is a compile error, not an `undefined` at
+  run time.
+- An unplugged pad keeps its seat, and the player is back when it
+  reconnects.
+- The whole room is one input source, so it replays and fuzzes like a
+  single player.
+
+A single player on many devices is a merge (see
+[Every device, one player](/features/devices/)). Several players is a
+**pool**: each device belongs to whoever joined with it.
 
 ## Players are slots
 
-The game names its slots. A device nobody holds joins the first free slot
-when someone presses a button on it, and that press does nothing else, so
+Your game names its slots. A device nobody holds joins the first free slot
+when someone presses a button on it. That press does nothing else, so
 joining never also jumps.
 
 ```ts twoslash title="players.ts"
@@ -119,18 +136,43 @@ input.p3.actions.talk
   menu frees a slot with `leave("p2")`.
 - **Seats from the start.** A player who is in before anyone presses
   anything is seated by the game: `seat("p1", "right")`, or the first pad
-  with `seat("p1", { pads: 0 })`. Taken seats come back as a reason, not a
-  crash.
+  with `seat("p1", { pads: 0 })`. A taken seat comes back as a reason, not
+  a crash.
 - **Unplugged pads.** A pad that disconnects keeps its slot, and the player
   is back in the moment it reconnects.
 - **Touch and rebinding** work as they do for one player: the town seats
   player one on on-screen buttons on a phone.
 
-Every part of this is tested headless with scripted keyboards and pads
-(`Gamepad.scriptedPads`), with no controller in reach.
+## Every player is in the replay
 
-Ritmo plays local multiplayer: everyone on one machine. Online play is not
-something it ships, though its rules running the
-[same everywhere](/features/determinism/) are the footing that kind of
-netcode stands on. The setup in full is in
+The pool is one source: one `snapshot()` reads every pooled device and
+decides the joins across them. Declare it with `InputCapture.SourceOf`, as
+for one player, and a replay or the fuzzer provides the whole room at once.
+
+```ts twoslash title="input.ts"
+import { Controls, Gamepad, Keyboard } from "@typeonce/ritmo-browser"
+const Actions = Controls.actions({ buttons: ["talk", "back"], vectors: ["move"] })
+const Players = Controls.players(Actions, { slots: ["p1", "p2"], join: "any", leave: "back" })
+const pad = { move: Gamepad.vector({ stick: "left" }), talk: ["south"], back: ["east"] } as const
+const players = Players.pool({ pads: Gamepad.pads(window, pad, 4) })
+// ---cut---
+import { Descriptor } from "@typeonce/ritmo"
+import { InputCapture } from "@typeonce/ritmo-browser"
+
+const PlayersInput = Descriptor.Service<
+  InputCapture.SourceOf<typeof players> // [!code highlight]
+>()("Game/Players")
+```
+
+Opening and closing the join, seating, and leaving are calls on the pool
+itself, so make them from the host, not from a system. The game stays
+replayable, and every part of it is tested headless with scripted keyboards
+and pads (`Gamepad.scriptedPads`), with no controller in reach.
+
+## Playing over the network
+
+A pool is everyone on one machine. For players on different machines,
+Ritmo runs [online multiplayer with rollback](/features/rollback/): each
+peer owns a seat, and every peer runs the same ticks. The setup for local
+play in full is in
 [Loop, input, rendering](/docs/browser/#local-multiplayer).

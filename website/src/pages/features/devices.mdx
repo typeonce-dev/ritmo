@@ -1,25 +1,40 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Every device, one player
-description: Keyboard and mouse, any gamepad, and a touch screen are one set of actions. Pick up whatever is nearest, and the game does not notice.
+description: Keyboard and mouse, any gamepad, and a touch screen drive the same actions. Pick up whatever is nearest and the game keeps going.
 ---
 
 import Game from "../../components/Game.astro"
 
-Walk with the keys, then pick up a gamepad, then try it on a phone. The
-prompts in the corner follow whatever you touched last.
+Your game reads "dash" and "move", never a key code. The keyboard, a
+gamepad, and a phone screen all produce those same actions, and the player
+can switch between them mid-run.
 
 <Game id="controls" />
 
-Most web game libraries stop at the raw devices: key codes for the
-keyboard, and an array of buttons for the pad that you poll yourself.
-Turning those into "dash" and "move", merging them, and keeping the prompts
-right is left to the game. Ritmo ships that layer.
+Walk with the keys, then pick up a gamepad, then open the page on a phone.
+The prompts in the corner follow whatever you touched last.
+
+## What you get
+
+- One set of actions for every device. Systems read the actions and never
+  ask which device produced them.
+- Prompts that follow the player: the input names the device used last and
+  whether it has each action.
+- A device that cannot do an action has to say so. Forget it and the merge
+  does not compile.
+- Gamepads, keyboards, and touch screens handled the way players expect:
+  dead zones, lost focus, unplugged pads, floating thumb sticks.
+- The same input in tests, replays, and the fuzzer, with no browser.
+
+Most web game libraries stop at the raw devices: key codes, and an array of
+pad buttons you poll yourself. Turning those into actions, merging them,
+and keeping the prompts right is left to you. Ritmo ships that layer.
 
 ## Actions, not keys
 
 Declare what the player can do once. Each device binds those actions, and
-the merge is the one input the game reads.
+the merge is the one input your game reads.
 
 ```ts twoslash title="input.ts"
 import { Controls, Gamepad, Keyboard, Pointer, Touch } from "@typeonce/ritmo-browser"
@@ -64,7 +79,7 @@ const controls = Actions.merge({
 ```
 
 A system reads `dash` and `move`. Which key, button, or finger produced
-them is not its business:
+them is not its concern:
 
 ```ts twoslash title="move.ts"
 import { Controls, Gamepad, Keyboard, Pointer, Touch } from "@typeonce/ritmo-browser"
@@ -126,9 +141,9 @@ shows ✕ instead of Ⓐ on a PlayStation pad.
 
 ## A missing button does not compile
 
-Every device binds every action, or says which ones it cannot. Forget the
-touch screen's missing pause button and the merge is an error that names
-it:
+Every device binds every action, or says which ones it cannot. Leave out
+the touch screen's missing pause button and the merge is an error that
+names it:
 
 ```ts twoslash title="input.ts"
 import { Controls, Gamepad, Keyboard, Touch } from "@typeonce/ritmo-browser"
@@ -140,6 +155,46 @@ declare const touch: Touch.Actions<"dash", "move">
 // @errors: 2322
 const controls = Actions.merge({ keyboard, touch })
 ```
+
+## Replays and the fuzzer play it too
+
+The game declares its input service as the merge's snapshot only, with
+`InputCapture.SourceOf`. Any source that produces that snapshot can stand
+in for the live devices.
+
+```ts twoslash title="input.ts"
+import { Controls, Gamepad, Keyboard, Pointer, Touch } from "@typeonce/ritmo-browser"
+const Actions = Controls.actions({ buttons: ["dash", "pause"], vectors: ["move"] })
+const keys = { move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }), dash: [" "], pause: ["Escape"] } as const
+const clicks = { dash: ["primary"] } as const
+const pad = { move: Gamepad.vector({ stick: "left" }), dash: ["south"], pause: ["start"] } as const
+declare const keyboard: Keyboard.Actions<typeof keys>
+declare const mouse: Pointer.Actions<typeof clicks>
+declare const gamepad: Gamepad.Actions<typeof pad>
+declare const touch: Touch.Actions<"dash", "move">
+const controls = Actions.merge({ desktop: Actions.group({ keyboard, mouse }), gamepad, touch: Actions.lacking(touch, ["pause"]) })
+// ---cut---
+import { Descriptor } from "@typeonce/ritmo"
+import { InputCapture } from "@typeonce/ritmo-browser"
+
+// Only the snapshot, not the devices behind it
+const ControlsInput = Descriptor.Service<
+  InputCapture.SourceOf<typeof controls> // [!code highlight]
+>()("Game/Controls")
+
+// In the page: the live merge
+// In a test:   the same merge over scripted devices
+// In a replay: the recorded snapshots
+// In the fuzz: random input a real merge could report
+```
+
+Every device has a scripted twin that plays a timeline, so a test presses
+"dash" on frame 12 without a keyboard.
+
+A replay records actions, not keys,
+so it plays back the same whatever the player had bound. The fuzzer draws
+every state a button or stick can report: taps, holds, diagonals. See [Replays that become tests](/features/replays/) and
+[Bugs found before players](/features/bugs/).
 
 ## What the devices take care of
 
@@ -158,8 +213,7 @@ const controls = Actions.merge({ keyboard, touch })
   Buttons aim by dragging (tap to use, drag to aim, release to fire), an
   optional swipe area looks around, and the layout is recomputed from the
   screen's size.
-- **Tests.** Every device has a scripted twin that plays a timeline, so the
-  same rules run headless with no browser.
 
-How the input reaches the world is in
-[Loop, input, rendering](/docs/browser/#input).
+For two players on one screen, see
+[Local multiplayer](/features/multiplayer/). How the input reaches the
+world is in [Loop, input, rendering](/docs/browser/#input).
