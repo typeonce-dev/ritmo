@@ -190,6 +190,7 @@ export const describeSystem = (system: AnySystem, placements: ReadonlyArray<stri
     removed: names(spec.removed as Record<string, { readonly descriptor: Descriptor.Any }>, (access) => access.descriptor.name),
     despawned: Object.keys(spec.despawned).length > 0,
     relationFailures: names(spec.relationFailures as Record<string, { readonly relation: Relation.Relation.Any }>, (access) => access.relation.name),
+    droppedRelations: names(spec.droppedRelations as Record<string, { readonly relation: Relation.Relation.Any }>, (access) => access.relation.name),
     thisTick: [
       ...[...Object.values(spec.events as Record<string, ThisTickAccess>), ...Object.values(spec.resources as Record<string, ThisTickAccess>)]
         .filter((access) => access.thisTick === true)
@@ -234,7 +235,7 @@ const collectSchedules = (
   return result
 }
 
-const describeStep = (step: Schedule.ScheduleStep): Debug.StepDescription => {
+export const describeStep = (step: Schedule.ScheduleStep): Debug.StepDescription => {
   if (Schedule.isSystemStep(step)) return { kind: "system", system: step.name }
   if (step.kind === "applyDeferred") return { kind: "applyDeferred" }
   return {

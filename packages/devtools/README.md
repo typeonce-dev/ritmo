@@ -77,6 +77,14 @@ headless with a `Session`.
    shows everything that touched an entity around the failure.
    `session.report()` lists warnings the trace collected and the current
    entity counts per component. `run()` prints the warnings it raised.
+   When the wrong value appears within one frame, between two systems,
+   step that frame: run up to the frame before it, then
+   `const frame = session.step("update")`, `frame.until(ApplyDamage)` stops
+   before that system, `session.dump(...)` / `why` / `journal` show the
+   world and the partial frame, `frame.next()` runs one step (a system or
+   a marker), and `frame.finish()` runs the rest and reports the frame as
+   `run` does, invariants included. `frame.check()` asks the invariants
+   mid-frame, where one may legitimately fail until a later marker applies.
 5. **Fix and keep it.** Rerun the same script, then turn it into a test next
    to the game so the bug stays fixed.
 
@@ -128,6 +136,14 @@ run.data.ok                               // true when completed or `until` retu
 run.data.stop                             // { reason: "completed" | "until" | "failure" | "defect"
                                           //   | "invariant" | "missingRequirements" | "tickOrder", frame, ... }
 
+const frame = session.step("update")      // one frame, a step at a time; refuses run/tick until finished
+frame.until(ApplyDamage)                  // runs the steps before the system value; Result: reached, or
+                                          //   { reason: "failure" | "defect" | "frameEnded" | "notAhead" | ... }
+session.dump({ entities: [12] })          // the world between two systems (journal and why show the partial frame)
+frame.next()                              // exactly one step: a system or a marker
+frame.check()                             // invariants now (may fail mid-frame); Result
+frame.finish()                            // the rest of the frame, reported like run(name): labels, invariants
+
 session.describe()                        // schema, schedules, access, lints
 session.dump({ with: [Player], limit: 5 })// entities, resources, machines, pending commands
 session.why(12, Position)                 // latest changes to e12 Position
@@ -135,7 +151,7 @@ session.whyResource(Score)                // latest changes to a resource
 session.journal({ frames: [180, 185], entity: 12, kinds: ["write", "effect"] })
 session.journal({ system: "Game/Move", last: 10, verbose: true })
 session.system("Game/Move")               // declared access, stats, recent lines
-session.streams()                         // event/transition/relation-failure retention
+session.streams()                         // event/transition/relation-failure/dropped-relation retention
 session.report()                          // per-system timing and warnings
 ```
 
@@ -165,7 +181,9 @@ f186 update  -                   transition Game/Flow Playing -> Paused applied
   values. Failed systems show `(rolled back)`.
 - `queued ...` then `applyDeferred: ...`: a command queued by a system, then
   its structural effect when a marker applied it. The system named on the
-  effect line is the one that queued it.
+  effect line is the one that queued it. A despawn also lists each edge it
+  dropped: `Game/Targeting from e7 to e12 dropped: e12 despawned` (what
+  `Game.System.readDroppedRelations` delivers).
 - `skipped: <condition> is false`: a run condition held the system back;
   `discarded N Event` means messages published meanwhile are lost to it.
 - `missed ...`: the system could not see entries dropped before it ran.

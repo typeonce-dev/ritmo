@@ -52,6 +52,7 @@ export interface InspectorAccessInput {
   readonly removed?: Record<string, System.RemovedRead<Descriptor<"component", string, any>>>
   readonly despawned?: Record<string, System.DespawnedRead>
   readonly relationFailures?: Record<string, System.RelationFailureRead<Relation.Relation.Any>>
+  readonly droppedRelations?: Record<string, System.DroppedRelationRead<Relation.Relation.Any>>
 }
 
 type DrainsService = "an inspector must not drain a service: declare it with Game.System.service, and drain it in one system"
@@ -82,6 +83,7 @@ export type InspectorContext<Spec extends System.AnySystemSpec> = Pick<
   | "removed"
   | "despawned"
   | "relationFailures"
+  | "droppedRelations"
   | "services"
 >
 

@@ -159,7 +159,8 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
         transition: System.transition,
         readRemoved: System.readRemoved,
         readDespawned: System.readDespawned,
-        readRelationFailures: System.readRelationFailures
+        readRelationFailures: System.readRelationFailures,
+        readDroppedRelations: System.readDroppedRelations
       }
     ),
     Schedule: Object.assign(

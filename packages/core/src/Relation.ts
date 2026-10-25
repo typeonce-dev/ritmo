@@ -178,6 +178,24 @@ export namespace Relation {
     readonly target: EntityId<S, Root>
     readonly error: MutationError
   }
+
+  /**
+   * An edge the runtime dropped because its target despawned, as
+   * `Game.System.readDroppedRelations` reads it. `target` is gone; `source`
+   * was alive when the edge was dropped, but a later command in the same
+   * `applyDeferred()` may have despawned it too (check with a lookup before
+   * using it). A `Descriptor.Hierarchy` records none: its children despawn
+   * with the parent.
+   */
+  export interface Dropped<
+    R extends Any = Any,
+    S extends Schema.Any = Schema.Any,
+    Root = unknown
+  > {
+    readonly relation: R
+    readonly source: EntityId<S, Root>
+    readonly target: EntityId<S, Root>
+  }
 }
 
 export const missingEntityError = (entityId: number): Relation.MissingEntityError => ({

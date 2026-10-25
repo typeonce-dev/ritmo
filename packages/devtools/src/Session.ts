@@ -7,6 +7,10 @@
  * - `run(name, { frames, until })` ticks a schedule frame by frame and stops
  *   at the first system failure, thrown defect, or violated invariant (an
  *   invariant that throws stops it as `invariant-threw`).
+ * - `step(name)` begins one frame and runs it a step at a time
+ *   (`until(System)`, `next()`, `finish()`), for a value that goes wrong
+ *   between two systems of one frame. `journal`, `why`, and `dump` show the
+ *   partial frame.
  * - `journal(filter)` lists what happened, one fact per line, filtered by
  *   frames, entity, component, resource, event, machine, system, or kind.
  * - `why(entity, component)` lists the latest changes to one component, and
@@ -45,14 +49,14 @@
  * console.log(session.journal({ frames: [180, 185], entity: 1 }))
  * ```
  */
-import { HostClock } from "@typeonce/ritmo"
+import { HostClock, Result } from "@typeonce/ritmo"
 import type * as Debug from "@typeonce/ritmo/Debug"
 import type * as Inspector from "@typeonce/ritmo/Inspector"
 import type * as Machine from "@typeonce/ritmo/Machine"
-import type * as Result from "@typeonce/ritmo/Result"
 import type * as Runtime from "@typeonce/ritmo/Runtime"
 import type { AnyScheduleOrder, ExecutableScheduleDefinition } from "@typeonce/ritmo/Schedule"
 import type { Schema } from "@typeonce/ritmo/Schema"
+import type { SystemDefinition } from "@typeonce/ritmo/System"
 
 import * as Format from "./Format.ts"
 import type { Invariant } from "./Invariant.ts"
@@ -350,10 +354,111 @@ export interface SystemActivity {
   readonly recent: ReadonlyArray<Format.Line>
 }
 
+type AnySystem = SystemDefinition<any, any, any, any, any>
+
+/** The systems a schedule runs as its own steps: nested schedules included, transition schedules (run inside a marker) not. */
+type StepSystemsIn<Entry> =
+  Entry extends AnySystem ? Entry
+  : Entry extends { readonly kind: "applyStateTransitions" } ? never
+  : Entry extends { readonly __order?: (_: never) => infer Order extends AnyScheduleOrder } ? StepSystemsIn<Order["entries"][number]>
+  : never
+
+/**
+ * The systems `frame.until(...)` accepts for one schedule: the systems it
+ * runs as steps, so a system of another schedule does not compile. A
+ * schedule whose type was widened accepts any system, and `until` reports
+ * one it does not run as `notAhead`.
+ */
+export type StepSystem<Schedule> = [StepSystemsIn<Schedule>] extends [never] ? AnySystem : StepSystemsIn<Schedule>
+
+/**
+ * Why a step call did not get where it was asked to.
+ *
+ * - `frameEnded`: the frame already ended (its last step ran, or a system
+ *   failed); nothing ran. `finish()` reports the frame.
+ * - `notAhead`: the system is not among the steps left (it already ran
+ *   this frame, or the schedule does not run it as a step); nothing ran.
+ * - `failure` / `defect`: a system returned a failure or a step threw; the
+ *   steps after it do not run this frame, and the frame ended.
+ * - `missingRequirements` / `tickOrder`: the frame never began, as `run`
+ *   reports them.
+ */
+export type StepStop =
+  | { readonly reason: "frameEnded"; readonly frame: number }
+  | { readonly reason: "notAhead"; readonly frame: number; readonly system: string; readonly remaining: ReadonlyArray<Debug.StepDescription> }
+  | Extract<Stop, { readonly reason: "failure" | "defect" | "missingRequirements" | "tickOrder" }>
+
+/** Where `frame.until(system)` stopped: before `system`, which has not run yet. */
+export interface StepReached {
+  readonly frame: number
+  readonly system: string
+  /** The steps this call ran, in order (empty when `system` was already next). */
+  readonly ran: ReadonlyArray<Debug.StepDescription>
+}
+
+/** The step `frame.next()` ran. */
+export interface StepRan {
+  readonly frame: number
+  readonly step: Debug.StepDescription
+  /** `true` when it was the last step: the frame ended, and `finish()` evaluates it. */
+  readonly ended: boolean
+}
+
+/** A violated or throwing invariant found by `frame.check()`. */
+export type CheckStop = Extract<Stop, { readonly reason: "invariant" | "invariant-threw" }>
+
+/**
+ * One frame of a schedule run a step at a time, begun by `session.step(name)`.
+ * Each system run still commits at its end, markers apply at their position,
+ * and reader cursors advance as in `run`: only the pauses are new. While it
+ * is open, `run`, `step`, and the runtime's `tick`, `send`, `snapshot`,
+ * `restore`, `checkpoint`, and `rewind` are refused; `finish()` it first.
+ */
+export interface SteppedFrame<System> {
+  /**
+   * Runs the steps (systems and markers) before `system` and stops before
+   * it. Takes the system value placed in the schedule, so names that repeat
+   * across schedules stay unambiguous and a system the schedule does not
+   * run does not compile.
+   */
+  readonly until: (system: System) => Rendered.Rendered<Result.Result<StepReached, StepStop>>
+  /** Runs exactly one step. */
+  readonly next: () => Rendered.Rendered<Result.Result<StepRan, StepStop>>
+  /** The steps not run yet, in order; empty once the frame has ended. */
+  readonly remaining: () => Rendered.Rendered<ReadonlyArray<Debug.StepDescription>>
+  /**
+   * Evaluates the session's invariants now, between two steps. An invariant
+   * may legitimately fail mid-frame (a marker later in the frame applies the
+   * commands that restore it), so this is only an explicit question:
+   * `finish()` checks the invariants at the end of the frame, as `run` does.
+   * Like labels, it reads the world through inspectors, which advances the
+   * world's change tick: tick numbers in this frame then differ from an
+   * unstepped run's.
+   */
+  readonly check: () => Rendered.Rendered<Result.Result<void, CheckStop>>
+  /**
+   * Runs the rest of the frame and reports it as `run(name, { frames: 1 })`
+   * would: the same `RunResult`, with labels and invariants evaluated at the
+   * end of the frame. A system failure or defect during an earlier step is
+   * its stop. Calling it again returns the same result.
+   */
+  readonly finish: () => Rendered.Rendered<RunResult>
+}
+
 /** A debug session made by `Session.make`; see the module description for each query. */
-export interface Session<S extends Schema.Any, Names extends string> {
+export interface Session<
+  S extends Schema.Any,
+  Names extends string,
+  Schedules extends Readonly<Record<Names, unknown>> = Readonly<Record<Names, ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>>>
+> {
   /** Ticks the named schedule frame by frame; stops at the first failure, defect, or violated invariant. */
   readonly run: (name: Names, options?: RunOptions) => Rendered.Rendered<RunResult>
+  /**
+   * Begins one frame of the named schedule, to run it a step at a time (see
+   * {@link SteppedFrame}). Use it when a value goes wrong between two systems
+   * of one frame; use `run` for whole frames.
+   */
+  readonly step: <Name extends Names>(name: Name) => SteppedFrame<StepSystem<Schedules[Name]>>
   /** What happened in the kept history, one fact per line. */
   readonly journal: (filter?: JournalFilter<S>) => Rendered.Rendered<ReadonlyArray<Format.Line>>
   /** Latest changes to one entity's component, and the systems whose `spawns` could have spawned it. Use `whyResource` for resources. */
@@ -411,6 +516,16 @@ const growsSteadily = (samples: ReadonlyArray<number>): boolean => {
   return true
 }
 
+/** The stop for a failed tick or step result, as `run` reports it. */
+const failureStop = (failure: unknown, frame: number): Extract<Stop, { readonly reason: "failure" | "missingRequirements" | "tickOrder" }> => {
+  const error = describeError(failure)
+  return error.kind === "MissingRuntimeRequirements"
+    ? { reason: "missingRequirements", frame, requirements: error.requirements }
+    : error.kind === "TickOrderViolation"
+      ? { reason: "tickOrder", frame, issues: (error.issues ?? []).map((issue) => issue.message) }
+      : { reason: "failure", frame, system: typeof error.system === "string" ? error.system : "(unknown)", error: error.error }
+}
+
 const describeError = (error: unknown): { readonly kind?: unknown; readonly system?: unknown; readonly error?: unknown; readonly requirements?: unknown; readonly issues?: ReadonlyArray<{ readonly message: string }> } =>
   typeof error === "object" && error !== null ? error : {}
 
@@ -427,15 +542,17 @@ export const make = <
   Resources extends object,
   Machines extends Record<string, unknown>,
   const Names extends string,
+  const Schedules extends Readonly<Record<Names, ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>>,
   const Invariants extends ReadonlyArray<Invariant<Inspector.InspectorDefinition<any, string | undefined, Root, any, any>>> = readonly [],
   const Labels extends LabelsInspector<Root> = never
 >(
   runtime: Target<S, Root, Services, Resources, Machines>,
   options:
     & Options<S, Root, Names, Invariants, Labels>
+    & { readonly schedules: Schedules }
     & ValidateInvariants<Invariants, Services, Resources, Machines>
     & ValidateLabels<Labels, Services, Resources, Machines>
-): Session<S, Names> => {
+): Session<S, Names, Schedules> => {
   const inspect = runtime.inspect as (inspector: Inspector.Inspector.Any) => unknown
   const debug = runtime.debug
   const capacity = options.history ?? 600
@@ -641,12 +758,50 @@ export const make = <
     return first === undefined ? undefined : [first.frame, history[history.length - 1]!.frame]
   }
 
+  /** The first invariant violated (or throwing) now, in order. */
+  const checkInvariants = (frame: number): CheckStop | undefined => {
+    for (const invariant of options.invariants ?? []) {
+      let message: string | undefined
+      try {
+        message = inspect(invariant.inspector) as string | undefined
+      } catch (error) {
+        return { reason: "invariant-threw", frame, invariant: invariant.name, error }
+      }
+      if (message !== undefined) return { reason: "invariant", frame, invariant: invariant.name, message }
+    }
+    return undefined
+  }
+
+  /** What a run compares against: taken before its first frame begins. */
+  const startRun = () => {
+    takeIgnored()
+    return {
+      started: options.hostClock.now(),
+      warningsBefore: new Map([...warnings].map(([key, warning]) => [key, warning.count])),
+      initial: debug.population()
+    }
+  }
+
+  /** The frame `session.step` has open, if any. */
+  let stepping: { readonly name: string; readonly frame: number } | undefined
+  const refuseWhileStepping = (call: string): void => {
+    if (stepping !== undefined) throw new Error(`${call} was called while frame f${stepping.frame} of ${stepping.name} is being stepped: call finish() on it first`)
+  }
+
   const run = (name: Names, runOptions: RunOptions = {}): Rendered.Rendered<RunResult> => {
+    refuseWhileStepping(`session.run(${name})`)
     const schedule = schedules[name]!
+    return runFrames(name, runOptions, startRun(), () => runtime.tryTick(schedule))
+  }
+
+  /** Ticks `frames` frames with `tickFrame` and reports them; `run` and `finish()` share it. */
+  const runFrames = (
+    name: string,
+    runOptions: RunOptions,
+    { started, warningsBefore, initial }: ReturnType<typeof startRun>,
+    tickFrame: () => Result.Result<void, unknown>
+  ): Rendered.Rendered<RunResult> => {
     const frames = runOptions.frames ?? 1
-    const started = options.hostClock.now()
-    const warningsBefore = new Map([...warnings].map(([key, warning]) => [key, warning.count]))
-    const initial = debug.population()
     const entityCounts: Array<number> = []
     const componentCounts = new Map<string, Array<number>>(Object.keys(initial.components).map((name) => [name, []]))
     const sample = () => {
@@ -657,11 +812,10 @@ export const make = <
     let first: number | undefined
     let last: number | undefined
     let stop: Stop = { reason: "completed" }
-    takeIgnored()
     for (let index = 0; index < frames; index++) {
       let result: Result.Result<void, unknown>
       try {
-        result = runtime.tryTick(schedule)
+        result = tickFrame()
       } catch (defect) {
         const frame = debug.frame()
         first ??= frame
@@ -680,12 +834,7 @@ export const make = <
         break
       }
       if (!result.ok) {
-        const error = describeError(result.error)
-        stop = error.kind === "MissingRuntimeRequirements"
-          ? { reason: "missingRequirements", frame, requirements: error.requirements }
-          : error.kind === "TickOrderViolation"
-            ? { reason: "tickOrder", frame, issues: (error.issues ?? []).map((issue) => issue.message) }
-            : { reason: "failure", frame, system: typeof error.system === "string" ? error.system : "(unknown)", error: error.error }
+        stop = failureStop(result.error, frame)
         break
       }
       try {
@@ -694,20 +843,7 @@ export const make = <
         stop = { reason: "labels-threw", frame, error }
         break
       }
-      let checked: Stop | undefined
-      for (const invariant of options.invariants ?? []) {
-        let message: string | undefined
-        try {
-          message = inspect(invariant.inspector) as string | undefined
-        } catch (error) {
-          checked = { reason: "invariant-threw", frame, invariant: invariant.name, error }
-          break
-        }
-        if (message !== undefined) {
-          checked = { reason: "invariant", frame, invariant: invariant.name, message }
-          break
-        }
-      }
+      const checked = checkInvariants(frame)
       if (checked) {
         stop = checked
         break
@@ -762,6 +898,137 @@ export const make = <
       ? ""
       : `\nwarnings during the run (see report()): ${raisedCodes.map(([code, count]) => `${code} x${count}`).join(", ")}`
     return Rendered.make(data, renderRun(data, format, labelsAt(debug.frame())) + lintText + warningText)
+  }
+
+  const step = (name: Names): SteppedFrame<AnySystem> => {
+    refuseWhileStepping(`session.step(${name})`)
+    const schedule = schedules[name]!
+    const start = startRun()
+    const begun = debug.beginFrame(schedule)
+    const frame = debug.frame()
+    const cursor = begun.ok ? begun.value : undefined
+    /** Why the frame never began (missing requirements, `thisTick` order). */
+    const notBegun = begun.ok ? undefined : failureStop(begun.error, frame) as StepStop
+    /** How the frame ended before `finish()`: a failed system's result, or a thrown defect. */
+    let ended: { readonly result: Result.Result<void, unknown> } | { readonly defect: unknown } | undefined
+    let finished: Rendered.Rendered<RunResult> | undefined
+    if (cursor !== undefined && cursor.remaining().length > 0) stepping = { name, frame }
+
+    const head = notBegun === undefined ? `step ${name} f${frame}` : `step ${name}`
+    const stopText = (stop: StepStop): string => {
+      switch (stop.reason) {
+        case "frameEnded":
+          return `${head}: the frame has ended; finish() reports it`
+        case "notAhead":
+          return `${head}: ${stop.system} is not ahead (it already ran this frame, or ${name} does not run it as a step); nothing ran. Remaining: ${stop.remaining.length === 0 ? "(none)" : stop.remaining.map(Format.step).join(", ")}`
+        case "failure":
+          return `${head}: ${stop.system} FAILED: ${Format.value(stop.error, format)}; the frame ended, finish() reports it`
+        case "defect":
+          return `${head}: DEFECT: ${stop.error instanceof Error ? stop.error.stack ?? stop.error.message : Format.value(stop.error, format)}`
+        case "missingRequirements":
+          return `${head}: NOT BEGUN: missing runtime requirements ${Format.value(stop.requirements, format)}`
+        case "tickOrder":
+          return `${head}: NOT BEGUN: ${stop.issues.join("; ")}`
+      }
+    }
+    const remainingSteps = (): ReadonlyArray<Debug.StepDescription> =>
+      cursor === undefined || ended !== undefined ? [] : cursor.remaining()
+    const nextText = (): string => {
+      const left = remainingSteps()
+      return left.length === 0 ? "the frame ended, finish() reports it" : `next: ${Format.step(left[0]!)}`
+    }
+    const unavailable = (): StepStop | undefined =>
+      notBegun ?? (remainingSteps().length === 0 ? { reason: "frameEnded", frame } : undefined)
+
+    /** Runs one step; a failure or defect ends the frame. */
+    const advance = (): Result.Result<Debug.StepOutcome, StepStop> => {
+      const stop = unavailable()
+      if (stop !== undefined) return Result.failure(stop)
+      let result: Result.Result<Debug.StepOutcome, unknown>
+      try {
+        result = cursor!.next()
+      } catch (defect) {
+        ended = { defect }
+        stepping = undefined
+        return Result.failure({ reason: "defect", frame, error: defect })
+      } finally {
+        // Labels evaluated mid-frame are evaluated again for the world after this step.
+        if (current.frame === frame) delete current.labels
+      }
+      if (!result.ok) {
+        ended = { result: Result.failure(result.error) }
+        stepping = undefined
+        return Result.failure(failureStop(result.error, frame) as StepStop)
+      }
+      if (result.value.ended) stepping = undefined
+      return Result.success(result.value)
+    }
+
+    const stepped: SteppedFrame<AnySystem> = {
+      until: (system) => {
+        const unavailableStop = unavailable()
+        const left = remainingSteps()
+        const offset = schedule.steps
+          .slice(schedule.steps.length - left.length)
+          .findIndex((entry) => "ordering" in entry && entry.ordering.key === system.ordering.key)
+        const stop: StepStop | undefined = unavailableStop
+          ?? (offset === -1 ? { reason: "notAhead", frame, system: system.name, remaining: left } : undefined)
+        if (stop !== undefined) return Rendered.make(Result.failure(stop), stopText(stop))
+        const ran: Array<Debug.StepDescription> = []
+        for (let index = 0; index < offset; index++) {
+          const result = advance()
+          if (!result.ok) return Rendered.make(Result.failure(result.error), stopText(result.error))
+          ran.push(result.value.step)
+        }
+        const reached: StepReached = { frame, system: system.name, ran }
+        return Rendered.make(
+          Result.success(reached),
+          `${head}: stopped before ${system.name}; ${ran.length === 0 ? "nothing ran" : `ran ${ran.map(Format.step).join(", ")}`}`
+        )
+      },
+      next: () => {
+        const result = advance()
+        if (!result.ok) return Rendered.make(Result.failure(result.error), stopText(result.error))
+        const ran: StepRan = { frame, step: result.value.step, ended: result.value.ended }
+        return Rendered.make(Result.success(ran), `${head}: ran ${Format.step(ran.step)}; ${nextText()}`)
+      },
+      remaining: () => {
+        const left = remainingSteps()
+        return Rendered.make(left, left.length === 0
+          ? `${head}: no steps left; ${finished === undefined ? "finish() reports the frame" : "finished"}`
+          : `${head}: ${left.length} steps left: ${left.map(Format.step).join(", ")}`)
+      },
+      check: () => {
+        const at = remainingSteps()
+        const where = at.length === 0 ? "at the end of the frame" : `before ${Format.step(at[0]!)}`
+        const stop = checkInvariants(frame)
+        if (stop === undefined) return Rendered.make(Result.success(undefined), `${head}: invariants hold ${where}`)
+        const text = stop.reason === "invariant"
+          ? `${head}: INVARIANT "${stop.invariant}" violated ${where}: ${stop.message.replace(entityToken, (_token, id: string) => Format.entity(Number(id), nowLabels()))} (it may hold again by the end of the frame)`
+          : `${head}: INVARIANT "${stop.invariant}" threw ${where}: ${stop.error instanceof Error ? stop.error.stack ?? stop.error.message : Format.value(stop.error, format)}`
+        return Rendered.make(Result.failure(stop), text)
+      },
+      finish: () => {
+        finished ??= runFrames(name, {}, start, () => {
+          if (!begun.ok) return begun
+          if (ended !== undefined) {
+            if ("defect" in ended) throw ended.defect
+            return ended.result
+          }
+          try {
+            while (cursor!.remaining().length > 0) {
+              const result = cursor!.next()
+              if (!result.ok) return result
+            }
+            return Result.success(undefined)
+          } finally {
+            stepping = undefined
+          }
+        })
+        return finished
+      }
+    }
+    return stepped
   }
 
   /** Lines hidden by the last `collectLines` call because they record no change. */
@@ -912,6 +1179,7 @@ export const make = <
 
   return {
     run,
+    step: step as Session<S, Names, Schedules>["step"],
     journal,
     why,
     whyResource,

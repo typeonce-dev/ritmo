@@ -160,6 +160,7 @@ export const system = (input: Debug.SystemDescription): string => {
   add("reads removed", input.removed)
   if (input.despawned) lines.push("  reads despawned")
   add("reads relation failures", input.relationFailures)
+  add("reads dropped relations", input.droppedRelations)
   add("services", input.services.filter((name) => !input.consumes.includes(name)))
   add("consumes (drains each run)", input.consumes)
   add("may spawn", input.commands.spawns)
@@ -226,11 +227,8 @@ export const description = (input: Debug.Description): string => {
   if (input.schedules.length === 0) lines.push("(none named; call runtime.debug.nameSchedules({...}))")
   for (const schedule of input.schedules) {
     lines.push(`${schedule.name}:`)
-    schedule.steps.forEach((step, index) => {
-      const text = step.kind === "system" ? step.system
-        : step.kind === "applyDeferred" ? "<applyDeferred>"
-        : `<applyStateTransitions${step.schedules.length > 0 ? `: ${step.schedules.join(", ")}` : ""}>`
-      lines.push(`  ${String(index).padStart(2)} ${text}`)
+    schedule.steps.forEach((entry, index) => {
+      lines.push(`  ${String(index).padStart(2)} ${step(entry)}`)
     })
   }
   if (input.systems.length > 0) {
@@ -249,6 +247,12 @@ export const description = (input: Debug.Description): string => {
   }
   return [...lintLines(input.lints), "", ...lines].join("\n")
 }
+
+/** One schedule step: the system's name, or `<applyDeferred>` / `<applyStateTransitions: ...>` for a marker. */
+export const step = (input: Debug.StepDescription): string =>
+  input.kind === "system" ? input.system
+  : input.kind === "applyDeferred" ? "<applyDeferred>"
+  : `<applyStateTransitions${input.schedules.length > 0 ? `: ${input.schedules.join(", ")}` : ""}>`
 
 /** One entity per line (named with `labels`), then resources, machines, and pending commands. */
 export const dump = (input: Debug.WorldDump, options: ValueOptions = {}, labels?: Labels): string => {
@@ -314,6 +318,10 @@ const effect = (input: Debug.Effect, options: ValueOptions, labels: Labels | und
       return `unrelate ${id} ${input.relation}`
     case "relationFailure":
       return `relation failure ${id} ${input.relation}: ${input.error}`
+    case "relationDropped": {
+      const target = entity(input.target, labels)
+      return `${input.relation} from ${id} to ${target} dropped: ${target} despawned`
+    }
     case "requirementViolated":
       return `skipped ${input.command} ${id}: ${input.component} requires ${input.missing}`
     case "staleTarget":
