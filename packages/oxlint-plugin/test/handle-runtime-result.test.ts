@@ -27,7 +27,11 @@ tester.run("handle-runtime-result", rule, {
     "void runtime.snapshot()",
     // Other libraries' methods of the same name
     "persist(store.snapshot())",
-    "log(`${runtime.checksum(file)}`)"
+    "log(`${runtime.checksum(file)}`)",
+    // A helper that takes the Result checks it (spirit-call tests and main.ts)
+    "expectOk(run.runtime.tick(Game.Schedule(FaceNorth)))",
+    "orCrash(runtime.tick(setup), \"Setup\")",
+    "assertRestored(runtime.restore(save))"
   ],
   invalid: [
     {
@@ -56,7 +60,10 @@ tester.run("handle-runtime-result", rule, {
     { code: "log(`hash ${runtime.checksum()}`)", errors: [{ messageId: "unchecked", data: { call: "runtime.checksum" } }] },
     { code: "send({ hash: runtime.checksum() })", errors: [{ messageId: "unchecked", data: { call: "runtime.checksum" } }] },
     { code: "upload(runtime.snapshot() as unknown)", errors: [{ messageId: "unchecked", data: { call: "runtime.snapshot" } }] },
-    { code: "results.push(runtime.tick(update))", errors: [{ messageId: "unchecked", data: { call: "runtime.tick" } }] },
+    { code: "console.log(runtime.tick(update))", errors: [{ messageId: "unchecked", data: { call: "runtime.tick" } }] },
+    { code: "JSON.stringify(runtime.restore(save))", errors: [{ messageId: "unchecked", data: { call: "runtime.restore" } }] },
+    { code: "results.push({ ran: runtime.tick(update) })", errors: [{ messageId: "unchecked", data: { call: "runtime.tick" } }] },
+    { code: "expectOk(runtime.snapshot())", errors: [{ messageId: "unchecked", data: { call: "runtime.snapshot" } }] },
     { code: "\"hash \" + runtime.checksum()", errors: [{ messageId: "unchecked", data: { call: "runtime.checksum" } }] },
     { code: "runtime.snapshot()", errors: [{ messageId: "dropped", data: { call: "runtime.snapshot" } }] },
     {
