@@ -3,4 +3,4 @@
  * `package.json` by `scripts/sync-version.ts` (run by \`pnpm version-packages\`)
  * and checked by a test.
  */
-export const libraryVersion = "0.15.0"
+export const libraryVersion = "0.16.0"

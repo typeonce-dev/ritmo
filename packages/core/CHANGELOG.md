@@ -1,5 +1,52 @@
 # @typeonce/ritmo
 
+## 0.16.0
+
+### Minor Changes
+
+- 9b0379e: **Breaking: runtime-only helpers leave the public surface.** The relation error constructors `Relation.missingEntityError`, `missingRelationError`, `missingTargetEntityError`, `selfRelationNotAllowedError`, `hierarchyCycleError`, `missingChildEntityError`, `duplicateChildError`, `childNotRelatedToParentError`, `childSetMismatchError`, and `mutationFailure` are internal: only the runtime reports relation failures. `Runtime.ValidateSchedules` and `Runtime.AnyRequirements` are removed. A game reads relation failures as values and narrows on `_tag`; the failure types (`Relation.Relation.MissingEntityError`, ...) stay exported:
+
+  ```diff
+  - const failure = Relation.missingEntityError(id)
+  + if (result.error._tag === "MissingEntity") { /* result.error.entityId */ }
+  ```
+
+  Every exported type helper of `@typeonce/ritmo` now has JSDoc.
+
+### Patch Changes
+
+- be9af72: `ritmo/no-float-timers` says what to do with a timer that must stop while the world clock runs (hit-stop, a menu over gameplay): measure it against a second clock that holds, `Clock.resource` advanced by `Clock.system(Game, { name, resource, hold })`, so its deadlines wait with it. Only time scaled by a fraction is a real float, kept with a disable comment that gives the reason. The README and the `Clock.system` JSDoc show the pattern.
+- 9b0379e: **Every JSDoc `@example` now compiles against the current API.** Examples are type-checked in CI as a game would import them, so they no longer cite exports that do not exist or call them with the wrong arguments. What changed in meaning:
+
+  - `Game.Runtime.make(...)` with a constructed resource (a `Clock.resource`, a `Descriptor.ConstructedResource`) returns a `Result` that may fail: the examples check `ok` instead of reading `.value`.
+  - A captured input resource is typed from its source: `Descriptor.TransientResource<InputCapture.SnapshotOf<typeof KeyboardInput>>()`, not `Keyboard.Snapshot<...>`.
+  - `Netcode.seats(...)` returns a `Result`: check it instead of `.value!`.
+  - `Lint.Target<typeof Game.schema, typeof Root>` takes the schema root second.
+  - `NodeRegistry.make` infers the node type from `attach`'s parameter, with no explicit generic.
+
+- 9290521: Docs from upgrading two games across several versions:
+
+  - The skill's state-and-upgrades playbook lists the breaks that still compile, per version, and `SETUP.md` says a new lint rule is off until `.oxlintrc.json` lists it.
+  - The 0.13 `Decode` entry has a table from each `Decode` codec to Zod and Effect; handle schemas use `z.unknown().refine(Entity.isHandle(...))`, not `z.custom`.
+  - The `Snapshot.version` JSDoc says how to rewrite a format 2 save; `WorldSnapshot.relations` says targets are sorted by id while each target's sources keep their order.
+  - `ritmo-devtools lint`'s `uncovered-simulation-module` message names the usual cause: a host module imported at the top of the lint entry instead of inside `lintTarget`. The README shows a debug script reusing `lintTarget`.
+  - The `Replay` docs and the 0.15 changelog say how to keep a playtester's save button without the monitor: `recorder.save(reason)` from a key handler.
+  - `Touch.Layout` shows how to draw a layout with no `null` zones, and `Pointer.Actions` says to build test doubles with `Pointer.scripted`.
+  - The `use-ops-for-math` example uses `Angle.wrap` for a signed turn, and the spatial-grid reference defines its `made` helper.
+
+- 9290521: A replay saved to disk verifies when the world holds `-0`. `runtime.checksum()` hashed `-0` apart from `0`, but JSON writes `-0` as `0`, so every replay read back from a file failed `Verify.acrossEngines` and `ritmo-devtools verify` ("DIVERGED at tick N") while the same replay verified in memory. `checksum()` now hashes `-0` as `0`, as a save writes it. Replays recorded before this fix with `-0` in the world still hold the old hashes: record them again.
+
+  `Desync.compare` and every devtools printout write `-0` with its sign, so a `-0` / `0` difference no longer reads `0 -> 0`.
+
+- 1b55d21: The skill is a front door: `SKILL.md` says where the docs are, routes each change to its playbook, and holds the principles (new: "Prove it headless"). Each playbook states its goal, the principles that apply, the steps whose order matters, and the check that proves the change; steps that only listed APIs now point to the JSDoc or README that documents them.
+
+  Reference material moved to `skills/ritmo/references/`, loaded from the playbook step that needs it:
+
+  - `references/schemas.md`: one schema library, guards and brands per library (was the skill's "Validating and saving values" and "Branded values").
+  - `references/zod.md` and `references/effect.md`: the codec helpers (were `playbooks/zod.md` and `playbooks/effect.md`).
+  - `references/third-party.md`: what `ritmo-devtools scan` cannot see (was the skill's "Third-party code").
+  - `references/spatial-grid.ts`, with a note in `references/spatial-grid.md`: the broad phase to copy (was `playbooks/spatial-grid.md`). A game that copied the old module needs no change: the code is the same.
+
 ## 0.15.0
 
 ### Minor Changes
@@ -372,16 +419,16 @@
 
     Each `Decode` codec and its replacement (Effect through the `codec` helper):
 
-    | `Decode` | Zod | Effect |
-    | --- | --- | --- |
-    | `number` (finite) | `z.number()` | `Schema.Finite` |
-    | `integer` | `z.int()` | `Schema.Int` |
-    | `string` | `z.string()` | `Schema.String` |
-    | `boolean` | `z.boolean()` | `Schema.Boolean` |
-    | `literal("a", "b")` | `z.literal(["a", "b"])` | `Schema.Literals(["a", "b"])` |
-    | `nullable(c)` | `c.nullable()` | `Schema.NullOr(c)` |
-    | `array(c)` | `z.array(c).readonly()` | `Schema.Array(c)` |
-    | `struct({ ... })` | `z.object({ ... })` | `Schema.Struct({ ... })` |
+    | `Decode`               | Zod                                                 | Effect                                          |
+    | ---------------------- | --------------------------------------------------- | ----------------------------------------------- |
+    | `number` (finite)      | `z.number()`                                        | `Schema.Finite`                                 |
+    | `integer`              | `z.int()`                                           | `Schema.Int`                                    |
+    | `string`               | `z.string()`                                        | `Schema.String`                                 |
+    | `boolean`              | `z.boolean()`                                       | `Schema.Boolean`                                |
+    | `literal("a", "b")`    | `z.literal(["a", "b"])`                             | `Schema.Literals(["a", "b"])`                   |
+    | `nullable(c)`          | `c.nullable()`                                      | `Schema.NullOr(c)`                              |
+    | `array(c)`             | `z.array(c).readonly()`                             | `Schema.Array(c)`                               |
+    | `struct({ ... })`      | `z.object({ ... })`                                 | `Schema.Struct({ ... })`                        |
     | `handle(Root, Intent)` | `z.unknown().refine(Entity.isHandle(Root, Intent))` | `Schema.declare(Entity.isHandle(Root, Intent))` |
 
   - **Breaking: `ConstructedComponent` and `ConstructedResource` take a schema**, not a `{ result }` constructor. `Descriptor.fromStandardSchema` is gone: pass the schema itself. Raw input (`setRaw`, `updateRaw`, `Game.Command.entryRaw`, raw values given to `Game.Runtime.make`) is in the schema's saved form. A schema whose value is not its saved form (a `Map`, an `Option`, a class) or whose saved form is not plain data does not compile, and the error says to give it an `encode`. Validation is synchronous: a schema that answers with a promise fails. Failures are `{ _tag: "SchemaIssues", issues }`, the library's own issues with their paths.
