@@ -2,7 +2,8 @@
  * A small two-player shooter, deterministic so peers can run it apart and
  * agree: players move and fire from per-tick input, shots fly, hit, and
  * score, and a round ends at three hits and starts again. It stores an
- * entity handle in a component (a shot's owner), arms new shots through an
+ * entity handle in a component (a shot's owner) and a deadline (a
+ * player's next shot), arms new shots through an
  * `added` filter (so it depends on every reader's position), draws from a
  * random state kept in a resource, keeps shots in a scope the round wipes,
  * and has a state machine with per-state data.
@@ -16,7 +17,7 @@ import { InputCapture } from "@typeonce/ritmo-browser"
 import { Random } from "@typeonce/ritmo-math"
 import { Netcode } from "@typeonce/ritmo-netcode"
 
-import { guard, integer, struct, tuple } from "./codecs.ts"
+import { guard, integer, nullable, struct, tuple } from "./codecs.ts"
 
 export const Root = Schema.defineRoot("Netcode")
 export const step = Clock.hz(60)
@@ -43,7 +44,13 @@ export const arena = { width: 200, height: 100 } as const
 
 const point = struct({ x: integer, y: integer })
 export const Position = Descriptor.ConstructedComponent(point)("Netcode/Position")
-export const Player = Descriptor.ConstructedComponent(struct({ seat: integer, cooldown: integer }))("Netcode/Player")
+/** A player's seat, and the step it may fire again on (`null` until its first shot). */
+export const Player = Descriptor.ConstructedComponent(struct({
+  seat: integer,
+  ready: nullable(guard("a deadline", Clock.isDeadline(step)))
+}))("Netcode/Player")
+/** Steps between two shots of one player. */
+const reload = Clock.durationOfSteps(step, 9)
 export const Shot = Descriptor.ConstructedComponent(struct({
   owner: guard("a player handle", Entity.isHandle(Root, Player)),
   dx: integer,
@@ -91,18 +98,20 @@ const Move = Game.System("Netcode/Move", {
 
 const Fire = Game.System("Netcode/Fire", {
   when: [playing],
-  resources: { inputs: Game.System.readResource(Inputs), rng: Game.System.writeResource(Rng) },
+  resources: {
+    time: Game.System.thisTick(Game.System.readResource(Time)),
+    inputs: Game.System.readResource(Inputs),
+    rng: Game.System.writeResource(Rng)
+  },
   queries: { players: Game.Query({ selection: { position: Game.Query.read(Position), player: Game.Query.write(Player) } }) },
   commands: Game.System.commands(Game.System.spawns(Position, Shot))
 }, ({ resources, queries, commands }) => {
+  const time = resources.time.get()
   const inputs = resources.inputs.get()
   const random = Random.draw(resources.rng)
   for (const { entity, data } of queries.players.each()) {
     const player = data.player.get()
-    if (player.cooldown > 0) {
-      data.player.set({ ...player, cooldown: player.cooldown - 1 })
-      continue
-    }
+    if (player.ready !== null && !Clock.reached(time, player.ready)) continue
     if (!inputs[player.seat]!.fire) continue
     const at = data.position.get()
     // Shots leave a little above or below the muzzle: the spread is the game's randomness.
@@ -111,7 +120,7 @@ const Fire = Game.System("Netcode/Fire", {
       [Position, { x: at.x, y: clamp(at.y + spread, 0, arena.height) }],
       [Shot, { owner: Game.Entity.handle(entity.id, Player), dx: player.seat === 0 ? 4 : -4, life: 0 }]
     ))
-    data.player.set({ ...player, cooldown: 8 })
+    data.player.set({ ...player, ready: Clock.deadline(time, reload) })
   }
 })
 
@@ -194,8 +203,8 @@ export const simulate = Game.Schedule(
 const Join = Game.System("Netcode/Join", {
   commands: Game.System.commands(Game.System.spawns(Position, Player))
 }, ({ commands }) => {
-  commands.spawn(Game.Command.spawn([Position, { x: 10, y: 50 }], [Player, { seat: 0, cooldown: 0 }]))
-  commands.spawn(Game.Command.spawn([Position, { x: 190, y: 50 }], [Player, { seat: 1, cooldown: 0 }]))
+  commands.spawn(Game.Command.spawn([Position, { x: 10, y: 50 }], [Player, { seat: 0, ready: null }]))
+  commands.spawn(Game.Command.spawn([Position, { x: 190, y: 50 }], [Player, { seat: 1, ready: null }]))
 })
 
 /** Spawns both players: run once, the same way, on every peer. */

@@ -20,6 +20,9 @@ export const integer = make<number>((raw) => Number.isSafeInteger(raw) ? { value
 export const guard = <T>(expected: string, test: (raw: unknown) => raw is T): Codec<T> =>
   make((raw) => test(raw) ? { value: raw } : fail(`Expected ${expected}`))
 
+export const nullable = <T>(inner: Codec<T>): Codec<T | null> =>
+  make<T | null>((raw) => raw === null ? { value: null } : inner.check(raw))
+
 export const tuple = <A, B>(first: Codec<A>, second: Codec<B>): Codec<readonly [A, B]> =>
   make((raw) => {
     if (!Array.isArray(raw) || raw.length !== 2) return fail("Expected a pair")
