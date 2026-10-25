@@ -13,6 +13,7 @@ Follow these steps once in a new project, and for any step an existing project i
    ln -s ../../node_modules/@typeonce/ritmo/skills/ritmo .agents/skills/ritmo
    ```
 3. Set up `.oxlintrc.json` from the `@typeonce/oxlint-plugin-ritmo` README and a `ritmo-devtools lint` entry from the `@typeonce/ritmo-devtools` README. One check script runs the type check, `oxlint`, `ritmo-devtools lint`, and the tests.
+   After every Ritmo upgrade, compare `.oxlintrc.json` with that README's config: a new rule is not on until the config lists it, so an existing project does not get it by upgrading.
 
 Add-ons, installed only when the game needs them:
 - `@typeonce/ritmo-math`: 2D helpers on plain data (vectors, angles, swept circle collision, a flow field).

@@ -646,6 +646,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
 
   const advance = (local: unknown): Result.Result<Advanced, SessionError<unknown>> => {
     if (ended !== undefined) return Result.failure(ended)
+    // Read before correct() and performSync(): the ticks they run again are this advance's too
+    const before = again
     readLinks()
     if (ended !== undefined) return Result.failure(ended)
     lookAway()
@@ -669,7 +671,6 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       sendAll()
       return Result.failure(halted)
     }
-    const before = again
     let ran = 0
     let input: number | undefined
     if (mode === "rollback") {

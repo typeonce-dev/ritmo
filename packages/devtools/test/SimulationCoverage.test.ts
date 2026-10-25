@@ -52,7 +52,8 @@ describe("ritmo-devtools lint: simulation coverage", () => {
     expect(output).toContain([
       "uncovered-simulation-module  src/ui.ts",
       "  The simulation loads this file, but the simulation rules in .oxlintrc.json do not cover it.",
-      "  Add it to the simulation override's \"files\", or stop importing values from it."
+      "  Add it to the simulation override's \"files\", or stop importing values from it.",
+      "  A host module (render, input glue) imported at the top of the lint entry is loaded too: import it inside lintTarget instead."
     ].join("\n"))
   })
 

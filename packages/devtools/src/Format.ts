@@ -43,6 +43,8 @@ export const entity = (id: number, labels?: Labels): string => {
 }
 
 const formatNumber = (value: number): string => {
+  // String(-0) is "0": print the sign, so a -0 / 0 difference does not read "0 -> 0"
+  if (Object.is(value, -0)) return "-0"
   if (!Number.isFinite(value) || Number.isInteger(value)) return String(value)
   const rounded = Math.round(value * 1000) / 1000
   return String(rounded === 0 ? 0 : rounded)

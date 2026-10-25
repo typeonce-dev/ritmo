@@ -152,6 +152,8 @@
 
   To find an entity without clicking it, give the session a `labels` inspector and filter `session.dump({ with: [Player] })`.
 
+  The monitor's "Save replay" button goes too. Bind `recorder.save(reason)` to a key or button in the host instead, so a playtester can still keep the last seconds: `window.addEventListener("keydown", (event) => { if (event.key === "F8") recorder.save("playtester pressed F8") })`.
+
 - 01959dd: Step one frame a system at a time.
 
   - `session.step(name)` begins one frame of a named schedule and returns a `SteppedFrame`: `until(System)` runs the steps before that system and stops there, `next()` runs exactly one step (a system or a marker), `check()` asks the invariants mid-frame, and `finish()` runs the rest and returns the same `RunResult` as `run(name, { frames: 1 })`, with labels and invariants evaluated at the end of the frame. `until` takes the system value, and only a system the schedule runs as a step compiles. `journal`, `why`, and `dump` show the partial frame.

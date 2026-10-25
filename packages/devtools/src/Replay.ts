@@ -12,7 +12,9 @@
  *   of the schedule's input services returned from `snapshot()` each tick
  *   (stored as changes from the previous tick), and every `runtime.send`.
  *   Time and randomness live in the world, so that is everything the
- *   simulation reads. `save(reason)` hands the file to a `Sink`.
+ *   simulation reads. `save(reason)` hands the file to a `Sink`. For a
+ *   playtester's "save replay" button, call `recorder.save(reason)` from a
+ *   key or button handler in the host.
  * - `session(make, file, { invariants })` restores the start and replays
  *   the ticks in a normal devtools `Session`; `verify` replays twice and compares the
  *   checkpoint hashes to find nondeterminism; `extract` cuts a range of

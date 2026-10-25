@@ -51,7 +51,10 @@ describe("runtime.checksum", () => {
     expect(moved.tick(spawning(({ commands }) => { commands.spawn(Game.Command.spawn([Position, { x: 1, y: 3 }])) })).ok).toBe(true)
     expect(checksumOf(base)).not.toBe(checksumOf(moved))
     expect(checksumOf(makeRuntime(1))).not.toBe(checksumOf(makeRuntime(0)))
-    expect(checksumOf(makeRuntime(-0))).not.toBe(checksumOf(makeRuntime(0)))
+  })
+
+  it("hashes -0 as 0, as a save writes it", () => {
+    expect(checksumOf(makeRuntime(-0))).toBe(checksumOf(makeRuntime(0)))
   })
 
   it("skips transient components and resources, like a snapshot", () => {

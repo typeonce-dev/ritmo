@@ -117,6 +117,13 @@ describe("Verify", () => {
     expect(outcomes(verified)[0]).toEqual({ _tag: "Diverged", engine: "node", against: "recording", tick: 4, differences: [], unexplained: "the recording holds only a hash at this tick" })
   })
 
+  it("verifies a replay saved as JSON while the world holds -0", async () => {
+    // JSON writes -0 as 0, so a replay read back from disk holds 0 where the recording held -0.
+    const saved: Replay.ReplayFile = JSON.parse(JSON.stringify(record([-0, -0, -0], -0)))
+    const verified = await Verify.acrossEngines(replayTarget, saved)
+    expect(verified.ok).toBe(true)
+  })
+
   it("fails with ReplayInvalid when the replay does not open here", async () => {
     const verified = await Verify.acrossEngines(replayTarget, { ...file, schema: "00000000" })
     expect(verified).toMatchObject({ ok: false, error: { _tag: "ReplayInvalid", error: { _tag: "SchemaMismatch" } } })

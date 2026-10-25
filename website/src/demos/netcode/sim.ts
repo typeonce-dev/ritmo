@@ -69,9 +69,6 @@ export const makeMatch = () => {
     const latency = latencyAt(frame)
     for (const link of links.value) link.setLatency(latency)
     for (const peer of peers) {
-      // `status().again`, not the result's `again`: the result leaves out
-      // a rollback made at the start of the step
-      const before = peer.session.status().again
       const advanced = peer.session.advance(peer.input())
       if (!advanced.ok) {
         peer.halts++
@@ -81,9 +78,8 @@ export const makeMatch = () => {
       peer.waiting = advanced.value._tag !== "Ran"
       if (advanced.value._tag !== "Ran") continue
       const { tick, ticks, again } = advanced.value
-      const rerun = peer.session.status().again - before
       const present = tick - (ticks - again)
-      for (let at = present - rerun; at < present; at++) {
+      for (let at = present - again; at < present; at++) {
         const entry = peer.log.get(at) ?? { again: 0, lastAgain: -1 }
         entry.again++
         entry.lastAgain = frame

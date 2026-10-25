@@ -359,7 +359,7 @@
 
   - **Breaking: snapshots are format version 3.** A machine is saved as its tagged value and restored through its state codecs; `InvalidMachineState` carries the schema's issues (each `path` says which field), and `InactiveSubState.requires` is a state name. A version 2 save is rejected with `UnsupportedVersion`.
 
-  - **Breaking, debug output:** `Debug.MachineDescription.current`, `MachineDump`, `NextStateWrite.value`, and `NextStateReplacement` values are machine values (`Machine.AnyValue`), and `TransitionEvent.from` / `to` are state names. `SystemEvent.machines` lists each `update` as a `Debug.MachineWrite`, and `SystemDescription.machines.updates` lists the machines a system updates.
+  - **Breaking, debug output:** `Debug.MachineDescription.current`, `MachineDump`, `NextStateWrite.value`, and `NextStateReplacement` values are machine values (`Machine.AnyValue`), and `TransitionEvent.from` / `to` are state names. `SystemEvent.machines` lists each `update` as a `Debug.MachineWrite`, and `SystemDescription.machines.updates` lists the machines a system updates. This fails only at run time: a test that compared `dump().machines["Game/Round"].current` to a state name now compares an object, so read `.current._tag` for the state name.
 
 - 835f6ba: **Values are validated and saved through the game's own Standard Schemas. Ritmo ships no validators.** Any [Standard Schema](https://standardschema.dev) works (Zod, Valibot, ArkType, Effect through `Schema.toStandardSchemaV1`); a value that changes shape when saved takes a schema with an `encode` back to its saved form, `Descriptor.Codec<Type, Encoded>`.
 
@@ -369,6 +369,20 @@
     -const Position = Descriptor.ConstructedComponent(Decode.struct({ x: Decode.number, y: Decode.number }))("Game/Position")
     +const Position = Descriptor.ConstructedComponent(z.object({ x: z.number(), y: z.number() }))("Game/Position")
     ```
+
+    Each `Decode` codec and its replacement (Effect through the `codec` helper):
+
+    | `Decode` | Zod | Effect |
+    | --- | --- | --- |
+    | `number` (finite) | `z.number()` | `Schema.Finite` |
+    | `integer` | `z.int()` | `Schema.Int` |
+    | `string` | `z.string()` | `Schema.String` |
+    | `boolean` | `z.boolean()` | `Schema.Boolean` |
+    | `literal("a", "b")` | `z.literal(["a", "b"])` | `Schema.Literals(["a", "b"])` |
+    | `nullable(c)` | `c.nullable()` | `Schema.NullOr(c)` |
+    | `array(c)` | `z.array(c).readonly()` | `Schema.Array(c)` |
+    | `struct({ ... })` | `z.object({ ... })` | `Schema.Struct({ ... })` |
+    | `handle(Root, Intent)` | `z.unknown().refine(Entity.isHandle(Root, Intent))` | `Schema.declare(Entity.isHandle(Root, Intent))` |
 
   - **Breaking: `ConstructedComponent` and `ConstructedResource` take a schema**, not a `{ result }` constructor. `Descriptor.fromStandardSchema` is gone: pass the schema itself. Raw input (`setRaw`, `updateRaw`, `Game.Command.entryRaw`, raw values given to `Game.Runtime.make`) is in the schema's saved form. A schema whose value is not its saved form (a `Map`, an `Option`, a class) or whose saved form is not plain data does not compile, and the error says to give it an `encode`. Validation is synchronous: a schema that answers with a promise fails. Failures are `{ _tag: "SchemaIssues", issues }`, the library's own issues with their paths.
 
@@ -381,7 +395,7 @@
 
   - **Breaking: `runtime.snapshot()` returns `Result<WorldSnapshot, SnapshotError>`.** It runs each schema's `encode`, and fails with `UnencodableComponent`, `UnencodableResource`, or `UnencodableMachineState` when one rejects a value. `restore` decodes with the same schemas. A descriptor without a schema makes `snapshot` uncallable, with `"<Name> needs a schema"`. The format stays at version 3. Fix: `const saved = runtime.snapshot(); if (saved.ok) store(saved.value)`.
 
-  - **Breaking: `Entity.decodeHandle` and `InvalidHandle` are replaced by the guard `Entity.isHandle(Root, Intent?)`**, `(raw: unknown) => raw is Handle<Root, Intent>`. Build a handle schema from it with the library: `Schema.declare(Entity.isHandle(Root, Health))`, `z.custom(Entity.isHandle(Root, Health))`.
+  - **Breaking: `Entity.decodeHandle` and `InvalidHandle` are replaced by the guard `Entity.isHandle(Root, Intent?)`**, `(raw: unknown) => raw is Handle<Root, Intent>`. Build a handle schema from it with the library: `Schema.declare(Entity.isHandle(Root, Health))`, `z.unknown().refine(Entity.isHandle(Root, Health))` (`z.custom` would type the value as `unknown`).
 
   - **Breaking: `Brand.refine`, `Brand.all`, and `Brand.Constructor` are removed;** `Brand.Brand` and `Brand.Branded` stay. Brand values through the schema library (`z.number().brand(...)`, `Schema.brand(...)`).
 
