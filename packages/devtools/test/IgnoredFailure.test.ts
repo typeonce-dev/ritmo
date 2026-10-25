@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { Clock, HostClock, Result, Schema } from "@typeonce/ritmo"
 import { Replay, Session } from "@typeonce/ritmo-devtools"
-import { Collector } from "@typeonce/ritmo-devtools/Monitor"
 
 const Game = Schema.bind(Schema.fragment({}))
 const Load = Game.System("Ignore/Load", {}, () => Result.failure("level file missing" as const))
@@ -63,14 +62,5 @@ describe("ignored tick failures in devtools", () => {
     runtime.tick(setup)
     runtime.tick(update)
     expect(sink.files.map((file) => file.reason)).toContain(ignoredText)
-  })
-
-  it("raises a monitor alert", () => {
-    const { runtime } = make()
-    const collector = new Collector(() => runtime.debug.population(), () => 0)
-    runtime.debug.observe(collector.observe)
-    runtime.tick(setup)
-    runtime.tick(update)
-    expect([...collector.alerts.values()].map((alert) => [alert.code, alert.message])).toContainEqual(["ignored-failure", ignoredText])
   })
 })

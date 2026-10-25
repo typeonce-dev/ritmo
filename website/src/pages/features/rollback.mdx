@@ -186,6 +186,40 @@ Netcode.rollback(runtime, { ...options, simulate: Game.Schedule(Capture, Combo) 
 A runtime that cannot save, and a simulation whose services the runtime does
 not provide, do not compile either.
 
+## A physics library rolls back too
+
+A library that keeps its own world, like a physics engine, is a service made
+with `Checkpoint.rewindable`: every checkpoint saves it, and every rollback
+restores it. Systems read its `current` value each tick:
+
+```ts twoslash
+import { Checkpoint, Descriptor, Result, Schema } from "@typeonce/ritmo"
+declare class PhysicsWorld {
+  step(): void
+  takeSnapshot(): Uint8Array
+  static restoreSnapshot(bytes: Uint8Array): PhysicsWorld | undefined
+}
+declare const world: PhysicsWorld
+const Game = Schema.bind(Schema.fragment({}))
+// ---cut---
+const physics = Checkpoint.rewindable(world, {
+  save: (world) => world.takeSnapshot(),
+  restore: (bytes) => {
+    const restored = PhysicsWorld.restoreSnapshot(bytes)
+    return restored === undefined ? Result.failure({ _tag: "CorruptSnapshot" as const }) : Result.success(restored)
+  }
+})
+const Physics = Descriptor.Service<typeof physics>()("Game/Physics")
+
+const Step = Game.System("Game/Step", { services: { physics: Game.System.service(Physics) } }, ({ services }) => {
+  services.physics.current.step()
+})
+```
+
+Saves and checksums see only the world, so copy what gameplay reads from the
+library (positions, contacts) into components each tick: that is what peers
+compare, and what a resync restores.
+
 ## Peers agree, or say so
 
 Every 30 ticks, the peers compare a checksum of a tick that every seat's real

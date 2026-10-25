@@ -3,6 +3,7 @@ import type { InputCapture } from "@typeonce/ritmo-browser"
 import * as Size2 from "@typeonce/ritmo-math/Size2"
 import * as Vector2 from "@typeonce/ritmo-math/Vector2"
 
+import { finite, guard, integer, nullable, string, struct } from "./codecs.ts"
 import type { ControlsValue, FrameContextValue } from "./types.ts"
 
 export const Root = Schema.defineRoot("TopDown")
@@ -10,26 +11,34 @@ export const Root = Schema.defineRoot("TopDown")
 export const Position = Descriptor.ConstructedComponent(Vector2.codec)("TopDown/Position")
 export const Velocity = Descriptor.ConstructedComponent(Vector2.codec)("TopDown/Velocity")
 export const Collider = Descriptor.ConstructedComponent(Size2.codec)("TopDown/Collider")
-export const Player = Descriptor.Component<{}>()("TopDown/Player")
-export const Wall = Descriptor.Component<{}>()("TopDown/Wall")
-export const Collectable = Descriptor.Component<{
-  label: string
-  radius: number
-}>()("TopDown/Collectable")
+// Every saved component and resource is constructed from a schema, so the
+// world can be saved and a replay can start from it.
+export const Player = Descriptor.ConstructedComponent(struct({}))("TopDown/Player")
+export const Wall = Descriptor.ConstructedComponent(struct({}))("TopDown/Wall")
+export const Collectable = Descriptor.ConstructedComponent(struct({ label: string, radius: finite }))("TopDown/Collectable")
 
 export type FocusedCollectableValue = {
-  current: Entity.Handle<typeof Root, typeof Collectable> | null
-  label: string | null
-  distance: number | null
+  readonly current: Entity.Handle<typeof Root, typeof Collectable> | null
+  readonly label: string | null
+  readonly distance: number | null
 }
 
-export const DeltaTime = Descriptor.Resource<number>()("TopDown/DeltaTime")
-export const FocusedCollectable = Descriptor.Resource<FocusedCollectableValue>()("TopDown/FocusedCollectable")
-export const CollectedCount = Descriptor.Resource<number>()("TopDown/CollectedCount")
-export const TotalCollectables = Descriptor.Resource<number>()("TopDown/TotalCollectables")
+export const DeltaTime = Descriptor.ConstructedResource(finite)("TopDown/DeltaTime")
+export const FocusedCollectable = Descriptor.ConstructedResource(struct({
+  current: nullable(guard("a collectable handle", Entity.isHandle(Root, Collectable))),
+  label: nullable(string),
+  distance: nullable(finite)
+}))("TopDown/FocusedCollectable")
+export const CollectedCount = Descriptor.ConstructedResource(integer)("TopDown/CollectedCount")
+export const TotalCollectables = Descriptor.ConstructedResource(integer)("TopDown/TotalCollectables")
 
-/** The keyboard and the gamepad merged into one input source. */
-export const ControlsInput = Descriptor.Service<ControlsValue>()("TopDown/Controls")
+/**
+ * The keyboard, mouse, and gamepad merged into one input source, declared
+ * as its snapshot() only: the page provides the live merge, tests a merge
+ * of scripted devices, a replay its recorded input, and the fuzzer its
+ * generated input.
+ */
+export const ControlsInput = Descriptor.Service<InputCapture.SourceOf<ControlsValue>>()("TopDown/Controls")
 // Captured from the controls at the start of each update; never saved. Its type is exactly what the source produces.
 export const InputState = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("TopDown/InputState")
 export const FrameContext = Descriptor.Service<FrameContextValue>()("TopDown/FrameContext")

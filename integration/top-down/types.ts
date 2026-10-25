@@ -1,5 +1,4 @@
-import { Controls, Gamepad, Keyboard } from "@typeonce/ritmo-browser"
-import type { Pointer } from "@typeonce/ritmo-browser"
+import { Controls, Gamepad, Keyboard, Pointer } from "@typeonce/ritmo-browser"
 import type * as Vector2Value from "@typeonce/ritmo-math/Vector2"
 
 export type Vector2 = Vector2Value.Vector2
@@ -23,6 +22,8 @@ export type MouseInput = Pointer.Actions<typeof mouseBindings>
 export const makeControls = (devices: { readonly keyboard: KeyboardInput; readonly mouse: MouseInput; readonly gamepad: GamepadInput }) =>
   Actions.merge({ desktop: Actions.group({ keyboard: devices.keyboard, mouse: devices.mouse }), gamepad: devices.gamepad })
 export type ControlsValue = ReturnType<typeof makeControls>
+/** Every device with nothing held, by device name: the input before the first capture, and what fuzzed input keeps as device data. */
+export const idleDevices = { keyboard: Keyboard.idle(inputBindings), mouse: Pointer.idle(mouseBindings), gamepad: Gamepad.idle(padBindings) }
 export type InputStateValue = ReturnType<ControlsValue["snapshot"]>
 /** What one fixed update needs from the host: the step length. */
 export type FrameContextValue = {

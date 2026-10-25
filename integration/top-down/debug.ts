@@ -12,11 +12,10 @@
  */
 import { HostClock } from "@typeonce/ritmo"
 import { Gamepad, Keyboard, Pointer } from "@typeonce/ritmo-browser"
-import { Invariant, Session } from "@typeonce/ritmo-devtools"
+import { Session } from "@typeonce/ritmo-devtools"
 
-import { WORLD_HEIGHT, WORLD_WIDTH } from "./constants.ts"
-import { PlayerPositionQuery } from "./queries.ts"
-import { Game, Player, Position } from "./schema.ts"
+import { PlayerInsideWorld } from "./invariants.ts"
+import { Player, Position } from "./schema.ts"
 import { createTopDownSimulation } from "./simulation.ts"
 import { inputBindings, mouseBindings, padBindings } from "./types.ts"
 
@@ -37,19 +36,7 @@ const simulation = createTopDownSimulation({ keyboard, mouse, gamepad, hostClock
 if (!simulation.ok) throw new Error(simulation.error.message)
 const { runtime, setup, update } = simulation.value
 
-// An invariant is an inspector that returns a violation message, or
-// `undefined` while it holds. It declares its reads like a system, so
-// `Session.make` rejects one that reads what the runtime does not provide.
-const PlayerInsideWorld = Invariant.fromInspector(Game.Inspector("player inside world", { queries: { player: PlayerPositionQuery } }, ({ queries }) => {
-  for (const match of queries.player.each()) {
-    const position = match.data.position.get()
-    if (position.x < 0 || position.x > WORLD_WIDTH || position.y < 0 || position.y > WORLD_HEIGHT) {
-      return `player at (${position.x}, ${position.y})`
-    }
-  }
-  return undefined
-}))
-
+// Invariants live in invariants.ts, shared with the replay and fuzz tests.
 const session = Session.make(runtime, { hostClock, schedules: { setup, update }, invariants: [PlayerInsideWorld] })
 
 console.log(session.run("setup"))

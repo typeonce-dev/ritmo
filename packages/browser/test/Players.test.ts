@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { Descriptor, HostClock, Schema } from "@typeonce/ritmo"
 import { Controls, Gamepad, Keyboard } from "@typeonce/ritmo-browser"
+import * as Random from "@typeonce/ritmo-math/Random"
 
 const idle = { held: false, pressed: false, released: false }
 const Actions = Controls.actions({ buttons: ["join", "back", "jump"], vectors: ["move"] })
@@ -189,5 +190,23 @@ describe("Controls.players", () => {
     expect(messages).toContain(`left and other both bind " ": one key press reaches two players`)
     expect(messages).toContain("left is taken by a Controls merge and a player pool: each takes its snapshots, so a press reaches one of them")
     expect(messages).toContain("joining was never opened in this session, so nobody could join")
+  })
+
+  it("draws fuzzed input for the seated players: joined on frame 1, then each frame's actions", () => {
+    const devices = { left: Keyboard.idle(leftKeys), right: Keyboard.idle(rightKeys), pads: Gamepad.idle(padKeys) }
+    const random = Random.make(4)
+    const first = Players.random(random, 1, { devices, seats: { p1: "pads" } })
+    expect(first.joining).toBe(false)
+    expect(first.p1).toMatchObject({ joined: true, device: "pads", connected: true, event: "joined", devices: { pads: devices.pads } })
+    expect(first.p1.actions.jump).toEqual(idle)
+    expect(first.p1.vectors.move).toEqual({ x: 0, y: 0 })
+    expect(first.p2).toMatchObject({ joined: false, device: null, event: null })
+    const later = Array.from({ length: 50 }, (_, index) => Players.random(random, index + 2, { devices, seats: { p1: "pads" } }))
+    for (const snapshot of later) {
+      expect(snapshot.p1).toMatchObject({ joined: true, device: "pads", event: null })
+      expect(Math.hypot(snapshot.p1.vectors.move.x, snapshot.p1.vectors.move.y)).toBeLessThanOrEqual(1 + 1e-9)
+      expect(snapshot.p2.joined).toBe(false)
+    }
+    expect(later.some((snapshot) => snapshot.p1.actions.jump.pressed)).toBe(true)
   })
 })

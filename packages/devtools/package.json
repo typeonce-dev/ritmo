@@ -1,7 +1,7 @@
 {
   "name": "@typeonce/ritmo-devtools",
   "version": "0.14.0",
-  "description": "Headless debug sessions, trace history, text reports, and a live browser monitor for Ritmo runtimes",
+  "description": "Headless debug sessions, trace history, text reports, replays, and fuzzing for Ritmo runtimes",
   "author": "Sandro Maglione",
   "license": "MIT",
   "repository": {

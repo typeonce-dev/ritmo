@@ -85,4 +85,13 @@ describe("InputCapture", () => {
     // @ts-expect-error CaptureTypes/Reader needs CaptureTypes/Input from this tick, but its writer CaptureTypes/Ordered runs after it
     runtime.tick(Game.Schedule(Reader, Capture))
   })
+
+  it("declares a source service as a device's snapshot() only, with SourceOf", () => {
+    expect<InputCapture.SourceOf<Keyboard.Actions<typeof bindings>>>().type.toBe<InputCapture.Source<Snapshot>>()
+    const Sourced = Descriptor.Service<InputCapture.SourceOf<Keyboard.Actions<typeof bindings>>>()("CaptureTypes/Sourced")
+    expect<InputCapture.SnapshotOf<typeof Sourced>>().type.toBe<Snapshot>()
+    expect(InputCapture.system).type.toBeCallableWith(Game, { name: "CaptureTypes/FromSourced", source: Sourced, resource: Input })
+    // @ts-expect-error does not satisfy the constraint 'Source<unknown>'
+    type NotASource = InputCapture.SourceOf<{ readonly now: () => number }>
+  })
 })
