@@ -56,6 +56,24 @@ export const demos = {
     autoplay: true,
     load: () => import("./states/game.ts")
   },
+  composition: {
+    title: "Composition",
+    description: "One world, three changes of shape: a guard stunned and recovering, a sword put in a hand, an archer dropping a target that fell.",
+    controls: "Watch each lane in turn; the components under each entity light up as they arrive and leave.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/composition",
+    // Takes no input: starts on its own when scrolled into view.
+    autoplay: true,
+    load: () => import("./composition/game.ts")
+  },
+  determinism: {
+    title: "Determinism",
+    description: "Two copies of a seeded world stay one picture; two copies of a world that calls Math.random() split at the first gust.",
+    controls: "Watch the checksums under each pair: the left ones stay equal, the right ones part.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/determinism",
+    // Takes no input: starts on its own when scrolled into view.
+    autoplay: true,
+    load: () => import("./determinism/game.ts")
+  },
   replay: {
     title: "Controls, recorded",
     description: "The same ball, recording the last ten seconds as a replay you can open on the spot.",

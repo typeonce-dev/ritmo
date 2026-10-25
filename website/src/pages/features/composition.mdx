@@ -4,27 +4,24 @@ title: Entities that change shape
 description: Add and remove components while the game runs and link entities into trees and graphs, with every change landing at one known point.
 ---
 
-A guard gets stunned and recovers. A sword is put in a hand. An archer
-picks a target, and the target falls. Which components an entity holds,
-and what it is linked to, changes all game long, and Ritmo keeps every
-change safe to reason about.
+import Claim from "../../components/Claim.astro"
+import Game from "../../components/Game.astro"
 
-## What you get
+A guard gets stunned and recovers. A sword is put in a hand. An archer's
+target falls. What an entity holds, and what it is linked to, changes all
+game long, and Ritmo keeps each change safe to reason about.
 
-- A system adds or removes only the components its spec names. Any other
-  insert does not compile.
-- Every change lands at one point in the tick, so no loop sees an entity
-  change shape under it.
-- Each system hears about each change once, on its next run.
-- Parents and children stay in step: the runtime keeps the reverse side,
-  the child order, and despawns children with their parent.
-- A link to an entity that is gone is a typed failure to handle, never a
-  crash.
+<Game id="composition" ratio="16 / 9" />
 
-## Add and remove at runtime
+One world plays all three, left to right. Under each entity are the
+components it holds right now: a change lights up when it lands, and the
+line at the bottom of each lane is what a system heard about it.
 
-A system inserts and removes components with commands, and its spec says
-which ones. Here a hit stuns every guard that is not stunned already:
+<Claim title="A system adds only what its spec names">
+
+A stun is a `Stunned` component, inserted by a command. The spec lists the
+components a system may insert or remove; any other insert does not
+compile.
 
 ```ts twoslash title="stun.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -64,13 +61,20 @@ const Stun = Game.System(
 Removing works the same way: `Game.System.removes(Stunned)` in the spec,
 `commands.remove(match.entity, Stunned)` in the body.
 
-## Every change lands at one point
+</Claim>
 
-Inserts, removes, spawns, and despawns are queued and applied together at
-the next `applyDeferred()`. While a system runs, no entity gains or loses a
-component, so a loop never sees an entity change shape under it. After that
-point, queries see the new shape: a movement query with `without: [Stunned]`
-skips the guard from then on.
+<Claim title="No loop sees an entity change shape under it">
+
+Inserts, removes, spawns, and despawns wait for the next `applyDeferred()`
+and land there together. The guard in the demo, tick by tick: the hit's
+tick it still moves, and from the next one `Move` skips it.
+
+```text title="the guard, from the demo's world in Node"
+tick 30  x 208.0  Guard, Position, Velocity
+tick 31  x 209.6  Guard, Position, Velocity, Stunned { frames: 120 }
+tick 32  x 209.6  Guard, Position, Velocity, Stunned { frames: 119 }
+tick 33  x 209.6  Guard, Position, Velocity, Stunned { frames: 118 }
+```
 
 ```ts twoslash title="update.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -108,12 +112,20 @@ const Move = Game.System(
 const update = Game.Schedule(Stun, Move, Game.Schedule.applyDeferred())
 ```
 
-## Reacting to a change
+</Claim>
 
-A query with `Game.Query.added(Stunned)` matches the entities that gained
-the component since this system last ran, and `Game.System.readRemoved`
-lists the ones that lost it. Each system sees each change once, on its own
-next run.
+<Claim title="Each system hears each change once">
+
+`Game.Query.added(Stunned)` matches the entities that gained the component
+since this system last ran; `Game.System.readRemoved` lists the ones that
+lost it. In the demo the recovery is heard on tick 151, and only then:
+
+```text title="the guard recovering"
+tick 150  x 209.6  Guard, Position, Velocity, Stunned { frames: 1 }  heard 0
+tick 151  x 209.6  Guard, Position, Velocity  heard 1
+tick 152  x 211.2  Guard, Position, Velocity  heard 1
+tick 153  x 212.8  Guard, Position, Velocity  heard 1
+```
 
 ```ts twoslash title="feedback.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -142,10 +154,12 @@ const Feedback = Game.System(
 )
 ```
 
-## A sword in a hand
+</Claim>
+
+<Claim title="A sword goes where its hand goes">
 
 `Descriptor.Hierarchy` links a child to its parent. The runtime keeps the
-reverse side (the parent's children) in step, keeps the children in order,
+reverse side (the knight's `Children`) in step, keeps children in order,
 and despawns them with their parent.
 
 ```ts twoslash title="arm.ts"
@@ -191,10 +205,13 @@ const Arm = Game.System(
 )
 ```
 
-Following an edge returns a `Result`, because the parent may be gone by the
-time a system asks. A link the runtime refuses, such as an entity parented
-to itself or a cycle, does not throw: it becomes a typed failure that any
-system can read.
+</Claim>
+
+<Claim title="A missing parent is a value, not a crash">
+
+Following an edge returns a `Result`, because the parent may be gone by
+the time a system asks. A link the runtime refuses, such as an entity
+parented to itself or a cycle, becomes a typed failure any system can read.
 
 ```ts twoslash title="follow.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -232,16 +249,14 @@ const Follow = Game.System(
 )
 ```
 
-## Links between any two entities
+</Claim>
 
-`Descriptor.Relation` is a plain edge with a reverse lookup and no tree: an
-archer targeting a guard, a key opening a door. Despawning the target
-clears the edge, so `lookup.related(archer, Targeting)` turns into a
-`MissingRelation` failure instead of pointing at an entity that is gone.
+<Claim title="An archer hears once that its target fell">
 
-The archers do not have to check every tick whether their guard still
-exists. Each edge a despawn clears is a record that every system reading it
-sees once, so an archer whose guard fell can stand down at that moment.
+`Descriptor.Relation` is a plain edge with a reverse lookup and no tree.
+Despawning the target clears the edge, and each cleared edge is a record
+every reader sees once. The archer stands down at that moment, without
+checking its target every tick.
 
 ```ts twoslash title="stand-down.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -272,14 +287,18 @@ const StandDown = Game.System(
 )
 ```
 
-## Safe to replay and roll back
+</Claim>
 
-Components and relation edges are part of the world's snapshot. A
-rollback rewinds them with everything else, and a replay applies the same
-changes at the same point of every tick, on every machine. See
-[Online multiplayer](/features/rollback/) and
-[Same game everywhere](/features/determinism/).
+<Claim title="Rewound and replayed with everything else">
 
-For data that changes inside one component, see
-[States that can't go wrong](/features/states/). The full model of
-commands and `applyDeferred()` is in [Concepts](/docs/concepts/#commands).
+Components and relation edges are part of the world's snapshot. A rollback
+rewinds them with the rest of the world, and a replay applies the same
+changes at the same point of every tick, on every machine.
+
+</Claim>
+
+See [Online multiplayer](/features/rollback/) and
+[Same game everywhere](/features/determinism/) for what that buys. For data
+that changes inside one component, see
+[States that can't go wrong](/features/states/); the full model of commands
+and `applyDeferred()` is in [Concepts](/docs/concepts/#commands).

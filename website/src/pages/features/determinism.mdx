@@ -4,15 +4,31 @@ title: Same game everywhere
 description: The same input plays the same game, bit for bit, in Node, in every browser, and on every CPU.
 ---
 
+import Claim from "../../components/Claim.astro"
 import Fingerprint from "../../components/Fingerprint.astro"
+import Game from "../../components/Game.astro"
 
-JavaScript lets two engines run the same game code to slightly different
-results, and a game grows that difference into a different match. A Ritmo
-game plays the same, bit for bit, wherever it runs.
+Run a game twice with the same input and you expect the same game. One call
+to `Math.random()`, or one engine rounding `Math.sin` its own way, and the
+two runs part. A Ritmo game plays the same, bit for bit, wherever it runs.
+
+<Game id="determinism" ratio="16 / 9" />
+
+Each side runs two copies of one world, drawn on top of each other: one
+copy filled, the other as rings. On the left the gusts come from a seeded
+`Random`, and the copies stay one picture. On the right one system calls
+`Math.random()`, and they split at the first gust.
+
+That is what the rest of Ritmo stands on: [replays](/features/replays/)
+that play back from a few kilobytes of input, [online matches](/features/rollback/)
+where every peer reaches the same world, and a bug from a player's phone
+that reproduces on your laptop.
+
+<Claim title="Your browser plays the bits Node played">
 
 Below is one minute of the [controls demo](/features/devices/), played from
-a script. When this site was built, Node played it and kept a fingerprint of
-every position the ball passed through. Press the button to play it again in
+a script. When this site was built, Node played it and kept a fingerprint
+of every position the ball passed through. Press the button to play it in
 your browser.
 
 <Fingerprint />
@@ -21,28 +37,20 @@ The first two rows match on a laptop or a phone. The last row does the same
 sums with `Math`, and often comes out different, even between Node and
 Chrome.
 
-## What you get
+</Claim>
 
-- [Replays](/features/replays/) that play back exactly, from a few kilobytes
-  of input.
-- Online matches where every peer reaches the same world.
-- Headless tests that mean something: a run in Node is the run a player
-  sees.
-- A bug report from a player's phone that reproduces on your laptop.
-
-## Nothing in the simulation drifts
+<Claim title="Same seed, same rolls, same math">
 
 Runs drift apart in three places, and each has one replacement:
 
-- **Time.** Frames arrive when the screen is ready. The simulation steps at
-  a fixed rate (`Clock.hz(60)`) and reads time from its clock.
-- **Randomness.** `Math.random()` cannot be replayed. Rolls come from a
-  seeded generator kept in the world (`Random.draw`): same seed, same rolls.
-- **Math.** Engines may round `Math.sin`, `atan2`, `pow` and the rest as
-  they like, and Chrome, Safari, Firefox, macOS, and Linux do disagree.
-  `Ops` computes them with operations every engine rounds exactly.
+- **Time.** The simulation steps at a fixed rate (`Clock.hz(60)`) and reads
+  time from its clock, not from when frames arrive.
+- **Randomness.** Rolls come from a seeded generator kept in the world
+  (`Random.draw`), so a replay draws them again.
+- **Math.** `Ops` computes `sin`, `atan2`, `pow` and the rest with
+  operations every engine rounds exactly.
 
-In a system, that looks like ordinary code with two different imports:
+In a system it is ordinary code with two different imports:
 
 ```ts twoslash title="gust.ts"
 import { Descriptor, Ops, Random, Schema } from "@typeonce/ritmo"
@@ -67,12 +75,15 @@ const Gust = Game.System(
 )
 ```
 
-## The linter keeps you on that path
+</Claim>
 
-Lint rules catch simulation code that reaches for the drifting version, and
-say what to use instead:
+<Claim title="Drifting code is a lint error">
 
-```text
+Lint rules catch simulation code that reaches for the drifting version,
+and say what to use instead. `oxlint --fix` rewrites the call and adds the
+import.
+
+```text title="oxlint"
 error ritmo(use-ops-for-math): Math.sin may return a different last bit on
 another browser or CPU, and the simulation grows that bit into a different
 run. Use `Ops.sin` from `@typeonce/ritmo` (`import { Ops } from
@@ -81,17 +92,16 @@ abs, min, max, floor, ceil, round, trunc, and sign are exact everywhere and
 stay as they are.
 ```
 
-`oxlint --fix` rewrites the call and adds the import. `Date.now`, timers,
-`Math.random`, and page APIs inside systems get the same treatment.
+`Date.now`, timers, `Math.random`, and page APIs inside systems get the
+same treatment. Dependencies are not linted: `ritmo-devtools scan <entry>`
+lists the drifting calls in every package the simulation imports.
 
-Dependencies are not linted. `ritmo-devtools scan <entry>` lists the
-drifting calls in every package the simulation imports.
+</Claim>
 
-## Two runs compared, value by value
+<Claim title="A test names the frame, the value, and the system">
 
-`Determinism.check` plays the same script twice and compares every value in
-the world after every frame. A difference names the frame, the value, and
-the system that wrote it first:
+`Determinism.check` plays the same script twice and compares every value
+in the world after every frame.
 
 ```ts twoslash title="determinism.test.ts"
 import { Descriptor, HostClock, Schema } from "@typeonce/ritmo"
@@ -118,16 +128,37 @@ if (!result.ok) {
 }
 ```
 
-## Every browser checked
+Run on the demo's `Math.random()` world, it stops at the first gust:
+
+```text title="Determinism.check, the drifting world"
+{
+  "ok": false,
+  "frame": 60,
+  "reason": "difference",
+  "difference": "world[\"entities\"][\"0\"][\"components\"][\"Drift/Position\"][\"x\"]",
+  "first": 51.05881906664952,
+  "second": 51.049359557171876,
+  "after": "Drift/UnseededGust",
+  "entity": 1
+}
+```
+
+The seeded world passes all 600 frames: `{ "ok": true, "frames": 600 }`.
+
+</Claim>
+
+<Claim title="Every browser checked, on every change">
 
 `ritmo-devtools verify` plays a replay in Node, Chromium, WebKit, and
 Firefox, and names the first tick and value they disagree on. Ritmo's own
-CI runs it on every change, against a recorded online match:
+CI runs it on every change, against a recorded online match.
 
 ```sh
 ritmo-devtools verify replay/target.ts replay/match.json \
   --engines node,chromium,webkit,firefox
 ```
+
+</Claim>
 
 This is what [online multiplayer](/features/rollback/) needs from a game:
 every machine taking the same inputs to the same world. To find the places
