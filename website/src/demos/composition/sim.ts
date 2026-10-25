@@ -8,11 +8,11 @@
 import { Descriptor, Schema } from "@typeonce/ritmo"
 
 /** The frames of one loop, and when each story's cue fires. */
-export const LOOP = 620
+export const LOOP = 700
 export const HIT_AT = 30
 export const STUN_FRAMES = 120
-export const ARM_AT = 220
-export const FALL_AT = 420
+export const ARM_AT = 250
+export const FALL_AT = 540
 
 export const Name = Descriptor.Component<string>()("Arena/Name")
 export const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
