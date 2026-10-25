@@ -268,6 +268,8 @@ skipped and does not fail. The check needs Node 22.15 or later.
 | Code | Meaning |
 |---|---|
 | `uncovered-simulation-module` | The simulation loads this file, but no simulation override in `.oxlintrc.json` covers it, so oxlint never checks it for platform, time, randomness, or math calls. Add it to the override's `files`, or stop importing values from it. Exits with 1. |
+| `skill-not-linked` | Neither `.agents/skills/ritmo` nor `.claude/skills/ritmo` links the skill in `node_modules/@typeonce/ritmo/skills/ritmo`, so the game's agent does not read the playbooks for this Ritmo version. Link it (`SETUP.md` step 2). A note: the exit code is unchanged. |
+| `skill-copied` | The folder holds a copy of the skill (or links somewhere else), which goes stale on the next upgrade. Replace it with the link. A note: the exit code is unchanged. |
 
 The trace shows what systems wrote, not what they read. When a system writes
 a wrong value from correct inputs, the journal narrows the bug to that

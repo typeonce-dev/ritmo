@@ -27,7 +27,7 @@ Register the plugin and turn the rules on in `.oxlintrc.json`. The simulation ru
 {
   "jsPlugins": ["@typeonce/oxlint-plugin-ritmo"],
   "rules": {
-    "ritmo/handle-tick-result": "error",
+    "ritmo/handle-runtime-result": "error",
     "ritmo/prefix-descriptor-and-system-names": "error",
     "ritmo/use-cell-value": "error",
     "ritmo/no-state-spread": "error"
@@ -68,7 +68,7 @@ const started = performance.now()
 | [`no-infinity-in-simulation-data`](#ritmono-infinity-in-simulation-data) | simulation | `Infinity` / `NaN` in object literals | `null` |
 | [`no-float-timers`](#ritmono-float-timers) | simulation | `timer -= dt`, `cooldown - time.dt` | `Clock.deadline` / `Clock.reached` |
 | [`no-brand-cast`](#ritmono-brand-cast) | simulation | `raw as UserId`, `1 as Random.State` | the schema or constructor that brands it |
-| [`handle-tick-result`](#ritmohandle-tick-result) | everywhere | a dropped `runtime.tick(...)` / `restore(...)` / `rewind(...)` result | check `.ok` |
+| [`handle-runtime-result`](#ritmohandle-runtime-result) | everywhere | a dropped or unchecked `runtime.tick(...)` / `restore(...)` / `rewind(...)` / `snapshot()` / `checksum()` result | check `.ok` |
 | [`prefix-descriptor-and-system-names`](#ritmoprefix-descriptor-and-system-names) | everywhere | `"Position"`, `Game.System("Move", ...)` | `"Game/Position"` |
 | [`use-cell-value`](#ritmouse-cell-value) | everywhere | `cell.present ? cell.get() : undefined` | `cell.value()` |
 | [`no-state-spread`](#ritmono-state-spread) | everywhere | `{ ...ground, _tag: "air", vy }` | `cell.transition({ from, to, data })`, `nextMachines.x.set({ _tag, ...fields })`, or the new state's fields written out |
@@ -179,6 +179,18 @@ if (ready === null || Clock.reached(time, ready)) {
 const bar = ready === null ? 0 : Clock.remaining(time, ready) / Clock.steps(cooldown)   // a readout
 ```
 
+A timer that must stop while the world clock keeps running (gameplay frozen in hit-stop, a menu over the level) is measured against a second clock that holds, instead of against the world clock:
+
+```ts
+const GameplayTime = Clock.resource("Game/GameplayTime", step)
+const gameplayClock = Clock.system(Game, { name: "Game/GameplayClock", resource: GameplayTime, hold: [inHitStop] })
+
+// A deadline on GameplayTime waits while inHitStop passes, and saves and rolls back like any deadline
+data.enemy.set({ attackAt: Clock.deadline(gameplay, windup) })
+```
+
+Time scaled by a fraction (a 0.3x slow motion) has no whole step to end on, so a float is right there: keep it and disable the line with the reason (`// oxlint-disable-next-line ritmo/no-float-timers -- scaled by slow motion`). A value counted up by `dt` is reported too, since it drifts the same way: `Clock.elapsed(time)` is the exact seconds of a clock.
+
 Catches a stored value (a local or a field) plus or minus a tick's seconds on their own: `dt`, `deltaTime`, or `deltaSeconds`, as a local, a field (`time.dt`), or a resource read (`resources.deltaTime.get()`), in `x -= dt`, `x += dt`, and `x - dt` / `x + dt` anywhere (`Math.max(0, x - dt)`, an object literal). A rate scaled by `dt` (`position.x += velocity.x * dt`) is integration and is not reported, nor is a count of whole steps (`cooldown - 1`), nor a `delta` that is not time (a pointer's).
 
 ### `ritmo/no-brand-cast`
@@ -206,14 +218,16 @@ Make the value through its check: decode at the boundary with the game's schema,
 
 ## Rules for every file
 
-### `ritmo/handle-tick-result`
+### `ritmo/handle-runtime-result`
 
-`runtime.tick(...)` returns a `Result`: a system that fails stops the tick, and the failure comes back here. `runtime.restore(...)` returns one too: an invalid save leaves the previous world in place. So does `runtime.rewind(...)`: a checkpoint the runtime let go of changes nothing, and the ticks meant to run again run on top of the present. Dropping any of them hides the failure.
+`runtime.tick(...)` returns a `Result`: a system that fails stops the tick, and the failure comes back here. `runtime.restore(...)` returns one too: an invalid save leaves the previous world in place. So does `runtime.rewind(...)`: a checkpoint the runtime let go of changes nothing, and the ticks meant to run again run on top of the present. `runtime.snapshot()` and `runtime.checksum()` return one because a schema's `encode` may reject a value. Dropping any of them hides the failure, and so does passing one on where any value is accepted: a save function that takes `unknown` stores the `{ ok, value }` wrapper, not the world.
 
 ```ts
 runtime.tick(update)                                             // reported
 runtime.restore(save)                                            // reported
 runtime.rewind(checkpoint)                                       // reported
+persist(runtime.snapshot())                                      // reported
+log(`hash ${runtime.checksum()}`)                                // reported
 
 // instead
 const ran = runtime.tick(update)
@@ -222,10 +236,12 @@ const restored = runtime.restore(save)
 if (!restored.ok) showLoadError(restored.error)
 const rewound = runtime.rewind(checkpoint)
 if (!rewound.ok) resync(rewound.error)                           // Released or OtherRuntime
+const saved = runtime.snapshot()
+if (saved.ok) persist(saved.value)
 void runtime.tick(render)                                        // ignored on purpose
 ```
 
-Catches `tick(...)`, `tryTick(...)`, `restore(...)`, and `rewind(...)` used as a statement on a receiver named like a runtime (`runtime`, `game.runtime`, `worldRuntime`). Game wrappers with other names (`town.restore(...)`) are not reported. Option: `{ "runtimePattern": "^(runtime|world)$" }` (a case-insensitive regular expression for the receiver's name; default `runtime$`).
+Catches these calls on a receiver named like a runtime (`runtime`, `game.runtime`, `worldRuntime`) used as a statement, or passed on unchecked: as a call argument, inside a template string, an object or array literal, a spread, or an operand, also through `??`, `? :`, and `as`. A variable, a field, a `return`, `.ok`, and `void` keep the `Result` for the code to check. A helper that takes the `Result` itself gets it once it is named: `const checksum = runtime.checksum(); helper(checksum)`. Game wrappers with other names (`town.restore(...)`) are not reported. Option: `{ "runtimePattern": "^(runtime|world)$" }` (a case-insensitive regular expression for the receiver's name; default `runtime$`).
 
 ### `ritmo/prefix-descriptor-and-system-names`
 

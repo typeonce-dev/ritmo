@@ -21,6 +21,11 @@
  * A missing or unreadable config, one with `extends`, or one that never turns
  * the rule on prints why the check was skipped and does not fail.
  *
+ * Last, it notes when the project does not link the Ritmo skill from the
+ * installed package (`.agents/skills/ritmo` or `.claude/skills/ritmo`, see
+ * `SETUP.md`), or holds a copy that goes stale on upgrade. The note never
+ * fails the lint.
+ *
  * `verify` imports `<entry>` (a module exporting `replayTarget`, the
  * `make(playback)` factory `Replay.session` takes), plays the replay file in
  * Node and in each listed browser engine, and prints the first tick whose
@@ -56,6 +61,7 @@ import { pathToFileURL } from "node:url"
 
 import * as DependencyScan from "./internal/dependencyScan.ts"
 import * as SimulationCoverage from "./internal/simulationCoverage.ts"
+import * as SkillLink from "./internal/skillLink.ts"
 import * as Lint from "./Lint.ts"
 import * as Replay from "./Replay.ts"
 import * as Verify from "./Verify.ts"
@@ -107,14 +113,20 @@ const lint = async (entry: string): Promise<number> => {
   }
   const report = Lint.run(target)
   console.log(report.text)
-  if (simulationModules === undefined) {
-    console.log("simulation coverage not checked: needs Node 22.15 or later (module.registerHooks)")
-    return report.data.ok ? 0 : 1
-  }
-  const coverage = SimulationCoverage.check(process.cwd(), resolve(entry), simulationModules)
-  const text = SimulationCoverage.format(coverage)
-  if (text !== "") console.log(text)
-  return report.data.ok && (!coverage.checked || coverage.uncovered.length === 0) ? 0 : 1
+  const status = (() => {
+    if (simulationModules === undefined) {
+      console.log("simulation coverage not checked: needs Node 22.15 or later (module.registerHooks)")
+      return report.data.ok ? 0 : 1
+    }
+    const coverage = SimulationCoverage.check(process.cwd(), resolve(entry), simulationModules)
+    const text = SimulationCoverage.format(coverage)
+    if (text !== "") console.log(text)
+    return report.data.ok && (!coverage.checked || coverage.uncovered.length === 0) ? 0 : 1
+  })()
+  // A note only: it never changes the exit code.
+  const skill = SkillLink.format(SkillLink.check(process.cwd()))
+  if (skill !== "") console.log(skill)
+  return status
 }
 
 const engineNames = ["node", "chromium", "webkit", "firefox"] as const

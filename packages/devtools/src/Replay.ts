@@ -271,7 +271,8 @@ export const recorder = <S extends Schema.Any, Root, const Recorded extends AnyS
     // A tick whose world a `"~encode"` rejects is no starting point; the window keeps the previous one.
     if (!snapshot.ok) return
     points.push({ tick, snapshot: snapshot.value, pendingCommands: runtime.debug.dump({ limit: 0 }).pendingCommands.length })
-    checkpoints.push({ tick, hash: worldHash(runtime.checksum()) })
+    const checksum = runtime.checksum()
+    checkpoints.push({ tick, hash: worldHash(checksum) })
     const windowStart = tick - keepTicks
     let firstNeeded = -1
     for (let index = 0; index < points.length; index++) if (points[index]!.tick <= windowStart) firstNeeded = index
@@ -555,7 +556,8 @@ export const session = <
   })
   const send = target.runtime.send as (descriptor: { readonly kind: "event"; readonly name: string; readonly key: symbol }, value: unknown) => void
   const events = new Map(target.runtime.debug.describe().events.map(({ name }) => [name, { kind: "event" as const, name, key: Symbol.for(`ritmo/event/${name}`) }]))
-  const hashes = new Map<number, string>([[ran, worldHash(target.runtime.checksum())]])
+  const startChecksum = target.runtime.checksum()
+  const hashes = new Map<number, string>([[ran, worldHash(startChecksum)]])
   const recorded = new Map(file.checkpoints.map(({ tick, hash }) => [tick, hash] as const))
   const last = file.ticks.at(-1)?.tick ?? file.start.tick
 
@@ -568,7 +570,8 @@ export const session = <
       // `until` runs after each frame: the tick is checked, and the next one's input set up before it runs.
       until: () => {
         ran += 1
-        const hash = worldHash(target.runtime.checksum())
+        const checksum = target.runtime.checksum()
+        const hash = worldHash(checksum)
         hashes.set(ran, hash)
         const expected = recorded.get(ran)
         if (expected !== undefined && expected !== hash) diverged.push({ tick: ran, recorded: expected, replayed: hash })

@@ -214,11 +214,11 @@ step("run the published oxlint plugin")
 writeFileSync(path.join(consumer, ".oxlintrc.json"), JSON.stringify({
   jsPlugins: ["@typeonce/oxlint-plugin-ritmo"],
   categories: { correctness: "off" },
-  rules: { "ritmo/use-random-for-randomness": "error", "ritmo/use-ops-for-math": "error", "ritmo/handle-tick-result": "error" }
+  rules: { "ritmo/use-random-for-randomness": "error", "ritmo/use-ops-for-math": "error", "ritmo/handle-runtime-result": "error" }
 }))
 writeFileSync(path.join(consumer, "simulation.ts"), "export const roll = Math.random()\nexport const turn = Math.sin(roll)\ndeclare const runtime: { tick(s: unknown): unknown }\nruntime.tick(0)\n")
 const linted = spawnSync(path.join(consumer, "node_modules", ".bin", "oxlint"), ["--format", "unix", "simulation.ts"], { cwd: consumer, encoding: "utf8" })
-for (const rule of ["use-random-for-randomness", "use-ops-for-math", "handle-tick-result"]) {
+for (const rule of ["use-random-for-randomness", "use-ops-for-math", "handle-runtime-result"]) {
   if (!linted.stdout.includes(`ritmo(${rule})`)) throw new Error(`published plugin did not report ritmo/${rule}:\n${linted.stdout}${linted.stderr}`)
 }
 console.log(linted.stdout.split("\n").filter((line) => line.includes("ritmo(")).map((line) => line.replace(/: .*\[/, " [")).join("\n"))

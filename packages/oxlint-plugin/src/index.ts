@@ -18,7 +18,7 @@
  *   `ritmo/use-random-for-randomness`, `ritmo/use-ops-for-math`,
  *   `ritmo/keep-simulation-headless`, `ritmo/no-infinity-in-simulation-data`,
  *   `ritmo/no-float-timers`, `ritmo/no-brand-cast`.
- * - Every file: `ritmo/handle-tick-result`,
+ * - Every file: `ritmo/handle-runtime-result`,
  *   `ritmo/prefix-descriptor-and-system-names`, `ritmo/use-cell-value`,
  *   `ritmo/no-state-spread`.
  *
@@ -26,7 +26,7 @@
  */
 import { definePlugin } from "@oxlint/plugins"
 
-import handleTickResult from "./rules/handle-tick-result.ts"
+import handleRuntimeResult from "./rules/handle-runtime-result.ts"
 import keepSimulationHeadless from "./rules/keep-simulation-headless.ts"
 import noBrandCast from "./rules/no-brand-cast.ts"
 import noFloatTimers from "./rules/no-float-timers.ts"
@@ -48,7 +48,7 @@ export default definePlugin({
     "no-infinity-in-simulation-data": noInfinityInSimulationData,
     "no-float-timers": noFloatTimers,
     "no-brand-cast": noBrandCast,
-    "handle-tick-result": handleTickResult,
+    "handle-runtime-result": handleRuntimeResult,
     "prefix-descriptor-and-system-names": prefixDescriptorAndSystemNames,
     "use-cell-value": useCellValue,
     "no-state-spread": noStateSpread
