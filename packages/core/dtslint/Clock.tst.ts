@@ -151,3 +151,43 @@ describe("Clock.durationOfSteps", () => {
     Clock.durationOfSteps(step, 1.5)
   })
 })
+
+describe("Clock.deadline", () => {
+  const t = Clock.start(step)
+  const slow = Clock.start(Clock.hz(30))
+  const ready = Clock.deadline(t, Clock.duration(step, 0.5))
+
+  it("infers a deadline of the clock's rate", () => {
+    expect(ready).type.toBe<Clock.Deadline<60>>()
+    expect(Clock.reached(t, ready)).type.toBe<boolean>()
+    expect(Clock.remaining(t, ready)).type.toBe<number>()
+    expect(Clock.isDeadline(step)).type.toBe<(raw: unknown) => raw is Clock.Deadline<60>>()
+  })
+
+  it("is made from a duration of the clock's own rate", () => {
+    expect(Clock.deadline).type.not.toBeCallableWith(t, Clock.duration(Clock.hz(30), 1))
+    expect(Clock.deadline).type.toBeCallableWith(t, Clock.duration(step, 1))
+  })
+
+  it("is checked against a clock of its own rate", () => {
+    expect(Clock.reached).type.not.toBeCallableWith(slow, ready)
+    expect(Clock.reached).type.toBeCallableWith(t, ready)
+    expect(Clock.remaining).type.not.toBeCallableWith(slow, ready)
+    expect(Clock.remaining).type.toBeCallableWith(t, ready)
+    // @ts-expect-error Type '60' is not assignable to type '30'
+    const other: Clock.Deadline<30> = ready
+  })
+
+  it("is not a raw number", () => {
+    const due: number = 30
+    // @ts-expect-error Type 'number' is not assignable to type 'DeadlineBrand<60>'
+    Clock.reached(t, due)
+    // @ts-expect-error Type 'number' is not assignable to type 'DeadlineBrand<60>'
+    const forged: Clock.Deadline<60> = 30
+  })
+
+  it("narrows saved data to a deadline of the guard's rate", () => {
+    const raw: unknown = 30
+    if (Clock.isDeadline(step)(raw)) expect(raw).type.toBe<Clock.Deadline<60>>()
+  })
+})

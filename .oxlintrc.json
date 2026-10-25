@@ -31,7 +31,8 @@
         "ritmo/use-random-for-randomness": "error",
         "ritmo/use-ops-for-math": "error",
         "ritmo/keep-simulation-headless": "error",
-        "ritmo/no-infinity-in-simulation-data": "error"
+        "ritmo/no-infinity-in-simulation-data": "error",
+        "ritmo/no-float-timers": "error"
       }
     }
   ],

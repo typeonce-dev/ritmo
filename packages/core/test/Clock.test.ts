@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { Clock, Descriptor, Result, Schema } from "@typeonce/ritmo"
+import { z } from "zod"
 import { worldOf } from "./saved.ts"
 
 const step = Clock.hz(60)
@@ -123,5 +124,94 @@ describe("Clock.durationOfSteps", () => {
     expect(() => Clock.durationOfSteps(step, zero)).toThrow("Clock.durationOfSteps needs a positive whole number of steps, got 0")
     const half: number = 0.5
     expect(() => Clock.durationOfSteps(step, half)).toThrow("got 0.5")
+  })
+})
+
+describe("Clock.deadline", () => {
+  const t = (at: number): Clock.Time<60> => ({ step: at, hz: 60, dt: 1 / 60 })
+
+  it("ends a duration after its steps, reached on that step and every step after", () => {
+    const ready = Clock.deadline(t(10), Clock.durationOfSteps(step, 3))
+    expect(ready).toBe(13)
+    expect([12, 13, 14].map((at) => Clock.reached(t(at), ready))).toEqual([false, true, true])
+    expect([10, 12, 13, 20].map((at) => Clock.remaining(t(at), ready))).toEqual([3, 1, 0, 0])
+    expect(Clock.deadline(Clock.start(step), Clock.duration(step, 0.5))).toBe(30)
+  })
+
+  it("accepts a whole number of steps, 0 or more, as a saved deadline", () => {
+    const isDeadline = Clock.isDeadline(step)
+    expect([0, 1, 30, Number.MAX_SAFE_INTEGER].map(isDeadline)).toEqual([true, true, true, true])
+    expect([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, "30", null, { step: 30 }].map(isDeadline)).toEqual([false, false, false, false, false, false, false])
+  })
+
+  const isReady = Clock.isDeadline(step)
+  const Weapon = Descriptor.ConstructedComponent(z.object({ ready: z.unknown().refine(isReady).nullable() }))("ClockDeadline/Weapon")
+  const Armed = Schema.bind(Schema.fragment({ components: { Weapon }, resources: { Time } }))
+  const Flow = Armed.StateMachine("ClockDeadline/Flow", { Playing: {}, Paused: {} })
+  const Advance = Clock.system(Armed, { name: "ClockDeadline/Advance", resource: Time, hold: [Armed.Condition.inState(Flow, "Paused")] })
+  const cooldown = Clock.durationOfSteps(step, 3)
+  const fired: Array<number> = []
+  const Fire = Armed.System("ClockDeadline/Fire", {
+    resources: { time: Armed.System.thisTick(Armed.System.readResource(Time)) },
+    queries: { weapons: Armed.Query({ selection: { weapon: Armed.Query.write(Weapon) } }) }
+  }, ({ resources, queries }) => {
+    const time = resources.time.get()
+    for (const { data } of queries.weapons.each()) {
+      const { ready } = data.weapon.get()
+      if (ready !== null && !Clock.reached(time, ready)) continue
+      fired.push(time.step)
+      data.weapon.set({ ready: Clock.deadline(time, cooldown) })
+    }
+  })
+  const Arm = Armed.System("ClockDeadline/Arm", { commands: Armed.System.commands(Armed.System.spawns(Weapon)) }, ({ commands }) => {
+    commands.spawn(Armed.Command.spawn([Weapon, { ready: null }]))
+  })
+  const Pause = Armed.System("ClockDeadline/Pause", { nextMachines: { flow: Armed.System.nextState(Flow) } }, ({ nextMachines }) => {
+    nextMachines.flow.set({ _tag: "Paused" })
+  })
+  const tick = Armed.Schedule(Advance, Fire)
+  const makeArmed = () => {
+    const made = Armed.Runtime.make({
+      services: Armed.Runtime.services(),
+      resources: { Time: Clock.start(step) },
+      machines: Armed.Runtime.machines(Armed.Runtime.machine(Flow, { _tag: "Playing" }))
+    })
+    if (!made.ok) throw new Error("clock values are valid")
+    return made.value
+  }
+
+  it("fires a cooldown every few steps, waits through a pause, and resumes the same after a restore", () => {
+    const runtime = makeArmed()
+    runtime.tick(Armed.Schedule(Arm, Armed.Schedule.applyDeferred()))
+    fired.length = 0
+    for (let index = 0; index < 5; index++) runtime.tick(tick)
+    expect(fired).toEqual([1, 4])
+    const saved: unknown = JSON.parse(JSON.stringify(worldOf(runtime.snapshot())))
+    for (let index = 0; index < 5; index++) runtime.tick(tick)
+    const straight = [...fired]
+    expect(straight).toEqual([1, 4, 7, 10])
+
+    const loaded = makeArmed()
+    expect(loaded.restore(saved).ok).toBe(true)
+    fired.length = 0
+    for (let index = 0; index < 5; index++) loaded.tick(tick)
+    expect([1, 4, ...fired]).toEqual(straight)
+
+    // Held: the step stands still, so the deadline waits.
+    loaded.tick(Armed.Schedule(Pause, Armed.Schedule.applyStateTransitions()))
+    fired.length = 0
+    for (let index = 0; index < 10; index++) loaded.tick(tick)
+    expect(fired).toEqual([])
+  })
+
+  it("refuses to restore a deadline that is not a whole number of steps", () => {
+    const runtime = makeArmed()
+    runtime.tick(Armed.Schedule(Arm, Armed.Schedule.applyDeferred()))
+    runtime.tick(tick)
+    const json = JSON.stringify(worldOf(runtime.snapshot()))
+    expect(json).toContain('"ready":4')
+    for (const bad of ["-1", "1.5", "\"4\""]) {
+      expect(makeArmed().restore(JSON.parse(json.replace('"ready":4', `"ready":${bad}`))).ok).toBe(false)
+    }
   })
 })

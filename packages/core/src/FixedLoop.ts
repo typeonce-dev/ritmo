@@ -233,6 +233,7 @@ export const start = <TTick extends Tick, UpdateError>(
         fail({ kind: "UpdateFailure", error: update.error })
         return
       }
+      // oxlint-disable-next-line ritmo/no-float-timers -- the host loop's accumulator of wall time, drained in fixed steps; systems read Clock.
       accumulator -= options.step.dt
       fixedSteps += 1
     }
