@@ -1,5 +1,51 @@
 # @typeonce/ritmo-browser
 
+## 0.16.0
+
+### Minor Changes
+
+- be9af72: `Touch.actions` infers which controls the layout function can hide, so `view().layout` has no `null` zone for a control it never hides. `Layout`, `View`, and `Actions` take a third parameter, the hideable names, which defaults to every name: an annotated `Touch.Actions<"dash", "move">` is unchanged and still accepts the inferred value.
+
+  ```diff
+   const touch = Touch.actions(canvas, window, ({ width, height }) => ({
+     sticks: { move: { region: { left: 0, top: 0, width: width / 2, height }, radius: 56 } },
+     buttons: { dash: { center: { x: width - 84, y: height - 150 }, radius: 36 } }
+   }))
+  -const dash = touch.view().layout.buttons.dash
+  -if (dash !== null) drawButton(dash.center)
+  +drawButton(touch.view().layout.buttons.dash.center)
+  ```
+
+  A test that compared `Touch.actions(...)` to `Touch.Actions<B, V>` with `toBe` compares it to `Touch.Actions<B, V, never>` (or the names it hides).
+
+### Patch Changes
+
+- 9b0379e: **Every JSDoc `@example` now compiles against the current API.** Examples are type-checked in CI as a game would import them, so they no longer cite exports that do not exist or call them with the wrong arguments. What changed in meaning:
+
+  - `Game.Runtime.make(...)` with a constructed resource (a `Clock.resource`, a `Descriptor.ConstructedResource`) returns a `Result` that may fail: the examples check `ok` instead of reading `.value`.
+  - A captured input resource is typed from its source: `Descriptor.TransientResource<InputCapture.SnapshotOf<typeof KeyboardInput>>()`, not `Keyboard.Snapshot<...>`.
+  - `Netcode.seats(...)` returns a `Result`: check it instead of `.value!`.
+  - `Lint.Target<typeof Game.schema, typeof Root>` takes the schema root second.
+  - `NodeRegistry.make` infers the node type from `attach`'s parameter, with no explicit generic.
+
+- 9290521: Docs from upgrading two games across several versions:
+
+  - The skill's state-and-upgrades playbook lists the breaks that still compile, per version, and `SETUP.md` says a new lint rule is off until `.oxlintrc.json` lists it.
+  - The 0.13 `Decode` entry has a table from each `Decode` codec to Zod and Effect; handle schemas use `z.unknown().refine(Entity.isHandle(...))`, not `z.custom`.
+  - The `Snapshot.version` JSDoc says how to rewrite a format 2 save; `WorldSnapshot.relations` says targets are sorted by id while each target's sources keep their order.
+  - `ritmo-devtools lint`'s `uncovered-simulation-module` message names the usual cause: a host module imported at the top of the lint entry instead of inside `lintTarget`. The README shows a debug script reusing `lintTarget`.
+  - The `Replay` docs and the 0.15 changelog say how to keep a playtester's save button without the monitor: `recorder.save(reason)` from a key handler.
+  - `Touch.Layout` shows how to draw a layout with no `null` zones, and `Pointer.Actions` says to build test doubles with `Pointer.scripted`.
+  - The `use-ops-for-math` example uses `Angle.wrap` for a signed turn, and the spatial-grid reference defines its `made` helper.
+
+- Updated dependencies [9b0379e]
+- Updated dependencies [be9af72]
+- Updated dependencies [9b0379e]
+- Updated dependencies [9290521]
+- Updated dependencies [9290521]
+- Updated dependencies [1b55d21]
+  - @typeonce/ritmo@0.16.0
+
 ## 0.15.0
 
 ### Minor Changes

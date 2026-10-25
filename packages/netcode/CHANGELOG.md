@@ -1,5 +1,26 @@
 # @typeonce/ritmo-netcode
 
+## 0.16.0
+
+### Patch Changes
+
+- 9b0379e: **Every JSDoc `@example` now compiles against the current API.** Examples are type-checked in CI as a game would import them, so they no longer cite exports that do not exist or call them with the wrong arguments. What changed in meaning:
+
+  - `Game.Runtime.make(...)` with a constructed resource (a `Clock.resource`, a `Descriptor.ConstructedResource`) returns a `Result` that may fail: the examples check `ok` instead of reading `.value`.
+  - A captured input resource is typed from its source: `Descriptor.TransientResource<InputCapture.SnapshotOf<typeof KeyboardInput>>()`, not `Keyboard.Snapshot<...>`.
+  - `Netcode.seats(...)` returns a `Result`: check it instead of `.value!`.
+  - `Lint.Target<typeof Game.schema, typeof Root>` takes the schema root second.
+  - `NodeRegistry.make` infers the node type from `attach`'s parameter, with no explicit generic.
+
+- 9290521: `session.advance(...)` counts the ticks a rollback ran again in its result. The rollback made at the start of an advance was left out of `again` (and `ticks`), so a game reading the result saw `again: 0` while `status().again` grew.
+- Updated dependencies [9b0379e]
+- Updated dependencies [be9af72]
+- Updated dependencies [9b0379e]
+- Updated dependencies [9290521]
+- Updated dependencies [9290521]
+- Updated dependencies [1b55d21]
+  - @typeonce/ritmo@0.16.0
+
 ## 0.15.0
 
 ### Minor Changes

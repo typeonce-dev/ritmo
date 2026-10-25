@@ -1,5 +1,45 @@
 # @typeonce/ritmo-devtools
 
+## 0.16.0
+
+### Minor Changes
+
+- be9af72: `ritmo-devtools lint` notes when the project does not link the Ritmo skill from the installed package (`skill-not-linked`: neither `.agents/skills/ritmo` nor `.claude/skills/ritmo` links `node_modules/@typeonce/ritmo/skills/ritmo`), or holds a copy that goes stale on upgrade (`skill-copied`). Both are notes: the exit code is unchanged.
+
+### Patch Changes
+
+- 9b0379e: **Every JSDoc `@example` now compiles against the current API.** Examples are type-checked in CI as a game would import them, so they no longer cite exports that do not exist or call them with the wrong arguments. What changed in meaning:
+
+  - `Game.Runtime.make(...)` with a constructed resource (a `Clock.resource`, a `Descriptor.ConstructedResource`) returns a `Result` that may fail: the examples check `ok` instead of reading `.value`.
+  - A captured input resource is typed from its source: `Descriptor.TransientResource<InputCapture.SnapshotOf<typeof KeyboardInput>>()`, not `Keyboard.Snapshot<...>`.
+  - `Netcode.seats(...)` returns a `Result`: check it instead of `.value!`.
+  - `Lint.Target<typeof Game.schema, typeof Root>` takes the schema root second.
+  - `NodeRegistry.make` infers the node type from `attach`'s parameter, with no explicit generic.
+
+- 9290521: Docs from upgrading two games across several versions:
+
+  - The skill's state-and-upgrades playbook lists the breaks that still compile, per version, and `SETUP.md` says a new lint rule is off until `.oxlintrc.json` lists it.
+  - The 0.13 `Decode` entry has a table from each `Decode` codec to Zod and Effect; handle schemas use `z.unknown().refine(Entity.isHandle(...))`, not `z.custom`.
+  - The `Snapshot.version` JSDoc says how to rewrite a format 2 save; `WorldSnapshot.relations` says targets are sorted by id while each target's sources keep their order.
+  - `ritmo-devtools lint`'s `uncovered-simulation-module` message names the usual cause: a host module imported at the top of the lint entry instead of inside `lintTarget`. The README shows a debug script reusing `lintTarget`.
+  - The `Replay` docs and the 0.15 changelog say how to keep a playtester's save button without the monitor: `recorder.save(reason)` from a key handler.
+  - `Touch.Layout` shows how to draw a layout with no `null` zones, and `Pointer.Actions` says to build test doubles with `Pointer.scripted`.
+  - The `use-ops-for-math` example uses `Angle.wrap` for a signed turn, and the spatial-grid reference defines its `made` helper.
+
+- 9290521: A replay saved to disk verifies when the world holds `-0`. `runtime.checksum()` hashed `-0` apart from `0`, but JSON writes `-0` as `0`, so every replay read back from a file failed `Verify.acrossEngines` and `ritmo-devtools verify` ("DIVERGED at tick N") while the same replay verified in memory. `checksum()` now hashes `-0` as `0`, as a save writes it. Replays recorded before this fix with `-0` in the world still hold the old hashes: record them again.
+
+  `Desync.compare` and every devtools printout write `-0` with its sign, so a `-0` / `0` difference no longer reads `0 -> 0`.
+
+- Updated dependencies [9b0379e]
+- Updated dependencies [be9af72]
+- Updated dependencies [9b0379e]
+- Updated dependencies [9290521]
+- Updated dependencies [9290521]
+- Updated dependencies [9290521]
+- Updated dependencies [1b55d21]
+  - @typeonce/ritmo@0.16.0
+  - @typeonce/ritmo-netcode@0.16.0
+
 ## 0.15.0
 
 ### Minor Changes
