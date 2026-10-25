@@ -182,8 +182,46 @@ Netcode.rollback(runtime, {
 })
 ```
 
-A physics engine that keeps its own world becomes a service with
-`Checkpoint.rewindable`, saved and restored with every rollback.
+## A physics engine rolls back with the game
+
+A physics engine keeps its own world, so a rollback would leave it ahead of
+the game. Wrapped with `Checkpoint.rewindable`, it is saved at every
+checkpoint and restored with every rollback. Systems read its `current`
+value each tick:
+
+```ts twoslash
+import { Checkpoint, Descriptor, Result, Schema } from "@typeonce/ritmo"
+declare class PhysicsWorld {
+  step(): void
+  takeSnapshot(): Uint8Array
+  static restoreSnapshot(bytes: Uint8Array): PhysicsWorld | undefined
+}
+declare const world: PhysicsWorld
+const Game = Schema.bind(Schema.fragment({}))
+// ---cut---
+const physics = Checkpoint.rewindable(world, {
+  save: (world) => world.takeSnapshot(),
+  restore: (bytes) => {
+    const restored = PhysicsWorld.restoreSnapshot(bytes)
+    return restored === undefined
+      ? Result.failure({ _tag: "CorruptSnapshot" as const })
+      : Result.success(restored)
+  }
+})
+const Physics = Descriptor.Service<typeof physics>()("Game/Physics")
+
+const Step = Game.System(
+  "Game/Step",
+  { services: { physics: Game.System.service(Physics) } },
+  ({ services }) => {
+    services.physics.current.step()
+  }
+)
+```
+
+Checksums see only the world, so copy what gameplay reads from the engine
+(positions, contacts) into components each tick. That is what peers
+compare, and what a resync restores.
 
 ## Sounds play once
 
@@ -211,6 +249,51 @@ for (const { value } of hits.confirmed()) {
 }
 ```
 
+## A hidden tab does not end the match
+
+A browser stops a hidden tab, so that peer goes silent. Given the tab's
+visibility, the session tells the others the moment it hides. They wait for
+it (`"stall"`), or play on with idle input for it and resync it when it
+comes back (`"resync-on-return"`):
+
+```ts twoslash title="hidden.ts"
+import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
+import { BrowserHostClock, BrowserVisibility, InputCapture } from "@typeonce/ritmo-browser"
+import { Netcode, WebSocketNetworkLink } from "@typeonce/ritmo-netcode"
+interface PlayerInput { readonly dx: number; readonly fire: boolean }
+const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("Game/Seats")
+const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("Game/Inputs")
+const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }))
+const Capture = InputCapture.system(Game, { name: "Game/Capture", source: Seats, resource: Inputs })
+const simulate = Game.Schedule(Capture)
+declare const seats: Netcode.Seats<PlayerInput>
+const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Seats, seats.source)), resources: { Inputs: [] } }).value
+const step = Clock.hz(60)
+declare const socket: WebSocket
+declare const names: ReadonlyArray<string>
+// ---cut---
+const session = Netcode.rollback(runtime, {
+  simulate,
+  seats,
+  seat: 1,
+  links: [WebSocketNetworkLink.make(socket)],
+  hostClock: BrowserHostClock.make(window),
+  step,
+  hidden: { // [!code highlight]
+    visibility: BrowserVisibility.make(document), // [!code highlight]
+    // A tab closed while hidden still ends the match, 30 s + timeoutMS later
+    afterMS: 30_000,
+    then: "resync-on-return" // [!code highlight]
+  } // [!code highlight]
+})
+if (!session.ok) throw new Error(session.error.reason)
+
+// In the HUD: who everyone is waiting for
+const away = session.value
+  .status()
+  .hidden.flatMap((hidden, seat) => (hidden ? [names[seat]] : []))
+```
+
 ## Peers agree, or say so
 
 Every 30 ticks, the peers compare a checksum of a tick all real input has
@@ -218,8 +301,6 @@ reached. A mismatch means the game is not deterministic somewhere:
 the session reports `Desynced`, and `session.update` resyncs every peer
 from seat 0's world. `session.status()` shows how far they agree, for a HUD or a test.
 
-A hidden tab tells the others, who wait for it or play on without it,
-instead of ending the match.
 
 A [sync test](/features/bugs/#rollback-checked-on-every-tick) finds a desync
 in a test run instead, on the tick it starts. Matches hold across machines
