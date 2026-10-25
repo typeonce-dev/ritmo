@@ -4,17 +4,10 @@
  *   pnpm bench:math
  *
  * Each line is the median of several runs, per call of what a game does
- * every step: rebuild and query a spatial grid over 1,000 bodies, follow a
- * flow field, move bodies through walls, and draw random numbers.
+ * every step: follow a flow field and move bodies through walls.
  */
 import { Random } from "@typeonce/ritmo"
-import { Box2, Collide2, FlowField, Scalar, SpatialGrid } from "@typeonce/ritmo-math"
-
-const positive = (value: number): Scalar.Positive => {
-  const checked = Scalar.Positive.result(value)
-  if (!checked.ok) throw new Error(`Not positive: ${value}`)
-  return checked.value
-}
+import { Box2, Collide2, FlowField } from "@typeonce/ritmo-math"
 
 /** Median nanoseconds per operation of `run`, which does `operations` operations. */
 const measure = (label: string, operations: number, run: () => number): void => {
@@ -34,19 +27,9 @@ const random = Random.make(1)
 const bodies = Array.from({ length: 1000 }, () => ({ x: random.range(0, 2000), y: random.range(0, 1200), r: random.range(8, 24) }))
 const walls = Array.from({ length: 40 }, () => Box2.around(random.range(0, 2000), random.range(0, 1200), random.range(10, 80), random.range(10, 80)))
 
-const grid = SpatialGrid.make(positive(64))
-measure("SpatialGrid: rebuild over 1,000 bodies (per frame)", 1, () => {
-  grid.clear()
-  for (let index = 0; index < bodies.length; index++) grid.insert(index, bodies[index]!.x, bodies[index]!.y, bodies[index]!.r)
-  return 0
-})
-measure("SpatialGrid: query a 96 × 96 box (per query)", bodies.length, () => {
-  let found = 0
-  for (const body of bodies) grid.forEachIn(body.x - 48, body.y - 48, body.x + 48, body.y + 48, () => found++)
-  return found
-})
-
-const paths = FlowField.make(positive(30))
+const made = FlowField.make(30)
+if (!made.ok) throw new Error("bench cell size")
+const paths = made.value
 paths.setWalls(walls, 12)
 let goal = 0
 measure("FlowField: search after the goal moves (2,800 cells)", 1, () => {
@@ -63,11 +46,5 @@ measure("FlowField: way for one body", bodies.length, () => {
 measure("Collide2: moveCircle through 40 walls", bodies.length, () => {
   let sum = 0
   for (const body of bodies) sum += Collide2.moveCircle(body, { x: 7, y: -5 }, body.r, { boxes: walls }).position.x
-  return sum
-})
-
-measure("Random: next", 1_000_000, () => {
-  let sum = 0
-  for (let draw = 0; draw < 1_000_000; draw++) sum += random.next()
   return sum
 })

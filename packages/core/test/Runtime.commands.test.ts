@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { Descriptor, Result, Schema } from "@typeonce/ritmo"
 import type { EntityId } from "@typeonce/ritmo/Entity"
-import * as Vector2 from "@typeonce/ritmo-math/Vector2"
 import { readResourceValue } from "./utils/fixtures.ts"
 import * as Codecs from "./codecs.ts"
 
@@ -9,7 +8,7 @@ const Position = Descriptor.Component<{ x: number; y: number }>()("Position")
 const Velocity = Descriptor.Component<{ x: number; y: number }>()("Velocity")
 const Count = Descriptor.Resource<number>()("Count")
 const LastX = Descriptor.Resource<number>()("LastX")
-const SafePosition = Descriptor.ConstructedComponent(Vector2.codec)("SafePosition")
+const SafePosition = Descriptor.ConstructedComponent(Codecs.safeVector)("SafePosition")
 const SafeVelocity = Descriptor.ConstructedComponent(Codecs.struct({ x: Codecs.number, y: Codecs.number }))("SafeVelocity")
 const badVelocity = { _tag: "SchemaIssues", issues: [{ message: "Expected a finite number", path: ["x"] }] }
 

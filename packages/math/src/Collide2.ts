@@ -25,7 +25,7 @@
  * Contacts and movement results.
  *
  * @categoryDescription Queries
- * First-contact sweeps and overlap resolution.
+ * First-contact sweeps and overlap tests.
  *
  * @categoryDescription Movement
  * Moving a circle through walls with sliding.
@@ -289,6 +289,22 @@ export const sweepCircleCircle = (
   const dy = origin.y - target.y
   if (dx * dx + dy * dy <= r * r) return 0
   return rayCircle(origin.x, origin.y, delta.x, delta.y, target.x, target.y, r)
+}
+
+/**
+ * Whether a circle of `radius` at `center` overlaps (or touches) a circle of
+ * `otherRadius` at `other`, without a square root. Touching counts, as in
+ * `Box2.overlapsCircle` and `Segment2.overlapsCircle`. For a pickup or a hit
+ * between bodies that have already moved; when one moves fast enough to pass
+ * through the other in one step, use {@link sweepCircleCircle}.
+ *
+ * @category Queries
+ */
+export const overlapsCircleCircle = (center: Vec2, radius: number, other: Vec2, otherRadius: number): boolean => {
+  const r = radius + otherRadius
+  const dx = center.x - other.x
+  const dy = center.y - other.y
+  return dx * dx + dy * dy <= r * r
 }
 
 /**

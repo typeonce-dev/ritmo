@@ -1,12 +1,12 @@
 import { Descriptor, Entity, Result, Schema } from "@typeonce/ritmo"
 import * as Command from "@typeonce/ritmo/Command"
-import * as Vector2 from "@typeonce/ritmo-math/Vector2"
+import * as Codecs from "../test/codecs.ts"
 import { describe, expect, it } from "tstyche"
 
 const Position = Descriptor.Component<{ x: number; y: number }>()("Position")
 const Velocity = Descriptor.Component<{ x: number; y: number }>()("Velocity")
 const Time = Descriptor.Resource<number>()("Time")
-const SafePosition = Descriptor.ConstructedComponent(Vector2.codec)("SafePosition")
+const SafePosition = Descriptor.ConstructedComponent(Codecs.safeVector)("SafePosition")
 
 const Game = Schema.bind(Schema.fragment({
   components: {
@@ -72,7 +72,7 @@ describe("Command", () => {
 
     expect(draft).type.toBe<Result.Result<Entity.EntityDraft<typeof schema, {
       readonly Position: { x: number; y: number }
-      readonly SafePosition: Vector2.Vector2
+      readonly SafePosition: Codecs.SafeVector
     }, typeof schema>, readonly [null, Descriptor.SchemaIssues | null]>>()
   })
 
@@ -92,7 +92,7 @@ describe("Command", () => {
 
     expect(inserted).type.toBe<Result.Result<Entity.EntityDraft<typeof schema, {
       readonly Position: { x: number; y: number }
-      readonly SafePosition: Vector2.Vector2
+      readonly SafePosition: Codecs.SafeVector
     }, typeof schema>, readonly [Descriptor.SchemaIssues | null]>>()
   })
 

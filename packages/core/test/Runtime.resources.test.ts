@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { Descriptor, Schema } from "@typeonce/ritmo"
-import * as Size2 from "@typeonce/ritmo-math/Size2"
-import * as Vector2 from "@typeonce/ritmo-math/Vector2"
+import * as Codecs from "./codecs.ts"
 import * as Runtime from "@typeonce/ritmo/Runtime"
 import * as Schedule from "@typeonce/ritmo/Schedule"
 import * as System from "@typeonce/ritmo/System"
@@ -13,8 +12,8 @@ const Counter = Descriptor.Resource<number>()("Counter")
 const Phase = Descriptor.Resource<"Boot" | "Running">()("Phase")
 const Logger = Descriptor.Service<{ readonly log: (message: string) => void }>()("Logger")
 const PrefixedLogger = Descriptor.Service<{ readonly log: (message: string) => void }>()("RuntimeResources/Logger")
-const Viewport = Descriptor.ConstructedResource(Size2.codec)("Viewport")
-const Camera = Descriptor.ConstructedResource(Vector2.codec)("Camera")
+const Viewport = Descriptor.ConstructedResource(Codecs.safeSize)("Viewport")
+const Camera = Descriptor.ConstructedResource(Codecs.safeVector)("Camera")
 
 const Game = Schema.bind(Schema.fragment({
   resources: {

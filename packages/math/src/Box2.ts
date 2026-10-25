@@ -1,9 +1,9 @@
 /**
  * Plain axis-aligned boxes stored by their edges, for hot-path collision.
  *
- * `Aabb` is the validated, centered box for authored and stored values;
  * `Box2` is the edge form the collision helpers (`Collide2`, `FlowField`)
- * read every frame, built once from whatever the game stores.
+ * read every frame, built once from whatever the game stores (a center and a
+ * size, a tile's corner).
  *
  * @example
  * ```ts
@@ -18,7 +18,7 @@
  * The structural box shape.
  *
  * @categoryDescription Operations
- * Building boxes and testing them against circles.
+ * Building boxes, testing them against circles, and the closest point.
  */
 import type { Vec2 } from "./Vec2.ts"
 
@@ -49,7 +49,9 @@ export const around = (x: number, y: number, halfWidth: number, halfHeight: numb
 })
 
 /**
- * Whether a circle overlaps (or touches) the box.
+ * Whether a circle overlaps (or touches) the box. For two circles use
+ * `Collide2.overlapsCircleCircle`, for a wall at any angle
+ * `Segment2.overlapsCircle`.
  *
  * @category Operations
  */
@@ -58,3 +60,17 @@ export const overlapsCircle = (box: Box2, center: Vec2, radius: number): boolean
   const dy = center.y - Math.max(box.minY, Math.min(center.y, box.maxY))
   return dx * dx + dy * dy <= radius * radius
 }
+
+/**
+ * The point of `box` closest to `point`: `point` clamped to the box's edges.
+ * A point inside the box comes back unchanged, so this keeps a body inside an
+ * arena, or gives the direction from an obstacle to a body outside it
+ * (`Vec2.subtract(body, closestPoint(box, body))`). To push a circle out of
+ * walls it overlaps, use `Collide2.pushOut`.
+ *
+ * @category Operations
+ */
+export const closestPoint = (box: Box2, point: Vec2): Vec2 => ({
+  x: Math.max(box.minX, Math.min(point.x, box.maxX)),
+  y: Math.max(box.minY, Math.min(point.y, box.maxY))
+})

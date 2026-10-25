@@ -14,7 +14,9 @@
  *
  * @example
  * ```ts
- * const paths = FlowField.make(cellSize)
+ * const made = FlowField.make(cellSize)
+ * if (!made.ok) return made
+ * const paths = made.value
  * // Each step:
  * paths.setWalls(walls, bodyRadius)
  * paths.setGoal(player)
@@ -30,9 +32,9 @@
  * @categoryDescription Construction
  * Making a flow field.
  */
-import { type Box2, overlapsCircle } from "./Box2.ts"
 import * as Ops from "@typeonce/ritmo/Ops"
-import type * as Scalar from "./Scalar.ts"
+import * as Result from "@typeonce/ritmo/Result"
+import { type Box2, overlapsCircle } from "./Box2.ts"
 import type { Vec2 } from "./Vec2.ts"
 
 /**
@@ -41,8 +43,8 @@ import type { Vec2 } from "./Vec2.ts"
  * @category Field Types
  */
 export interface FlowField {
-  /** The side of one square cell, in world units. */
-  readonly cellSize: Scalar.Positive
+  /** The side of one square cell, in world units: finite and above 0. */
+  readonly cellSize: number
   /**
    * Takes `boxes` as the walls, blocking every cell whose center is within
    * `clearance` of one, over the area the walls span. Does nothing when the
@@ -72,7 +74,7 @@ const stepY = Int8Array.of(0, 0, 1, -1, 1, -1, 1, -1)
 const stepCost = Float64Array.of(1, 1, 1, 1, Math.SQRT2, Math.SQRT2, Math.SQRT2, Math.SQRT2)
 
 class Field implements FlowField {
-  readonly cellSize: Scalar.Positive
+  readonly cellSize: number
   private columns = 0
   private rows = 0
   private originX = 0
@@ -90,7 +92,7 @@ class Field implements FlowField {
   private keys = new Float64Array(0)
   private queued = 0
 
-  constructor(cellSize: Scalar.Positive) {
+  constructor(cellSize: number) {
     this.cellSize = cellSize
   }
 
@@ -270,10 +272,32 @@ class Field implements FlowField {
 }
 
 /**
- * An empty flow field (no walls, no goal) with square cells of `cellSize`
- * world units. Smaller cells follow walls more closely and cost more to
- * search; around a body's diameter is a good start.
+ * Why {@link make} made no flow field: `value`, the cell size it was given,
+ * is not a finite number above 0.
  *
  * @category Construction
  */
-export const make = (cellSize: Scalar.Positive): FlowField => new Field(cellSize)
+export interface InvalidCellSize {
+  readonly _tag: "InvalidCellSize"
+  readonly value: number
+}
+
+/**
+ * An empty flow field (no walls, no goal) with square cells of `cellSize`
+ * world units, or `InvalidCellSize` when `cellSize` is not a finite number
+ * above 0. Smaller cells follow walls more closely and cost more to search;
+ * around a body's diameter is a good start. Make it once (in a service or a
+ * system's setup) and reuse it every step.
+ *
+ * @example
+ * ```ts
+ * const paths = FlowField.make(30)
+ * if (!paths.ok) throw new Error(`bad cell size ${paths.error.value}`)
+ * ```
+ *
+ * @category Construction
+ */
+export const make = (cellSize: number): Result.Result<FlowField, InvalidCellSize> =>
+  cellSize > 0 && cellSize < Infinity
+    ? Result.success(new Field(cellSize))
+    : Result.failure({ _tag: "InvalidCellSize", value: cellSize })

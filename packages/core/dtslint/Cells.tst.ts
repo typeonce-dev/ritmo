@@ -3,13 +3,12 @@ import * as Codecs from "../test/codecs.ts"
 import type { SpawnedId } from "@typeonce/ritmo/Command"
 import type { EntityId } from "@typeonce/ritmo/Entity"
 import type { Query } from "@typeonce/ritmo/Query"
-import * as Vector2 from "@typeonce/ritmo-math/Vector2"
 import { describe, expect, it } from "tstyche"
 
 const Position = Descriptor.Component<{ x: number; y: number }>()("Cells/Position")
 const Tags = Descriptor.Component<{ readonly names: Array<string> }>()("Cells/Tags")
 const Health = Descriptor.Component<number>()("Cells/Health")
-const Safe = Descriptor.ConstructedComponent(Vector2.codec)("Cells/Safe")
+const Safe = Descriptor.ConstructedComponent(Codecs.safeVector)("Cells/Safe")
 const Label = Descriptor.ConstructedComponent(Codecs.string)("Cells/Label")
 const Frozen = Descriptor.Tag("Cells/Frozen")
 
@@ -45,7 +44,7 @@ describe("query cells", () => {
         expect(data.health.update).type.toBeCallableWith((health: number) => health + 1)
         expect(data.health).type.not.toHaveProperty("setRaw")
         expect(data.safe.setRaw({ x: 1, y: 2 })).type.toBe<Result.Result<void, Descriptor.SchemaIssues>>()
-        // A plain object is not a validated Vector2: go through setRaw.
+        // A plain object is not a validated (branded) vector: go through setRaw.
         expect(data.safe.set).type.not.toBeCallableWith({ x: 1, y: 2 })
         expect(data.label.setRaw).type.toBeCallableWith("name")
         expect(data.label.setRaw).type.not.toBeCallableWith(1)

@@ -17,6 +17,8 @@ const fail = (message: string) => ({ issues: [{ message }] })
 
 export const finite = make<number>((raw) => typeof raw === "number" && Number.isFinite(raw) ? { value: raw } : fail("Expected a finite number"))
 
+export const nonNegative = make<number>((raw) => typeof raw === "number" && Number.isFinite(raw) && raw >= 0 ? { value: raw } : fail("Expected a finite number, 0 or more"))
+
 export const integer = make<number>((raw) => Number.isSafeInteger(raw) ? { value: raw as number } : fail("Expected an integer"))
 
 export const string = make<string>((raw) => typeof raw === "string" ? { value: raw } : fail("Expected a string"))

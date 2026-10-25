@@ -4,6 +4,7 @@
  * Effect). These exist so the repo proves the codec contract with no library
  * at all, and so a test reads like a game's schema without depending on one.
  */
+import type * as Brand from "@typeonce/ritmo/Brand"
 import type { Codec, StandardSchema } from "@typeonce/ritmo/Descriptor"
 import * as Entity from "@typeonce/ritmo/Entity"
 import type { Descriptor } from "@typeonce/ritmo/Descriptor"
@@ -71,6 +72,25 @@ export const struct = <const Fields extends Readonly<Record<string, TestCodec<an
     return { value: value as { readonly [K in keyof Fields]: Fields[K] extends TestCodec<infer T> ? T : never } }
   })
 }
+
+/** A plain `{ x, y }` of finite numbers. */
+export const vector = struct({ x: number, y: number })
+
+/** A `{ width, height }` of finite numbers, 0 or more. */
+export const size = struct({
+  width: primitiveOf("a finite number, 0 or more", (raw): raw is number => typeof raw === "number" && Number.isFinite(raw) && raw >= 0),
+  height: primitiveOf("a finite number, 0 or more", (raw): raw is number => typeof raw === "number" && Number.isFinite(raw) && raw >= 0)
+})
+
+/** A vector only `safeVector` makes, as a schema library's `.brand()` gives: a plain object does not have the type. */
+export type SafeVector = Brand.Branded<{ readonly x: number; readonly y: number }, "Test/SafeVector">
+/** A size only `safeSize` makes. */
+export type SafeSize = Brand.Branded<{ readonly width: number; readonly height: number }, "Test/SafeSize">
+
+// Branding adds no runtime check: the brand only records that the check ran.
+// The saved (raw) form stays the plain shape, so raw input goes in unbranded.
+export const safeVector = vector as unknown as StandardSchema<{ readonly x: number; readonly y: number }, SafeVector>
+export const safeSize = size as unknown as StandardSchema<{ readonly width: number; readonly height: number }, SafeSize>
 
 /** A stored entity handle for schema root `Root`, built from `Entity.isHandle`. */
 export const handle = <Root, const Intent extends Descriptor<"component", string, any> | undefined = undefined>(

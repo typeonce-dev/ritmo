@@ -1,7 +1,4 @@
 import { Controls, Gamepad, Keyboard, Pointer } from "@typeonce/ritmo-browser"
-import type * as Vector2Value from "@typeonce/ritmo-math/Vector2"
-
-export type Vector2 = Vector2Value.Vector2
 /** The game's actions, bound on every device below. */
 export const Actions = Controls.actions({ buttons: ["interact"], vectors: ["move"] })
 export const inputBindings = {

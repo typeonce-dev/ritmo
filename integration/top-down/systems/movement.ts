@@ -1,5 +1,3 @@
-import * as Vector2 from "@typeonce/ritmo-math/Vector2"
-
 import { PLAYER_SPEED } from "../constants.ts"
 import { resolveHorizontalMovement, resolveVerticalMovement } from "../math.ts"
 import { PlayerMovementQuery, WallCollisionQuery } from "../queries.ts"
@@ -65,14 +63,7 @@ export const MovePlayerSystem = Game.System(
       const position = player.value.data.position.get()
       const collider = player.value.data.collider.get()
       const nextX = resolveHorizontalMovement(position, velocity.x * dt, collider, walls)
-      const nextPosition = Vector2.result({
-        x: nextX,
-        y: position.y
-      })
-      if (!nextPosition.ok) {
-        return
-      }
-      const nextY = resolveVerticalMovement(nextPosition.value, velocity.y * dt, collider, walls)
+      const nextY = resolveVerticalMovement({ x: nextX, y: position.y }, velocity.y * dt, collider, walls)
 
       player.value.data.position.setRaw({
         x: nextX,
