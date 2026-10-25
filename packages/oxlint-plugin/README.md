@@ -5,6 +5,7 @@
 Ritmo's types reject wrong calls, and its devtools lints reject wrong runs. These rules catch the source patterns neither can see:
 
 - simulation code that reads the wall clock, `Math.random`, engine-dependent math, or the page;
+- timers counted in floats;
 - data that cannot be saved;
 - state values that keep a previous state's fields;
 - runtime results that are dropped.
@@ -39,7 +40,8 @@ Register the plugin and turn the rules on in `.oxlintrc.json`. The simulation ru
         "ritmo/use-random-for-randomness": "error",
         "ritmo/use-ops-for-math": "error",
         "ritmo/keep-simulation-headless": "error",
-        "ritmo/no-infinity-in-simulation-data": "error"
+        "ritmo/no-infinity-in-simulation-data": "error",
+        "ritmo/no-float-timers": "error"
       }
     }
   ]
@@ -62,6 +64,7 @@ const started = performance.now()
 | [`use-ops-for-math`](#ritmouse-ops-for-math) | simulation | `Math.sin`, `Math.hypot`, `a ** b`, ... | `Ops` |
 | [`keep-simulation-headless`](#ritmokeep-simulation-headless) | simulation | page globals, host I/O, renderer imports | input and data from the host, drawing in a render schedule |
 | [`no-infinity-in-simulation-data`](#ritmono-infinity-in-simulation-data) | simulation | `Infinity` / `NaN` in object literals | `null` |
+| [`no-float-timers`](#ritmono-float-timers) | simulation | `timer -= dt`, `cooldown - time.dt` | `Clock.deadline` / `Clock.reached` |
 | [`handle-tick-result`](#ritmohandle-tick-result) | everywhere | a dropped `runtime.tick(...)` / `restore(...)` / `rewind(...)` result | check `.ok` |
 | [`prefix-descriptor-and-system-names`](#ritmoprefix-descriptor-and-system-names) | everywhere | `"Position"`, `Game.System("Move", ...)` | `"Game/Position"` |
 | [`use-cell-value`](#ritmouse-cell-value) | everywhere | `cell.present ? cell.get() : undefined` | `cell.value()` |
@@ -80,7 +83,7 @@ setTimeout(() => spawnWave(), 500)              // reported
 // instead
 const time = resources.time.get()
 if (Clock.elapsed(time) > 3) open()                                     // seconds since the start
-const due = time.step + Clock.steps(Clock.duration(step, 0.5))          // store it, compare each tick
+const due = Clock.deadline(time, Clock.duration(step, 0.5))             // store it, Clock.reached(time, due) each tick
 if (Clock.every(time, waveEvery)) spawnWave()                           // repeats
 ```
 
@@ -146,6 +149,27 @@ dash: { remaining: 0, since: null }                              // since: numbe
 ```
 
 Catches `Infinity`, `-Infinity`, `NaN`, and `Number.POSITIVE_INFINITY` / `NEGATIVE_INFINITY` / `NaN` as a property value in any object literal in simulation files, including values built in helpers before they are spawned. Search seeds in locals (`let best = Infinity`) are not reported.
+
+### `ritmo/no-float-timers`
+
+A timer counted down by `dt` adds a rounded float every tick, so it ends a step early or late, and the float it saves means nothing once the fixed step changes. A deadline is the step the timer ends on: written once, exact, and valid after a restore or a rollback, since the clock it is measured against is saved and rewound with it.
+
+```ts
+cooldown.remaining -= dt                                               // reported
+data.buff.set({ ...buff, left: buff.left - time.dt })                  // reported
+
+// instead: ready: Clock.Deadline<60> | null, its schema narrowing with Clock.isDeadline(step)
+const cooldown = Clock.duration(step, 0.5)
+const time = resources.time.get()
+const { ready } = data.weapon.get()
+if (ready === null || Clock.reached(time, ready)) {
+  fire()
+  data.weapon.set({ ready: Clock.deadline(time, cooldown) })
+}
+const bar = ready === null ? 0 : Clock.remaining(time, ready) / Clock.steps(cooldown)   // a readout
+```
+
+Catches a stored value (a local or a field) plus or minus a tick's seconds on their own: `dt`, `deltaTime`, or `deltaSeconds`, as a local, a field (`time.dt`), or a resource read (`resources.deltaTime.get()`), in `x -= dt`, `x += dt`, and `x - dt` / `x + dt` anywhere (`Math.max(0, x - dt)`, an object literal). A rate scaled by `dt` (`position.x += velocity.x * dt`) is integration and is not reported, nor is a count of whole steps (`cooldown - 1`), nor a `delta` that is not time (a pointer's).
 
 ## Rules for every file
 

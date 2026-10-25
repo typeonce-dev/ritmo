@@ -6,7 +6,7 @@ const rule = plugin.rules["use-clock-for-time"]!
 tester.run("use-clock-for-time", rule, {
   valid: [
     "const seconds = Clock.elapsed(resources.time.get())",
-    "const due = time.step + Clock.steps(Clock.duration(step, 0.5))",
+    "const due = Clock.deadline(time, Clock.duration(step, 0.5))",
     "if (Clock.every(time, spawnEvery)) spawn()",
     // Formatting a timestamp the game was given reads no clock.
     "const day = new Date(save.createdAt).getUTCDate()",
