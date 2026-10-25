@@ -209,6 +209,30 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 const { relation: Targeting } = Descriptor.Relation("Arena/Targeting", "Arena/TargetedBy")
 ```
 
+The archers do not have to check every tick whether their guard still
+exists. Each edge a despawn clears is a record that every system reading it
+sees once, so an archer whose guard fell can stand down at that moment.
+
+```ts twoslash title="stand-down.ts"
+import { Descriptor, Schema } from "@typeonce/ritmo"
+const Idle = Descriptor.Tag("Arena/Idle")
+const { relation: Targeting } = Descriptor.Relation("Arena/Targeting", "Arena/TargetedBy")
+const Game = Schema.bind(Schema.fragment({ components: { Idle }, relations: { Targeting } }))
+// ---cut---
+const StandDown = Game.System(
+  "Arena/StandDown",
+  {
+    droppedRelations: { lost: Game.System.readDroppedRelations(Targeting) }, // [!code highlight]
+    commands: Game.System.commands(Game.System.inserts(Idle))
+  },
+  ({ droppedRelations, commands }) => {
+    for (const { source } of droppedRelations.lost.all()) {
+      commands.insert(source, [Idle, {}])
+    }
+  }
+)
+```
+
 ## What it buys
 
 - Entities gain and lose components freely, and only the systems that say so

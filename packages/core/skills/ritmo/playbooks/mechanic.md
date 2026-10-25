@@ -10,8 +10,9 @@
 3. When the player triggers it, add or extend a typed intent (a host event sent with `runtime.send(...)`, or the input resource) and validate it in the system, never in UI code.
    - Input is actions, never keys: add the action to the game's `Controls.actions({ buttons, vectors })` (a button for jump, a vector for movement), bind it on every device (or mark the device with `lacking`; a game with one device only binds it there), and read `input.actions.<name>` or `input.vectors.<name>` from the resource `InputCapture.system` writes. Never call a source's `snapshot()` in a system: it drains the source. In a local multiplayer game (`Controls.players`), read each player's slot (`input.p1.actions.<name>`). Declare the input source service as `InputCapture.SourceOf<...>` the merge or pool, never as the device itself, so replays (`playback.source`) and the fuzzer (`Fuzz.input` with `Actions.random` / `Actions.idle`) provide it in place of the devices.
 4. A system that despawns while looping still sees the entity in its queries until `applyDeferred()`; skip what it despawned this run (see `despawn`'s JSDoc).
-5. Place the system in its schedule. The `Schedule` module header explains markers and `thisTick` reads.
-6. Write a headless test: script the input (`Keyboard.scripted`, `Gamepad.scripted`, `Gamepad.scriptedPads` for several pads, or the same intents the UI sends), run the schedule, and assert the outcome a player would see.
-7. When the mechanic uses time or randomness, add a `Determinism.check` over a scripted run.
+5. When an entity points at another (a target, a lock, an owner that is not its parent), store the link as a `Descriptor.Relation` and react to the target's despawn in a system that reads `Game.System.readDroppedRelations(R)`, never with a per-tick check that the target still exists.
+6. Place the system in its schedule. The `Schedule` module header explains markers and `thisTick` reads.
+7. Write a headless test: script the input (`Keyboard.scripted`, `Gamepad.scripted`, `Gamepad.scriptedPads` for several pads, or the same intents the UI sends), run the schedule, and assert the outcome a player would see.
+8. When the mechanic uses time or randomness, add a `Determinism.check` over a scripted run.
 
 **Done when** the headless test passes and the game's check passes.
