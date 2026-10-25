@@ -99,7 +99,7 @@ export interface Descriptor<
  * The Standard Schema v1 interface (https://standardschema.dev), the one
  * schema contract Ritmo reads. Zod, Valibot, and ArkType schemas are
  * Standard Schemas as they are; an Effect schema goes through the `codec`
- * helper in the skill's `playbooks/effect.md`, which also encodes. `Input` is the saved form a schema
+ * helper in the skill's `references/effect.md`, which also encodes. `Input` is the saved form a schema
  * decodes, `Output` the value it produces.
  *
  * Ritmo ships no schemas of its own: the game brings them.
@@ -136,7 +136,7 @@ export namespace StandardSchema {
  * arrays, and objects) needs no `"~encode"`, so a Zod, Valibot, or ArkType
  * schema passes as it is. A schema that transforms its value does not
  * compile without one: build it with the skill's helper for Zod or Effect
- * (`playbooks/zod.md`, `playbooks/effect.md`), or write the reverse schema
+ * (`references/zod.md`, `references/effect.md`), or write the reverse schema
  * with any library (`{ "~standard": decode["~standard"], "~encode": back }`).
  * The key starts with `~`, like
  * Standard Schema's own, so it never collides with a library's methods (Zod

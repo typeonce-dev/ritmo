@@ -1,5 +1,77 @@
 # @typeonce/ritmo-browser
 
+## 0.15.0
+
+### Minor Changes
+
+- 4c867ef: **Browser input replays and fuzzes through the one descriptor the page reads.** A game that declared its input service as the whole `Controls` merge (or a device) could not be opened from a replay or fuzzed: `playback.source(...)` hands back a plain `snapshot()` source, which has no `rebind` or `dispose`. Declare the service as `InputCapture.SourceOf<...>` the merge, device, or pool (its `snapshot()` only, still marked as draining, so systems keep reading the captured resource). The live merge provides it in the page, scripted devices in tests, `playback.source(ControlsInput)` in a replay, and `Fuzz.input` in the fuzzer; the page keeps the merge to rebind and dispose it.
+
+  ```ts
+  const ControlsInput =
+    Descriptor.Service<
+      InputCapture.SourceOf<ReturnType<typeof makeControls>>
+    >()("Game/Controls");
+  const devices = { keyboard: Keyboard.idle(keys), gamepad: Gamepad.idle(pad) };
+  const Fuzzed = Fuzz.input(ControlsInput, {
+    generate: (random) => Actions.random(random, devices),
+    neutral: Actions.idle(devices),
+  });
+  ```
+
+  - `Controls.actions(...).random(random, devices)` draws a merged snapshot a real merge could report: each button idle, held, just pressed, tapped, or just released, and each vector zero, one of eight directions, or a tilt shorter than 1. Device data stays as given, every action is available, and no device is last used.
+  - `Controls.players(...).random(random, frame, { devices, seats })` draws a pool's snapshot with the listed slots seated from frame 1 (reporting `event: "joined"` there, with idle input, as `pool.seat` in setup does) and their input drawn after. A pool is one source carrying every slot, because one `snapshot()` drains every pooled device and decides joins across them.
+  - `Replay.Playback.source` and `Fuzz.input` take any `snapshot()`-only source service, including ones that mark `snapshot()` with `System.Consumes` (`InputCapture.SourceOf`, `Netcode.Source`). A service declared as the whole device is a compile error naming the fix: "has more than snapshot(), so a replay cannot provide it". `Replay.SourceData<Value>` names the data a source returns.
+
+- c75daff: **Breaking: `Ops` and `Random` moved from `@typeonce/ritmo-math` into `@typeonce/ritmo`.** Determinism belongs to the runtime: every simulation needs same-bits math and a seeded generator, with or without the 2D helpers. The modules are unchanged; only the import path moves, and `@typeonce/ritmo-math` no longer exports them. The `Ops` header now states that its list is closed: the 22 functions engines may approximate and `**`; everything else on `Math` is already exact. `@typeonce/ritmo-devtools` and `@typeonce/ritmo-netcode` no longer depend on `@typeonce/ritmo-math`.
+
+  ```diff
+  - import { Ops, Random } from "@typeonce/ritmo-math"
+  + import { Ops, Random } from "@typeonce/ritmo"
+  - import * as Random from "@typeonce/ritmo-math/Random"
+  + import * as Random from "@typeonce/ritmo/Random"
+  - import * as Ops from "@typeonce/ritmo-math/Ops"
+  + import * as Ops from "@typeonce/ritmo/Ops"
+  ```
+
+  `oxlint --fix` with `ritmo/use-ops-for-math` adds the new import where a `Math` call is rewritten; other imports need the path changed by hand.
+
+- 6b0d73e: **Hidden tabs announce themselves instead of timing out.** A browser stops a hidden tab's frames, so its peer went silent and the match ended with `Disconnected { reason: "timeout" }`. Sessions take an optional `hidden` option: the session hears the moment its page hides, tells the others, and they apply the declared policy and show it in the new `status().hidden` (one boolean per seat):
+
+  ```ts
+  import { BrowserVisibility } from "@typeonce/ritmo-browser";
+
+  const session = Netcode.rollback(runtime, {
+    ...options,
+    hidden: {
+      visibility: BrowserVisibility.make(document),
+      afterMS: 30_000,
+      then: "resync-on-return",
+    },
+  });
+  // HUD: session.status().hidden[seat] → "waiting for Ada"
+  ```
+
+  - `"stall"`: the others wait for the hidden seat; it goes on from where it stopped when it returns.
+  - `"resync-on-return"`: the others play on with idle input for it; on return, seat 0 sends a save and it restores it (its `advance` is `Waiting` meanwhile). While seat 0 itself is hidden, the others wait.
+  - A hidden seat that never returns still ends the session with `Disconnected`, at most `afterMS + timeoutMS` after it hid.
+
+  New in netcode: `Visibility` (the contract), `MemoryVisibility` (a page a test hides and shows), `Netcode.HiddenPolicy`, `Netcode.HiddenOptions`. New in browser: `BrowserVisibility.make(document)` over the Page Visibility API.
+
+  **Breaking:** the session protocol is now version 2, so peers on an older version end with `ProtocolMismatch`. Fix: update every peer to the same release.
+
+### Patch Changes
+
+- Updated dependencies [3a195b7]
+- Updated dependencies [d01a735]
+- Updated dependencies [45458dc]
+- Updated dependencies [c75daff]
+- Updated dependencies [b77b17d]
+- Updated dependencies [c20f20b]
+- Updated dependencies [01959dd]
+- Updated dependencies [637fa1f]
+- Updated dependencies [44e9b42]
+  - @typeonce/ritmo@0.15.0
+
 ## 0.14.0
 
 ### Minor Changes

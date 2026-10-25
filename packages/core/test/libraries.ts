@@ -1,6 +1,6 @@
 /**
  * The codec helpers the skill's playbooks give games for schema libraries
- * whose values can transform (`playbooks/zod.md`, `playbooks/effect.md`),
+ * whose values can transform (`references/zod.md`, `references/effect.md`),
  * copied as games write them, for the tests and type tests that prove them.
  */
 import type { StandardSchema } from "@typeonce/ritmo/Descriptor"

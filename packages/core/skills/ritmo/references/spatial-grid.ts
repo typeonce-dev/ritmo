@@ -1,42 +1,7 @@
-# A broad phase: the spatial grid
-
-When many bodies test each other every step (separation, pickups, hits, sensing), testing every pair is quadratic. A uniform grid hands each body only its neighbours, then the exact test (`Collide2.overlapsCircleCircle`, `Box2.overlapsCircle`) runs on those. Ritmo ships no broad phase: copy the module below into the simulation folder and keep it as game code, sized to the game's data.
-
-1. Copy the module into the simulation (for example `spatialGrid.ts`). It uses only exact operations, so it replays the same on every engine, and the simulation lint rules cover it like the rest of the game.
-2. Keep the grid with the system that queries it, in the system's `local` (it is rebuilt from the world every step, so it is never saved and needs no rollback):
-   ```ts
-   const Separate = Game.System("Game/Separate", {
-     local: () => ({ grid: made(SpatialGrid.make(32)), bodies: new Array<Vec2.Vec2>() }),
-     queries: { bodies: Game.Query({ selection: { position: Game.Query.write(Position), body: Game.Query.read(Body) } }) }
-   }, ({ queries, local }) => {
-     const { grid, bodies } = local
-     grid.clear()
-     bodies.length = 0
-     for (const { data } of queries.bodies.each()) {
-       const at = data.position.get()
-       grid.insert(bodies.length, at.x, at.y, data.body.get().radius)
-       bodies.push(at)
-     }
-     for (const [index, at] of bodies.entries()) {
-       grid.forEachIn(at.x - range, at.y - range, at.x + range, at.y + range, (other) => {
-         if (other === index) return
-         // The exact test on a candidate, then the response.
-         if (Collide2.overlapsCircleCircle(at, radius, bodies[other]!, radius)) push(index, other)
-       })
-     }
-   })
-   ```
-   `made` throws on a `Result` failure: the cell size is an authored constant, so a failure is a typo in the file.
-3. Pick a cell size near the typical query box. Much smaller cells make every insert and query touch many cells; much larger ones return many far candidates.
-4. Insert under the index of an array the system keeps (positions, entities), never an entity id: indices stay small and dense, which the grid relies on.
-5. Test it headless: compare `forEachIn` with a brute-force pass over all bodies on a seeded random world, and check a rebuild after `clear` forgets the previous step.
-
-**Done when** the headless test passes and the game's check passes.
-
-```ts
 /**
  * A uniform spatial hash for broad-phase queries over circles, from the Ritmo
- * skill's spatial-grid playbook.
+ * skill's `references/spatial-grid.ts`: copied into the game's simulation
+ * folder and kept as game code, sized to its own data.
  *
  * Rebuilt every step: `clear`, then `insert` each circle under the caller's
  * own index (its position in an array the caller keeps). Queries visit each
@@ -191,4 +156,3 @@ export const make = (cellSize: number): Result.Result<SpatialGrid, InvalidCellSi
   cellSize > 0 && cellSize < Infinity
     ? Result.success(new Grid(cellSize))
     : Result.failure({ _tag: "InvalidCellSize", value: cellSize })
-```

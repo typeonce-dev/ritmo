@@ -1,5 +1,246 @@
 # @typeonce/ritmo-devtools
 
+## 0.15.0
+
+### Minor Changes
+
+- 4c867ef: **Browser input replays and fuzzes through the one descriptor the page reads.** A game that declared its input service as the whole `Controls` merge (or a device) could not be opened from a replay or fuzzed: `playback.source(...)` hands back a plain `snapshot()` source, which has no `rebind` or `dispose`. Declare the service as `InputCapture.SourceOf<...>` the merge, device, or pool (its `snapshot()` only, still marked as draining, so systems keep reading the captured resource). The live merge provides it in the page, scripted devices in tests, `playback.source(ControlsInput)` in a replay, and `Fuzz.input` in the fuzzer; the page keeps the merge to rebind and dispose it.
+
+  ```ts
+  const ControlsInput =
+    Descriptor.Service<
+      InputCapture.SourceOf<ReturnType<typeof makeControls>>
+    >()("Game/Controls");
+  const devices = { keyboard: Keyboard.idle(keys), gamepad: Gamepad.idle(pad) };
+  const Fuzzed = Fuzz.input(ControlsInput, {
+    generate: (random) => Actions.random(random, devices),
+    neutral: Actions.idle(devices),
+  });
+  ```
+
+  - `Controls.actions(...).random(random, devices)` draws a merged snapshot a real merge could report: each button idle, held, just pressed, tapped, or just released, and each vector zero, one of eight directions, or a tilt shorter than 1. Device data stays as given, every action is available, and no device is last used.
+  - `Controls.players(...).random(random, frame, { devices, seats })` draws a pool's snapshot with the listed slots seated from frame 1 (reporting `event: "joined"` there, with idle input, as `pool.seat` in setup does) and their input drawn after. A pool is one source carrying every slot, because one `snapshot()` drains every pooled device and decides joins across them.
+  - `Replay.Playback.source` and `Fuzz.input` take any `snapshot()`-only source service, including ones that mark `snapshot()` with `System.Consumes` (`InputCapture.SourceOf`, `Netcode.Source`). A service declared as the whole device is a compile error naming the fix: "has more than snapshot(), so a replay cannot provide it". `Replay.SourceData<Value>` names the data a source returns.
+
+- 45458dc: **A stream of the relation edges a target's despawn dropped.** When the target of a `Descriptor.Relation` despawns, the runtime removes every edge to it. A system now reads those edges once, with the same rules as `readRelationFailures`: each reader sees what was dropped since its own previous run, a reader gated by `when` drops what was published meanwhile, one under `pauseWhen` reads it later, a reader that fell behind by more than `Runtime.streamCapacity` records sees `lagged() === true`, and checkpoints rewind it.
+
+  ```ts
+  const DropTargets = Game.System(
+    "Game/DropTargets",
+    {
+      droppedRelations: { lost: Game.System.readDroppedRelations(Targeting) },
+      commands: Game.System.commands(Game.System.inserts(Idle)),
+    },
+    ({ droppedRelations, commands }) => {
+      for (const { source } of droppedRelations.lost.all())
+        commands.insert(source, [Idle, {}]);
+    }
+  );
+  ```
+
+  - Records are `Relation.Relation.Dropped`: `{ relation, source, target }` as entity ids. Only a target's despawn records an edge: `commands.unrelate`, relating the source elsewhere, and the source's own despawn record nothing. A `Descriptor.Hierarchy` records nothing, since its children despawn with their parent.
+  - Inspectors can read `droppedRelations` too.
+  - Debug traces carry a `relationDropped` effect on the despawn that dropped the edge, and devtools journals it as `Game/Targeting from e7 to e12 dropped: e12 despawned`. `describe()` lists a system's `droppedRelations` (`reads dropped relations: ...` in devtools), and `streams()` reports the `droppedRelation` streams.
+  - **Breaking for code that switches over debug types:** `Debug.Effect` has a new `relationDropped` kind, `Debug.StreamStatus["kind"]` and `Debug.MissedRead["kind"]` have a new `droppedRelation` kind, and `Debug.SystemDescription` has a new `droppedRelations` field. Add the case to an exhaustive `switch`, and the field to a hand-built `SystemDescription`.
+
+- c75daff: **Breaking: `Ops` and `Random` moved from `@typeonce/ritmo-math` into `@typeonce/ritmo`.** Determinism belongs to the runtime: every simulation needs same-bits math and a seeded generator, with or without the 2D helpers. The modules are unchanged; only the import path moves, and `@typeonce/ritmo-math` no longer exports them. The `Ops` header now states that its list is closed: the 22 functions engines may approximate and `**`; everything else on `Math` is already exact. `@typeonce/ritmo-devtools` and `@typeonce/ritmo-netcode` no longer depend on `@typeonce/ritmo-math`.
+
+  ```diff
+  - import { Ops, Random } from "@typeonce/ritmo-math"
+  + import { Ops, Random } from "@typeonce/ritmo"
+  - import * as Random from "@typeonce/ritmo-math/Random"
+  + import * as Random from "@typeonce/ritmo/Random"
+  - import * as Ops from "@typeonce/ritmo-math/Ops"
+  + import * as Ops from "@typeonce/ritmo/Ops"
+  ```
+
+  `oxlint --fix` with `ritmo/use-ops-for-math` adds the new import where a `Math` call is rewritten; other imports need the path changed by hand.
+
+- c20f20b: **Descriptor metadata: a field's unit, range, and hint next to its schema.** Every component and resource constructor (`Component`, `ConstructedComponent`, `TransientComponent`, `Resource`, `ConstructedResource`, `TransientResource`) takes an optional `meta` option keyed by the value's top-level fields. Each field gets `unit?: string`, `range?: readonly [min, max]` (number fields only), and `hint?: string` (one sentence an agent reads).
+
+  ```ts
+  const Health = Descriptor.ConstructedComponent(z.object({ hp: z.number() }))(
+    "Game/Health",
+    {
+      meta: {
+        hp: {
+          unit: "points",
+          range: [0, 100],
+          hint: "Hit points left; 0 despawns the entity.",
+        },
+      },
+    }
+  );
+  const Tuning = Descriptor.Resource<{ speed: number }>()("Game/Tuning", {
+    meta: { speed: { unit: "px/s", range: [0, 400] } },
+  });
+  ```
+
+  - A key that is not a field of the value does not compile (`not a field of this value`, with the value's fields under `fields`); `range` on a non-number field does not compile (`` `range` is only for number fields``); a key other than `unit`, `range`, or `hint` does not compile. A malformed option from an unchecked caller throws, naming the descriptor.
+  - Metadata never replaces validation: the schema still decides what is valid, and snapshots do not save it. It is checked once at the constructor, frozen, and listed by `runtime.debug.describe()` as `meta` on every `ComponentDescription` and `ResourceDescription` (`{}` when none).
+  - Resource constructors now take an options argument (`ResourceOptions`); `ComponentOptions` gains `meta`. New types: `FieldMeta`, `MetaField`, `CheckedMeta`, `CheckedOptions`, `MetaInput`.
+  - Devtools: `session.report()` raises an `out-of-range` warning for every write (system writes, resources, spawns, inserts) of a number outside its declared range: `e1 Game/Health.hp written as 120, declared range [0, 100] by Game/Heal at frame 42`. The scan runs only in debug sessions; production runtimes never read the metadata.
+  - Devtools: `session.describe()` lists each field's metadata under its component or resource; `Format.fieldMeta(field, meta)` prints one field's line. The monitor's Entity tab shows units next to values and each field's unit, range, and hint in the value's tooltip.
+
+- c8320b4: **Entity labels in devtools output.** `Session.make(runtime, { ..., labels: Labels })` takes a `Game.Inspector` returning a `ReadonlyMap<number, string>` (entity id to label), and every entity in the session's text prints as `player e12` instead of `e12`: journal and `why` lines, `dump`, report warnings, and invariant messages (write entities as `e${id}` in the message). Labels are evaluated after every frame of a `run`, so a line shows the label its entity had at the end of that frame, and a despawned entity keeps its last label. They run only in the debug session: the runtime and production builds do not change.
+
+  ```ts
+  const Labels = Game.Inspector(
+    "labels",
+    {
+      queries: {
+        players: Game.Query({
+          selection: { position: Game.Query.read(Position) },
+          with: [Player],
+        }),
+      },
+    },
+    ({ queries }) =>
+      new Map(
+        queries.players
+          .each()
+          .map((match) => [match.entity.id, "player"] as const)
+      )
+  );
+  const session = Session.make(runtime, {
+    hostClock,
+    schedules: { update },
+    labels: Labels,
+  });
+  session.why(12, Position); // "player e12 Game/Position is now {x:4}; ..."
+  ```
+
+  - An inspector returning anything else does not compile (`labels must return a ReadonlyMap<number, string> from entity id to label`); one reading a resource, service, or machine the runtime does not provide names it under `__fixLabelsRequirements__`, like invariants.
+  - `Replay.session(make, file, { labels })` and `Determinism.check(make, { ..., labels })` take the same inspector. A determinism difference inside an entity now carries `entity` (its id) and `label`.
+  - `Desync.compare(mine, theirs, { labels: runtime.inspect(Labels) })` names entities with the labels it is given. `Difference` gains `entity`.
+  - `Format.entity(id, labels)` is the one way devtools prints an entity; `Format.lines` and `Format.dump` take labels, and `Format.Line` gains `label`.
+  - A `run` whose labels inspector throws stops with `reason: "labels-threw"`.
+  - **Breaking: `Desync.compare` text prints entities as `e12` (`player e12` with labels), not `entity 12`.** `Difference.path` is unchanged; match on it, or on the new `entity`, instead of the text.
+  - **Breaking: `Determinism.check`'s factory returns the whole debug runtime** (`inspect`, `services`, `resourceValues`, `machineValues` as well as `debug` and `tryTick`), so `labels` is checked against its provisions. Return the `Game.Runtime.make(...).value` itself rather than an object picking `debug` and `tryTick`.
+  - **Breaking: `Session.Stop` has a new `labels-threw` reason.** An exhaustive `switch` on `stop.reason` adds the case.
+
+- 14fbe8f: **`Fuzz.run` finds a bug before anyone plays into it, and shrinks it to a replay.** It builds a fresh simulation per run with the same `make(playback)` factory `Replay.session` opens replays with, feeds each fuzzed `snapshot()` source a value drawn from a seeded `Random` (from `@typeonce/ritmo`) every frame, and ticks the schedule in a `Session` until an invariant breaks, a system fails, or something throws. The failing timeline is then shrunk by delta debugging (ranges of frames dropped, then each value moved toward the input's `neutral`), re-running the simulation for every candidate, and returned as a `Found` error carrying the shrunk `Replay.ReplayFile`, the run's seed, the failing frame, and the shrink statistics; `Flaky`, `InvalidOptions`, and `Unreplayable` are the other failures. Declare an input with `Fuzz.input(Source, { generate: (random, frame) => value, neutral })`; the value is typed as the source's. `Replay.session(make, file, { invariants })` now checks invariants on every replayed tick, so the shrunk replay plays to the same violation and becomes the regression test. `Replay.Target` gains optional type parameters for the schedules and provisions, so the invariants are checked against the runtime at compile time.
+
+  ```ts
+  const found = Fuzz.run(make, {
+    schedule: "update",
+    setup: "setup",
+    inputs: [Fuzz.input(PadInput, { generate, neutral: { key: 0 } })],
+    invariants: [Alive],
+    frames: 3000,
+    seed: 7,
+  });
+  if (!found.ok && found.error._tag === "Found") sink.save(found.error.replay);
+  ```
+
+- 7722666: **`Fuzz.run` fuzzes a rollback game over a faulty network with an optional `network`.** Declare every seat's input with `Fuzz.seats(Seats, { codec, count, idle, generate: (random, frame, seat) => input })` and pass `network: { seed, latencyMS, jitterMS, loss, step }`: each seat plays on its own peer (a fresh `make(playback)`, whose `playback.source(Seats)` is that peer's `seats.source`), joined by a seeded `MemoryNetworkLink` and driven by `Netcode.rollback` sessions, with invariants checked on every peer. A desync or any other session failure is the new `SessionFailed` violation (`seat`, and the `Netcode.SessionError`), and shrinking shrinks the input timeline one seat at a time with the network seed fixed. Over a network, a schedule that cannot be rewound or a runtime that cannot save does not compile, as for `Netcode.rollback`. Devtools now depends on `@typeonce/ritmo-netcode`.
+
+  `Fuzz.Violation` gains `SessionFailed`: a `switch` over it that must be exhaustive needs the new case:
+
+  ```diff
+     case "Defect": return ...
+  +  case "SessionFailed": return `seat ${violation.seat}: ${violation.error._tag}`
+  ```
+
+- a9159bc: **Breaking: the live browser monitor is removed.** `Monitor` (`Monitor.attach`, `Monitor.Collector`, `recentSystem`, `recentSchedule`, and their types) is gone, with no replacement export: debugging is headless and text-first, and the package no longer needs the `DOM` lib. Record the browser session as a replay and debug it with a `Session`:
+
+  ```diff
+  - Monitor.attach(runtime, { schedules, host: window, replay: recorder })
+  + const recorder = Replay.recorder(runtime, { schedule: simulate, name: "simulate", keep: 30, step: STEP, sink: ReplayViteSink.make({ fetch: (url, init) => fetch(url, init) }), hostClock: BrowserHostClock.make(window), saveOn: { failure: true } })
+  + // In Node: Replay.session(make, file.value) or Session.make(runtime, { hostClock: HostClock.test(), schedules }), then why / journal / report.
+  ```
+
+  To find an entity without clicking it, give the session a `labels` inspector and filter `session.dump({ with: [Player] })`.
+
+- 01959dd: Step one frame a system at a time.
+
+  - `session.step(name)` begins one frame of a named schedule and returns a `SteppedFrame`: `until(System)` runs the steps before that system and stops there, `next()` runs exactly one step (a system or a marker), `check()` asks the invariants mid-frame, and `finish()` runs the rest and returns the same `RunResult` as `run(name, { frames: 1 })`, with labels and invariants evaluated at the end of the frame. `until` takes the system value, and only a system the schedule runs as a step compiles. `journal`, `why`, and `dump` show the partial frame.
+  - Core: `runtime.debug.beginFrame(schedule)` returns a `Debug.FrameCursor` (`next()`, `remaining()`) for the frame `tryTick(schedule)` would run, with the same commits, markers, reader cursors, and trace and host events. While a frame is open, `tick`, `tryTick`, `send`, `snapshot`, `checksum`, `restore`, `checkpoint`, `rewind`, and another `beginFrame` throw; `session.run` and `session.step` throw until `finish()`.
+  - `Format.step` prints one schedule step.
+  - `Session.Session` takes a third type parameter, the record of schedules, which `Session.make` infers.
+
+- 89cc400: Add `ritmo-devtools verify <entry> <replay> --engines node,chromium,webkit,firefox`: plays a replay in Node (twice, and against its recording) and in real browser engines, and prints the first tick whose world differs with every value that differs there. Exit code 1 on a difference or an engine that did not run, 2 on a usage error; `--json` for JSON. `<entry>` exports `replayTarget`, the `make(playback)` factory `Replay.session` takes.
+
+  The same check from code is the new `Verify` module (`Verify.acrossEngines(make, file, { engines })`, returning `Verified` or `ReplayInvalid` / `NotVerified` with one `Agreed`, `Diverged`, `EngineMissing`, or `EngineFailed` outcome per engine), and the new `PlaywrightEngine` module (Node host) runs Chromium, WebKit, and Firefox headless. `playwright` and `vite` are optional peer dependencies, needed only for browser engines; `--engines node` needs neither.
+
+- c75daff: **Breaking: `Replay.verify` is removed.** `Verify.acrossEngines(make, file)` is the one replay check: with no engines it plays the replay twice in this process and against the recording, as `Replay.verify` did; with engines it also runs browsers. It is async and fails with `NotVerified` (each outcome names the engine, tick, and values) instead of returning `deterministic: false`.
+
+  ```diff
+  - const same = Replay.verify(make, file)
+  - expect(same.ok && same.value.data.deterministic).toBe(true)
+  + const same = await Verify.acrossEngines(make, file)
+  + expect(same.ok).toBe(true) // same.error.text says where it differs
+  ```
+
+  **`ritmo-devtools scan <entry>` lists the determinism risks in dependencies.** oxlint skips `node_modules`, so a library the simulation calls can still use `Math.sin`. The scan resolves every file the simulation entry imports, `node_modules` included (with rolldown, which Vite 8 already brings), and runs `ritmo/use-ops-for-math`, `ritmo/use-clock-for-time`, and `ritmo/use-random-for-randomness` over them with the game's own oxlint. It prints the findings per package with `file:line:column`, or JSON with `--json`, and always exits 0 when it ran: it is a hint. `oxlint` and `rolldown` are optional peer dependencies.
+
+  ```sh
+  ritmo-devtools scan src/simulation/index.ts
+  # fake-physics (2 findings)
+  #   node_modules/fake-physics/index.js:4:17  ritmo/use-ops-for-math  Math.sin
+  ```
+
+- 233b93f: **`why` follows the reads behind a value.** `session.why(entity, Component, { depth })` and `session.whyResource(Resource, { depth })` indent, under each change, what the writing system declared it reads and the latest traced fact that could have produced the value it saw: an event's sends since the system's previous run and their sender, the latest change of a component of the same entity (read in the query that wrote it), of a resource, or of a machine. Each `depth` step goes one system further back; `depth: 1`, the default, prints exactly what it printed before.
+
+  ```ts
+  session.why(12, Health, { depth: 3 });
+  // f181 update  Game/ApplyDamage  write e12 Game/Health 70 -> 40
+  //   read Game/Damage [{amount:30}] (declared), emitted by Game/Hitscan at f181
+  //     read resource Game/Aim {target:12} (declared), written by Game/AimAtNewest at f180
+  ```
+
+  - The trace records writes, not reads, so every such line ends in `(declared)`: a possible cause, not an observed read. A query over other entities prints only how many entities match it now (`read Game/Position of 14 matching entities now (declared; the trace does not say which it read)`).
+  - A system already in the chain prints `(cycle: not followed)`. `limit` also caps the reads under each line.
+  - `Session.WhyOptions` is the options type. `Format.Line` gains `depth` (0 for every journal line), `Format.LineKind` gains `read`, and `Format.line` prints a line with `depth` above 0 as its text, indented.
+
+### Patch Changes
+
+- d01a735: **Zod schemas work with Ritmo: the schema back to the saved form is under `"~encode"`, not `encode`.** Zod (from 4.1) gives every schema an `encode()` method, which Ritmo read as its encode schema: `Descriptor.ConstructedComponent(z.object(...))` did not compile, and with a cast `runtime.snapshot()` threw `Cannot read properties of undefined (reading 'validate')`. The key now starts with `~`, like Standard Schema's own `~standard`, so no library's methods collide with it. A Zod, Valibot, or ArkType schema of plain data passes as it is; Ritmo's tests now save and load a schema of each, and of Effect, through JSON.
+
+  - **Breaking: a codec carries its encode schema as `"~encode"`.** The Effect helper from the skill's `references/effect.md` (or a hand-written codec) renames the key:
+
+    ```diff
+     return {
+       "~standard": Schema.toStandardSchemaV1(json)["~standard"],
+    -  encode: Schema.toStandardSchemaV1(Schema.flip(json))
+    +  "~encode": Schema.toStandardSchemaV1(Schema.flip(json))
+     }
+    ```
+
+    A transforming schema without it fails with `give it a ~encode schema back to the saved form`.
+
+  - **Values that transform** (a `Date`, a `Map`) save through a `"~encode"` from any library. Zod's comes from the new `references/zod.md` helper, built on Zod's own `safeEncode`: `Descriptor.ConstructedComponent(codec(z.codec(z.iso.datetime(), z.date(), { decode, encode })))`. With Valibot, ArkType, or any other Standard Schema library, write the reverse schema by hand:
+
+    ```ts
+    const Born = Descriptor.ConstructedComponent({
+      "~standard": v.pipe(
+        v.string(),
+        v.isoTimestamp(),
+        v.transform((text) => new Date(text))
+      )["~standard"],
+      "~encode": v.pipe(
+        v.date(),
+        v.transform((date) => date.toISOString())
+      ),
+    })("Game/Born");
+    ```
+
+  - **Handles and deadlines inside a game's schema** are built from their guards with a schema that narrows to the guard's type: `z.unknown().refine(Entity.isHandle(Root))` in Zod, `v.pipe(v.unknown(), v.guard(...))` in Valibot, `type("unknown").narrow(...)` in ArkType, `Schema.declare(...)` in Effect. The docs said `z.custom(guard)`, which types the value as `unknown`.
+
+- Updated dependencies [3a195b7]
+- Updated dependencies [d01a735]
+- Updated dependencies [45458dc]
+- Updated dependencies [c75daff]
+- Updated dependencies [b77b17d]
+- Updated dependencies [c20f20b]
+- Updated dependencies [01959dd]
+- Updated dependencies [637fa1f]
+- Updated dependencies [44e9b42]
+- Updated dependencies [6b0d73e]
+- Updated dependencies [7722666]
+  - @typeonce/ritmo@0.15.0
+  - @typeonce/ritmo-netcode@0.15.0
+
 ## 0.14.0
 
 ### Minor Changes
