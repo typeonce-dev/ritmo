@@ -44,11 +44,11 @@ const Mode = Game.StateMachine("Game/Mode", { Exploring: {}, Talking: z.object({
    ```ts
    const Target = Descriptor.ConstructedComponent(z.object({
      enemy: z.unknown().refine(Entity.isHandle(Root, Health)),
-     aim: z.unknown().refine(Vector2.is)
+     ready: z.unknown().refine(Clock.isDeadline(step)).nullable()
    }))("Game/Target")
    ```
 
-   A ritmo-math value alone needs no schema: `Descriptor.ConstructedComponent(Vector2.codec)`.
+   A random state alone needs no schema: `Descriptor.ConstructedResource(Random.codec)`.
 
 3. Failures carry Zod's issues as Standard Schema issues (`{ _tag: "SchemaIssues", issues }`, each with its `path`). Read them; never retry with a cast.
 

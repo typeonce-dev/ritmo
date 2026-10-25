@@ -18,8 +18,8 @@
  * @example
  * ```ts
  * // Provide the host capabilities systems declared as services. Simulation
- * // time comes from `Clock` and randomness from the `Random` resource
- * // (`@typeonce/ritmo-math`), never from a service.
+ * // time comes from `Clock` and randomness from the `Random` resource,
+ * // never from a service.
  * const services = Game.Runtime.services(
  *   Game.Runtime.service(Audio, { play: (sound) => audioHost.play(sound) }),
  *   Game.Runtime.service(Nodes, nodeRegistry)
@@ -3473,8 +3473,7 @@ const rejectRepeated = (names: ReadonlyArray<string>, kind: "service" | "machine
  * `Game.System.consumeService(...)`. Use it
  * to assemble the host implementations the game exposes to systems, such as
  * render bridges, audio sinks, logs, or network clients. Simulation time is
- * `Clock` and randomness is the `Random` resource from
- * `@typeonce/ritmo-math`; neither is a service.
+ * `Clock` and randomness is the `Random` resource; neither is a service.
  *
  * The helper keeps the runtime map keyed by service descriptors instead of
  * ad hoc strings, so the provision site cannot drift from the declaration site.

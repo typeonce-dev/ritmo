@@ -33,11 +33,11 @@ export const codec = <S extends Schema.Top & { readonly DecodingServices: never;
    ```ts
    const Target = Descriptor.ConstructedComponent(codec(Schema.Struct({
      enemy: Schema.declare(Entity.isHandle(Root, Health)),
-     aim: Schema.declare(Vector2.is)
+     ready: Schema.NullOr(Schema.declare(Clock.isDeadline(step)))
    })))("Game/Target")
    ```
 
-   A ritmo-math value alone needs no helper: `Descriptor.ConstructedComponent(Vector2.codec)`.
+   A random state alone needs no helper: `Descriptor.ConstructedResource(Random.codec)`.
 
 3. Saving to text is host code. The snapshot is plain data; turn it into a string with the same library:
 

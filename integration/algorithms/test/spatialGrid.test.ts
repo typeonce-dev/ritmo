@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 
 import { Random, Result } from "@typeonce/ritmo"
@@ -87,5 +88,15 @@ describe("SpatialGrid cell size", () => {
     for (const cellSize of [0, -4, Number.NaN, Infinity]) {
       expect(SpatialGrid.make(cellSize)).toEqual(Result.failure({ _tag: "InvalidCellSize", value: cellSize }))
     }
+  })
+})
+
+describe("SpatialGrid source", () => {
+  it("is the module the skill's spatial-grid playbook gives games to copy", () => {
+    const playbook = readFileSync(new URL("../../../packages/core/skills/ritmo/playbooks/spatial-grid.md", import.meta.url), "utf8")
+    const source = readFileSync(new URL("../spatialGrid.ts", import.meta.url), "utf8")
+    const block = playbook.slice(playbook.lastIndexOf("```ts\n") + 6, playbook.lastIndexOf("\n```"))
+    const code = (text: string) => text.slice(text.indexOf("import { Result }")).trimEnd()
+    expect(code(block)).toBe(code(source))
   })
 })

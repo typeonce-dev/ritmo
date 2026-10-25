@@ -158,8 +158,8 @@ export interface ServiceRead<D extends Descriptor<"service", string, any>, Consu
  *
  * Use this for host capabilities that should not live in ECS world storage:
  * render bridges, audio sinks, logs, persistence APIs, or network clients.
- * Simulation time is `Clock` and randomness is the `Random` resource from
- * `@typeonce/ritmo-math`, not services. The matching implementation must be
+ * Simulation time is `Clock` and randomness is the `Random` resource, not
+ * services. The matching implementation must be
  * supplied when the runtime is created with `Game.Runtime.services(...)`.
  * Service effects (audio, network, storage) are not rolled back when the
  * system fails. The methods a {@link Consumes} mark names (an input

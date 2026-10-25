@@ -503,7 +503,7 @@ if (!found.ok && found.error._tag === "Found") {
   merged input a real merge could report (button states, vectors of length
   at most 1); `Players.random(random, frame, { devices, seats })` does it
   for a local multiplayer pool.
-- `random` is a seeded `Random` from `@typeonce/ritmo-math`; the same seed
+- `random` is a seeded `Random` from `@typeonce/ritmo`; the same seed
   draws the same input, so a found bug's `seed` with `runs: 1` finds it
   again. Every source `make` asks `playback.source` for must be a fuzzed
   input; give plain-data services (rules, config) directly.

@@ -103,8 +103,8 @@ All packages are released together with the same version.
 
 | Package | Contents |
 |---|---|
-| `@typeonce/ritmo` | ECS runtime and fixed-step loop |
-| `@typeonce/ritmo-math` | Vectors, collision, spatial grid, flow field, seeded random, same-bits trig |
+| `@typeonce/ritmo` | ECS runtime and fixed-step loop, seeded random, same-bits trig (`Ops`) |
+| `@typeonce/ritmo-math` | 2D helpers on plain data: vectors, angles, swept circle collision, flow field |
 | `@typeonce/ritmo-browser` | Animation-frame ticks; keyboard, gamepad, pointer, and touch actions, merged into one input or split across local players |
 | `@typeonce/ritmo-render` | Entity-to-node sync for any renderer |
 | `@typeonce/ritmo-pixi` | Pixi adapter for the render node registry |

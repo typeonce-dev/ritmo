@@ -1,0 +1,194 @@
+# A broad phase: the spatial grid
+
+When many bodies test each other every step (separation, pickups, hits, sensing), testing every pair is quadratic. A uniform grid hands each body only its neighbours, then the exact test (`Collide2.overlapsCircleCircle`, `Box2.overlapsCircle`) runs on those. Ritmo ships no broad phase: copy the module below into the simulation folder and keep it as game code, sized to the game's data.
+
+1. Copy the module into the simulation (for example `spatialGrid.ts`). It uses only exact operations, so it replays the same on every engine, and the simulation lint rules cover it like the rest of the game.
+2. Keep the grid with the system that queries it, in the system's `local` (it is rebuilt from the world every step, so it is never saved and needs no rollback):
+   ```ts
+   const Separate = Game.System("Game/Separate", {
+     local: () => ({ grid: made(SpatialGrid.make(32)), bodies: new Array<Vec2.Vec2>() }),
+     queries: { bodies: Game.Query({ selection: { position: Game.Query.write(Position), body: Game.Query.read(Body) } }) }
+   }, ({ queries, local }) => {
+     const { grid, bodies } = local
+     grid.clear()
+     bodies.length = 0
+     for (const { data } of queries.bodies.each()) {
+       const at = data.position.get()
+       grid.insert(bodies.length, at.x, at.y, data.body.get().radius)
+       bodies.push(at)
+     }
+     for (const [index, at] of bodies.entries()) {
+       grid.forEachIn(at.x - range, at.y - range, at.x + range, at.y + range, (other) => {
+         if (other === index) return
+         // The exact test on a candidate, then the response.
+         if (Collide2.overlapsCircleCircle(at, radius, bodies[other]!, radius)) push(index, other)
+       })
+     }
+   })
+   ```
+   `made` throws on a `Result` failure: the cell size is an authored constant, so a failure is a typo in the file.
+3. Pick a cell size near the typical query box. Much smaller cells make every insert and query touch many cells; much larger ones return many far candidates.
+4. Insert under the index of an array the system keeps (positions, entities), never an entity id: indices stay small and dense, which the grid relies on.
+5. Test it headless: compare `forEachIn` with a brute-force pass over all bodies on a seeded random world, and check a rebuild after `clear` forgets the previous step.
+
+**Done when** the headless test passes and the game's check passes.
+
+```ts
+/**
+ * A uniform spatial hash for broad-phase queries over circles, from the Ritmo
+ * skill's spatial-grid playbook.
+ *
+ * Rebuilt every step: `clear`, then `insert` each circle under the caller's
+ * own index (its position in an array the caller keeps). Queries visit each
+ * candidate whose cells overlap the query box once; the caller runs the
+ * exact test. Cell arrays are reused between rebuilds, so a steady state
+ * allocates nothing per step.
+ *
+ * Cells are keyed by packing their coordinates into 16 bits per axis, so
+ * cells from -32768 to 32767 on each axis are distinct. Coordinates beyond
+ * that share keys with other cells: a query then visits extra candidates,
+ * but never misses one. Only exact operations (`Math.floor`, `+ - * /`), so
+ * it replays the same on every engine.
+ */
+import { Result } from "@typeonce/ritmo"
+
+/** A spatial hash over circles. */
+export interface SpatialGrid {
+  /** The side of one square cell, in world units. */
+  readonly cellSize: number
+  /** Removes every circle, keeping the storage for the next rebuild. */
+  clear(): void
+  /**
+   * Adds circle `index` (a non-negative integer) covering `[x ± r] × [y ± r]`.
+   * A non-finite coordinate or radius throws: it would cover no cell or all of them.
+   */
+  insert(index: number, x: number, y: number, r: number): void
+  /**
+   * Calls `visit` once for every circle whose cells overlap the box, in no
+   * particular order. `visit` must not insert into or query this grid. A
+   * non-finite bound throws (an unbounded box would never finish); a box
+   * covering more cells than are occupied scans the occupied cells instead.
+   */
+  forEachIn(minX: number, minY: number, maxX: number, maxY: number, visit: (index: number) => void): void
+}
+
+/** Why `make` made no grid: `value` is not a finite number above 0. */
+export interface InvalidCellSize {
+  readonly _tag: "InvalidCellSize"
+  readonly value: number
+}
+
+const key = (cx: number, cy: number): number => ((cx + 32768) << 16) | ((cy + 32768) & 0xffff)
+
+// Keys repeat every 65,536 cells, so a longer span visits nothing new.
+const AXIS_CELLS = 65_536
+const lastCell = (first: number, last: number): number => Math.min(last, first + AXIS_CELLS - 1)
+/** Whether a cell coordinate packed in a key falls in `[first, last]`, counting the keys' wrap-around. */
+const coveredBy = (coordinate: number, first: number, last: number): boolean =>
+  (((coordinate - first) % AXIS_CELLS) + AXIS_CELLS) % AXIS_CELLS <= last - first
+
+const notFinite = (operation: string, ...values: ReadonlyArray<number>): never => {
+  const value = values.find((value) => !Number.isFinite(value))
+  throw new Error(`SpatialGrid.${operation} needs finite numbers, got ${value}`)
+}
+
+class Grid implements SpatialGrid {
+  readonly cellSize: number
+  private readonly cells = new Map<number, Array<number>>()
+  private readonly used: Array<Array<number>> = []
+  // `stamp[index] === query` marks a circle already visited by this query.
+  private stamp = new Int32Array(64)
+  private query = 0
+
+  constructor(cellSize: number) {
+    this.cellSize = cellSize
+  }
+
+  clear(): void {
+    for (const cell of this.used) cell.length = 0
+    this.used.length = 0
+  }
+
+  insert(index: number, x: number, y: number, r: number): void {
+    // `x - x === 0` is false only for NaN and ±Infinity, without a call per number.
+    if (x - x !== 0 || y - y !== 0 || r - r !== 0) notFinite("insert", x, y, r)
+    const size = this.cellSize
+    const minX = Math.floor((x - r) / size)
+    const maxX = lastCell(minX, Math.floor((x + r) / size))
+    const minY = Math.floor((y - r) / size)
+    const maxY = lastCell(minY, Math.floor((y + r) / size))
+    for (let cx = minX; cx <= maxX; cx++) {
+      for (let cy = minY; cy <= maxY; cy++) {
+        const cellKey = key(cx, cy)
+        let cell = this.cells.get(cellKey)
+        if (cell === undefined) {
+          cell = []
+          this.cells.set(cellKey, cell)
+        }
+        if (cell.length === 0) this.used.push(cell)
+        cell.push(index)
+      }
+    }
+    if (index >= this.stamp.length) {
+      const grown = new Int32Array(Math.max(index + 1, this.stamp.length * 2))
+      grown.set(this.stamp)
+      this.stamp = grown
+    }
+  }
+
+  forEachIn(minX: number, minY: number, maxX: number, maxY: number, visit: (index: number) => void): void {
+    if (minX - minX !== 0 || minY - minY !== 0 || maxX - maxX !== 0 || maxY - maxY !== 0) notFinite("forEachIn", minX, minY, maxX, maxY)
+    const size = this.cellSize
+    // Start the marks over before the counter leaves the stamps' range (after
+    // about two billion queries), so old marks never match a new query.
+    if (this.query === 0x7fffffff) {
+      this.stamp.fill(0)
+      this.query = 0
+    }
+    this.query += 1
+    const query = this.query
+    const stamp = this.stamp
+    const x0 = Math.floor(minX / size)
+    const x1 = lastCell(x0, Math.floor(maxX / size))
+    const y0 = Math.floor(minY / size)
+    const y1 = lastCell(y0, Math.floor(maxY / size))
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) > this.cells.size) {
+      // A box larger than the occupied area: scan the cells that exist.
+      for (const [cellKey, cell] of this.cells) {
+        if (cell.length === 0) continue
+        if (!coveredBy(((cellKey >> 16) & 0xffff) - 32768, x0, x1) || !coveredBy((cellKey & 0xffff) - 32768, y0, y1)) continue
+        for (let offset = 0; offset < cell.length; offset++) {
+          const index = cell[offset]!
+          if (stamp[index] === query) continue
+          stamp[index] = query
+          visit(index)
+        }
+      }
+      return
+    }
+    for (let cx = x0; cx <= x1; cx++) {
+      for (let cy = y0; cy <= y1; cy++) {
+        const cell = this.cells.get(key(cx, cy))
+        if (cell === undefined) continue
+        for (let offset = 0; offset < cell.length; offset++) {
+          const index = cell[offset]!
+          if (stamp[index] === query) continue
+          stamp[index] = query
+          visit(index)
+        }
+      }
+    }
+  }
+}
+
+/**
+ * An empty grid with square cells of `cellSize` world units, or
+ * `InvalidCellSize` when it is not a finite number above 0. Pick a size near
+ * the typical query box: much smaller cells make every insert and query
+ * touch many cells, much larger ones return many far candidates.
+ */
+export const make = (cellSize: number): Result.Result<SpatialGrid, InvalidCellSize> =>
+  cellSize > 0 && cellSize < Infinity
+    ? Result.success(new Grid(cellSize))
+    : Result.failure({ _tag: "InvalidCellSize", value: cellSize })
+```
