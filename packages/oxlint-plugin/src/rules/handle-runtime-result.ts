@@ -32,9 +32,26 @@ const passesThrough = new Set(["ConditionalExpression", "LogicalExpression", "Pa
 const unchecked = new Set(["CallExpression", "NewExpression", "TemplateLiteral", "Property", "ArrayExpression", "SpreadElement", "BinaryExpression", "JSXExpressionContainer"])
 
 /**
+ * Functions that take any value and do nothing with a `Result` but print or
+ * encode it. A `tick`, `restore`, or `rewind` result handed to any other
+ * function goes to a helper that checks it (`expectOk(runtime.tick(update))`).
+ */
+const sinks = new Set(["JSON.stringify", "String", "console.log", "console.info", "console.warn", "console.error", "console.debug"])
+
+const calleeName = (node: ESTree.Node): string | undefined => {
+  if (node.type === "Identifier") return node.name
+  if (node.type === "MemberExpression" && !node.computed && node.object.type === "Identifier" && node.property.type === "Identifier") {
+    return `${node.object.name}.${node.property.name}`
+  }
+  return undefined
+}
+
+/**
  * The `Result` of `runtime.tick(...)`, `tryTick(...)`, `restore(...)`,
  * `rewind(...)`, `snapshot()`, and `checksum()` is checked: dropping it, or
- * passing it on where any value is accepted, hides the failure.
+ * passing it on where any value is accepted, hides the failure. A `tick`,
+ * `restore`, or `rewind` result passed to a function is left to that
+ * function (a test's `expectOk`), unless it only prints or encodes.
  */
 export default defineRule({
   meta: {
@@ -101,6 +118,12 @@ export default defineRule({
         if (parent.type === "CallExpression" && parent.callee === node) return
         // A property key is not a use of the value.
         if (parent.type === "Property" && parent.value !== node) return
+        // A tick, restore, or rewind handed to a function goes to a helper that checks it, unless the function only prints or encodes.
+        // snapshot() and checksum() are data on their way somewhere, so a function that takes them unchecked is reported.
+        if ((parent.type === "CallExpression" || parent.type === "NewExpression") && takes === "arguments") {
+          const name = calleeName(parent.callee)
+          if (name === undefined || !sinks.has(name)) return
+        }
         context.report({ node: call, messageId: "unchecked", data })
       }
     }
