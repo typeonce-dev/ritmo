@@ -1,5 +1,6 @@
 import { Clock, Descriptor, FixedLoop, HostClock, Result, Schema } from "@typeonce/ritmo"
 import { BrowserVisibility, InputCapture } from "@typeonce/ritmo-browser"
+import type * as Snapshot from "@typeonce/ritmo/Snapshot"
 import type { SystemFailure } from "@typeonce/ritmo/System"
 import { MemoryNetworkLink, MemoryVisibility, Netcode, NetworkLink, Visibility, WebRtcNetworkLink, WebSocketNetworkLink } from "@typeonce/ritmo-netcode"
 import { describe, expect, it } from "tstyche"
@@ -134,6 +135,58 @@ describe("Netcode.lockstep", () => {
   it("takes no rollback options", () => {
     // @ts-expect-error 'maxRollback' does not exist
     Netcode.lockstep(runtime, { ...options, simulate, maxRollback: 4 })
+  })
+})
+
+describe("Netcode.syncTest", () => {
+  const syncOptions = { seats: theSeats, rewind: 4 }
+
+  it("returns a sync test of the seats' input and the schedule's failure", () => {
+    expect(Netcode.syncTest(runtime, { ...syncOptions, simulate })).type.toBe<Result.Result<Netcode.SyncTest<Input, SystemFailure<"NetTypes/Fail", "Overflow">>, Netcode.InvalidOptions>>()
+  })
+
+  it("narrows what advance ran, and why it failed", () => {
+    const test = Netcode.syncTest(runtime, { ...syncOptions, simulate })
+    if (!test.ok) return
+    const advanced = test.value.advance({ dx: 1 })
+    if (advanced.ok) expect(advanced.value._tag).type.toBe<"Ran">()
+    if (!advanced.ok) expect(advanced.error._tag).type.toBe<"RewindDiffers" | "CheckpointLost" | "TickFailed" | "SyncFailed">()
+    if (!advanced.ok && advanced.error._tag === "RewindDiffers") {
+      expect(advanced.error.tick).type.toBe<number>()
+      expect(advanced.error.snapshots).type.toBe<{ readonly expected: Snapshot.WorldSnapshot; readonly actual: Snapshot.WorldSnapshot } | undefined>()
+    }
+    expect(test.value.status()).type.toBe<Netcode.SyncTestStatus>()
+    expect(test.value.advance).type.not.toBeCallableWith({ dx: "left" })
+  })
+
+  it("rejects a schedule that cannot be rewound, with rollback's fix", () => {
+    // @ts-expect-error NetTypes/Remember keeps local state, which a rewind cannot put back
+    Netcode.syncTest(runtime, { ...syncOptions, simulate: Game.Schedule(Capture, Remember) })
+    // @ts-expect-error NetTypes/Sound is neither a snapshot() source nor plain data
+    Netcode.syncTest(runtime, { ...syncOptions, simulate: Game.Schedule(Capture, Noisy) })
+  })
+
+  it("rejects a schedule whose requirements the runtime does not provide", () => {
+    const Missing = Descriptor.Service<{ readonly speed: number }>()("NetTypes/SyncMissing")
+    const Needs = Game.System("NetTypes/SyncNeeds", { services: { missing: Game.System.service(Missing) } }, () => {})
+    // @ts-expect-error Missing service
+    Netcode.syncTest(runtime, { ...syncOptions, simulate: Game.Schedule(Capture, Needs) })
+  })
+
+  it("rejects a runtime that cannot save", () => {
+    const Loose = Descriptor.Resource<number>()("NetTypes/SyncLoose")
+    const Unsaved = Schema.bind(Schema.fragment({ resources: { Inputs, Loose } }))
+    const unsaved = Unsaved.Runtime.make({ services: Unsaved.Runtime.services(Unsaved.Runtime.service(Seats, theSeats.source)), resources: { Inputs: [], Loose: 0 } }).value
+    const capture = InputCapture.system(Unsaved, { name: "NetTypes/SyncUnsavedCapture", source: Seats, resource: Inputs })
+    // @ts-expect-error NetTypes/SyncLoose needs a schema
+    Netcode.syncTest(unsaved, { ...syncOptions, simulate: Unsaved.Schedule(capture) })
+  })
+
+  it("takes no network options and needs a rewind depth", () => {
+    // @ts-expect-error 'links' does not exist
+    Netcode.syncTest(runtime, { ...syncOptions, simulate, links: [link] })
+    // @ts-expect-error Property 'rewind' is missing
+    Netcode.syncTest(runtime, { seats: theSeats, simulate })
   })
 })
 

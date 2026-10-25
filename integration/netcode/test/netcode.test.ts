@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest"
 
 import { Random } from "@typeonce/ritmo-math"
+import { Netcode } from "@typeonce/ritmo-netcode"
 
-import type { GameRuntime, PlayerInput, Screen } from "../game.ts"
+import { draw, idle, makeRuntime, playerInput, setup, simulate, type GameRuntime, type PlayerInput, type Screen } from "../game.ts"
 import { match, truth, type Peer } from "../match.ts"
 
 /** A player who holds a direction for a while, then picks another, and fires now and then. */
@@ -91,5 +92,24 @@ describe("two peers play the shooter over a slow, reordering network", () => {
       expect(status.verified).toBeGreaterThan(400)
     }
     expect(world(peers[0].runtime)).toBe(world(peers[1].runtime))
+  })
+})
+
+describe("the shooter rewinds exactly", () => {
+  // Before shipping a rollback game: every tick is rewound and run again, and must come out the same.
+  it("passes a sync test that rolls back 8 ticks after every tick, drawing in between", () => {
+    const seats = Netcode.seats(playerInput, { count: 2, idle })
+    if (!seats.ok) throw new Error(seats.error.reason)
+    const { runtime, screen } = makeRuntime(seats.value.source)
+    expect(runtime.tick(setup).ok).toBe(true)
+    const test = Netcode.syncTest(runtime, { simulate, seats: seats.value, rewind: 8 })
+    if (!test.ok) throw new Error(test.error.reason)
+    for (const [frame, local] of script[0].entries()) {
+      const advanced = test.value.advance(local)
+      if (!advanced.ok) throw new Error(`frame ${frame}: ${JSON.stringify(advanced.error)}`)
+      expect(runtime.tick(draw).ok).toBe(true)
+    }
+    expect(test.value.status()).toMatchObject({ tick: 600, verified: 600, rollbacks: 600 })
+    expect(screen.draws.flatMap((drawn) => drawn.created).length).toBeGreaterThan(20)
   })
 })

@@ -100,6 +100,24 @@ const session = Netcode.rollback(runtime, {
 
 The bound: a hidden seat's silence counts only after `afterMS`, so a seat that hides and never returns (the tab was closed) ends the session with `Disconnected` at most `afterMS + timeoutMS` after it hid. Every peer passes the same `afterMS` and `then`; without `hidden`, a hidden peer is silent and times out as before. The session unsubscribes from the visibility once it ends. On return, `FixedLoop` drops the hidden time beyond `maxFrameSeconds` and `maxStepsPerFrame`, so the loop does not burst through the missed frames. Pausing a single-player game on a hidden tab is the game's own policy (read `BrowserVisibility` in host code).
 
+## Sync test
+
+A rollback game is only as good as the code it rewinds. `Netcode.syncTest` runs one peer with no network, forces a rollback of `rewind` ticks after every tick, runs those ticks again with the same input, and compares the world's checksum at the start of each one with the first run's. State a rewind cannot put back (a module variable, a service with its own memory) fails the test on the first tick it matters, where two real peers would only desync later. Run it in the game's tests before shipping:
+
+```ts
+const test = Netcode.syncTest(runtime, { simulate, seats: seats.value, rewind: 8, keepSnapshots: true })
+if (!test.ok) throw new Error(test.error.reason)
+for (const local of scriptedInput) {
+  const advanced = test.value.advance(local) // seat 0's input; every other seat gets `predict` of its previous one
+  if (!advanced.ok && advanced.error._tag === "RewindDiffers") {
+    // The world at the start of `tick` differs: tick `tick - 1` read state outside the world.
+    console.log(advanced.error.tick, Desync.compare(advanced.error.snapshots!.expected, advanced.error.snapshots!.actual).text)
+  }
+}
+```
+
+It takes `rollback`'s types: a `simulate` that cannot be rewound, or a runtime that cannot save, does not compile here either, and a `rewind` deeper than the runtime's checkpoints fails at construction. `status()` counts the forced rollbacks. A failure (`RewindDiffers`, `TickFailed`, `CheckpointLost`, or `SyncFailed` when the world does not checksum) is final: fix the game. To shake out two peers over a faulty network, `Fuzz.run` with `network` in [`@typeonce/ritmo-devtools`](https://github.com/typeonce-dev/ritmo/blob/main/packages/devtools/README.md) drives `rollback` sessions over a seeded `MemoryNetworkLink`.
+
 Released together with [`@typeonce/ritmo`](https://github.com/typeonce-dev/ritmo/blob/main/packages/core/README.md), always with the same version.
 
 Source: https://github.com/typeonce-dev/ritmo
