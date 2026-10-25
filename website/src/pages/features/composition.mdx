@@ -73,7 +73,10 @@ const Move = Game.System(
   {
     queries: {
       movers: Game.Query({
-        selection: { position: Game.Query.write(Position), velocity: Game.Query.read(Velocity) },
+        selection: {
+          position: Game.Query.write(Position),
+          velocity: Game.Query.read(Velocity)
+        },
         without: [Stunned] // [!code highlight]
       })
     }
@@ -87,7 +90,8 @@ const Move = Game.System(
   }
 )
 
-// The stun lands at applyDeferred(): this tick the guard still moves, the next it does not
+// The stun lands at applyDeferred(): this tick the guard still moves,
+// the next it does not
 const update = Game.Schedule(Stun, Move, Game.Schedule.applyDeferred())
 ```
 
@@ -137,22 +141,38 @@ const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Positio
 const Hand = Descriptor.Component<{}>()("Arena/Hand")
 // ---cut---
 // The edge, and the reverse side the runtime maintains
-const { relation: ChildOf } = Descriptor.Hierarchy("Arena/ChildOf", "Arena/Children")
+const { relation: ChildOf } = Descriptor.Hierarchy(
+  "Arena/ChildOf",
+  "Arena/Children"
+)
 
-const Game = Schema.bind(Schema.fragment({
-  components: { Position, Hand },
-  relations: { ChildOf } // [!code highlight]
-}))
+const Game = Schema.bind(
+  Schema.fragment({
+    components: { Position, Hand },
+    relations: { ChildOf } // [!code highlight]
+  })
+)
 
 const Arm = Game.System(
   "Arena/Arm",
-  { commands: Game.System.commands(Game.System.spawns(Position, Hand), Game.System.relates(ChildOf)) },
+  {
+    commands: Game.System.commands(
+      Game.System.spawns(Position, Hand),
+      Game.System.relates(ChildOf)
+    )
+  },
   ({ commands }) => {
-    const hand = commands.spawn(Game.Command.spawn([Position, { x: 0, y: 0 }], [Hand, {}]))
+    const hand = commands.spawn(
+      Game.Command.spawn([Position, { x: 0, y: 0 }], [Hand, {}])
+    )
 
     // The sword is spawned already in the hand
     commands.spawn(
-      Game.Command.relate(Game.Command.spawn([Position, { x: 4, y: 0 }]), ChildOf, hand) // [!code highlight]
+      Game.Command.relate(
+        Game.Command.spawn([Position, { x: 4, y: 0 }]),
+        ChildOf,
+        hand
+      ) // [!code highlight]
     )
   }
 )
@@ -173,7 +193,10 @@ const Follow = Game.System(
   "Arena/Follow",
   {
     queries: {
-      held: Game.Query({ selection: { position: Game.Query.read(Position) }, withRelations: [ChildOf] })
+      held: Game.Query({
+        selection: { position: Game.Query.read(Position) },
+        withRelations: [ChildOf]
+      })
     },
     relationFailures: { childOf: Game.System.readRelationFailures(ChildOf) }
   },
@@ -206,7 +229,10 @@ the edge, so `lookup.related(archer, Targeting)` turns into a
 ```ts twoslash title="schema.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 // ---cut---
-const { relation: Targeting } = Descriptor.Relation("Arena/Targeting", "Arena/TargetedBy")
+const { relation: Targeting } = Descriptor.Relation(
+  "Arena/Targeting",
+  "Arena/TargetedBy"
+)
 ```
 
 The archers do not have to check every tick whether their guard still

@@ -52,21 +52,36 @@ device binds them, and the devices merge into one source.
 ```ts twoslash title="input.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 // ---cut---
-import { Controls, Gamepad, InputCapture, Keyboard } from "@typeonce/ritmo-browser"
+import {
+  Controls,
+  Gamepad,
+  InputCapture,
+  Keyboard
+} from "@typeonce/ritmo-browser"
 
 // What the player can do, whatever the device
 const Actions = Controls.actions({ buttons: ["jump"], vectors: ["move"] }) // [!code highlight]
 
 // How each device triggers it
 const keys = {
-  move: Keyboard.vector({ up: ["ArrowUp", "w"], down: ["ArrowDown", "s"], left: ["ArrowLeft", "a"], right: ["ArrowRight", "d"] }),
+  move: Keyboard.vector({
+    up: ["ArrowUp", "w"],
+    down: ["ArrowDown", "s"],
+    left: ["ArrowLeft", "a"],
+    right: ["ArrowRight", "d"]
+  }),
   jump: [" "]
 } as const
 const buttons = {
-  move: Gamepad.vector({ stick: "left", up: ["dpadUp"], down: ["dpadDown"], left: ["dpadLeft"], right: ["dpadRight"] }),
+  move: Gamepad.vector({
+    stick: "left",
+    up: ["dpadUp"],
+    down: ["dpadDown"],
+    left: ["dpadLeft"],
+    right: ["dpadRight"]
+  }),
   jump: ["south"]
 } as const
-
 
 // Keyboard and gamepad merged into one source
 const makeControls = (devices: {
@@ -74,11 +89,13 @@ const makeControls = (devices: {
   readonly gamepad: Gamepad.Actions<typeof buttons>
 }) => Actions.merge(devices)
 
-// The input source is a service; each update copies its snapshot into a resource.
-const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("Example/Controls")
-const Input = Descriptor.TransientResource<
-  InputCapture.SnapshotOf<typeof ControlsInput>
->()("Example/Input")
+// The input source is a service: the merge's snapshot() only, so a replay
+// or the fuzzer can provide it too. Each update copies the snapshot into a
+// resource that systems read.
+type ControlsSource = InputCapture.SourceOf<ReturnType<typeof makeControls>>
+const ControlsInput = Descriptor.Service<ControlsSource>()("Example/Controls")
+type Snapshot = InputCapture.SnapshotOf<typeof ControlsInput>
+const Input = Descriptor.TransientResource<Snapshot>()("Example/Input")
 ```
 
 One snapshot per update, so every system sees the same input:
@@ -90,7 +107,7 @@ const Actions = Controls.actions({ buttons: ["jump"], vectors: ["move"] })
 const keys = { move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }), jump: [" "] } as const
 const buttons = { move: Gamepad.vector({ stick: "left" }), jump: ["south"] } as const
 const makeControls = (devices: { readonly keyboard: Keyboard.Actions<typeof keys>; readonly gamepad: Gamepad.Actions<typeof buttons> }) => Actions.merge(devices)
-const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("Example/Controls")
+const ControlsInput = Descriptor.Service<InputCapture.SourceOf<ReturnType<typeof makeControls>>>()("Example/Controls")
 const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("Example/Input")
 const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
 // ---cut---
@@ -117,7 +134,9 @@ const Jump = Game.System(
 
 ```ts
 const keyboard = Keyboard.actions(window, keys) // in the page
-const keyboard = Keyboard.scripted(keys, [{ frame: 0, press: ["jump", "move.right"] }]) // in a test
+const keyboard = Keyboard.scripted(keys, [
+  { frame: 0, press: ["jump", "move.right"] }
+]) // in a test
 ```
 
 `Pointer` and `Touch` work the same way.
@@ -139,13 +158,41 @@ join on it: the first device to join is `p1`, the next `p2`. Two
 import { Descriptor } from "@typeonce/ritmo"
 import { Controls, Gamepad, InputCapture, Keyboard } from "@typeonce/ritmo-browser"
 // ---cut---
-const Actions = Controls.actions({ buttons: ["join", "back", "jump"], vectors: ["move"] })
-// Any button joins (that press does nothing else); back leaves while joining is open
-const Players = Controls.players(Actions, { slots: ["p1", "p2"], join: "any", leave: "back" }) // [!code highlight]
+const Actions = Controls.actions({
+  buttons: ["join", "back", "jump"],
+  vectors: ["move"]
+})
+// Any button joins (that press does nothing else);
+// back leaves while joining is open
+const Players = Controls.players(Actions, { // [!code highlight]
+  slots: ["p1", "p2"], // [!code highlight]
+  join: "any", // [!code highlight]
+  leave: "back" // [!code highlight]
+}) // [!code highlight]
 
-const wasd = { move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }), join: [" "], back: ["q"], jump: [" "] } as const
-const arrows = { move: Keyboard.vector({ up: ["ArrowUp"], down: ["ArrowDown"], left: ["ArrowLeft"], right: ["ArrowRight"] }), join: ["Enter"], back: ["Backspace"], jump: ["Enter"] } as const
-const pad = { move: Gamepad.vector({ stick: "left" }), join: ["south"], back: ["east"], jump: ["south"] } as const
+const wasd = {
+  move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }),
+  join: [" "],
+  back: ["q"],
+  jump: [" "]
+} as const
+const arrows = {
+  move: Keyboard.vector({
+    up: ["ArrowUp"],
+    down: ["ArrowDown"],
+    left: ["ArrowLeft"],
+    right: ["ArrowRight"]
+  }),
+  join: ["Enter"],
+  back: ["Backspace"],
+  jump: ["Enter"]
+} as const
+const pad = {
+  move: Gamepad.vector({ stick: "left" }),
+  join: ["south"],
+  back: ["east"],
+  jump: ["south"]
+} as const
 
 const makePlayers = (devices: {
   readonly left: Keyboard.Actions<typeof wasd>
@@ -153,11 +200,14 @@ const makePlayers = (devices: {
   readonly pads: Gamepad.Pads<typeof pad>
 }) => Players.pool(devices)
 
-const PlayersInput = Descriptor.Service<ReturnType<typeof makePlayers>>()("Example/Players")
-const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof PlayersInput>>()("Example/Input")
+// The service is the pool's snapshot() only, so replays can provide it too
+type PlayersSource = InputCapture.SourceOf<ReturnType<typeof makePlayers>>
+const PlayersInput = Descriptor.Service<PlayersSource>()("Example/Players")
+type Snapshot = InputCapture.SnapshotOf<typeof PlayersInput>
+const Input = Descriptor.TransientResource<Snapshot>()("Example/Input")
 
 // In a system: input = resources.input.get()
-declare const input: InputCapture.SnapshotOf<typeof PlayersInput>
+declare const input: Snapshot
 if (input.p2.event === "joined") {
   // spawn the second player
 }
@@ -168,13 +218,17 @@ if (input.p2.device === "pads") {
 }
 ```
 
-A system opens joining with `setJoining(true)` (once for drop-in play, or
-on a join screen) and frees a slot with `leave("p2")` (a pause menu). A
-player who is in from the start is seated without a press, from a setup
-system: `seat("p1", "right")` (a pool name), or `seat("p1", { pads: 0 })` for the first
-pad; it returns `{ ok: false, reason }` when the slot or device is taken. A
-pad that disconnects keeps its slot (`connected: false`) and returns to it.
-The town on the home page plays this way: player 1 is seated on the
+A system opens joining with `setJoining(true)`, once for drop-in play or
+only on a join screen. It frees a slot with `leave("p2")`, from a pause
+menu for example.
+
+A player who is in from the start is seated from a setup system, without a
+press: `seat("p1", "right")` for a pool name, or `seat("p1", { pads: 0 })`
+for the first pad. A taken slot or device comes back as
+`{ ok: false, reason }`.
+
+A pad that disconnects keeps its slot (`connected: false`) and returns to
+it. The town on the home page plays this way: player 1 is seated on the
 arrows, and WASD or a gamepad joins player 2.
 
 ## Rendering
@@ -193,7 +247,8 @@ import { RenderSync } from "@typeonce/ritmo-render"
 import type { NodeRegistry } from "@typeonce/ritmo-render"
 import { Graphics } from "pixi.js"
 
-const WallNodes = Descriptor.Service<NodeRegistry.NodeRegistry<Graphics>>()("TopDown/WallNodes")
+const WallNodes =
+  Descriptor.Service<NodeRegistry.NodeRegistry<Graphics>>()("TopDown/WallNodes")
 
 const RenderWalls = RenderSync.system(Game, {
   name: "TopDown/RenderWalls",
@@ -201,9 +256,12 @@ const RenderWalls = RenderSync.system(Game, {
   transform: Position,
   registry: WallNodes,
   select: { collider: Game.Query.read(Collider) },
-  create: ({ data }) => { // [!code highlight]
+  create: ({ data }) => {
+    // [!code highlight]
     const { width, height } = data.collider.get()
-    return new Graphics().rect(-width / 2, -height / 2, width, height).fill(0x262a31)
+    return new Graphics()
+      .rect(-width / 2, -height / 2, width, height)
+      .fill(0x262a31)
   },
   apply: (node, { transform }) => node.position.set(transform.x, transform.y) // [!code highlight]
 })

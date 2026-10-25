@@ -18,7 +18,9 @@ other API comes from `Game`.
 import { Descriptor, Schema } from "@typeonce/ritmo"
 
 // Components: data on an entity. An empty one is a tag.
-const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Position = Descriptor.Component<{ x: number; y: number }>()(
+  "Arena/Position"
+)
 const Health = Descriptor.Component<number>()("Arena/Health")
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 
@@ -186,7 +188,8 @@ const Flow = Game.StateMachine("Arena/Flow", {
 const EndRound = Game.System(
   "Arena/EndRound",
   { nextMachines: { flow: Game.System.nextState(Flow) } },
-  ({ nextMachines }) => nextMachines.flow.set({ _tag: "GameOver", winner: "Red" }) // [!code highlight]
+  ({ nextMachines }) =>
+    nextMachines.flow.set({ _tag: "GameOver", winner: "Red" }) // [!code highlight]
 )
 
 // ...and this one runs only while playing
@@ -203,15 +206,16 @@ together. A game over always has a winner, and nothing else does.
 ## Validating and saving values
 
 Ritmo validates with the schema library the game already uses: any
-[Standard Schema](https://standardschema.dev) (Zod, Valibot, ArkType,
-Effect). A constructed descriptor takes one. Raw input and saves are checked
-by it, and `runtime.snapshot()` saves each value in the schema's encoded form.
-A Zod, Valibot, or ArkType schema of plain data passes as it is. A value that
-changes shape when saved (a `Map`, an `Option`, a `Date`) needs a schema with
-a `"~encode"` back, and Ritmo says so if it is missing. The Ritmo skill has a
-helper for Zod and one for Effect that build it from the library's own
-encoding; with any other library, `"~encode"` is the reverse schema, written
-by hand.
+[Standard Schema](https://standardschema.dev), from Zod, Valibot, ArkType,
+or Effect. A constructed descriptor takes one. Raw input and saves are
+checked by it, and `runtime.snapshot()` saves each value in the schema's
+encoded form.
+
+A schema of plain data passes as it is. A value that changes shape when
+saved, like a `Map`, an `Option`, or a `Date`, needs a schema with a
+`"~encode"` back, and Ritmo says so if it is missing. The Ritmo skill has a
+helper for Zod and one for Effect; with any other library, `"~encode"` is
+the reverse schema, written by hand.
 
 With Effect, one helper in the game turns any schema into that shape:
 
@@ -220,24 +224,39 @@ import { Descriptor, Entity, Schema } from "@typeonce/ritmo"
 import { Schema as S } from "effect"
 
 // Decodes saved JSON, and encodes values back to it
-const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
+type Plain = S.Top & {
+  readonly DecodingServices: never
+  readonly EncodingServices: never
+}
+const codec = <T extends Plain>(schema: T) => {
   const json = S.toCodecJson(schema)
-  return { "~standard": S.toStandardSchemaV1(json)["~standard"], "~encode": S.toStandardSchemaV1(S.flip(json)) }
+  return {
+    "~standard": S.toStandardSchemaV1(json)["~standard"],
+    "~encode": S.toStandardSchemaV1(S.flip(json))
+  }
 }
 
 const Root = Schema.defineRoot("Arena")
 const Health = Descriptor.ConstructedComponent(codec(S.Finite))("Arena/Health")
 
 // Saved as [["potion", 3]], loaded back as a Map
-const Stock = Descriptor.ConstructedResource(codec(S.ReadonlyMap(S.String, S.Int)))("Arena/Stock")
+const Stock = Descriptor.ConstructedResource(
+  codec(S.ReadonlyMap(S.String, S.Int))
+)("Arena/Stock")
 
 // Ritmo's own types come with a guard to build a schema from
 const Target = Descriptor.ConstructedComponent(codec(S.Struct({
   enemy: S.declare(Entity.isHandle(Root, Health))
 })))("Arena/Target")
 
-const Game = Schema.bind(Schema.fragment({ components: { Health, Target }, resources: { Stock } }), Root)
-const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Stock: [["potion", 3]] } })
+const Game = Schema.bind(
+  Schema.fragment({ components: { Health, Target }, resources: { Stock } }),
+  Root
+)
+const runtime = Game.Runtime.make({
+  services: Game.Runtime.services(),
+  resources: { Stock: [["potion", 3]] }
+})
 if (runtime.ok) {
   // Encoding can fail, so a snapshot is a Result
   const saved = runtime.value.snapshot()

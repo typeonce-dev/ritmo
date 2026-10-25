@@ -6,60 +6,80 @@ description: What Ritmo added from its roadmaps, the test an addition has to pas
 
 Ritmo runs the simulation of a game that coding agents write. It is not a
 game engine: drawing, sound, saving, servers, and platform SDKs stay in the
-game, which plugs them in through typed contracts, the way it brings its own
-schema library. This page lists what Ritmo added from its roadmaps, what it decided not
-to add, and what comes next.
+game, which plugs them in through typed contracts.
+
+This page lists what Ritmo has added, what it decided not to add, and what
+it is waiting on.
+
+## The test for an addition
 
 An addition has to pass one test: **it is only right when it is built into
 the runtime.** Access declarations, per-reader streams, the fixed step,
-checkpoints and rollback, or the devtools trace have to know about it. A
-piece a game can get from an existing library behind a small typed contract
-is a playbook in the [skill](/docs/with-an-agent/), not a package. A piece
-that is gameplay stays in the game.
+rollback, or the devtools trace have to know about it.
 
-One package is the exception: `ritmo-math` holds the 2D helpers most
-games would otherwise rewrite, as plain data in and plain data out, built
-on `Ops` so they replay the same on every engine. It never ports a
-third-party algorithm, and determinism alone is never a reason to add one:
-`Ops` and `oxlint --fix` already make any game math deterministic. A helper
-gets in when at least two games hand-roll it, it takes and returns plain
-data, and it sits beside what is there (`Vec2`, `Box2`, `Segment2`,
-`Collide2`, `FlowField`).
+A piece a game can get from an existing library is a playbook in the
+[skill](/docs/with-an-agent/), not a package. A piece that is gameplay
+stays in the game.
 
-Every item keeps the rules of the rest of the library: wrong code does not
-compile, a failure that depends on runtime state is a typed `Result`, and
-there is one way to do each thing. Type safety wins over speed.
+`ritmo-math` is the one exception. It holds the 2D helpers most games
+would otherwise rewrite, built on `Ops` so they replay the same on every
+engine. A helper gets in when at least two games hand-roll it. Determinism
+alone is never the reason: `Ops` and `oxlint --fix` already make any game
+math exact.
+
+Every addition keeps the library's rules: wrong code does not compile, a
+failure that depends on runtime state is a typed `Result`, and there is one
+way to do each thing.
 
 ## Shipped
 
-The second wave, in one change: [#111](https://github.com/typeonce-dev/ritmo/pull/111).
+**Bugs found before players.** The [fuzzer](/features/bugs/) plays the game
+with seeded input and shrinks each failure to a replay that is already a
+test ([#95](https://github.com/typeonce-dev/ritmo/pull/95)). It plays online
+matches too, with latency and packet loss, and a sync test checks every
+rollback on the tick it happens ([#99](https://github.com/typeonce-dev/ritmo/pull/99)).
+Browser games are fuzzed through the same controls the page reads
+([#98](https://github.com/typeonce-dev/ritmo/pull/98)).
 
-- **`Ops` and `Random` in the core.** Imported from `@typeonce/ritmo`; the `Ops` list is closed (22 functions and `**`).
-- **`oxlint --fix` does the whole job.** `ritmo/use-ops-for-math` adds the `Ops` import and fixes `**=`; aliasing `Math` is reported; `ritmo/no-brand-cast` reports a cast to a branded type.
-- **A smaller `ritmo-math`.** `Vector2`, `Size2`, `Aabb`, the validated `Scalar` brands, and `InputAxis` are gone (the game's schema validates); the spatial grid is a playbook in the skill; `FlowField.make` returns a typed failure.
-- **Math every game rewrites.** `Angle.wrap` and `turnToward`; `Vec2.perpendicular`, `fromAngle`, `angle`, `decayToward`; `Scalar.moveToward`, `lerp`, `decayToward`; `Box2.closestPoint`; `Collide2.overlapsCircleCircle`.
-- **One replay check.** `Verify.acrossEngines` replaces `Replay.verify`; the committed cross-engine replay now runs `Ops`.
-- **A scan of the dependencies.** `ritmo-devtools scan <entry>` lists the non-exact math, randomness, and wall time in every package the simulation imports.
-- **Branding and third-party code in the skill.** Brands come from the game's schema library, never a cast; a decision order for libraries, from the scan to vendoring to `Checkpoint.rewindable`.
+**Same game in every browser.** `ritmo-devtools verify` plays a recorded
+match in Node, Chromium, WebKit, and Firefox and names the first tick they
+disagree on ([#101](https://github.com/typeonce-dev/ritmo/pull/101)).
+`ritmo-devtools scan` finds inexact math inside the libraries a game brings,
+and `oxlint --fix` rewrites the game's own
+([#111](https://github.com/typeonce-dev/ritmo/pull/111)).
 
-Every item of the first roadmap is in `main`, in the order it landed.
+**Online play that holds up.** Sounds and effects fire once under rollback,
+with predictions withdrawn when a rollback undoes them
+([#100](https://github.com/typeonce-dev/ritmo/pull/100)). A hidden tab tells
+the others instead of freezing the match
+([#102](https://github.com/typeonce-dev/ritmo/pull/102)). Input delay follows
+the connection ([#106](https://github.com/typeonce-dev/ritmo/pull/106)), and a
+physics engine with its own world rolls back with the game
+([#97](https://github.com/typeonce-dev/ritmo/pull/97)).
 
-- **Seeded fuzzing that shrinks to a test.** `Fuzz.input`, `Fuzz.run`; a found bug is a shrunk replay `Replay.session` plays to the same violation. [#95](https://github.com/typeonce-dev/ritmo/pull/95)
-- **Step-counted deadlines, and a lint for float timers.** `Clock.Deadline`, `deadline`, `reached`, `remaining`, `isDeadline`, and `ritmo/no-float-timers`. [#94](https://github.com/typeonce-dev/ritmo/pull/94)
-- **Entity labels in devtools output.** A `labels` inspector on `Session.make`, `Replay.session`, `Determinism.check`; a labels map on `Desync.compare`. [#96](https://github.com/typeonce-dev/ritmo/pull/96)
-- **Rewindable services.** `Checkpoint.rewindable` admits a library that keeps its own world into a rewound schedule. [#97](https://github.com/typeonce-dev/ritmo/pull/97)
-- **Browser input that replays and fuzzes.** `InputCapture.SourceOf`, `actions.random`, `players.random`; one controls descriptor for the page, replays, and the fuzzer. [#98](https://github.com/typeonce-dev/ritmo/pull/98)
-- **Determinism checked across engines.** `ritmo-devtools verify` and `Verify.acrossEngines` over Node, Chromium, WebKit, and Firefox, with a CI job. [#101](https://github.com/typeonce-dev/ritmo/pull/101)
-- **Remove the live browser monitor.** Debugging is headless and text-first; devtools drops its DOM dependency. [#104](https://github.com/typeonce-dev/ritmo/pull/104)
-- **Children attached to their parent's node.** `RenderSync` takes a `Descriptor.Hierarchy`; `NodeRegistry.attach` gains the parent. [#109](https://github.com/typeonce-dev/ritmo/pull/109)
-- **Confirmed, predicted, and withdrawn event streams.** `session.events(Event)` with `confirmed()`, `predicted()`, `withdrawn()`, `lost()`. [#100](https://github.com/typeonce-dev/ritmo/pull/100)
-- **Stepping one system at a time.** `session.step(schedule)` with `until`, `next`, `check`, `finish`, on a `debug.beginFrame` cursor. [#108](https://github.com/typeonce-dev/ritmo/pull/108)
-- **A stream of relations dropped by a despawn.** `Game.System.readDroppedRelations(Relation)`, per reader, once. [#107](https://github.com/typeonce-dev/ritmo/pull/107)
-- **Descriptor metadata.** A `meta` option (unit, range, hint) typed against the schema's fields; an `out-of-range` report warning. [#105](https://github.com/typeonce-dev/ritmo/pull/105)
-- **A policy for hidden tabs.** A `Visibility` contract, `BrowserVisibility`, `MemoryVisibility`, the `hidden` option, `status().hidden`. [#102](https://github.com/typeonce-dev/ritmo/pull/102)
-- **`why` that follows the reads.** A `depth` option on `why` and `whyResource`, through declared reads. [#103](https://github.com/typeonce-dev/ritmo/pull/103)
-- **Adaptive input delay.** `adaptiveDelay: { min, max }`, per seat, with `status().inputDelay`. [#106](https://github.com/typeonce-dev/ritmo/pull/106)
-- **Sync-test session, with network-fault fuzzing.** `Netcode.syncTest`, and `Fuzz.run` with `network` and `Fuzz.seats`. [#99](https://github.com/typeonce-dev/ritmo/pull/99)
+**Debugging an agent can read.** Entities print with names
+([#96](https://github.com/typeonce-dev/ritmo/pull/96)), a frame can be stepped
+one system at a time ([#108](https://github.com/typeonce-dev/ritmo/pull/108)),
+and `why` follows a wrong value back through the systems that produced it
+([#103](https://github.com/typeonce-dev/ritmo/pull/103)). Debugging is
+headless: the in-page monitor is gone
+([#104](https://github.com/typeonce-dev/ritmo/pull/104)).
+
+**Fewer ways to get it wrong.** Timers count steps, and a float timer is a
+lint error ([#94](https://github.com/typeonce-dev/ritmo/pull/94)). A link to
+a despawned entity is reported to the systems that held it
+([#107](https://github.com/typeonce-dev/ritmo/pull/107)). Values can declare
+a unit and a range ([#105](https://github.com/typeonce-dev/ritmo/pull/105)),
+and a cast to a branded type is a lint error
+([#111](https://github.com/typeonce-dev/ritmo/pull/111)).
+
+**A smaller core of math.** `Ops` and `Random` moved into the core.
+`ritmo-math` lost the types a game's schema already validates and gained
+the helpers every game rewrites: angle wrapping and turning, headings to
+vectors and back, frame-rate-independent easing, and circle overlap
+([#111](https://github.com/typeonce-dev/ritmo/pull/111)). Child entities'
+nodes attach under their parent's in the renderer
+([#109](https://github.com/typeonce-dev/ritmo/pull/109)).
 
 ## Left to the game, on purpose
 

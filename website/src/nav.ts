@@ -28,6 +28,7 @@ export const sections = [
       { href: "/features/devices/", title: "Every device, one player" },
       { href: "/features/rebinding/", title: "Rebinding" },
       { href: "/features/multiplayer/", title: "Local multiplayer" },
+      { href: "/features/bugs/", title: "Bugs found before players" },
       { href: "/features/replays/", title: "Replays that become tests" },
       { href: "/features/determinism/", title: "Same game everywhere" },
       { href: "/features/rollback/", title: "Online multiplayer" },

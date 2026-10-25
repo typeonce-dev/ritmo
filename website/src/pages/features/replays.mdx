@@ -115,11 +115,13 @@ f137 update  Controls/MoveBall  resource Controls/Dashes 1 -> 2
 ```
 
 In a browser game, the controls service is declared as only the merged
-controls' snapshot, `InputCapture.SourceOf<...>`, so the page provides the
-live devices, a test provides scripted ones, and a replay provides what it
-recorded, all through the one descriptor. The page keeps the merge itself to
-rebind it. The same descriptor lets the fuzzer drive the game with seeded
-random input that a real player could have produced.
+controls' snapshot, `InputCapture.SourceOf<...>`. One descriptor then
+serves every case: the page provides the live devices, a test provides
+scripted ones, and a replay provides what it recorded.
+
+The page keeps the merge itself, to rebind it. The same descriptor lets the
+[fuzzer](/features/bugs/) drive the game with random input a real player
+could have produced.
 
 "Checkpoints match" is the replay checking itself: the file holds hashes of
 the world as it was recorded, and the replayed world matched every one.
@@ -147,9 +149,10 @@ const same = await Verify.acrossEngines(make, file)
 
 ## Why it can work at all
 
-The simulation reads only what is in the world (time from its clock,
-randomness from a seeded generator) and input through services that hand
-out plain snapshots. So the input is all a replay needs to store. A service
-that is not plain data, and so could not be replayed, is a compile error
-that names it, not a replay that silently goes wrong. The same property is
-what makes the game play the [same on every device](/features/determinism/).
+The simulation reads only what is in the world: time from its clock,
+randomness from a seeded generator, and input through services that hand
+out plain snapshots. So the input is all a replay needs to store.
+
+A service that is not plain data could not be replayed, so it is a compile
+error that names it, not a replay that silently goes wrong. The same
+property makes the game play the [same on every device](/features/determinism/).

@@ -17,10 +17,11 @@ words, from their READMEs:
 
 **Ritmo** is built for a game that keeps growing while coding agents write
 it. Every system declares what it reads, writes, and queues, so the
-compiler can check each change against the rest of the game. Mistakes come
-back as compile errors, typed failures, and lint messages that name the
-fix, so an agent can change a system it never read without breaking the
-ones around it.
+compiler checks each change against the rest of the game.
+
+Mistakes come back as compile errors, typed failures, and lint messages
+that name the fix. An agent can change a system it never read without
+breaking the ones around it.
 
 ## The same mechanic in each library
 
@@ -58,7 +59,8 @@ const recover = (world: World) => {
 
 // Stunned guards are left out of the query
 const move = (world: World) => {
-  for (const eid of query(world, [Position, Velocity, Not(Stunned)])) { // [!code highlight]
+  for (const eid of query(world, [Position, Velocity, Not(Stunned)])) {
+    // [!code highlight]
     Position.x[eid]! += Velocity.x[eid]!
     Position.y[eid]! += Velocity.y[eid]!
   }
@@ -95,10 +97,13 @@ const recover = (world: World) => {
 
 // Stunned guards are left out of the query
 const move = (world: World) => {
-  world.query(Position, Velocity, Not(Stunned)).updateEach(([position, velocity]) => { // [!code highlight]
-    position.x += velocity.x
-    position.y += velocity.y
-  })
+  world
+    .query(Position, Velocity, Not(Stunned))
+    .updateEach(([position, velocity]) => {
+      // [!code highlight]
+      position.x += velocity.x
+      position.y += velocity.y
+    })
 }
 ```
 
@@ -127,7 +132,8 @@ const moving = world.with("position", "velocity").without("stunned") // [!code h
 
 // The game calls this when a hit lands
 const stun = () => {
-  for (const entity of calm) world.addComponent(entity, "stunned", { frames: 30 }) // [!code highlight]
+  for (const entity of calm)
+    world.addComponent(entity, "stunned", { frames: 30 }) // [!code highlight]
 }
 
 const recover = () => {
@@ -153,55 +159,84 @@ it exactly that, and nothing else.
 ```ts twoslash title="stun.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 
-const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Velocity = Descriptor.Component<{ x: number; y: number }>()("Arena/Velocity")
+const Position = Descriptor.Component<{ x: number; y: number }>()(
+  "Arena/Position"
+)
+const Velocity = Descriptor.Component<{ x: number; y: number }>()(
+  "Arena/Velocity"
+)
 const Guard = Descriptor.Tag("Arena/Guard")
 // The frames left, stored as a plain number
 const Stunned = Descriptor.Component<number>()("Arena/Stunned")
 const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
 
-const Game = Schema.bind(Schema.fragment({
-  components: { Position, Velocity, Guard, Stunned },
-  events: { Hit }
-}))
+const Game = Schema.bind(
+  Schema.fragment({
+    components: { Position, Velocity, Guard, Stunned },
+    events: { Hit }
+  })
+)
 
-const Stun = Game.System("Arena/Stun", {
-  queries: { calm: Game.Query({ selection: {}, with: [Guard], without: [Stunned] }) },
-  events: { hits: Game.System.readEvent(Hit) },
+const Stun = Game.System(
+  "Arena/Stun",
+  {
+    queries: {
+      calm: Game.Query({ selection: {}, with: [Guard], without: [Stunned] })
+    },
+    events: { hits: Game.System.readEvent(Hit) },
 
-  // The only command it may queue: adding Stunned
-  commands: Game.System.commands(Game.System.inserts(Stunned)) // [!code highlight]
-}, ({ queries, events, commands }) => {
-  if (events.hits.all().length === 0) return
-  for (const match of queries.calm.each()) commands.insert(match.entity, [Stunned, 30])
-})
-
-const Recover = Game.System("Arena/Recover", {
-  queries: { stunned: Game.Query({ selection: { frames: Game.Query.write(Stunned) } }) },
-  commands: Game.System.commands(Game.System.removes(Stunned)) // [!code highlight]
-}, ({ queries, commands }) => {
-  for (const match of queries.stunned.each()) {
-    const frames = match.data.frames.get() - 1
-    if (frames > 0) match.data.frames.set(frames)
-    else commands.remove(match.entity, Stunned)
+    // The only command it may queue: adding Stunned
+    commands: Game.System.commands(Game.System.inserts(Stunned)) // [!code highlight]
+  },
+  ({ queries, events, commands }) => {
+    if (events.hits.all().length === 0) return
+    for (const match of queries.calm.each())
+      commands.insert(match.entity, [Stunned, 30])
   }
-})
+)
 
-const Move = Game.System("Arena/Move", {
-  queries: {
-    moving: Game.Query({
-      // Writes Position, only reads Velocity
-      selection: { position: Game.Query.write(Position), velocity: Game.Query.read(Velocity) }, // [!code highlight]
-      without: [Stunned]
-    })
+const Recover = Game.System(
+  "Arena/Recover",
+  {
+    queries: {
+      stunned: Game.Query({ selection: { frames: Game.Query.write(Stunned) } })
+    },
+    commands: Game.System.commands(Game.System.removes(Stunned)) // [!code highlight]
+  },
+  ({ queries, commands }) => {
+    for (const match of queries.stunned.each()) {
+      const frames = match.data.frames.get() - 1
+      if (frames > 0) match.data.frames.set(frames)
+      else commands.remove(match.entity, Stunned)
+    }
   }
-}, ({ queries }) => {
-  for (const { data } of queries.moving.each()) {
-    const position = data.position.get()
-    const velocity = data.velocity.get()
-    data.position.set({ x: position.x + velocity.x, y: position.y + velocity.y })
+)
+
+const Move = Game.System(
+  "Arena/Move",
+  {
+    queries: {
+      moving: Game.Query({
+        // Writes Position, only reads Velocity
+        selection: {
+          position: Game.Query.write(Position),
+          velocity: Game.Query.read(Velocity)
+        }, // [!code highlight]
+        without: [Stunned]
+      })
+    }
+  },
+  ({ queries }) => {
+    for (const { data } of queries.moving.each()) {
+      const position = data.position.get()
+      const velocity = data.velocity.get()
+      data.position.set({
+        x: position.x + velocity.x,
+        y: position.y + velocity.y
+      })
+    }
   }
-})
+)
 ```
 
 Ritmo's version is the longest. The extra lines are the declarations, and
@@ -221,14 +256,19 @@ Miniplex, as in bitECS and Koota, any code can change any component:
 
 ```ts twoslash title="stun.ts"
 import { World } from "miniplex"
-type Entity = { velocity?: { x: number; y: number }; guard?: true; stunned?: { frames: number } }
+type Entity = {
+  velocity?: { x: number; y: number }
+  guard?: true
+  stunned?: { frames: number }
+}
 const world = new World<Entity>()
 const calm = world.with("guard", "velocity").without("stunned")
 // ---cut---
 const stun = () => {
   for (const entity of calm) {
     world.addComponent(entity, "stunned", { frames: 30 })
-    entity.velocity = { x: 0, y: 0 } // Runs: now every system that reads velocity sees this [!code warning]
+    // Runs: now every system that reads velocity sees this
+    entity.velocity = { x: 0, y: 0 } // [!code warning]
   }
 }
 ```
@@ -279,7 +319,8 @@ const crate = addEntity(world) // The same id as guard [!code warning]
 addComponent(world, crate, Health)
 Health.value[crate] = 99
 
-Health.value[guard] // 99: the crate's health, read through the guard's id [!code warning]
+// 99: the crate's health, read through the guard's id
+Health.value[guard] // [!code warning]
 ```
 
 Koota's old handle reports `isAlive() === false`, yet `get` still returns the
@@ -333,7 +374,10 @@ if (!made.ok) throw new Error()
 const runtime = made.value
 // ---cut---
 const Buy = Game.System("Shop/Buy", {
-  resources: { gold: Game.System.writeResource(Gold), stock: Game.System.readResource(Stock) }
+  resources: {
+    gold: Game.System.writeResource(Gold),
+    stock: Game.System.readResource(Stock)
+  }
 }, ({ resources }) => {
   resources.gold.update((gold) => gold - 10)
   if (resources.stock.get() === 0) return Result.failure("SoldOut" as const) // [!code highlight]

@@ -10,7 +10,9 @@ error your editor shows, cut to the fix Ritmo writes into it.
 ```ts twoslash title="schema.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 
-const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
+const Position = Descriptor.Component<{ x: number; y: number }>()(
+  "Arena/Position"
+)
 const Health = Descriptor.Component<number>()("Arena/Health")
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 const Noise = Descriptor.Component<number>()("Arena/Noise")
@@ -195,7 +197,8 @@ const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 const keys = { jump: [" "] } as const
 // ---cut---
 // @errors: 2684
-const KeyboardInput = Descriptor.Service<Keyboard.Actions<typeof keys>>()("Arena/Keyboard")
+type KeyboardSource = Keyboard.Actions<typeof keys>
+const KeyboardInput = Descriptor.Service<KeyboardSource>()("Arena/Keyboard")
 
 const Jump = Game.System(
   "Arena/Jump",
@@ -242,7 +245,11 @@ const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 const step = Clock.hz(59.94)
 
 // A state is one of the listed states, with all of its data
-const Flow = Game.StateMachine("Arena/Flow", { Menu: {}, Playing: {}, GameOver: codec(S.Struct({ winner: S.String })) })
+const Flow = Game.StateMachine("Arena/Flow", {
+  Menu: {},
+  Playing: {},
+  GameOver: codec(S.Struct({ winner: S.String }))
+})
 
 Game.System(
   "Arena/EndRound",

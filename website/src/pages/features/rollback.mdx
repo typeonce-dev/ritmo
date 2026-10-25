@@ -49,20 +49,32 @@ type PlayerInput = typeof PlayerInput.Type
 
 // Every seat's input for the tick being run.
 const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("Game/Seats") // [!code highlight]
-const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("Game/Inputs")
+const Inputs =
+  Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()(
+    "Game/Inputs"
+  )
 
 const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }))
-const Capture = InputCapture.system(Game, { name: "Game/Capture", source: Seats, resource: Inputs })
+const Capture = InputCapture.system(Game, {
+  name: "Game/Capture",
+  source: Seats,
+  resource: Inputs
+})
 
 // The schedule every peer ticks the same way.
 const simulate = Game.Schedule(Capture /* , Move, Fire, ... */)
 
 // Two seats. Input from another peer is decoded with the schema.
-const seats = Netcode.seats(codec(PlayerInput), { count: 2, idle: { dx: 0, fire: false } }) // [!code highlight]
+const seats = Netcode.seats(codec(PlayerInput), {
+  count: 2,
+  idle: { dx: 0, fire: false }
+}) // [!code highlight]
 if (!seats.ok) throw new Error(seats.error.reason)
 
 const runtime = Game.Runtime.make({
-  services: Game.Runtime.services(Game.Runtime.service(Seats, seats.value.source)), // [!code highlight]
+  services: Game.Runtime.services(
+    Game.Runtime.service(Seats, seats.value.source)
+  ), // [!code highlight]
   resources: { Inputs: [] }
 }).value
 ```
@@ -114,11 +126,13 @@ already opened, so where to connect and when to retry stay with the game:
 - Anything else: implement `send`, `receive`, and `status`.
 
 Each input is for a tick a little ahead of the one it is pressed on
-(`inputDelay`, 2 ticks by default): a lag too short to feel, which gives it
-time to reach the other peers before its tick runs. Give
-`adaptiveDelay: { min: 1, max: 4 }` instead and the session moves the delay
-with the measured round trip. Each peer moves only its own: every input
-says which tick it is for, so the peers never have to agree on a change.
+(`inputDelay`, 2 ticks by default). The lag is too short to feel, and it
+gives the input time to reach the other peers before its tick runs.
+
+Give `adaptiveDelay: { min: 1, max: 4 }` instead and the session moves the
+delay with the measured round trip. Each peer moves only its own: every
+input says which tick it is for, so the peers never have to agree on a
+change.
 
 ### 3. The loop drives it
 
@@ -186,17 +200,26 @@ declare const socket: WebSocket
 declare const names: ReadonlyArray<string>
 // ---cut---
 const session = Netcode.rollback(runtime, {
-  simulate, seats, seat: 1, links: [WebSocketNetworkLink.make(socket)], hostClock: BrowserHostClock.make(window), step,
-  hidden: { // [!code highlight]
+  simulate,
+  seats,
+  seat: 1,
+  links: [WebSocketNetworkLink.make(socket)],
+  hostClock: BrowserHostClock.make(window),
+  step,
+  hidden: {
+    // [!code highlight]
     visibility: BrowserVisibility.make(document), // [!code highlight]
-    afterMS: 30_000, // a tab closed while hidden still ends the match, 30 s + timeoutMS later
+    // A tab closed while hidden still ends the match, 30 s + timeoutMS later
+    afterMS: 30_000,
     then: "resync-on-return" // [!code highlight]
   }
 })
 if (!session.ok) throw new Error(session.error.reason)
 
 // In the HUD: who everyone is waiting for.
-const away = session.value.status().hidden.flatMap((hidden, seat) => hidden ? [names[seat]] : [])
+const away = session.value
+  .status()
+  .hidden.flatMap((hidden, seat) => (hidden ? [names[seat]] : []))
 ```
 
 ## What cannot work does not compile
@@ -251,14 +274,20 @@ const physics = Checkpoint.rewindable(world, {
   save: (world) => world.takeSnapshot(),
   restore: (bytes) => {
     const restored = PhysicsWorld.restoreSnapshot(bytes)
-    return restored === undefined ? Result.failure({ _tag: "CorruptSnapshot" as const }) : Result.success(restored)
+    return restored === undefined
+      ? Result.failure({ _tag: "CorruptSnapshot" as const })
+      : Result.success(restored)
   }
 })
 const Physics = Descriptor.Service<typeof physics>()("Game/Physics")
 
-const Step = Game.System("Game/Step", { services: { physics: Game.System.service(Physics) } }, ({ services }) => {
-  services.physics.current.step()
-})
+const Step = Game.System(
+  "Game/Step",
+  { services: { physics: Game.System.service(Physics) } },
+  ({ services }) => {
+    services.physics.current.step()
+  }
+)
 ```
 
 Saves and checksums see only the world, so copy what gameplay reads from the
@@ -278,6 +307,10 @@ declare const session: Netcode.Session<unknown, never>
 // ---cut---
 const { tick, confirmed, verified, rollbacks } = session.status()
 ```
+
+A desync in a live match is the last place to find one. A
+[sync test](/features/bugs/#rollback-checked-on-every-tick) catches it in a
+test run, on the tick it starts.
 
 ## Sounds play once
 
@@ -299,7 +332,8 @@ const hits = session.events(Hit) // one reader for each place that acts on hits
 
 // Every frame, after the session advanced:
 for (const { tick } of hits.withdrawn()) particles.cancel(tick) // a rollback undid it
-for (const { tick, value } of hits.predicted()) particles.burst(tick, value.x) // at once
+// At once, and cancelled if a rollback undoes it
+for (const { tick, value } of hits.predicted()) particles.burst(tick, value.x)
 for (const { value } of hits.confirmed()) sounds.play(value.kind) // exactly once
 ```
 

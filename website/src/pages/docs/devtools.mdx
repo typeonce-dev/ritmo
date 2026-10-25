@@ -22,8 +22,14 @@ import { Gamepad, Keyboard, Pointer } from "@typeonce/ritmo-browser"
 import { Invariant, Session } from "@typeonce/ritmo-devtools"
 import { PlayerPositionQuery } from "@typeonce/ritmo-integration-top-down/queries.ts"
 import { Game, Position } from "@typeonce/ritmo-integration-top-down/schema.ts"
-import { createTopDownSimulation } from "@typeonce/ritmo-integration-top-down/simulation.ts"
-import { inputBindings, mouseBindings, padBindings } from "@typeonce/ritmo-integration-top-down/types.ts"
+import {
+  createTopDownSimulation
+} from "@typeonce/ritmo-integration-top-down/simulation.ts"
+import {
+  inputBindings,
+  mouseBindings,
+  padBindings
+} from "@typeonce/ritmo-integration-top-down/types.ts"
 
 const keyboard = Keyboard.scripted(inputBindings, [
   { frame: 0, press: ["move.up", "move.left"] },
@@ -35,19 +41,29 @@ const keyboard = Keyboard.scripted(inputBindings, [
 const hostClock = HostClock.test()
 const mouse = Pointer.scripted(mouseBindings, [])
 const gamepad = Gamepad.scripted(padBindings, [])
-const simulation = createTopDownSimulation({ keyboard, mouse, gamepad, hostClock })
+const simulation = createTopDownSimulation({
+  keyboard,
+  mouse,
+  gamepad,
+  hostClock
+})
 if (!simulation.ok) throw new Error(simulation.error.message)
 const { runtime, setup, update } = simulation.value
 
 // Returns a message when the rule is broken, undefined while it holds.
 const PlayerInsideWorld = Invariant.fromInspector(
-  Game.Inspector("player inside world", { queries: { player: PlayerPositionQuery } }, ({ queries }) => {
-    for (const match of queries.player.each()) {
-      const { x, y } = match.data.position.get()
-      if (x < 0 || x > 2200 || y < 0 || y > 1600) return `player at (${x}, ${y})`
+  Game.Inspector(
+    "player inside world",
+    { queries: { player: PlayerPositionQuery } },
+    ({ queries }) => {
+      for (const match of queries.player.each()) {
+        const { x, y } = match.data.position.get()
+        if (x < 0 || x > 2200 || y < 0 || y > 1600)
+          return `player at (${x}, ${y})`
+      }
+      return undefined
     }
-    return undefined
-  })
+  )
 )
 
 const session = Session.make(runtime, {
