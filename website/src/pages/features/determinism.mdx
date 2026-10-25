@@ -42,14 +42,16 @@ instead:
 ```text
 error ritmo(use-ops-for-math): Math.sin may return a different last bit on
 another browser or CPU, and the simulation grows that bit into a different
-run. Use `Ops.sin` from `@typeonce/ritmo-math` (`import { Ops } from
-"@typeonce/ritmo-math"`), which returns the same bits everywhere. Math.sqrt,
+run. Use `Ops.sin` from `@typeonce/ritmo` (`import { Ops } from
+"@typeonce/ritmo"`), which returns the same bits everywhere. Math.sqrt,
 abs, min, max, floor, ceil, round, trunc, and sign are exact everywhere and
 stay as they are.
 ```
 
-Rules for `Date.now`, timers, `Math.random`, and page APIs inside systems
-work the same way.
+`oxlint --fix` rewrites the call and adds the import. Rules for `Date.now`,
+timers, `Math.random`, and page APIs inside systems work the same way.
+Dependencies are not linted: `ritmo-devtools scan <entry>` lists the calls
+in every package the simulation imports.
 
 ## Checking it
 

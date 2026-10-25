@@ -219,9 +219,6 @@ importers:
       '@typeonce/ritmo-integration-top-down':
         specifier: workspace:*
         version: link:../integration/top-down
-      '@typeonce/ritmo-math':
-        specifier: workspace:*
-        version: link:../packages/math
       '@typeonce/ritmo-netcode':
         specifier: workspace:*
         version: link:../packages/netcode
