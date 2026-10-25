@@ -66,6 +66,23 @@ describe("two peers play the shooter over a slow, reordering network", () => {
     }
   })
 
+  // The host plays a sound per confirmed hit and flashes predicted ones:
+  // under rollback, every hit is heard exactly once, as it really happened,
+  // and every flash left standing is a hit that happened on its tick.
+  it("hears every hit once, and flashes only the ones that stood", () => {
+    const peers = match({ mode: "rollback", script, latencyMS: 50, jitterMS: 80 })
+    for (const peer of peers) {
+      const { confirmed, tick } = peer.session.status()
+      const settled = Math.min(confirmed, tick)
+      const expected = truth(peers, tick).hits
+      expect(peer.heard.length).toBeGreaterThan(2)
+      expect(peer.heard).toEqual(expected.filter((hit) => hit.tick < settled))
+      // No flash of a hit a rollback undid is left standing.
+      expect(peer.flashes.size).toBeGreaterThan(0)
+      for (const [at, values] of peer.flashes) expect(values).toEqual(expected.filter((hit) => hit.tick === at).map((hit) => hit.value))
+    }
+  })
+
   it("keeps agreeing through resyncs in the middle of the match", () => {
     const peers = match({ mode: "rollback", script, latencyMS: 50, jitterMS: 80, resyncAt: [200, 400] })
     for (const peer of peers) {

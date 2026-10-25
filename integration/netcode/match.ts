@@ -7,15 +7,21 @@
 import { HostClock } from "@typeonce/ritmo"
 import { MemoryNetworkLink, Netcode } from "@typeonce/ritmo-netcode"
 
-import { draw, idle, makeRuntime, playerInput, setup, simulate, step, type GameRuntime, type PlayerInput, type Screen } from "./game.ts"
+import { draw, Game, Hit, idle, makeRuntime, playerInput, setup, simulate, step, type GameRuntime, type PlayerInput, type Screen } from "./game.ts"
 
 export interface Peer {
   readonly runtime: GameRuntime
   readonly screen: Screen
-  readonly session: Netcode.Session<PlayerInput, unknown>
+  readonly session: Netcode.Session<PlayerInput, unknown, typeof Hit>
   /** The input this seat's session recorded, by tick. */
   readonly recorded: Map<number, PlayerInput>
+  /** Every hit the host was told of once its tick was confirmed, as a sound would play it: once. */
+  readonly heard: Array<Netcode.EventRecord<HitValue>>
+  /** Hits on screen as a flash: started when predicted, taken down when withdrawn, by tick. */
+  readonly flashes: Map<number, Array<HitValue>>
 }
+
+type HitValue = { readonly seat: number; readonly shot: number }
 
 export interface MatchOptions {
   readonly mode: "rollback" | "lockstep"
@@ -49,9 +55,11 @@ export const match = (options: MatchOptions): readonly [Peer, Peer] => {
     const shared = { simulate, seats: seats.value, seat, links: [links.value[seat]!], hostClock, step }
     const session = options.mode === "rollback" ? Netcode.rollback(runtime, shared) : Netcode.lockstep(runtime, shared)
     if (!session.ok) return fail("session", session.error)
-    return { runtime, screen, session: session.value, recorded: new Map() }
+    return { runtime, screen, session: session.value, recorded: new Map(), heard: [], flashes: new Map() }
   }
   const peers = [peer(0), peer(1)] as const
+  // The host's effects read the simulation's hits through the session: one reader each.
+  const hits = peers.map(({ session }) => session.events(Hit))
   const frames = options.script[0].length + (options.tail ?? 120)
   for (let frame = 0; frame < frames; frame++) {
     if (options.resyncAt?.includes(frame) === true) peers[0].session.resync()
@@ -62,16 +70,26 @@ export const match = (options: MatchOptions): readonly [Peer, Peer] => {
       else if (advanced.value._tag !== "Waiting" && advanced.value.input !== undefined) recorded.set(advanced.value.input, local)
       // The screen draws every frame, outside the simulation: it never rewinds.
       if (!runtime.tick(draw).ok) fail("draw", seat)
+      const { heard, flashes } = peers[seat]!
+      const reader = hits[seat]!
+      for (const record of reader.confirmed()) heard.push(record)
+      for (const { tick } of reader.withdrawn()) flashes.delete(tick)
+      for (const { tick, value } of reader.predicted()) flashes.set(tick, [...flashes.get(tick) ?? [], value])
+      const lost = reader.lost()
+      if (lost !== undefined) fail(`seat ${seat} lost hits`, lost)
     }
     if (!hostClock.adjust(stepMS).ok) fail("clock", frame)
   }
   return peers
 }
 
+const ReadHits = Game.Inspector("Netcode/ReadHits", { events: { hits: Game.System.readEvent(Hit) } }, ({ events }) => events.hits.all())
+
 /**
  * One runtime that knew every input: seat 0's setup, the save both peers
  * started from, then each tick with the input each seat's session recorded,
- * drawn after every tick. Without resyncs, every peer must end on its world.
+ * drawn after every tick. Without resyncs, every peer must end on its world
+ * and have heard its `hits`, each with the tick that scored it.
  */
 export const truth = (peers: readonly [Peer, Peer], ticks: number) => {
   let current: ReadonlyArray<PlayerInput> = [idle, idle]
@@ -79,11 +97,13 @@ export const truth = (peers: readonly [Peer, Peer], ticks: number) => {
   if (!runtime.tick(setup).ok) fail("setup", "truth")
   const saved = runtime.snapshot()
   if (!saved.ok || !runtime.restore(JSON.parse(JSON.stringify(saved.value))).ok) fail("start", "truth")
+  const hits: Array<Netcode.EventRecord<HitValue>> = []
   for (let tick = 0; tick < ticks; tick++) {
     current = [peers[0].recorded.get(tick) ?? idle, peers[1].recorded.get(tick) ?? idle]
     if (!runtime.tick(simulate).ok) fail("tick", tick)
+    for (const value of runtime.inspect(ReadHits)) hits.push({ tick, value })
     if (!runtime.tick(draw).ok) fail("draw", tick)
   }
-  return { runtime, screen }
+  return { runtime, screen, hits }
 }
 
