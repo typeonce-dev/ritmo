@@ -30,11 +30,14 @@
  *
  * What `simulate` may use is checked when the checkpoint is taken:
  *
- * - its services must be input sources (`snapshot()`) or plain data. A
- *   service with effects (playing a sound) would run again for every tick
- *   ticked again; emit an event or write a resource, and act on it from the
- *   host. The host feeds the input of each tick again through its source,
- *   keyed by the tick it is for (`Clock`), not by when it arrived.
+ * - its services must be input sources (`snapshot()`), plain data, or
+ *   {@link rewindable}. A service with effects (playing a sound) would run
+ *   again for every tick ticked again; emit an event or write a resource,
+ *   and act on it from the host. The host feeds the input of each tick again
+ *   through its source, keyed by the tick it is for (`Clock`), not by when
+ *   it arrived. A library that keeps its own world (a physics or navigation
+ *   engine) is provided through {@link rewindable}: every checkpoint saves
+ *   it, and a rewind restores it.
  * - its systems may not keep `local` state, which a rewind cannot put back:
  *   keep it in a resource or a component.
  *
@@ -72,6 +75,8 @@
  */
 import type { Descriptor } from "./Descriptor.ts"
 import * as Internal from "./internal/checkpoint.ts"
+import * as RewindableInternal from "./internal/rewindable.ts"
+import type * as Result from "./Result.ts"
 import type * as Requirement from "./Requirement.ts"
 import type * as Schedule from "./Schedule.ts"
 import type { SystemDefinition } from "./System.ts"
@@ -107,8 +112,118 @@ export interface Released {
   readonly reason: "window" | "rewound" | "restored"
 }
 
-/** Why `runtime.rewind(checkpoint)` changed nothing. */
-export type RewindError = OtherRuntime | Released
+/**
+ * A {@link rewindable} service's `restore` failed: `service` is the name it
+ * was provided under, `error` what its `restore` returned. The rewind changed
+ * nothing (no other service's `current`, nothing in the world), and the
+ * checkpoint stays held.
+ */
+export interface RestoreFailed<out Name extends string = string, out E = unknown> {
+  readonly _tag: "RestoreFailed"
+  readonly service: Name
+  readonly error: E
+}
+
+/**
+ * Why `runtime.rewind(checkpoint)` changed nothing. `Failure` is the
+ * {@link RestoreFailed} of each rewindable service the runtime was given
+ * ({@link RestoreFailures}); `runtime.rewind` narrows it to exactly those, so
+ * a runtime without rewindable services never returns `RestoreFailed`. The
+ * default covers every runtime, for code that takes any rewind error.
+ */
+export type RewindError<Failure extends RestoreFailed<string, unknown> = RestoreFailed> = OtherRuntime | Released | Failure
+
+/**
+ * The {@link RestoreFailed} each {@link rewindable} service in `Services`
+ * (a runtime's provided services, by name) can fail a rewind with, typed by
+ * its `restore`. `never` when there is none.
+ */
+export type RestoreFailures<Services> = {
+  readonly [K in keyof Services & string]: Services[K] extends Rewindable<any, any, infer E> ? RestoreFailed<K, E> : never
+}[keyof Services & string]
+
+declare const rewindableTypeId: unique symbol
+
+/**
+ * A service that keeps its own state outside the world (a physics or
+ * navigation library with its own world, such as Rapier or Box2D), made
+ * rewindable with {@link rewindable}. Provide it as the service's value
+ * (`Descriptor.Service<typeof physics>()`); systems use `current`.
+ *
+ * `current` is the live value. After a rewind it is the value `restore`
+ * returned, so a system must read `current` each run and never keep it.
+ */
+export interface Rewindable<in out Value, in out Saved, out E> {
+  readonly [rewindableTypeId]: "~ritmo/Rewindable"
+  /** The live value systems use: the restored one after a rewind. Read it each run; do not keep it. */
+  readonly current: Value
+  /** Saves `current`: called once per `runtime.checkpoint(...)`. */
+  readonly save: (value: Value) => Saved
+  /** Builds the value from a save: called once per `runtime.rewind(...)`, possibly more than once with the same save. */
+  readonly restore: (saved: Saved) => Result.Result<Value, E>
+}
+
+/** The `save` and `restore` that make a value {@link rewindable}. */
+export interface RewindableHooks<in out Value, in out Saved, out E> {
+  /**
+   * The value's state now, as a value the service never changes later (a
+   * copy, or bytes): a checkpoint holds it until the checkpoint is
+   * released, and a rewind may restore it more than once.
+   */
+  readonly save: (value: Value) => Saved
+  /**
+   * A value in the state `saved` holds, or why it cannot be built (a typed
+   * `Result`, failing the rewind with {@link RestoreFailed}). It may build a
+   * new value (`World.restoreSnapshot`) or put the existing one back and
+   * return it. It must not change `saved`.
+   */
+  readonly restore: (saved: Saved) => Result.Result<Value, E>
+}
+
+/**
+ * Makes `value`, a service that keeps its own state (a physics or navigation
+ * library's world), part of rollback: every `runtime.checkpoint(...)` calls
+ * `save` and keeps its output with the checkpoint (freed with it, when the
+ * checkpoint is released), and `runtime.rewind(...)` calls `restore` with it
+ * and makes the result `current`. This is the only way a stateful service
+ * enters a rewound schedule; the library stays the game's.
+ *
+ * Cost: one `save` per checkpoint (one per tick in a rollback game) for each
+ * rewindable service the runtime was given, whether the checkpointed
+ * schedule uses it or not, and one `restore` per rewind. A runtime without
+ * rewindable services pays nothing.
+ *
+ * Not saved elsewhere:
+ *
+ * - `runtime.snapshot()` does not include it, and `runtime.restore(save)`
+ *   leaves it as it is: after loading a save (a netcode resync too), rebuild
+ *   it from the world, or keep what gameplay reads in components.
+ * - `runtime.checksum()` does not cover it: desync detection sees the world
+ *   only. Mirror what gameplay reads (positions, velocities) into components
+ *   each tick, so it is checked, saved, and inspected like the rest.
+ *
+ * @example
+ * ```ts
+ * const physics = Checkpoint.rewindable(world, {
+ *   save: (world) => world.takeSnapshot(),
+ *   restore: (bytes) => {
+ *     const restored = RAPIER.World.restoreSnapshot(bytes)
+ *     return restored === undefined ? Result.failure({ _tag: "CorruptSnapshot" as const }) : Result.success(restored)
+ *   }
+ * })
+ * const Physics = Descriptor.Service<typeof physics>()("Game/Physics")
+ * // Systems step and read `services.physics.current`; `runtime.checkpoint(simulate)` compiles.
+ * ```
+ */
+export const rewindable = <Value, Saved, E = never>(
+  value: Value,
+  hooks: RewindableHooks<Value, Saved, E>
+): Rewindable<Value, Saved, E> =>
+  RewindableInternal.make(value, hooks.save, hooks.restore) as Rewindable<Value, Saved, E>
+
+/** Whether `value` was made by {@link rewindable}. */
+export const isRewindable = (value: unknown): value is Rewindable<unknown, unknown, unknown> =>
+  RewindableInternal.isRewindable(value)
 
 /**
  * Whether `value` is a checkpoint a runtime took. A checkpoint copied or
@@ -125,8 +240,9 @@ type IsErased<T> = 0 extends 1 & T ? true : false
 type ServiceIssue<Need> =
   Need extends Descriptor<"service", infer Name, infer Value>
     ? Value extends Schedule.Source<any> ? never
+      : Value extends Rewindable<any, any, any> ? never
       : Schedule.IsPlain<Value> extends true ? never
-      : `${Name} is neither a snapshot() source nor plain data, so a rewind would call it again for every tick run again: give the simulation its input through a source, and its effects on the host through events or resources`
+      : `${Name} is neither a snapshot() source, plain data, nor Checkpoint.rewindable, so a rewind would call it again for every tick run again: give the simulation its input through a source, its effects on the host through events or resources, and a library that keeps its own state through Checkpoint.rewindable(value, { save, restore })`
     : never
 
 type LocalIssue<Sys> =
@@ -147,7 +263,8 @@ type ScheduleIssues<Selected> =
 
 /**
  * Resolves to `unknown` when a schedule can be rewound: every service it
- * uses (its transition bundles included) is an input source or plain data,
+ * uses (its transition bundles included) is an input source, plain data, or
+ * {@link rewindable},
  * and none of its systems keeps `local` state. Otherwise to an object naming
  * each problem and its fix. `runtime.checkpoint(schedule)` uses it.
  */

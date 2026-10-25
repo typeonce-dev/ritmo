@@ -62,6 +62,7 @@
 import * as HostClockModule from "./HostClock.ts"
 import * as Checkpoint from "./Checkpoint.ts"
 import * as CheckpointInternal from "./internal/checkpoint.ts"
+import * as RewindableInternal from "./internal/rewindable.ts"
 import * as Checksum from "./internal/checksum.ts"
 import * as Command from "./Command.ts"
 import * as Debug from "./Debug.ts"
@@ -724,12 +725,14 @@ export interface Runtime<
   ) => Checkpoint.Checkpoint<Root>
   /**
    * Puts the world back to `checkpoint`, exactly as it was when it was
-   * taken. Checkpoints taken after it are released; it stays usable. Fails,
-   * changing nothing, with a checkpoint of another runtime or one the
+   * taken, and restores every `Checkpoint.rewindable` service to its save
+   * then. Checkpoints taken after it are released; it stays usable. Fails,
+   * changing nothing, with a rewindable service whose `restore` failed
+   * (`RestoreFailed`, typed by that `restore`), a checkpoint of another runtime or one the
    * runtime released. Calling it while a schedule is running throws. See
    * the `Checkpoint` module.
    */
-  readonly rewind: (checkpoint: Checkpoint.Checkpoint<Root>) => Result.Result<void, Checkpoint.RewindError>
+  readonly rewind: (checkpoint: Checkpoint.Checkpoint<Root>) => Result.Result<void, Checkpoint.RewindError<Checkpoint.RestoreFailures<Services>>>
   /**
    * Evaluates one read-only projection without running a schedule. Like a
    * system, the inspector sees `added`/`changed` matches, removed and
@@ -2846,6 +2849,8 @@ const makeValidatedRuntime = <
     readonly events: Streams.StreamMark
     readonly transitionEvents: Streams.StreamMark
     readonly relationFailures: Streams.StreamMark
+    /** Each rewindable service's save, in `rewindables` order; `undefined` when the runtime has none. */
+    readonly rewindables: ReadonlyArray<unknown> | undefined
     /** The rewound schedule's systems (their state keys), with each reader's positions then (`undefined`: not run yet). */
     readonly readers: ReadonlyMap<SystemDefinition<any, any, any>, readonly [since: number, lastRun: number, streamSince: number, streamLastRun: number] | undefined>
     released: Checkpoint.Released["reason"] | undefined
@@ -2856,6 +2861,8 @@ const makeValidatedRuntime = <
   /** Held checkpoints, oldest first, in step with the world's marks. */
   const runtimeMarks: Array<RuntimeMark> = []
   const checkpointWindow = options.checkpoints
+  /** The provided `Checkpoint.rewindable` services, saved with every checkpoint. */
+  const rewindables = RewindableInternal.collect(providedServices as Readonly<Record<string, unknown>>)
 
   /** Releases the marks from `from` on (newest last), for `reason`. */
   const releaseMarks = (from: number, reason: Checkpoint.Released["reason"]): void => {
@@ -2915,6 +2922,7 @@ const makeValidatedRuntime = <
       events: events.mark(),
       transitionEvents: transitionEvents.mark(),
       relationFailures: relationFailures.mark(),
+      rewindables: rewindables === undefined ? undefined : RewindableInternal.saveAll(rewindables),
       readers,
       released: undefined
     }
@@ -2965,6 +2973,11 @@ const makeValidatedRuntime = <
     const mark = CheckpointInternal.internalOf(value) as RuntimeMark | undefined
     if (mark === undefined || mark.owner !== checkpointOwner) return Result.failure({ _tag: "OtherRuntime" })
     if (mark.released !== undefined) return Result.failure({ _tag: "Released", reason: mark.released })
+    // Services first: a failed restore leaves the world as it is.
+    if (rewindables !== undefined) {
+      const failed = RewindableInternal.restoreAll(rewindables, mark.rewindables!)
+      if (failed !== undefined) return Result.failure({ _tag: "RestoreFailed", service: failed.service, error: failed.error })
+    }
     const index = runtimeMarks.indexOf(mark)
     const rewound = world.rewindToMark(mark.world)
     for (let newer = index + 1; newer < runtimeMarks.length; newer++) runtimeMarks[newer]!.released = "rewound"
@@ -3018,7 +3031,8 @@ const makeValidatedRuntime = <
     checksum: checksum as unknown as Snapshot.Gate<S, typeof checksum>,
     restore: tracedRestore as unknown as Snapshot.Gate<S, typeof restore>,
     checkpoint: checkpoint as Runtime<S, Services, Resources, Root, Machines>["checkpoint"],
-    rewind,
+    // Restore failures are typed per service in the interface; the runtime only knows their names.
+    rewind: rewind as Runtime<S, Services, Resources, Root, Machines>["rewind"],
     inspect,
     send: send as Runtime<S, Services, Resources, Root, Machines>["send"]
   }
