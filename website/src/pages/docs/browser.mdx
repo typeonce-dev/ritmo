@@ -217,3 +217,7 @@ Game.Runtime.service(WallNodes, PixiNodeRegistry.make(wallLayer))
 
 Any renderer works: `NodeRegistry.make({ attach, detach })`. Full host:
 [`website/src/demos/top-down`](https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/top-down).
+
+A part that moves with an entity, like a turret on a tank, is a child entity in a
+`Descriptor.Hierarchy`. Pass it as `hierarchy: Attached` and the child's node is added under
+its parent's node, so its `Position` is relative to the parent and the renderer composes the two.
