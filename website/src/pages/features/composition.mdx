@@ -7,98 +7,99 @@ description: Add and remove components while the game runs and link entities int
 import Claim from "../../components/Claim.astro"
 import Game from "../../components/Game.astro"
 
-A guard gets stunned and recovers. A sword is put in a hand. An archer's
-target falls. What an entity holds, and what it is linked to, changes all
-game long, and Ritmo keeps each change safe to reason about.
+A villager catches fire. A sword is put in a hand. An archer's target
+falls. What an entity holds, and what it is linked to, changes all game
+long, and Ritmo keeps each change safe to reason about.
 
 <Game id="composition" ratio="16 / 9" />
 
-Each guard's components sit beside it. A hit adds `Stunned`, and `Move`
-leaves that guard alone until it is removed.
+`Burning` and `Wet` are components. Each rule is one system, and it acts
+only on the villagers that hold what its query asks for.
 
 <Claim title="A system adds only what its spec names">
 
-A stun is a `Stunned` component, inserted by a command. The spec lists the
-components a system may insert or remove; any other insert does not
+The spark is a `Burning` component, inserted by a command. The spec lists
+the components a system may insert or remove; any other insert does not
 compile.
 
-```ts twoslash title="stun.ts"
+```ts twoslash title="ignite.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 
-const Velocity = Descriptor.Component<{ x: number; y: number }>()("Arena/Velocity")
-const Guard = Descriptor.Component<{}>()("Arena/Guard")
-const Stunned = Descriptor.Component<{ frames: number }>()("Arena/Stunned")
-const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
+const Villager = Descriptor.Tag("Village/Villager")
+const Burning = Descriptor.Tag("Village/Burning")
+const Wet = Descriptor.Tag("Village/Wet")
+const Spark = Descriptor.Event<{}>()("Village/Spark")
 
-const Game = Schema.bind(Schema.fragment({ components: { Velocity, Guard, Stunned }, events: { Hit } }))
+const Game = Schema.bind(Schema.fragment({ components: { Villager, Burning, Wet }, events: { Spark } }))
 // ---cut---
 // @errors: 2345
-const Stun = Game.System(
-  "Arena/Stun",
+const Ignite = Game.System(
+  "Village/Ignite",
   {
     queries: {
-      guards: Game.Query({ selection: {}, with: [Guard], without: [Stunned] })
+      dry: Game.Query({ selection: {}, with: [Villager], without: [Burning] })
     },
-    events: { hits: Game.System.readEvent(Hit) },
+    events: { sparks: Game.System.readEvent(Spark) },
 
     // The only component this system may add
-    commands: Game.System.commands(Game.System.inserts(Stunned)) // [!code highlight]
+    commands: Game.System.commands(Game.System.inserts(Burning)) // [!code highlight]
   },
 
   ({ queries, events, commands }) => {
-    if (events.hits.all().length === 0) return
-    for (const match of queries.guards.each()) {
-      commands.insert(match.entity, [Stunned, { frames: 30 }])
+    if (events.sparks.all().length === 0) return
+    for (const match of queries.dry.each()) {
+      commands.insert(match.entity, [Burning, {}])
 
       // Not declared, so it does not compile
-      commands.insert(match.entity, [Velocity, { x: 0, y: 0 }])
+      commands.insert(match.entity, [Wet, {}])
     }
   }
 )
 ```
 
-Removing works the same way: `Game.System.removes(Stunned)` in the spec,
-`commands.remove(match.entity, Stunned)` in the body.
+Removing works the same way: `Game.System.removes(Burning)` in the spec,
+`commands.remove(match.entity, Burning)` in the body. That is all `Douse`
+does.
 
 </Claim>
 
 <Claim title="No loop sees an entity change shape under it">
 
 Inserts, removes, spawns, and despawns wait for the next `applyDeferred()`
-and land there together. The guard in the demo, tick by tick: the hit's
-tick it still moves, and from the next one `Move` skips it.
+and land there together. The first villager in the demo, tick by tick: on
+the spark's tick it still strolls, and from the next one `Panic` runs it.
 
-```text title="the second guard, from the demo's world in Node"
-tick 109  x 378.4  Guard, Position, Velocity
-tick 110  x 376.0  Guard, Position, Velocity, Stunned { frames: 210 }
-tick 111  x 376.0  Guard, Position, Velocity, Stunned { frames: 209 }
-tick 112  x 376.0  Guard, Position, Velocity, Stunned { frames: 208 }
+```text title="the first villager, from the demo's world in Node"
+tick 89  x 84.4  Villager, Position, Velocity
+tick 90  x 84.9  Villager, Position, Velocity, Burning
+tick 91  x 86.1  Villager, Position, Velocity, Burning
+tick 92  x 87.3  Villager, Position, Velocity, Burning
 ```
 
 ```ts twoslash title="update.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
-const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Velocity = Descriptor.Component<{ x: number; y: number }>()("Arena/Velocity")
-const Guard = Descriptor.Component<{}>()("Arena/Guard")
-const Stunned = Descriptor.Component<{ frames: number }>()("Arena/Stunned")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity, Guard, Stunned } }))
-const Stun = Game.System("Arena/Stun", { commands: Game.System.commands(Game.System.inserts(Stunned)) }, () => {})
+const Position = Descriptor.Component<{ x: number; y: number }>()("Village/Position")
+const Velocity = Descriptor.Component<{ x: number; y: number }>()("Village/Velocity")
+const Burning = Descriptor.Tag("Village/Burning")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity, Burning } }))
+const Ignite = Game.System("Village/Ignite", { commands: Game.System.commands(Game.System.inserts(Burning)) }, () => {})
+const Panic = Game.System("Village/Panic", {}, () => {})
 // ---cut---
-const Move = Game.System(
-  "Arena/Move",
+const Wander = Game.System(
+  "Village/Wander",
   {
     queries: {
-      movers: Game.Query({
+      strolling: Game.Query({
         selection: {
           position: Game.Query.write(Position),
           velocity: Game.Query.read(Velocity)
         },
-        without: [Stunned] // [!code highlight]
+        without: [Burning] // [!code highlight]
       })
     }
   },
   ({ queries }) => {
-    for (const { data } of queries.movers.each()) {
+    for (const { data } of queries.strolling.each()) {
       const { x, y } = data.position.get()
       const velocity = data.velocity.get()
       data.position.set({ x: x + velocity.x, y: y + velocity.y })
@@ -106,48 +107,53 @@ const Move = Game.System(
   }
 )
 
-// The stun lands at applyDeferred(): this tick the guard still moves,
-// the next it does not
-const update = Game.Schedule(Stun, Move, Game.Schedule.applyDeferred())
+// Burning lands at applyDeferred(): this tick the villager still
+// strolls, the next Panic has it
+const update = Game.Schedule(Ignite, Wander, Panic, Game.Schedule.applyDeferred())
 ```
 
 </Claim>
 
 <Claim title="Each system hears each change once">
 
-`Game.Query.added(Stunned)` matches the entities that gained the component
+`Game.Query.added(Burning)` matches the entities that gained the component
 since this system last ran; `Game.System.readRemoved` lists the ones that
-lost it. In the demo the recovery is heard on tick 320, and only then:
+lost it. The demo counts every removal it hears: the first villager is
+doused on tick 433, and counted once.
 
-```text title="the guard recovering"
-tick 319  x 376.0  Guard, Position, Velocity, Stunned { frames: 1 }  heard 0
-tick 320  x 376.0  Guard, Position, Velocity  heard 1
-tick 321  x 373.6  Guard, Position, Velocity  heard 1
-tick 322  x 371.2  Guard, Position, Velocity  heard 1
+```text title="the first villager reaching the fountain"
+tick 432  x 495.3  Villager, Position, Velocity, Burning  heard 8
+tick 433  x 496.5  Villager, Position, Velocity, Wet  heard 9
+tick 434  x 497.0  Villager, Position, Velocity, Wet  heard 10
+tick 435  x 497.5  Villager, Position, Velocity, Wet  heard 10
 ```
 
-```ts twoslash title="feedback.ts"
+`heard` counts the whole village, so tick 434 is a second villager doused
+right behind the first.
+
+```ts twoslash title="hiss.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
-const Stunned = Descriptor.Component<{ frames: number }>()("Arena/Stunned")
-const Game = Schema.bind(Schema.fragment({ components: { Stunned } }))
+const Burning = Descriptor.Tag("Village/Burning")
+const Game = Schema.bind(Schema.fragment({ components: { Burning } }))
 // ---cut---
-const Feedback = Game.System(
-  "Arena/Feedback",
+const Hiss = Game.System(
+  "Village/Hiss",
   {
     queries: {
-      dazed: Game.Query({
-        selection: { stunned: Game.Query.read(Stunned) },
-        filters: [Game.Query.added(Stunned)] // [!code highlight]
+      lit: Game.Query({
+        selection: {},
+        with: [Burning],
+        filters: [Game.Query.added(Burning)] // [!code highlight]
       })
     },
-    removed: { recovered: Game.System.readRemoved(Stunned) } // [!code highlight]
+    removed: { doused: Game.System.readRemoved(Burning) } // [!code highlight]
   },
   ({ queries, removed }) => {
-    for (const match of queries.dazed.each()) {
-      // show stars over match.entity
+    for (const match of queries.lit.each()) {
+      // play the whoosh at match.entity
     }
-    for (const entityId of removed.recovered.all()) {
-      // clear the stars
+    for (const entityId of removed.doused.all()) {
+      // play the hiss
     }
   }
 )

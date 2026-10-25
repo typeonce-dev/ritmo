@@ -67,8 +67,8 @@ export const demos = {
   },
   composition: {
     title: "Composition",
-    description: "Four guards; hits add a Stunned component, and Move skips any guard that holds one.",
-    controls: "Watch the chips beside each guard: Stunned snaps on, drains, and comes off.",
+    description: "A village fire made of components: four small systems read what each villager holds, and the fire comes out of that.",
+    controls: "Each rule lights up while it acts. Burning and Wet are components a system inserts or removes.",
     source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/composition",
     // Takes no input: starts on its own when scrolled into view.
     autoplay: true,
