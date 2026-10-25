@@ -75,6 +75,16 @@ f120 update  TopDown/MovePlayer  write e1 TopDown/Position {x:144.007,y:128.007}
 f121 update  TopDown/MovePlayer  write e1 TopDown/Position {x:139.34,y:128.007} -> {x:134.673,y:128.007}
 ```
 
+When the system that wrote the value only passed on a wrong input, raise
+`depth`: under each change it lists what that system declared it reads, and
+which system produced each, one system further back per step. They are
+possible causes read from declarations, so every such line says `(declared)`.
+
+```text
+f181 update  Game/ApplyDamage  write e12 Game/Health 70 -> 40
+  read Game/Damage [{amount:30}] (declared), emitted by Game/Hitscan at f181
+    read resource Game/Aim {target:12} (declared), written by Game/AimAtNewest at f180
+```
 
 | Call | Answers |
 |---|---|

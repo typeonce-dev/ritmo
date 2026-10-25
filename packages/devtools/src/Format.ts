@@ -361,6 +361,8 @@ export type LineKind =
   | "transition"
   | "restore"
   | "ignored"
+  /** A read the writing system declared, under a `why` line; only `why` and `whyResource` with `depth` above 1 print them. */
+  | "read"
 
 /**
  * The text for a failed tick result nobody read: who failed, with what, how
@@ -449,6 +451,14 @@ export interface Line {
    * the current state, or a skip that discarded nothing.
    */
   readonly noop: boolean
+  /**
+   * How far back the line is from the value asked about: 0 for every
+   * journal line and each change `why` lists; 1 for a read the system
+   * behind a depth-0 line declared, 2 for one behind that, and so on
+   * (`why(..., { depth })`). Lines above 0 are `read` lines and print
+   * indented under the line they explain.
+   */
+  readonly depth: number
 }
 
 /**
@@ -458,10 +468,10 @@ export interface Line {
 export const lines = (event: Debug.TraceEvent, options: ValueOptions = {}, labels?: Labels): ReadonlyArray<Line> =>
   rawLines(event, options, labels).map((line) => {
     const label = line.entity === undefined ? undefined : labels?.get(line.entity)
-    return { ...line, label: label === "" ? undefined : label }
+    return { ...line, label: label === "" ? undefined : label, depth: 0 }
   })
 
-const rawLines = (event: Debug.TraceEvent, options: ValueOptions, labels: Labels | undefined): ReadonlyArray<Omit<Line, "label">> => {
+const rawLines = (event: Debug.TraceEvent, options: ValueOptions, labels: Labels | undefined): ReadonlyArray<Omit<Line, "label" | "depth">> => {
   switch (event.type) {
     case "frame":
     case "schedule.start":
@@ -509,7 +519,7 @@ const rawLines = (event: Debug.TraceEvent, options: ValueOptions, labels: Labels
         text: `sent ${event.event} ${value(event.value)} (runtime.send)`
       }]
     case "deferred": {
-      const result: Array<Omit<Line, "label">> = []
+      const result: Array<Omit<Line, "label" | "depth">> = []
       for (const command of event.commands) {
         if (command.effects.length === 0) {
           result.push({ kind: "effect", frame: event.frame, schedule: event.schedule, system: command.system, entity: undefined, subject: undefined, noop: true, text: `${event.marker}: ${command.tag} had no effect` })
@@ -531,7 +541,7 @@ const rawLines = (event: Debug.TraceEvent, options: ValueOptions, labels: Labels
     }
     case "system": {
       const base = { frame: event.frame, schedule: event.schedule, system: event.system }
-      const result: Array<Omit<Line, "label">> = []
+      const result: Array<Omit<Line, "label" | "depth">> = []
       const rolledBack = event.outcome === "ok" ? "" : " (rolled back)"
       if (event.outcome !== "ok") {
         result.push({ ...base, kind: "failure", entity: undefined, subject: undefined, noop: false, text: `${event.outcome}: ${value(event.error, options)}` })
@@ -565,6 +575,6 @@ const rawLines = (event: Debug.TraceEvent, options: ValueOptions, labels: Labels
   }
 }
 
-/** `f12 update  Game/Move  write e3 ...` */
+/** `f12 update  Game/Move  write e3 ...`; a line with `depth` above 0 prints its text alone, indented two spaces per level. */
 export const line = (input: Line): string =>
-  `f${input.frame} ${input.schedule}  ${input.system ?? "-"}  ${input.text}${input.noop && (input.kind === "write" || input.kind === "resource" || input.kind === "effect") ? " (unchanged)" : ""}`
+  input.depth > 0 ? `${"  ".repeat(input.depth)}${input.text}` : `f${input.frame} ${input.schedule}  ${input.system ?? "-"}  ${input.text}${input.noop && (input.kind === "write" || input.kind === "resource" || input.kind === "effect") ? " (unchanged)" : ""}`

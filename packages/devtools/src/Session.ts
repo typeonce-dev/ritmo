@@ -14,7 +14,9 @@
  * - `journal(filter)` lists what happened, one fact per line, filtered by
  *   frames, entity, component, resource, event, machine, system, or kind.
  * - `why(entity, component)` lists the latest changes to one component, and
- *   the systems whose declared `spawns` could have spawned the entity.
+ *   the systems whose declared `spawns` could have spawned the entity. With
+ *   `depth` above 1 it follows each change back through what the writing
+ *   system declared it reads, one level per step (see {@link WhyOptions}).
  * - `system(name)` shows one system's declared access and recent activity.
  * - `describe()`, `dump(filter)`, `streams()` render the core debug handle.
  * - `report()` summarizes per-system timing and warnings accumulated while
@@ -298,6 +300,46 @@ export interface JournalFilter<S extends Schema.Any> {
   readonly verbose?: boolean
 }
 
+/**
+ * How far `why` and `whyResource` look back.
+ *
+ * The trace records what systems wrote, not what they read, so a level
+ * past the first comes from declarations: under each change, one indented
+ * `read` line per read the writing system declares, each with the latest
+ * traced fact that could have produced the value it saw then:
+ *
+ * - an event: what was published to it since the system's previous run,
+ *   and by which system (or `runtime.send`);
+ * - a component of the written entity, read in the query that wrote it: the
+ *   latest write, spawn, or insert of it on that entity before the run;
+ * - a component of any other query: only how many entities match it now,
+ *   since the trace does not say which ones the system read;
+ * - a resource: its latest write before the run;
+ * - a machine: its latest transition or field update before the run.
+ *
+ * Every such line ends in `(declared)`: a possible cause, not an observed
+ * read. A system already in the chain is printed with `(cycle: not
+ * followed)` and not followed again.
+ *
+ * @example
+ * ```ts
+ * session.why(12, Health, { depth: 3 })
+ * // f181 update  Game/ApplyDamage  write e12 Game/Health 70 -> 40
+ * //   read Game/Damage [{amount:30}] (declared), emitted by Game/Hitscan at f181
+ * //     read e12 Game/Aim {target:7} (declared), written by Game/AimAtNewest at f180
+ * ```
+ */
+export interface WhyOptions {
+  /** Changes listed, and reads listed under each change. Defaults to 5. */
+  readonly limit?: number
+  /**
+   * Levels printed: 1 (the default) lists the changes alone; 2 adds what
+   * each writing system declared it reads and who produced it; 3 adds the
+   * reads of those producers, and so on.
+   */
+  readonly depth?: number
+}
+
 /** One system's runs and timing over the session, in `report()` and `system(name)`. */
 export interface SystemStats {
   readonly system: string
@@ -463,10 +505,15 @@ export interface Session<
   readonly step: <Name extends Names>(name: Name) => SteppedFrame<StepSystem<Schedules[Name]>>
   /** What happened in the kept history, one fact per line. */
   readonly journal: (filter?: JournalFilter<S>) => Rendered.Rendered<ReadonlyArray<Format.Line>>
-  /** Latest changes to one entity's component, and the systems whose `spawns` could have spawned it. Use `whyResource` for resources. */
-  readonly why: (entity: number, component: Schema.ComponentDescriptor<S>, options?: { readonly limit?: number }) => Rendered.Rendered<ReadonlyArray<Format.Line>>
-  /** Latest changes to one resource and the systems that made them. */
-  readonly whyResource: (resource: Schema.ResourceDescriptor<S>, options?: { readonly limit?: number }) => Rendered.Rendered<ReadonlyArray<Format.Line>>
+  /**
+   * Latest changes to one entity's component, and the systems whose `spawns`
+   * could have spawned it; with `depth` above 1, what each writing system
+   * declared it reads, under each change ({@link WhyOptions}). Use
+   * `whyResource` for resources.
+   */
+  readonly why: (entity: number, component: Schema.ComponentDescriptor<S>, options?: WhyOptions) => Rendered.Rendered<ReadonlyArray<Format.Line>>
+  /** Latest changes to one resource and the systems that made them; `depth` as for `why`. */
+  readonly whyResource: (resource: Schema.ResourceDescriptor<S>, options?: WhyOptions) => Rendered.Rendered<ReadonlyArray<Format.Line>>
   /** One system's declared access and recent activity. */
   readonly system: (name: string, options?: { readonly limit?: number }) => Rendered.Rendered<SystemActivity>
   /** `debug.describe()`, lints first. */
@@ -1062,16 +1109,25 @@ export const make = <
   /** Lines hidden by the last `collectLines` call because they record no change. */
   let hidden = 0
 
-  const collectLines = (filter: JournalFilter<S>): Array<Format.Line> => {
+  const collectLines = (filter: JournalFilter<S>): Array<Format.Line> => collectSourced(filter).map((entry) => entry.line)
+
+  /** The journal lines of `filter`, each with its event's position in {@link flatTrace}. */
+  const collectSourced = (filter: JournalFilter<S>): Array<{ readonly line: Format.Line; readonly at: number }> => {
     hidden = 0
     refreshLabels()
     const subject = filter.component?.name ?? filter.resource?.name ?? filter.event?.name ?? filter.machine?.name
-    const records = filter.last === undefined ? history : history.slice(-filter.last)
-    const result: Array<Format.Line> = []
-    for (const entry of records) {
-      if (!inRange(entry.frame, filter.frames)) continue
+    // `slice(-last)` keeps the journal's meaning of `last` (0 keeps everything).
+    const first = filter.last === undefined ? 0 : history.length - history.slice(-filter.last).length
+    const result: Array<{ readonly line: Format.Line; readonly at: number }> = []
+    let at = 0
+    for (const [index, entry] of history.entries()) {
+      if (index < first || !inRange(entry.frame, filter.frames)) {
+        at += entry.events.length
+        continue
+      }
       const labels = labelsAt(entry.frame)
       for (const event of entry.events) {
+        const position = at++
         for (const line of Format.lines(event, format, labels)) {
           if (filter.entity !== undefined && line.entity !== filter.entity) continue
           if (subject !== undefined && line.subject !== subject && !(line.kind === "effect" && line.subject === undefined && filter.entity !== undefined)) continue
@@ -1082,7 +1138,7 @@ export const make = <
             hidden += 1
             continue
           }
-          result.push(line)
+          result.push({ line, at: position })
         }
       }
     }
@@ -1103,8 +1159,9 @@ export const make = <
     return Rendered.make(lines, renderLines(`journal: ${lines.length} lines (${rangeText()}${hiddenText})`, lines))
   }
 
-  const why = (entity: number, component: Schema.ComponentDescriptor<S>, whyOptions: { readonly limit?: number } = {}) => {
-    const lines = collectLines({ entity, component, kinds: ["write", "effect"], limit: whyOptions.limit ?? 5 })
+  const why = (entity: number, component: Schema.ComponentDescriptor<S>, whyOptions: WhyOptions = {}) => {
+    const sourced = collectSourced({ entity, component, kinds: ["write", "effect"], limit: whyOptions.limit ?? 5 })
+    const lines = followReads(sourced, whyOptions)
     const currentValue = debug.dump({ entities: [entity] }).entities[0]
     const name = Format.entity(entity, nowLabels())
     const now = currentValue === undefined
@@ -1112,13 +1169,13 @@ export const make = <
       : component.name in currentValue.components
         ? `${name} ${component.name} is now ${Format.value(currentValue.components[component.name], format)}`
         : `${name} has no ${component.name} now`
-    const changes = lines.length === 0
+    const changes = sourced.length === 0
       ? `${now}; no change to it in ${rangeText()}`
-      : `${now}; last ${lines.length} changes (oldest first):`
+      : `${now}; last ${sourced.length} changes (oldest first):`
     const spawners = spawnersOf(currentValue === undefined ? [component.name] : Object.keys(currentValue.components), component.name)
     const header = `${changes}\n${spawners.length === 0
       ? `no described system declares spawns of ${component.name}`
-      : `could have spawned it: ${spawners.join(", ")}`}`
+      : `could have spawned it: ${spawners.join(", ")}`}${readsNote(lines)}`
     return Rendered.make(lines, renderLines(header, lines))
   }
 
@@ -1136,16 +1193,273 @@ export const make = <
       .map((system) => system.name)
   }
 
-  const whyResource = (resource: Schema.ResourceDescriptor<S>, whyOptions: { readonly limit?: number } = {}) => {
-    const lines = collectLines({ resource, kinds: ["resource"], limit: whyOptions.limit ?? 5 })
+  const whyResource = (resource: Schema.ResourceDescriptor<S>, whyOptions: WhyOptions = {}) => {
+    const lines = followReads(collectSourced({ resource, kinds: ["resource"], limit: whyOptions.limit ?? 5 }), whyOptions)
     const resources = debug.dump({ limit: 0 }).resources
     const now = resource.name in resources
       ? `${resource.name} is now ${Format.value(resources[resource.name], format)}`
       : `${resource.name} has no value now`
-    const header = lines.length === 0
+    const changes = lines.filter((line) => line.depth === 0).length
+    const header = changes === 0
       ? `${now}; no change to it in ${rangeText()}`
-      : `${now}; last ${lines.length} changes (oldest first):`
+      : `${now}; last ${changes} changes (oldest first):${readsNote(lines)}`
     return Rendered.make(lines, renderLines(header, lines))
+  }
+
+  /** The header note `why` adds when it printed declared reads. */
+  const readsNote = (lines: ReadonlyArray<Format.Line>): string =>
+    lines.some((line) => line.depth > 0)
+      ? "\nindented: what each writing system declared it reads, and the latest fact that could have produced it (declared: possible causes, not observed reads)"
+      : ""
+
+  /** Every kept trace event, oldest first; {@link collectSourced} positions index into it. */
+  const flatTrace = (): ReadonlyArray<Debug.TraceEvent> => history.flatMap((entry) => entry.events)
+
+  /**
+   * The changes `why` lists, each followed (with `depth` above 1) by the
+   * reads its system declared, depth first. Positions are in trace order, so
+   * "before the run" is what the system could have seen.
+   */
+  const followReads = (sourced: ReadonlyArray<{ readonly line: Format.Line; readonly at: number }>, whyOptions: WhyOptions): Array<Format.Line> => {
+    const depth = whyOptions.depth ?? 1
+    const limit = whyOptions.limit ?? 5
+    if (depth <= 1 || sourced.length === 0) return sourced.map((entry) => entry.line)
+    const trace = flatTrace()
+    const systems = new Map(debug.describe().systems.map((entry) => [entry.name, entry] as const))
+    let world: ReadonlyArray<Debug.EntityDump> | undefined
+    const worldNow = () => (world ??= debug.dump().entities)
+
+    /** The latest committed run of `system` before `before`. */
+    const runBefore = (system: string, before: number): { readonly at: number; readonly run: Debug.SystemEvent } | undefined => {
+      for (let at = before - 1; at >= 0; at--) {
+        const event = trace[at]!
+        if (event.type === "system" && event.system === system && event.outcome === "ok") return { at, run: event }
+      }
+      return undefined
+    }
+    /** Where the stream reads of the run at `at` start: after the system's previous run, or the discarding skip. */
+    const readsSince = (system: string, at: number): number => {
+      for (let index = at - 1; index >= 0; index--) {
+        const event = trace[index]!
+        if ((event.type === "system" && event.system === system) || (event.type === "system.skipped" && event.system === system && !event.held)) return index + 1
+      }
+      return 0
+    }
+    const latest = <A>(before: number, find: (event: Debug.TraceEvent, at: number) => A | undefined): A | undefined => {
+      for (let at = before - 1; at >= 0; at--) {
+        const found = find(trace[at]!, at)
+        if (found !== undefined) return found
+      }
+      return undefined
+    }
+
+    /** A run whose reads can be followed: the entity and component (or resource) it wrote, which its own reads skip. */
+    interface Cause {
+      readonly at: number
+      readonly run: Debug.SystemEvent
+      readonly entity: number | undefined
+      readonly subject: string | undefined
+    }
+    interface Read {
+      readonly frame: number
+      readonly schedule: string
+      readonly system: string | undefined
+      readonly entity: number | undefined
+      readonly subject: string
+      readonly text: string
+      readonly next: Cause | undefined
+    }
+
+    const readsOf = (cause: Cause): Array<Read> => {
+      const { run } = cause
+      const description = systems.get(run.system)
+      const here = { frame: run.frame, schedule: run.schedule, system: undefined, entity: undefined, next: undefined }
+      if (description === undefined) {
+        return [{ ...here, subject: run.system, text: `${run.system} is in no named or described schedule: its declared reads are unknown` }]
+      }
+      const reads: Array<Read> = []
+      const since = readsSince(run.system, cause.at)
+      for (const name of description.events.reads) {
+        const before = reads.length
+        for (let at = since; at < cause.at; at++) {
+          const event = trace[at]!
+          if (event.type === "runtime.sent" && event.event === name) {
+            reads.push({ ...here, frame: event.frame, schedule: "", subject: name, text: `read ${name} ${Format.value([event.value], format)} (declared), sent by runtime.send at f${event.frame}` })
+          }
+          if (event.type === "system" && event.outcome === "ok") {
+            for (const emitted of event.events) {
+              if (emitted.event !== name) continue
+              reads.push({
+                frame: event.frame,
+                schedule: event.schedule,
+                system: event.system,
+                entity: undefined,
+                subject: name,
+                text: `read ${name} ${Format.value(emitted.values, format)} (declared), emitted by ${event.system} at f${event.frame}`,
+                next: { at, run: event, entity: undefined, subject: undefined }
+              })
+            }
+          }
+        }
+        if (reads.length === before) {
+          reads.push({ ...here, subject: name, text: `read ${name} (declared): nothing published to it since ${run.system}'s previous run` })
+        }
+      }
+      for (const query of description.queries) {
+        const components = [...query.reads, ...query.writes, ...query.optional]
+        if (cause.entity !== undefined && cause.subject !== undefined && query.writes.includes(cause.subject)) {
+          const entity = cause.entity
+          for (const name of components.filter((component) => component !== cause.subject)) {
+            reads.push(componentRead(cause, entity, name))
+          }
+        } else if (components.length > 0) {
+          const required = [...query.reads, ...query.writes, ...query.with]
+          const count = worldNow().filter((dumped) =>
+            required.every((name) => name in dumped.components) && !query.without.some((name) => name in dumped.components)).length
+          reads.push({
+            ...here,
+            subject: components[0]!,
+            text: `read ${components.join(", ")} of ${count} matching ${count === 1 ? "entity" : "entities"} now (declared; the trace does not say which it read)`
+          })
+        }
+      }
+      for (const name of new Set([...description.resources.reads, ...description.resources.writes])) {
+        if (name === cause.subject && cause.entity === undefined) continue
+        const found = latest(cause.at, (event, at) => {
+          if (event.type !== "system" || event.outcome !== "ok") return undefined
+          // An equal-value write did not produce the value; the change before it did.
+          const write = event.resources.find((entry) => entry.resource === name && !Format.sameValue(entry.before, entry.after))
+          return write === undefined ? undefined : { at, event, write }
+        })
+        reads.push(found === undefined
+          ? { ...here, subject: name, text: `read resource ${name} (declared): no change to it in ${rangeText()}` }
+          : {
+            frame: found.event.frame,
+            schedule: found.event.schedule,
+            system: found.event.system,
+            entity: undefined,
+            subject: name,
+            text: `read resource ${name} ${Format.value(found.write.after, format)} (declared), written by ${found.event.system} at f${found.event.frame}`,
+            next: { at: found.at, run: found.event, entity: undefined, subject: name }
+          })
+      }
+      for (const name of new Set([...description.machines.reads, ...description.machines.updates])) {
+        const found = latest(cause.at, (event, at): Read | undefined => {
+          if (event.type === "transition" && event.machine === name && (event.outcome === "applied" || event.outcome === "enterFailed")) {
+            return { ...here, frame: event.frame, schedule: event.schedule, subject: name, text: `read machine ${name} (declared): transition ${Format.transition(event)} ${event.outcome} at f${event.frame}` }
+          }
+          if (event.type !== "system" || event.outcome !== "ok" || event.system === run.system) return undefined
+          const write = event.machines.find((entry) => entry.machine === name)
+          return write === undefined ? undefined : {
+            frame: event.frame,
+            schedule: event.schedule,
+            system: event.system,
+            entity: undefined,
+            subject: name,
+            text: `read machine ${name} ${Format.change(write.before, write.after, format)} (declared), updated by ${event.system} at f${event.frame}`,
+            next: { at, run: event, entity: undefined, subject: undefined }
+          }
+        })
+        reads.push(found ?? { ...here, subject: name, text: `read machine ${name} (declared): no transition in ${rangeText()}` })
+      }
+      if (reads.length === 0) reads.push({ ...here, subject: run.system, text: `${run.system} declares no other reads (declared)` })
+      return reads
+    }
+
+    /** The latest value of `component` on `entity` before the cause's run, and what produced it. */
+    const componentRead = (cause: Cause, entity: number, component: string): Read => {
+      const name = Format.entity(entity, labelsAt(cause.run.frame))
+      const found = latest(cause.at, (event, at): Read | undefined => {
+        if (event.type === "system" && event.outcome === "ok") {
+          const write = event.writes.find((entry) => entry.entity === entity && entry.component === component && !Format.sameValue(entry.before, entry.after))
+          return write === undefined ? undefined : {
+            frame: event.frame,
+            schedule: event.schedule,
+            system: event.system,
+            entity,
+            subject: component,
+            text: `read ${name} ${component} ${Format.value(write.after, format)} (declared), written by ${event.system} at f${event.frame}`,
+            next: { at, run: event, entity, subject: component }
+          }
+        }
+        if (event.type !== "deferred") return undefined
+        for (const command of [...event.commands].reverse()) {
+          for (const effect of [...command.effects].reverse()) {
+            if (effect.entity !== entity) continue
+            const value = effect.kind === "spawn" ? (component in effect.components ? { found: effect.components[component] } : undefined)
+              : effect.kind === "insert" && effect.component === component ? { found: effect.value }
+              : effect.kind === "overwrite" && effect.component === component ? { found: effect.after }
+              : undefined
+            if (value === undefined) continue
+            const queued = runBefore(command.system, at)
+            return {
+              frame: event.frame,
+              schedule: event.schedule,
+              system: command.system,
+              entity,
+              subject: component,
+              text: `read ${name} ${component} ${Format.value(value.found, format)} (declared), ${effect.kind === "spawn" ? "spawned" : "inserted"} by ${command.system} at f${event.frame}`,
+              next: queued === undefined ? undefined : { ...queued, entity: undefined, subject: undefined }
+            }
+          }
+        }
+        return undefined
+      })
+      return found ?? { frame: cause.run.frame, schedule: cause.run.schedule, system: undefined, entity, subject: component, text: `read ${name} ${component} (declared): no change to it in ${rangeText()}`, next: undefined }
+    }
+
+    const toLine = (read: Read, level: number, suffix: string): Format.Line => {
+      const label = read.entity === undefined ? undefined : labelsAt(read.frame)?.get(read.entity)
+      return {
+        kind: "read",
+        frame: read.frame,
+        schedule: read.schedule,
+        system: read.system,
+        entity: read.entity,
+        label: label === "" ? undefined : label,
+        subject: read.subject,
+        text: `${read.text}${suffix}`,
+        noop: false,
+        depth: level
+      }
+    }
+
+    const out: Array<Format.Line> = []
+    const follow = (cause: Cause, level: number, chain: ReadonlySet<string>) => {
+      const reads = readsOf(cause)
+      for (const read of reads.slice(0, limit)) {
+        const cycle = read.next !== undefined && chain.has(read.next.run.system)
+        out.push(toLine(read, level, cycle ? " (cycle: not followed)" : ""))
+        if (read.next !== undefined && !cycle && level + 1 < depth) follow(read.next, level + 1, new Set([...chain, read.next.run.system]))
+      }
+      if (reads.length > limit) {
+        out.push({
+          kind: "read",
+          frame: cause.run.frame,
+          schedule: cause.run.schedule,
+          system: undefined,
+          entity: undefined,
+          label: undefined,
+          subject: undefined,
+          text: `…+${reads.length - limit} more declared reads of ${cause.run.system} (raise limit to see them)`,
+          noop: false,
+          depth: level
+        })
+      }
+    }
+    /** The run behind a listed change: the writing run, or for an applied command the run that queued it. */
+    const causeOf = (line: Format.Line, at: number): Cause | undefined => {
+      const event = trace[at]
+      if (event?.type === "system") return { at, run: event, entity: line.entity, subject: line.subject }
+      const queued = event?.type === "deferred" && line.system !== undefined ? runBefore(line.system, at) : undefined
+      return queued === undefined ? undefined : { ...queued, entity: undefined, subject: undefined }
+    }
+    for (const { line, at } of sourced) {
+      out.push(line)
+      const cause = causeOf(line, at)
+      if (cause !== undefined) follow(cause, 1, new Set([cause.run.system]))
+    }
+    return out
   }
 
   const statsFor = (system: string): SystemStats | undefined => {
