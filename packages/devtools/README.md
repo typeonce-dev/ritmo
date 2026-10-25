@@ -304,6 +304,11 @@ console.log(Desync.compare(mine.snapshot, theirs.snapshot, { labels: runtime.ins
 The first difference is where to look: rerun the match headless and ask a
 `Session` `why` that value changed.
 
+A `Netcode.syncTest` made with `keepSnapshots: true` fails with
+`RewindDiffers` carrying the world before and after a rewind:
+`Desync.compare(error.snapshots.expected, error.snapshots.actual)` names
+what the rewind did not put back.
+
 ## Replays
 
 A replay is the last seconds of a play session as a file: a debug artifact
@@ -482,6 +487,43 @@ const file = Replay.parse(JSON.parse(readFileSync(".replays/....json", "utf8")))
 const opened = file.ok ? Replay.session(make, file.value, { invariants: [HealthNeverNegative] }) : file
 expect(opened.ok && opened.value.play().data.run.stop.reason).toBe("completed") // fails until the fix
 ```
+
+### Over a network
+
+The same `Fuzz.run` fuzzes a rollback game over a faulty network. Give it one
+`Fuzz.seats` input (every seat's input per frame) and `network`: each seat
+plays on its own peer, a fresh `make(playback)`, joined by a seeded
+`MemoryNetworkLink` and driven by a `Netcode.rollback` session from
+[`@typeonce/ritmo-netcode`](https://github.com/typeonce-dev/ritmo/blob/main/packages/netcode/README.md).
+
+```ts
+// The seats service the simulation captures; make provides it with playback.source(Seats).
+const Players = Fuzz.seats(Seats, {
+  codec: PlayerInput, count: 2, idle: { dx: 0, fire: false },   // as given to Netcode.seats
+  generate: (random, frame, seat) => ({ dx: random.integer(-1, 2), fire: random.next() < 0.2 })
+})
+const found = Fuzz.run(make, {
+  schedule: "simulate", setup: "setup", inputs: [Players], invariants: [HealthNeverNegative],
+  frames: 600, seed: 7,
+  network: { seed: 3, latencyMS: 60, jitterMS: 40, loss: 0.1, step }   // faults repeat for the same seed
+})
+if (!found.ok && found.error._tag === "Found" && found.error.violation._tag === "SessionFailed") {
+  console.log(found.error.violation.seat, found.error.violation.error) // Desynced, with this peer's save of the tick
+}
+```
+
+- A session failure (`Desynced`, `TickFailed`, `CheckpointLost`, or the
+  session ending) is a `SessionFailed` violation; invariants are checked on
+  every peer after each frame. `settle` idle frames (120) follow the fuzzed
+  ones so late input and checksums arrive; checksums are compared every 10
+  ticks unless `checksumEvery` says otherwise.
+- Shrinking keeps the network seed and shrinks the input timeline, one seat
+  at a time. The `replay` plays the shrunk timeline on one runtime (step it
+  to see each tick); `reproduces` is `false` for a desync, which needs two
+  peers: find it again with the same `seed`, `runs: 1`, and `network`.
+- A `simulate` that cannot be rewound, or a runtime that cannot save, does
+  not compile, as for `Netcode.rollback`. Run `Netcode.syncTest` first: it
+  finds state a rewind cannot put back on one peer, faster.
 
 ## Recording a browser session
 

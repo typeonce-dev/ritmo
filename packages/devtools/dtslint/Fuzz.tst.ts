@@ -3,7 +3,9 @@ import type * as Result from "@typeonce/ritmo/Result"
 import type * as Schedule from "@typeonce/ritmo/Schedule"
 import type * as System from "@typeonce/ritmo/System"
 import type { Random } from "@typeonce/ritmo-math"
+import { Clock } from "@typeonce/ritmo"
 import { Fuzz, Invariant, Replay, Rendered } from "@typeonce/ritmo-devtools"
+import type { Netcode } from "@typeonce/ritmo-netcode"
 import { describe, expect, it } from "tstyche"
 import * as Codecs from "../../core/test/codecs.ts"
 
@@ -76,7 +78,7 @@ describe("Fuzz.run", () => {
     expect(Fuzz.run(make, { schedule: "update", setup: "setup", inputs: [Pads], invariants: [UnderLimit], frames: 10, seed: 1 }))
       .type.toBe<Result.Result<Rendered.Rendered<Fuzz.Passed>, Fuzz.FuzzError>>()
     expect<Fuzz.FuzzError["_tag"]>().type.toBe<"Found" | "Flaky" | "InvalidOptions" | "Unreplayable">()
-    expect<Fuzz.Violation["_tag"]>().type.toBe<"InvariantViolated" | "SystemFailed" | "Defect">()
+    expect<Fuzz.Violation["_tag"]>().type.toBe<"InvariantViolated" | "SystemFailed" | "Defect" | "SessionFailed">()
     expect<Fuzz.Found["replay"]>().type.toBe<Replay.ReplayFile>()
   })
 
@@ -118,6 +120,61 @@ describe("Fuzz.run", () => {
     })
     // @ts-expect-error FuzzTypes/Page is neither a snapshot() source of plain data nor plain data
     Fuzz.run(paged, { schedule: "toasting", inputs: [Pads], frames: 10, seed: 1 })
+  })
+})
+
+describe("Fuzz.seats and run's network", () => {
+  type Move = { readonly dx: number }
+  const MoveCodec = Codecs.struct({ dx: Codecs.number })
+  const Seats = Descriptor.Service<Netcode.Source<Move>>()("FuzzTypes/Seats")
+  const Moves = Fuzz.seats(Seats, { codec: MoveCodec, count: 2, generate: (random, _frame, seat) => ({ dx: random.integer(-1, 2) * seat }), idle: { dx: 0 } })
+  const Remember = Game.System("FuzzTypes/Remember", { local: () => ({ runs: 0 }), services: { seats: Game.System.consumeService(Seats) } }, ({ local }) => {
+    local.runs++
+  })
+  const Read = Game.System("FuzzTypes/Read", { services: { seats: Game.System.consumeService(Seats) } }, () => {})
+  const networked = (playback: Replay.Playback) => ({
+    runtime: unwrap(Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Seats, playback.source(Seats))), resources: { Limit: 3 }, debug: { hostClock } })),
+    schedules: { update: Game.Schedule(Read), remember: Game.Schedule(Remember) },
+    hostClock
+  })
+  const network = { seed: 1, latencyMS: 40, loss: 0.1, step: Clock.hz(60) }
+
+  it("infers every seat's input from the codec", () => {
+    expect(Moves).type.toBe<Fuzz.Seats<"FuzzTypes/Seats", { readonly dx: number }>>()
+    expect(Moves).type.toBeAssignableTo<Fuzz.Input<"FuzzTypes/Seats", ReadonlyArray<Move>>>()
+    expect<Parameters<Parameters<typeof Fuzz.seats>[1]["generate"]>>().type.toBe<[random: Random.Random, frame: number, seat: number]>()
+  })
+
+  it("rejects a codec of another input, and a seats service that is not a Netcode.Source", () => {
+    // @ts-expect-error Type 'string' is not assignable to type 'number'
+    Fuzz.seats(Seats, { codec: MoveCodec, count: 2, generate: () => ({ dx: "left" }), idle: { dx: 0 } })
+    // @ts-expect-error not assignable to parameter of type 'Descriptor<"service", "FuzzTypes/Pad", Source<{ readonly dx: number; }>>'
+    Fuzz.seats(Pad, { codec: MoveCodec, count: 2, generate: () => ({ dx: 0 }), idle: { dx: 0 } })
+  })
+
+  it("fuzzes over a network with the same run", () => {
+    expect(Fuzz.run(networked, { schedule: "update", inputs: [Moves], frames: 10, seed: 1, network }))
+      .type.toBe<Result.Result<Rendered.Rendered<Fuzz.Passed>, Fuzz.FuzzError>>()
+    expect(Fuzz.run(networked, { schedule: "update", inputs: [Moves], frames: 10, seed: 1 }))
+      .type.toBe<Result.Result<Rendered.Rendered<Fuzz.Passed>, Fuzz.FuzzError>>()
+    const violation = {} as Fuzz.Violation
+    if (violation._tag === "SessionFailed") expect(violation.error).type.toBe<Netcode.SessionError<unknown>>()
+  })
+
+  it("over a network, takes only a Fuzz.seats input", () => {
+    // @ts-expect-error is missing the following properties from type 'Seats<string, unknown>': codec
+    Fuzz.run(make, { schedule: "update", inputs: [Pads], frames: 10, seed: 1, network })
+  })
+
+  it("over a network, rejects a schedule that cannot be rewound, as Netcode.rollback does", () => {
+    expect(Fuzz.run).type.toBeCallableWith(networked, { schedule: "remember", inputs: [Moves], frames: 10, seed: 1 })
+    // @ts-expect-error FuzzTypes/Remember keeps local state, which a rewind cannot put back
+    Fuzz.run(networked, { schedule: "remember", inputs: [Moves], frames: 10, seed: 1, network })
+  })
+
+  it("rejects network options of the wrong shape", () => {
+    // @ts-expect-error Property 'step' is missing
+    Fuzz.run(networked, { schedule: "update", inputs: [Moves], frames: 10, seed: 1, network: { seed: 1, latencyMS: 40 } })
   })
 })
 

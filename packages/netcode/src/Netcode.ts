@@ -14,6 +14,9 @@
  *   tick has arrived. For turn-based or slow-paced games: nothing is ever
  *   run again, so the schedule needs no checkpoints, but every tick waits on
  *   the slowest message.
+ * - `syncTest(runtime, options)` runs one peer with no network and rewinds
+ *   and runs again after every tick: run it in the game's tests to prove
+ *   the simulation rewinds exactly before shipping a rollback game.
  *
  * The simulation reads input from one source: `seats(codec, { count, idle })`
  * makes it, the game provides `seats.source` as a service and captures it
@@ -82,6 +85,7 @@ import * as EventsInternal from "./internal/events.ts"
 import * as HaltedInternal from "./internal/halted.ts"
 import * as Internal from "./internal/session.ts"
 import * as SeatsInternal from "./internal/seats.ts"
+import * as SyncTestInternal from "./internal/syncTest.ts"
 import type { NetworkLink } from "./NetworkLink.ts"
 import type { Visibility } from "./Visibility.ts"
 
@@ -186,7 +190,8 @@ export interface TickFailed<TickError> {
 /**
  * Seat 0 could not save its world, or this peer could not restore the save:
  * the peers run different versions of the game, or a value does not encode.
- * Ends the session.
+ * Ends the session. A {@link syncTest} fails with it when the world does
+ * not checksum.
  */
 export interface SyncFailed {
   readonly _tag: "SyncFailed"
@@ -521,3 +526,94 @@ export const lockstep = <
   }
 ): Result.Result<Session<Input, FailureOf<Simulate>, Schema.EventDescriptor<S>>, InvalidOptions> =>
   Internal.make("lockstep", runtime as unknown as Internal.Driven, options as unknown as Internal.MakeOptions) as Result.Result<Session<Input, FailureOf<Simulate>, Schema.EventDescriptor<S>>, InvalidOptions>
+
+/** Options of {@link syncTest}: no links and no seat, since one peer plays every seat. */
+export interface SyncTestOptions<Input> {
+  readonly seats: Seats<Input>
+  /**
+   * How many ticks each forced rollback goes back, 1 or more: use the
+   * game's `maxRollback`. The runtime must keep at least this many
+   * checkpoints (`Game.Runtime.make`'s `checkpoints`, 16 by default).
+   */
+  readonly rewind: number
+  /** The input of every seat but 0 from its previous one, as in `rollback` (the same input by default: every other seat stays idle). */
+  readonly predict?: (previous: Input) => Input
+  /** Keeps a save of the world at the start of every tick in the window, so `RewindDiffers` carries both sides. Costs a save per tick run. */
+  readonly keepSnapshots?: boolean
+}
+
+/**
+ * The world at the start of `tick` differs after a rewind and the ticks
+ * since run again with the same input: tick `tick - 1` read state the rewind
+ * did not put back (a module variable, a service with its own memory, an
+ * object a system keeps outside the world), so a rollback game would desync.
+ * `expected` is the first run's checksum, `actual` the one after the rewind.
+ * With `keepSnapshots`, `snapshots` holds both saves: `Desync.compare(expected, actual)`
+ * from `@typeonce/ritmo-devtools` names the component or resource that differs.
+ * Not `Desynced`, which compares two peers.
+ */
+export interface RewindDiffers {
+  readonly _tag: "RewindDiffers"
+  readonly tick: number
+  readonly expected: string
+  readonly actual: string
+  readonly snapshots: { readonly expected: Snapshot.WorldSnapshot; readonly actual: Snapshot.WorldSnapshot } | undefined
+}
+
+/**
+ * Why a sync test's `advance` ran nothing. Every later `advance` fails with
+ * the same error: a sync test has no resync, since the bug is in the game.
+ */
+export type SyncTestError<TickError> = RewindDiffers | CheckpointLost | TickFailed<TickError> | SyncFailed
+
+/** Where a sync test stands, as `Status` for a session. */
+export interface SyncTestStatus {
+  /** The next tick to run. */
+  readonly tick: number
+  /** The last tick whose world agreed after a rewind (`-1`: none yet). */
+  readonly verified: number
+  /** Ticks run again after the forced rollbacks, in total. */
+  readonly again: number
+  /** Forced rollbacks, one per `advance` that ran. */
+  readonly rollbacks: number
+}
+
+/** A sync test around one runtime, made by {@link syncTest}. */
+export interface SyncTest<Input, TickError> {
+  /**
+   * Runs the next tick with `local` as seat 0's input and every other
+   * seat's predicted one, then rewinds `rewind` ticks and runs them again,
+   * comparing the world's checksum at the start of every tick with the
+   * first run's. Call it once per frame of the test.
+   */
+  readonly advance: (local: Input) => Result.Result<Extract<Advanced, { readonly _tag: "Ran" }>, SyncTestError<TickError>>
+  readonly status: () => SyncTestStatus
+}
+
+/**
+ * A sync test: one peer with no network that forces a rollback of `rewind`
+ * ticks after every tick and checks the world comes out the same. Run it in
+ * the game's tests before shipping a rollback game: state a rewind cannot
+ * put back fails `advance` with `RewindDiffers` on the first tick it
+ * matters, where two real peers would only desync later and far apart.
+ * `simulate` and the runtime are typed as for {@link rollback}, so a
+ * schedule that does not compile there does not compile here. To check two
+ * peers over a faulty network, use `rollback` over `MemoryNetworkLink`
+ * (or `Fuzz.run` with `network` in `@typeonce/ritmo-devtools`).
+ */
+export const syncTest = <
+  S extends Schema.Any,
+  Services extends Record<string, unknown>,
+  Resources extends object,
+  Root,
+  Machines extends Record<string, unknown>,
+  Input,
+  const Simulate extends AnySchedule<S, Root>
+>(
+  runtime: Runtime.Runtime<S, Services, Resources, Root, Machines> & ValidateSaveable<S>,
+  options: SyncTestOptions<Input> & {
+    /** The schedule the rollback game ticks. */
+    readonly simulate: Simulate & Checkpoint.ValidateRewindable<Simulate> & Runtime.ValidateScheduleArray<readonly [Simulate], Services, Resources, Machines>
+  }
+): Result.Result<SyncTest<Input, FailureOf<Simulate>>, InvalidOptions> =>
+  SyncTestInternal.make(runtime as unknown as Internal.Driven, options as unknown as SyncTestInternal.SyncTestMakeOptions) as Result.Result<SyncTest<Input, FailureOf<Simulate>>, InvalidOptions>

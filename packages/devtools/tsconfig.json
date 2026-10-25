@@ -8,6 +8,7 @@
   "include": ["src"],
   "references": [
     { "path": "../core" },
-    { "path": "../math" }
+    { "path": "../math" },
+    { "path": "../netcode" }
   ]
 }
