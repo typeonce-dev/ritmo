@@ -1,0 +1,12 @@
+{
+  "name": "@typeonce/ritmo-integration-prototype",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@typeonce/ritmo": "workspace:*",
+    "@typeonce/ritmo-browser": "workspace:*",
+    "@typeonce/ritmo-math": "workspace:*",
+    "@typeonce/ritmo-devtools": "workspace:*",
+    "zod": "^4.6.7"
+  }
+}

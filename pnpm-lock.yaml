@@ -130,6 +130,24 @@ importers:
         specifier: ^8.21.0
         version: 8.21.0
 
+  integration/prototype:
+    dependencies:
+      '@typeonce/ritmo':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@typeonce/ritmo-browser':
+        specifier: workspace:*
+        version: link:../../packages/browser
+      '@typeonce/ritmo-devtools':
+        specifier: workspace:*
+        version: link:../../packages/devtools
+      '@typeonce/ritmo-math':
+        specifier: workspace:*
+        version: link:../../packages/math
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+
   integration/top-down:
     dependencies:
       '@typeonce/ritmo':
