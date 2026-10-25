@@ -341,6 +341,16 @@ export const system = <
   }) as RenderSystem<S, Root, Registry | Services[keyof Services] | Resources[keyof Resources] | ConditionNeedsFromConditions<When>>
 }
 
+// The lookups `reattach` uses, with the generic ids erased.
+interface HierarchyLookup {
+  parent(entity: number, relation: unknown): { readonly ok: boolean }
+  ancestors(entity: number, relation: unknown): { readonly ok: true; readonly value: ReadonlyArray<number> } | { readonly ok: false }
+}
+
+interface ParentedQuery {
+  each(): Iterable<{ readonly entity: { readonly id: number }; readonly data: { readonly __parent: { get(): number } } }>
+}
+
 // Moves every node whose parent changed since it was attached: the entity
 // gained, lost, or changed its parent, or the parent gained or lost its node.
 // There is no per-reader filter for relation edges, so every parented entity
