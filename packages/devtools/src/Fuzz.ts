@@ -63,16 +63,19 @@ export interface Input<Name extends string = string, Data = unknown> {
 /**
  * Declares how to fuzz one `snapshot()` source: `generate` draws its value
  * for a frame, of the type the source returns, and `neutral` is the idle
- * value. Pass the result in `run`'s `inputs`. Use `Keyboard.scripted` (or a
+ * value. Pass the result in `run`'s `inputs`. The source is a
+ * `snapshot()`-only service (`Schedule.Source`, `InputCapture.SourceOf<...>`
+ * for browser input, whose `Controls` action set draws a value with
+ * `random` and has `idle` for `neutral`). Use `Keyboard.scripted` (or a
  * scripted source) instead to replay one known sequence.
  */
-export const input = <const Name extends string, Data>(
-  descriptor: Descriptor<"service", Name, Source<Data>>,
+export const input = <const Name extends string, Value extends Source<unknown>>(
+  descriptor: Descriptor<"service", Name, Value> & Replay.ValidateSource<Name, Value>,
   options: {
-    readonly generate: (random: Random.Random, frame: number) => NoInfer<Data>
-    readonly neutral: NoInfer<Data>
+    readonly generate: (random: Random.Random, frame: number) => Replay.SourceData<Value>
+    readonly neutral: Replay.SourceData<Value>
   }
-): Input<Name, Data> => ({ name: descriptor.name, generate: options.generate, neutral: options.neutral })
+): Input<Name, Replay.SourceData<Value>> => ({ name: descriptor.name, generate: options.generate, neutral: options.neutral })
 
 /** What `run` fuzzes, how long, and how hard it shrinks. */
 export interface Options<
@@ -259,12 +262,12 @@ export const run = <
     const asked = new Set<string>()
     const unknown: Array<string> = []
     const playback: Replay.Playback = {
-      source: <const SourceName extends string, Data>(descriptor: Descriptor<"service", SourceName, Source<Data>>): Source<Data> => {
+      source: <const SourceName extends string, Value extends Source<unknown>>(descriptor: Descriptor<"service", SourceName, Value>): Source<Replay.SourceData<Value>> => {
         asked.add(descriptor.name)
         const index = indexOf.get(descriptor.name)
         if (index === undefined) unknown.push(descriptor.name)
         // The value was generated for this source's `input`, whose type `input` checked against the descriptor.
-        return { snapshot: () => (index === undefined ? undefined : current[index]) as Data }
+        return { snapshot: () => (index === undefined ? undefined : current[index]) as Replay.SourceData<Value> }
       },
       constant: () => undefined
     }
