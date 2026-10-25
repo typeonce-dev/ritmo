@@ -192,8 +192,8 @@ describe("hidden", () => {
   const visibility = MemoryVisibility.make()
 
   it("takes a visibility, a bound, and a policy, in both sessions", () => {
-    expect(Netcode.rollback(runtime, { ...options, simulate, hidden: { visibility, afterMS: 10_000, then: "resync-on-return" } })).type.toBe<Result.Result<Netcode.Session<Input, SystemFailure<"NetTypes/Fail", "Overflow">>, Netcode.InvalidOptions>>()
-    expect(Netcode.lockstep(runtime, { ...options, simulate, hidden: { visibility, afterMS: 10_000, then: "stall" } })).type.toBe<Result.Result<Netcode.Session<Input, SystemFailure<"NetTypes/Fail", "Overflow">>, Netcode.InvalidOptions>>()
+    expect(Netcode.rollback(runtime, { ...options, simulate, hidden: { visibility, afterMS: 10_000, then: "resync-on-return" } })).type.toBe<Result.Result<Netcode.Session<Input, SystemFailure<"NetTypes/Fail", "Overflow">, typeof Hit>, Netcode.InvalidOptions>>()
+    expect(Netcode.lockstep(runtime, { ...options, simulate, hidden: { visibility, afterMS: 10_000, then: "stall" } })).type.toBe<Result.Result<Netcode.Session<Input, SystemFailure<"NetTypes/Fail", "Overflow">, typeof Hit>, Netcode.InvalidOptions>>()
     expect<Netcode.HiddenPolicy>().type.toBe<"stall" | "resync-on-return">()
   })
 
