@@ -185,7 +185,7 @@ export class Collector {
     this.alert(
       "non-finite-value",
       `nonfinite:${system}:${subject}`,
-      `${system} wrote NaN or an infinity to ${entity === undefined ? "" : `e${entity} `}${subject}${path}`,
+      `${system} wrote NaN or an infinity to ${entity === undefined ? "" : `${Format.entity(entity)} `}${subject}${path}`,
       frame
     )
   }

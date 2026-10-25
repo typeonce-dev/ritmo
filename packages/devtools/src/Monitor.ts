@@ -492,7 +492,7 @@ export const attach = <S extends Schema.Any, Root>(runtime: Target<S, Root>, opt
     const parts: Array<string> = []
     if (browsed !== undefined) {
       parts.push(`<h3>Entities with ${escape(short(browsed.component))} (${browsed.ids.length})</h3><div class="btm-ids">`)
-      for (const id of browsed.ids.slice(0, 80)) parts.push(`<button type="button" data-entity="${id}">e${id}</button>`)
+      for (const id of browsed.ids.slice(0, 80)) parts.push(`<button type="button" data-entity="${id}">${Format.entity(id)}</button>`)
       parts.push(browsed.ids.length > 80 ? `<span class="btm-dim">…+${browsed.ids.length - 80}</span>` : "", "</div>")
     }
     if (selected === undefined) {
@@ -500,7 +500,7 @@ export const attach = <S extends Schema.Any, Root>(runtime: Target<S, Root>, opt
       return parts.join("")
     }
     const dumped = debug.dump({ entities: [selected] }).entities[0]
-    parts.push(`<h3 style="text-transform:none">e${selected}</h3>`)
+    parts.push(`<h3 style="text-transform:none">${Format.entity(selected)}</h3>`)
     if (dumped === undefined) {
       parts.push(`<div class="btm-dim">Not alive (despawned).</div>`)
     } else {
@@ -513,7 +513,7 @@ export const attach = <S extends Schema.Any, Root>(runtime: Target<S, Root>, opt
         parts.push(`<span title="${escape(component)}">${escape(short(component))}</span><span${changed ? ` class="btm-flash"` : ""}>${escape(text)}</span>`)
       }
       for (const [relation, target] of Object.entries(dumped.relations)) {
-        parts.push(`<span>${escape(short(relation))}</span><span>→ e${target}</span>`)
+        parts.push(`<span>${escape(short(relation))}</span><span>→ ${Format.entity(target)}</span>`)
       }
       parts.push(`</div>`)
       previousValues = values

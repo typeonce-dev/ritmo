@@ -3,7 +3,8 @@
  *
  * The output is meant to be read in a terminal or pasted into a prompt, so it
  * favors one line per fact and short, stable prefixes (`e12` for entity 12,
- * `f40` for frame 40). Numbers are rounded to at most 3 decimals for display;
+ * `f40` for frame 40). An entity with a label prints as `player e12`
+ * (see {@link entity}). Numbers are rounded to at most 3 decimals for display;
  * the underlying data keeps exact values.
  *
  * @module Format
@@ -18,6 +19,26 @@ export interface ValueOptions {
   readonly depth?: number
   /** Array items and object keys printed before `…+N`. Defaults to 8. */
   readonly items?: number
+}
+
+/**
+ * Entity id to label, read when printing entities. A session gets them from
+ * its `labels` inspector (a `ReadonlyMap<number, string>` is one); pass
+ * `runtime.inspect(Labels)` where a function takes labels as data, such as
+ * `Desync.compare`.
+ */
+export interface Labels {
+  // A method, so a map keyed by branded entity ids (`match.entity.id`) is labels too.
+  get(entity: number): string | undefined
+}
+
+/**
+ * The one way devtools prints an entity: `player e12` when `labels` names
+ * it, `e12` otherwise. An empty label counts as none.
+ */
+export const entity = (id: number, labels?: Labels): string => {
+  const label = labels?.get(id)
+  return label === undefined || label === "" ? `e${id}` : `${label} e${id}`
 }
 
 const formatNumber = (value: number): string => {
@@ -229,15 +250,15 @@ export const description = (input: Debug.Description): string => {
   return [...lintLines(input.lints), "", ...lines].join("\n")
 }
 
-/** One entity per line, then resources, machines, and pending commands. */
-export const dump = (input: Debug.WorldDump, options: ValueOptions = {}): string => {
+/** One entity per line (named with `labels`), then resources, machines, and pending commands. */
+export const dump = (input: Debug.WorldDump, options: ValueOptions = {}, labels?: Labels): string => {
   const lines: Array<string> = [
     `frame ${input.frame} (tick ${input.tick}), ${input.entities.length} of ${input.entityCount} entities`
   ]
-  for (const entity of input.entities) {
-    const components = Object.entries(entity.components).map(([name, component]) => `${name}=${value(component, options)}`)
-    const relations = Object.entries(entity.relations).map(([name, target]) => `${name}->e${target}`)
-    lines.push(`e${entity.id}  ${[...components, ...relations].join("  ")}`)
+  for (const dumped of input.entities) {
+    const components = Object.entries(dumped.components).map(([name, component]) => `${name}=${value(component, options)}`)
+    const relations = Object.entries(dumped.relations).map(([name, target]) => `${name}->${entity(target, labels)}`)
+    lines.push(`${entity(dumped.id, labels)}  ${[...components, ...relations].join("  ")}`)
   }
   const resources = Object.entries(input.resources)
   if (resources.length > 0) {
@@ -274,28 +295,29 @@ export const streams = (input: ReadonlyArray<Debug.StreamStatus>): string => {
   return lines.join("\n")
 }
 
-const effect = (input: Debug.Effect, options: ValueOptions): string => {
+const effect = (input: Debug.Effect, options: ValueOptions, labels: Labels | undefined): string => {
+  const id = entity(input.entity, labels)
   switch (input.kind) {
     case "spawn":
-      return `spawn e${input.entity} ${Object.entries(input.components).map(([name, component]) => `${name}=${value(component, options)}`).join(" ")}`
+      return `spawn ${id} ${Object.entries(input.components).map(([name, component]) => `${name}=${value(component, options)}`).join(" ")}`
     case "despawn":
-      return `despawn e${input.entity}`
+      return `despawn ${id}`
     case "insert":
-      return `insert e${input.entity} ${input.component}=${value(input.value, options)}`
+      return `insert ${id} ${input.component}=${value(input.value, options)}`
     case "overwrite":
-      return `insert e${input.entity} ${input.component} ${change(input.before, input.after, options)}`
+      return `insert ${id} ${input.component} ${change(input.before, input.after, options)}`
     case "remove":
-      return `remove e${input.entity} ${input.component}`
+      return `remove ${id} ${input.component}`
     case "relate":
-      return `relate e${input.entity} ${input.relation}->e${input.target}`
+      return `relate ${id} ${input.relation}->${entity(input.target, labels)}`
     case "unrelate":
-      return `unrelate e${input.entity} ${input.relation}`
+      return `unrelate ${id} ${input.relation}`
     case "relationFailure":
-      return `relation failure e${input.entity} ${input.relation}: ${input.error}`
+      return `relation failure ${id} ${input.relation}: ${input.error}`
     case "requirementViolated":
-      return `skipped ${input.command} e${input.entity}: ${input.component} requires ${input.missing}`
+      return `skipped ${input.command} ${id}: ${input.component} requires ${input.missing}`
     case "staleTarget":
-      return `skipped ${input.command} e${input.entity}: id spawned in an earlier run`
+      return `skipped ${input.command} ${id}: id spawned in an earlier run`
   }
 }
 
@@ -392,6 +414,8 @@ export interface Line {
   readonly system: string | undefined
   /** The entity the line is about, when there is one. */
   readonly entity: number | undefined
+  /** That entity's label, when the labels given to {@link lines} name it. */
+  readonly label: string | undefined
   /** The component, resource, event, machine, or stream the line is about. */
   readonly subject: string | undefined
   readonly text: string
@@ -403,10 +427,16 @@ export interface Line {
 }
 
 /**
- * Splits one trace event into printable lines. Frame and schedule
- * boundaries produce no lines.
+ * Splits one trace event into printable lines, naming entities with
+ * `labels`. Frame and schedule boundaries produce no lines.
  */
-export const lines = (event: Debug.TraceEvent, options: ValueOptions = {}): ReadonlyArray<Line> => {
+export const lines = (event: Debug.TraceEvent, options: ValueOptions = {}, labels?: Labels): ReadonlyArray<Line> =>
+  rawLines(event, options, labels).map((line) => {
+    const label = line.entity === undefined ? undefined : labels?.get(line.entity)
+    return { ...line, label: label === "" ? undefined : label }
+  })
+
+const rawLines = (event: Debug.TraceEvent, options: ValueOptions, labels: Labels | undefined): ReadonlyArray<Omit<Line, "label">> => {
   switch (event.type) {
     case "frame":
     case "schedule.start":
@@ -454,7 +484,7 @@ export const lines = (event: Debug.TraceEvent, options: ValueOptions = {}): Read
         text: `sent ${event.event} ${value(event.value)} (runtime.send)`
       }]
     case "deferred": {
-      const result: Array<Line> = []
+      const result: Array<Omit<Line, "label">> = []
       for (const command of event.commands) {
         if (command.effects.length === 0) {
           result.push({ kind: "effect", frame: event.frame, schedule: event.schedule, system: command.system, entity: undefined, subject: undefined, noop: true, text: `${event.marker}: ${command.tag} had no effect` })
@@ -468,7 +498,7 @@ export const lines = (event: Debug.TraceEvent, options: ValueOptions = {}): Read
             entity: applied.entity,
             subject: "component" in applied ? applied.component : "relation" in applied ? applied.relation : undefined,
             noop: applied.kind === "overwrite" && sameValue(applied.before, applied.after),
-            text: `${event.marker}: ${effect(applied, options)}`
+            text: `${event.marker}: ${effect(applied, options, labels)}`
           })
         }
       }
@@ -476,13 +506,13 @@ export const lines = (event: Debug.TraceEvent, options: ValueOptions = {}): Read
     }
     case "system": {
       const base = { frame: event.frame, schedule: event.schedule, system: event.system }
-      const result: Array<Line> = []
+      const result: Array<Omit<Line, "label">> = []
       const rolledBack = event.outcome === "ok" ? "" : " (rolled back)"
       if (event.outcome !== "ok") {
         result.push({ ...base, kind: "failure", entity: undefined, subject: undefined, noop: false, text: `${event.outcome}: ${value(event.error, options)}` })
       }
       for (const write of event.writes) {
-        result.push({ ...base, kind: "write", entity: write.entity, subject: write.component, noop: sameValue(write.before, write.after), text: `write e${write.entity} ${write.component} ${change(write.before, write.after, options)}${rolledBack}` })
+        result.push({ ...base, kind: "write", entity: write.entity, subject: write.component, noop: sameValue(write.before, write.after), text: `write ${entity(write.entity, labels)} ${write.component} ${change(write.before, write.after, options)}${rolledBack}` })
       }
       for (const write of event.resources) {
         result.push({ ...base, kind: "resource", entity: undefined, subject: write.resource, noop: sameValue(write.before, write.after), text: `resource ${write.resource} ${change(write.before, write.after, options)}${rolledBack}` })
