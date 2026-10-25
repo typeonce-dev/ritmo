@@ -47,7 +47,20 @@ FixedLoop.start({
 })
 ```
 
-What does not compile: a rollback `simulate` that cannot be rewound (a service with effects, `local` state; a library that keeps its own world, like a physics engine, is provided through `Checkpoint.rewindable` from `@typeonce/ritmo` instead), a schedule whose requirements the runtime does not provide, and a runtime that cannot save (a component or resource without a schema). What fails at construction, as a typed `Result`: a seat out of range, seats the runtime does not provide or another session took, and a `maxRollback` larger than the checkpoints the runtime keeps.
+## Input delay
+
+A session records the local input for a tick a few ticks ahead (`inputDelay`, 2 by default): a little lag that lets the input reach the other peers before its tick runs, so rollback guesses less often and lockstep waits less. The right value depends on the connection, which changes during a match. Give `adaptiveDelay` instead and the session moves the delay with the measured round trip:
+
+```ts
+Netcode.rollback(runtime, { ...options, adaptiveDelay: { min: 1, max: 4 } })
+session.status().inputDelay // the delay in use; status().delayChanges counts moves
+```
+
+It starts at `max` and moves to `ceil(roundTripMS / 2 / step ms)` (the round trip to the slowest other seat, smoothed), clamped to the bounds, once that target held for 4 measurements in a row (one every 250 ms), so a noisy link does not move it back and forth. Each seat moves only its own delay: every input message names its tick, so peers never agree on a change and seats may run different delays. A rise leaves the ticks it skips idle (`seats.idle`); a fall drops the local input for as many frames (`Advanced.input` is `undefined`). Giving both `inputDelay` and `adaptiveDelay` does not compile. Every peer must give the same `inputDelay`, or the same `adaptiveDelay.max`: after a save, that many ticks are idle for every seat.
+
+In tests, `link.setLatency(ms)` on a `MemoryNetworkLink` changes a peer's latency mid-match.
+
+What does not compile: a rollback `simulate` that cannot be rewound (a service with effects, `local` state; a library that keeps its own world, like a physics engine, is provided through `Checkpoint.rewindable` from `@typeonce/ritmo` instead), a schedule whose requirements the runtime does not provide, and a runtime that cannot save (a component or resource without a schema), and both `inputDelay` and `adaptiveDelay`. What fails at construction, as a typed `Result`: a seat out of range, seats the runtime does not provide or another session took, and a `maxRollback` larger than the checkpoints the runtime keeps.
 
 ## Effects under rollback
 
