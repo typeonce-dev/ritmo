@@ -40,9 +40,16 @@
  *
  * @example
  * ```ts
+ * const PlayerInsideWorld = Invariant.fromInspector(Game.Inspector("player inside world", {
+ *   queries: { players: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] }) }
+ * }, ({ queries }) => queries.players.each().some(({ data }) => data.position.get().x < 0) ? "left the world" : undefined))
+ * const Labels = Game.Inspector("labels", {
+ *   queries: { players: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] }) }
+ * }, ({ queries }) => new Map(queries.players.each().map((match) => [match.entity.id, "player"] as const)))
+ * // ---cut---
  * const session = Session.make(runtime, {
  *   hostClock: HostClock.test(),
- *   schedules: { setup: setupSchedule, update: updateSchedule },
+ *   schedules: { setup, update },
  *   invariants: [PlayerInsideWorld],
  *   labels: Labels
  * })
@@ -123,7 +130,7 @@ export type ValidateInvariants<
  * const Labels = Game.Inspector("labels", {
  *   queries: { players: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] }) }
  * }, ({ queries }) => new Map(queries.players.each().map((match) => [match.entity.id, "player"] as const)))
- * Session.make(runtime, { hostClock, schedules: { update }, labels: Labels })
+ * Session.make(runtime, { hostClock: HostClock.test(), schedules: { update }, labels: Labels })
  * ```
  */
 export type LabelsInspector<Root = any> = Inspector.InspectorDefinition<any, unknown, Root, any, any>
@@ -323,6 +330,8 @@ export interface JournalFilter<S extends Schema.Any> {
  *
  * @example
  * ```ts
+ * const session = Session.make(runtime, { hostClock: HostClock.test(), schedules: { update } })
+ * // ---cut---
  * session.why(12, Health, { depth: 3 })
  * // f181 update  Game/ApplyDamage  write e12 Game/Health 70 -> 40
  * //   read Game/Damage [{amount:30}] (declared), emitted by Game/Hitscan at f181

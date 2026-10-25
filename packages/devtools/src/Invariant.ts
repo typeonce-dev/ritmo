@@ -21,6 +21,9 @@
  *
  * @example
  * ```ts
+ * const WORLD_WIDTH = 800
+ * const hostClock = HostClock.test()
+ * // ---cut---
  * const PlayerInsideWorld = Invariant.fromInspector(Game.Inspector("player inside world", {
  *   queries: { players: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] }) }
  * }, ({ queries }) => {

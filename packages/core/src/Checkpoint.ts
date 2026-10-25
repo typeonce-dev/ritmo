@@ -59,6 +59,9 @@
  *
  * @example
  * ```ts
+ * declare const tick: number
+ * declare const wrongTick: number
+ * // ---cut---
  * const history = new Map<number, Checkpoint.Checkpoint<typeof Root>>()
  *
  * // Every tick: keep where it starts, then run it with the input known so far.
@@ -206,6 +209,10 @@ export interface RewindableHooks<in out Value, in out Saved, out E> {
  *
  * @example
  * ```ts
+ * interface PhysicsWorld { takeSnapshot(): Uint8Array }
+ * declare const RAPIER: { readonly World: { restoreSnapshot(bytes: Uint8Array): PhysicsWorld | undefined } }
+ * declare const world: PhysicsWorld
+ * // ---cut---
  * const physics = Checkpoint.rewindable(world, {
  *   save: (world) => world.takeSnapshot(),
  *   restore: (bytes) => {

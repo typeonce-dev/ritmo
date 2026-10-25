@@ -34,6 +34,10 @@
  *
  * @example
  * ```ts
+ * declare const DeadAreGone: Invariant.Invariant
+ * declare const makeReplaySimulation: (playback: Replay.Playback) => Replay.Target<typeof Game.schema, typeof Root>
+ * declare const text: string
+ * // ---cut---
  * const recorder = Replay.recorder(runtime, {
  *   schedule: simulate, name: "simulate", keep: 30, step: Clock.hz(30),
  *   sink: ReplayViteSink.make({ fetch }), hostClock: HostClock.standard,

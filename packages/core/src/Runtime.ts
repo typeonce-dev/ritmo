@@ -17,24 +17,23 @@
  *
  * @example
  * ```ts
+ * declare const audioHost: { play: (sound: string) => void }
+ * // ---cut---
  * // Provide the host capabilities systems declared as services. Simulation
  * // time comes from `Clock` and randomness from the `Random` resource,
  * // never from a service.
  * const services = Game.Runtime.services(
  *   Game.Runtime.service(Audio, { play: (sound) => audioHost.play(sound) }),
- *   Game.Runtime.service(Nodes, nodeRegistry)
+ *   Game.Runtime.service(Logger, { log: (message) => console.log(message) })
  * )
  *
- * // make always returns a Result. Viewport is a constructed resource, so
+ * // make always returns a Result. Score is a constructed resource, so
  * // validating it can fail and the Result must be checked.
  * const runtime = Game.Runtime.make({
  *   services,
- *   resources: {
- *     viewport: { width: 800, height: 600 },
- *     rng: Random.seed(0x5eed)
- *   },
+ *   resources: { Time: Clock.start(step), Score: 0 },
  *   machines: Game.Runtime.machines(
- *     Game.Runtime.machine(GameFlow, { _tag: "Boot" })
+ *     Game.Runtime.machine(GameFlow, { _tag: "Menu" })
  *   )
  * })
  *
@@ -43,8 +42,8 @@
  * }
  *
  * // The runtime owns the world and executes explicit schedules.
- * runtime.value.tick(setupSchedule)
- * runtime.value.tick(updateSchedule)
+ * runtime.value.tick(setup)
+ * runtime.value.tick(update)
  * ```
  *
  * @module Runtime
@@ -132,10 +131,11 @@ import type {
  * const runtime = Game.Runtime.make({
  *   services: Game.Runtime.services(
  *     Game.Runtime.service(Logger, { log: console.log })
- *   )
- * }).value
+ *   ),
+ *   resources: { Time: Clock.start(step) }
+ * })
  *
- * runtime.tick(updateSchedule)
+ * if (runtime.ok) runtime.value.tick(update)
  * ```
  */
 
@@ -325,6 +325,7 @@ type ServiceEntriesToRecord<
  * export const makeRuntime = <const Services extends RuntimeServices>(services: Services) =>
  *   Game.Runtime.make({ services, resources: { Score: 0 } })
  *
+ * const Input = Descriptor.Service<Keyboard.Actions<typeof bindings>>()("Game/Input")
  * makeRuntime(Game.Runtime.services(Game.Runtime.service(Input, Keyboard.scripted(bindings, []))))
  * ```
  */
@@ -3385,8 +3386,9 @@ const makeValidatedRuntime = <
  *     Game.Runtime.service(Logger, { log: console.log })
  *   ),
  *   resources: { Score: 0 },
- *   machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Menu" }))
- * }).value
+ *   machines: Game.Runtime.machines(Game.Runtime.machine(GameFlow, { _tag: "Menu" }))
+ * })
+ * if (!runtime.ok) throw new Error(JSON.stringify(runtime.error))
  * ```
  */
 export const make = <
@@ -3482,6 +3484,8 @@ const rejectRepeated = (names: ReadonlyArray<string>, kind: "service" | "machine
  *
  * @example
  * ```ts
+ * declare const audioHost: { play: (sound: string) => void }
+ * // ---cut---
  * // Bundle host capabilities once when building the runtime.
  * const services = Game.Runtime.services(
  *   Game.Runtime.service(Logger, { log: console.log }),

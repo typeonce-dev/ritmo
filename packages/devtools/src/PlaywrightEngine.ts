@@ -24,6 +24,9 @@
  *
  * @example
  * ```ts
+ * declare const replayTarget: (playback: Replay.Playback) => Replay.Target<typeof Game.schema, typeof Root>
+ * declare const file: Replay.ReplayFile
+ * // ---cut---
  * const browsers = PlaywrightEngine.make({ entry: "src/replay-target.ts", browsers: ["chromium", "webkit", "firefox"] })
  * const verified = await Verify.acrossEngines(replayTarget, file, { engines: browsers.engines })
  * await browsers.close()

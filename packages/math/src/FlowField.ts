@@ -14,8 +14,12 @@
  *
  * @example
  * ```ts
+ * declare const cellSize: number, bodyRadius: number
+ * declare const walls: ReadonlyArray<Box2.Box2>
+ * declare const player: Vec2.Vec2, enemy: Vec2.Vec2
+ * // ---cut---
  * const made = FlowField.make(cellSize)
- * if (!made.ok) return made
+ * if (!made.ok) throw new Error(`bad cell size ${made.error.value}`)
  * const paths = made.value
  * // Each step:
  * paths.setWalls(walls, bodyRadius)

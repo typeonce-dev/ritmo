@@ -14,11 +14,11 @@
  *
  * @example
  * ```ts
+ * // The game's own start: `Netcode.rollback(runtime, { ...options, links })` (see `Netcode`).
+ * declare const startMatch: (links: ReadonlyArray<NetworkLink.NetworkLink>) => void
+ * // ---cut---
  * const socket = new WebSocket("wss://relay.example.com/match/42")
- * socket.addEventListener("open", () => {
- *   const link = WebSocketNetworkLink.make(socket)
- *   const session = Netcode.rollback(runtime, { ...options, links: [link] })
- * })
+ * socket.addEventListener("open", () => startMatch([WebSocketNetworkLink.make(socket)]))
  * ```
  */
 import * as NetworkLink from "./NetworkLink.ts"

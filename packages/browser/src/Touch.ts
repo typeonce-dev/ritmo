@@ -43,6 +43,11 @@
  *
  * @example
  * ```ts
+ * declare const canvas: HTMLCanvasElement
+ * declare const move: (direction: Touch.StickState) => void
+ * declare const shoot: (direction: Touch.StickState) => void
+ * declare const dash: () => void
+ * // ---cut---
  * const touch = Touch.actions(canvas, window, ({ width, height }) => ({
  *   // Each stick drives the vector named like its key, so it merges into `Controls`.
  *   sticks: {

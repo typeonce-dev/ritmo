@@ -45,7 +45,7 @@
  * const update = Game.Schedule(
  *   EnemyWave,
  *   Game.Schedule.applyDeferred(),
- *   observeSpawnedEnemies
+ *   Move // sees the new enemies: the spawn applied just before
  * )
  * ```
  *
@@ -309,12 +309,16 @@ export const entry = <D extends Descriptor<"component", string, any>>(
  *
  * @example
  * ```ts
- * const draft = Game.Command.spawn(
- *   Game.Command.entryRaw(Position, { x: 8, y: 12 }),
- *   [Player, {}]
- * )
- * if (!draft.ok) return
- * commands.spawn(draft.value)
+ * const SpawnPlayer = Game.System("Game/SpawnPlayer", {
+ *   commands: Game.System.commands(Game.System.spawns(Position, Player))
+ * }, ({ commands }) => {
+ *   const draft = Game.Command.spawn(
+ *     Game.Command.entryRaw(Position, { x: 8, y: 12 }),
+ *     [Player, {}]
+ *   )
+ *   if (!draft.ok) return
+ *   commands.spawn(draft.value)
+ * })
  * ```
  */
 export const entryRaw = <D extends DescriptorModule.ConstructedDescriptor<"component", string, any, any, any>>(
@@ -399,7 +403,11 @@ const build = (
  * const makeBullet = (x: number, y: number) =>
  *   Game.Command.spawn([Position, { x, y }], [Velocity, { x: 0, y: -8 }])
  *
- * commands.spawn(makeBullet(10, 20))
+ * const Shoot = Game.System("Game/Shoot", {
+ *   commands: Game.System.commands(Game.System.spawns(Position, Velocity))
+ * }, ({ commands }) => {
+ *   commands.spawn(makeBullet(10, 20))
+ * })
  * ```
  */
 export const spawn = <

@@ -26,6 +26,8 @@
  *
  * @example
  * ```ts
+ * declare const transport: { readonly open: boolean; write(message: string): void; drain(): ReadonlyArray<string> }
+ * // ---cut---
  * // A link over a transport the game already opened.
  * const link: NetworkLink.NetworkLink = {
  *   send: (message) => transport.write(message),

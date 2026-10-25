@@ -763,8 +763,14 @@ export const when = <
  *
  * @example
  * ```ts
- * const gameplay = Game.Schedule.when([Game.Condition.inState(Flow, "Playing")],
- *   Game.Schedule.pauseWhen([Game.Condition.not(frozen)], Move, Attack, ApplyHits)
+ * const HitStop = Game.StateMachine("Game/HitStop", { Running: {}, Frozen: {} })
+ * const ApplyHits = Game.System("Game/ApplyHits", { events: { hits: Game.System.readEvent(Hit) } }, ({ events }) => {
+ *   for (const hit of events.hits.all()) console.log(hit.amount)
+ * })
+ * // ---cut---
+ * const frozen = Game.Condition.inState(HitStop, "Frozen")
+ * const gameplay = Game.Schedule.when([Game.Condition.inState(GameFlow, "Playing")],
+ *   Game.Schedule.pauseWhen([Game.Condition.not(frozen)], Move, ApplyHits)
  * )
  * ```
  */

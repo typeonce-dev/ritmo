@@ -13,9 +13,15 @@
  *
  * @example
  * ```ts
+ * import { Container, Sprite, Texture } from "pixi.js"
+ *
+ * declare const enemy: Entity.EntityId<typeof Game.schema>
+ * declare const despawned: Entity.EntityId<typeof Game.schema>
+ * // ---cut---
+ * const actorLayer = new Container()
  * const sprites = PixiNodeRegistry.make(actorLayer)
- * sprites.ensure(match.entity.id, () => new Sprite(texture))
- * sprites.remove(despawnedId)
+ * sprites.ensure(enemy, () => new Sprite(Texture.WHITE))
+ * sprites.remove(despawned)
  * sprites.clear()
  * ```
  */

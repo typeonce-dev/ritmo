@@ -48,6 +48,9 @@
  *
  * @example
  * ```ts
+ * declare const walk: (direction: Controls.Vector) => void
+ * declare const jump: () => void
+ * // ---cut---
  * const Actions = Controls.actions({ buttons: ["jump", "pause"], vectors: ["move"] })
  *
  * const keyBindings = {
@@ -70,6 +73,7 @@
  * // Only the snapshot: a replay or the fuzzer provides it in place of the devices.
  * const ControlsInput = Descriptor.Service<InputCapture.SourceOf<ReturnType<typeof makeControls>>>()("Game/Controls")
  * const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("Game/Input")
+ * const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
  * const CaptureInput = InputCapture.system(Game, { name: "Game/CaptureInput", source: ControlsInput, resource: Input })
  *
  * const runtime = Game.Runtime.make({
@@ -80,11 +84,13 @@
  *   resources: { Input: Actions.idle({ keyboard: Keyboard.idle(keyBindings), gamepad: Gamepad.idle(padBindings) }) }
  * }).value
  *
- * // In a system:
- * const input = resources.input.get()
- * walk(input.vectors.move) // length at most 1: keys, d-pad, or stick
- * if (input.actions.jump.pressed) jump()
- * const prompt = input.lastUsed === "gamepad" ? "Ⓐ" : "Space"
+ * // Every other system reads the captured resource:
+ * const Walk = Game.System("Game/Walk", { resources: { input: Game.System.readResource(Input) } }, ({ resources }) => {
+ *   const input = resources.input.get()
+ *   walk(input.vectors.move) // length at most 1: keys, d-pad, or stick
+ *   if (input.actions.jump.pressed) jump()
+ *   const prompt = input.lastUsed === "gamepad" ? "Ⓐ" : "Space"
+ * })
  * ```
  */
 import type * as System from "@typeonce/ritmo/System"
@@ -694,15 +700,23 @@ type NoAnyAction<A extends string> = [A & "any"] extends [never] ? unknown : "an
  *
  * @example
  * ```ts
+ * const Actions = Controls.actions({ buttons: ["join", "back", "jump"], vectors: ["move"] })
+ * const leftKeys = { move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }), join: [" "], back: ["q"], jump: [" "] } as const
+ * const rightKeys = { move: Keyboard.vector({ up: ["ArrowUp"], down: ["ArrowDown"], left: ["ArrowLeft"], right: ["ArrowRight"] }), join: ["Enter"], back: ["Backspace"], jump: ["Enter"] } as const
+ * const padBindings = { move: Gamepad.vector({ stick: "left" }), join: ["south"], back: ["east"], jump: ["south"] } as const
+ * // The captured resource, as a system reads it (`resources.input.get()`):
+ * declare const input: InputCapture.SnapshotOf<typeof PlayersInput>
+ * declare const spawnSecondPlayer: () => void
+ * // ---cut---
  * const Players = Controls.players(Actions, { slots: ["p1", "p2"], join: "join", leave: "back" })
  * const makePlayers = (devices: {
  *   readonly left: Keyboard.Actions<typeof leftKeys>
  *   readonly right: Keyboard.Actions<typeof rightKeys>
  *   readonly pads: Gamepad.Pads<typeof padBindings>
  * }) => Players.pool(devices)
+ * const PlayersInput = Descriptor.Service<InputCapture.SourceOf<ReturnType<typeof makePlayers>>>()("Game/Players")
  *
  * // In a system:
- * const input = resources.input.get()
  * if (input.p2.event === "joined") spawnSecondPlayer()
  * const move = input.p2.vectors.move
  * ```

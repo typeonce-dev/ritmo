@@ -11,10 +11,8 @@
  *
  * @example
  * ```ts
- * const session = Netcode.rollback(runtime, {
- *   ...options,
- *   hidden: { visibility: BrowserVisibility.make(document), afterMS: 30_000, then: "resync-on-return" }
- * })
+ * const hidden: Netcode.HiddenOptions = { visibility: BrowserVisibility.make(document), afterMS: 30_000, then: "resync-on-return" }
+ * // The session's other options as usual: Netcode.rollback(runtime, { ...options, hidden })
  * ```
  *
  * @module BrowserVisibility

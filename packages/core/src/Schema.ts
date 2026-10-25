@@ -348,8 +348,8 @@ export const defineRoot = <const Name extends string>(name: Name): RootToken<Nam
  * @example
  * ```ts
  * const Combat = Schema.fragment({
- *   components: { Health, Damage, Enemy },
- *   events: { Hit },
+ *   components: { Health, Enemy },
+ *   events: { Hit, Damage },
  *   requires: [Schema.requires(Enemy, Health)]
  * })
  * ```
@@ -384,6 +384,9 @@ export const fragment = <
  *
  * @example
  * ```ts
+ * const Core = Schema.fragment({ components: { Position, Velocity } })
+ * const Combat = Schema.fragment({ components: { Health, Enemy }, events: { Hit } })
+ * // ---cut---
  * const Root = Schema.defineRoot("Game")
  * const Game = Schema.bind(Core, Combat, Root)
  * ```
@@ -633,7 +636,7 @@ export namespace Schema {
      *
      * @example
      * ```ts
-     * const RunScope = Game.EntityScope("Shooter/Run", { despawnOnExit: [Flow, "Playing"] })
+     * const RunScope = Game.EntityScope("Shooter/Run", { despawnOnExit: [GameFlow, "Playing"] })
      * ```
      */
     readonly EntityScope: <
@@ -789,8 +792,12 @@ export namespace Schema {
      *   Exploring: {},
      *   Talking: z.object({ speaker: z.string(), page: z.int() })
      * })
-     * nextMachines.mode.set({ _tag: "Talking", speaker: "Mira", page: 0 })
-     * machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, page: talking.page + 1 }) })
+     * const Greet = Game.System("Town/Greet", { nextMachines: { mode: Game.System.nextState(Mode) } }, ({ nextMachines }) => {
+     *   nextMachines.mode.set({ _tag: "Talking", speaker: "Mira", page: 0 })
+     * })
+     * const TurnPage = Game.System("Town/TurnPage", { machines: { mode: Game.System.updateMachine(Mode) } }, ({ machines }) => {
+     *   machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, page: talking.page + 1 }) })
+     * })
      * ```
      */
     readonly StateMachine: {
@@ -819,6 +826,8 @@ export namespace Schema {
        *
        * @example
        * ```ts
+       * const Session = Game.StateMachine("Game/Session", { Lobby: {}, Playing: {} })
+       * // ---cut---
        * const Phase = Game.StateMachine("Game/Phase", { Setup: {}, Battle: z.object({ round: z.int() }) }, { within: [Session, "Playing"] })
        * ```
        */

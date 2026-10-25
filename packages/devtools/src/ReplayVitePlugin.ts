@@ -13,6 +13,7 @@
  * ```ts
  * // vite.config.ts
  * import * as ReplayVitePlugin from "@typeonce/ritmo-devtools/ReplayVitePlugin"
+ * import { defineConfig } from "vite"
  * export default defineConfig({ plugins: [ReplayVitePlugin.plugin()] })
  * ```
  */

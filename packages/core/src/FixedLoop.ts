@@ -12,6 +12,8 @@
  *
  * @example
  * ```ts
+ * declare const draw: (alpha: number) => void
+ * // ---cut---
  * const loop = FixedLoop.start({
  *   source: BrowserTickSource.make(window),
  *   step: Clock.hz(60),

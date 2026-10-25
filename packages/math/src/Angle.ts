@@ -11,6 +11,11 @@
  *
  * @example
  * ```ts
+ * declare const turret: { readonly position: Vec2.Vec2; readonly aim: number }
+ * declare const target: Vec2.Vec2
+ * declare const turnRate: number
+ * declare const dt: number
+ * // ---cut---
  * // Turn a turret toward its target at a capped rate.
  * const wanted = Vec2.angle(Vec2.subtract(target, turret.position))
  * const aim = Angle.turnToward(turret.aim, wanted, turnRate * dt)

@@ -143,6 +143,8 @@ export namespace StandardSchema {
  *
  * @example
  * ```ts
+ * import { Schema } from "effect"
+ *
  * // A plain value: the schema as it is (Zod here; Valibot and ArkType alike)
  * const Position = Descriptor.ConstructedComponent(z.object({ x: z.number(), y: z.number() }))("Game/Position")
  * // A value that transforms: the schema and its "~encode" (Effect, through the playbook's `codec`)
@@ -670,10 +672,20 @@ type StateRejection<Definition> = Definition extends StandardSchema<infer _Encod
  *   air: z.object({ vy: z.number(), coyote: z.int() })
  * }, { transitions: { ground: ["air"], air: ["ground"] } })
  *
- * commands.spawn(Game.Command.spawn([Contact, { _tag: "ground", platform: null }]))
- * // in a system with a write slot `contact`:
- * data.contact.transition({ from: "ground", to: "air", data: { vy: 12, coyote: 0 } })
- * data.contact.update({ state: "air", data: (air) => ({ ...air, vy: air.vy - gravity }) })
+ * const Game = Schema.bind(Schema.fragment({ components: { Contact } }))
+ * const gravity = 0.5
+ *
+ * const Spawn = Game.System("Game/Spawn", { commands: Game.System.commands(Game.System.spawns(Contact)) }, ({ commands }) => {
+ *   commands.spawn(Game.Command.spawn([Contact, { _tag: "ground", platform: null }]))
+ * })
+ * const Jump = Game.System("Game/Jump", {
+ *   queries: { bodies: Game.Query({ selection: { contact: Game.Query.write(Contact) } }) }
+ * }, ({ queries }) => {
+ *   for (const { data } of queries.bodies.each()) {
+ *     data.contact.transition({ from: "ground", to: "air", data: { vy: 12, coyote: 0 } })
+ *     data.contact.update({ state: "air", data: (air) => ({ ...air, vy: air.vy - gravity }) })
+ *   }
+ * })
  * ```
  */
 export const EntityState = <
