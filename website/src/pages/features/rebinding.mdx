@@ -4,32 +4,22 @@ title: Rebinding
 description: Players remap the keyboard, mouse, and gamepad from a settings screen, and what they chose is checked and kept.
 ---
 
+import Claim from "../../components/Claim.astro"
 import Game from "../../components/Game.astro"
 
-A player wants dash on J, or on the other face button. Your game only ever
-reads actions, so rebinding swaps what is under them and no rule changes.
+A player wants dash on J, or on the other face button. Your game only reads
+actions, so rebinding swaps what is under them and no rule changes.
 
 <Game id="rebind" />
 
 Open **Controls** in the corner, click a binding, and press the new key or
 pad button. Reload the page: your bindings are still there.
 
-## What you get
+<Claim title="One call moves an action, and no system changes">
 
-- One call per device swaps its bindings. Systems keep reading the same
-  actions.
-- A settings screen can wait for "press a key" and bind whatever comes
-  next, bound or not.
-- Saved bindings are checked against your actions when they load. A stale
-  or hand-edited file comes back as a reason, never a broken pad.
-- A binding to an action or button that does not exist does not compile.
-- [Replays](/features/replays/) record actions, not keys, so a rebind never
-  changes how a replay plays back.
-
-## One call
-
-Every keyboard, gamepad, and pointer source has `rebind`. The actions stay
-the same, so no system changes.
+Every keyboard, gamepad, and pointer source has `rebind`. A merge exposes
+each device's by name, for a settings screen over all of them:
+`controls.rebind.keyboard(...)`.
 
 ```ts twoslash title="settings.ts"
 import { Gamepad, Keyboard } from "@typeonce/ritmo-browser"
@@ -45,10 +35,9 @@ keyboard.rebind({ ...keys, dash: ["j"] })
 gamepad.rebind({ ...pad, dash: ["west"] })
 ```
 
-A merge exposes each device's `rebind` by name, for a settings screen over
-the whole thing: `controls.rebind.keyboard(...)`.
+</Claim>
 
-## Waiting for the new button
+<Claim title="Press a key to bind it">
 
 A settings screen asks "press a key" and binds whatever comes next.
 `Keyboard.presses` reports every key that goes down, bound or not, and the
@@ -76,12 +65,21 @@ const button = Gamepad.buttonNames.find((name) => snapshot.buttons[name].pressed
 //    ^?
 ```
 
-## Saved bindings are checked on the way back
+</Claim>
 
-Bindings are plain data: save them as JSON wherever the game keeps its
-settings. On the next visit `parseRebinding` checks them against the
-game's actions before they are used. A file from an older version, or one
-edited by hand, comes back as a reason, not a broken pad:
+<Claim title="A stale save comes back as a reason, not a broken pad">
+
+Bindings are plain JSON, saved wherever the game keeps its settings. On the
+next visit `parseRebinding` checks them against the game's actions. Given a
+file that binds dash to `"A"`:
+
+```text title="saved.error"
+{
+  _tag: 'InvalidRebinding',
+  path: 'dash[0]',
+  message: 'expected one of south, east, west, north, leftBumper, rightBumper, leftTrigger, rightTrigger, select, start, leftStick, rightStick, dpadUp, dpadDown, dpadLeft, dpadRight, home'
+}
+```
 
 ```ts twoslash title="settings.ts"
 import { Gamepad } from "@typeonce/ritmo-browser"
@@ -99,15 +97,9 @@ if (saved.ok) {
 }
 ```
 
-```text
-{
-  _tag: "InvalidRebinding",
-  path: "dash[0]",
-  message: "expected one of south, east, west, north, leftBumper, ..."
-}
-```
+</Claim>
 
-## Mistakes in code do not compile
+<Claim title="A binding to nothing does not compile">
 
 A binding for an action the game does not have, or a button no pad has, is
 an error in the editor:
@@ -125,15 +117,22 @@ gamepad.rebind({ ...pad, jump: ["north"] })
 gamepad.rebind({ ...pad, dash: ["A"] })
 ```
 
-## Small things done right
+</Claim>
 
-- A key held while it is rebound does not fire the action it now belongs
-  to until it is pressed again, so an action never turns on without a
-  press.
+<Claim title="A held key never fires the action it just took">
+
+The small things players notice when they go wrong:
+
+- A key held while it is rebound does nothing until it is pressed again,
+  so an action never turns on without a press.
 - Buttons are named by where they sit on the pad, so a binding saved with
   an Xbox pad works on a PlayStation or a Nintendo one.
+- [Replays](/features/replays/) record actions, not keys, so a rebind
+  never changes how a replay plays back.
 - Touch controls have no `rebind`: on a touch screen the layout is the
   binding.
+
+</Claim>
 
 Rebinding works on every device a merge holds: see
 [Every device, one player](/features/devices/). How a settings screen fits

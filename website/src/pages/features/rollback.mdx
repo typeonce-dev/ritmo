@@ -1,36 +1,67 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Online multiplayer
-description: Rollback or lockstep matches over WebSocket, WebRTC, or any transport, with every peer agreeing on every tick.
+description: Rollback matches over WebSocket, WebRTC, or any transport. Input never waits for the network, and every peer agrees on every tick.
 ---
 
+import Claim from "../../components/Claim.astro"
 import Game from "../../components/Game.astro"
 
-Online, the other player's input always arrives late, and waiting for it
-makes every press lag. With rollback, each peer guesses the missing input
-and plays on. When the real input turns out different, it rewinds to that
-tick and runs forward again, within one frame.
+Online, the other player's input always arrives late. Waiting for it makes
+every press lag; guessing it and fixing the guess later is rollback.
+
+<Game id="netcode" ratio="16 / 9" />
+
+Two bots play one match, each on its own peer, over a network whose latency
+rises every few seconds. Watch the strips: outlined ticks ran on a guess, lit
+ones ran again after a wrong guess, and the green line is where both peers
+checked their worlds and found them the same.
+
+<Claim title="Your input never waits for the network">
+
+Each peer guesses the input it does not have yet and plays on. When the real
+input turns out different, it rewinds to that tick and runs forward again,
+within one frame. Play seat 0 yourself, and raise the latency in the corner:
 
 <Game id="rollback" ratio="10 / 11" />
 
-Both views are peers of one match over a fake network. Raise the latency in
-the corner and keep moving: each HUD counts rollbacks and shows up to which
-tick the peers agree.
+</Claim>
 
-## What you get
+<Claim title="Peers agree, or say which tick">
 
-- Input that feels immediate, and every peer reaching the same world.
-- Your transport: WebSocket, WebRTC, or anything that sends bytes.
-- One simulation for offline, tests, and online: it never sees the network.
-- Code a rollback would break does not compile.
-- Checksums that catch a desync on its tick, then repair it.
+Every 30 ticks the peers compare a checksum of a tick all real input has
+reached. A mismatch is reported as `Desynced` on its tick, and every peer is
+resynced from seat 0's world. Peer B at the end of the match above: its
+checksums agree with peer A's up to tick 570, after 48 rollbacks.
 
-## The simulation reads one input
+```text title="session.status(), peer B"
+{
+  epoch: 1,
+  tick: 598,
+  confirmed: 587,
+  verified: 570,
+  again: 278,
+  rollbacks: 48,
+  dropped: 0,
+  ahead: -0.2593099905661802,
+  inputDelay: 2,
+  delayChanges: 0,
+  roundTripMS: [ 408.6436663522086, 0 ],
+  hidden: [ false, false ]
+}
+```
 
-The simulation never sees the network. It reads every seat's input for the
-tick from one source, and the session fills it before each tick. The input
-schema is the game's own (Effect here, any Standard Schema works), and input
-from other peers is decoded with it.
+A [sync test](/features/bugs/#rollback-checked-on-every-tick) finds a desync
+in a test run instead, on the tick it starts.
+
+</Claim>
+
+<Claim title="The simulation never sees the network">
+
+It reads every seat's input for the tick from one source, and the session
+fills it before each tick. Offline play, tests, and online matches run the
+same systems. Input from other peers is decoded with the game's own schema
+(Effect here, any Standard Schema works).
 
 ```ts twoslash title="input.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -68,14 +99,15 @@ const runtime = Game.Runtime.make({
 ```
 
 `InputCapture.system` copies the source into `Inputs` each tick, so systems
-read it like any captured input. Remote input never goes through
-`runtime.send`: after a rollback, it would land on the wrong tick.
+read it like any captured input.
 
-## One session per peer, over your connection
+</Claim>
 
-Each peer wraps its runtime in a session: `Netcode.rollback` for real-time
-games, or `Netcode.lockstep`, which waits for every seat's input, for
-turn-based ones.
+<Claim title="Any transport, on a connection you open">
+
+Ritmo runs no server and opens no connection. A link wraps one your game
+opened: `WebSocketNetworkLink` for a relay, `WebRtcNetworkLink` for a data
+channel between peers, or your own `send`, `receive`, and `status`.
 
 ```ts twoslash title="session.ts"
 import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
@@ -104,17 +136,16 @@ const session = Netcode.rollback(runtime, {
 })
 ```
 
-Ritmo runs no server and opens no connection. A link wraps one your game
-opened: `WebSocketNetworkLink` for a relay, `WebRtcNetworkLink` for a data channel
-straight between peers, or your own `send`, `receive`, and `status`.
-
 Each input is for a tick slightly ahead (2 by default): too short to feel,
 long enough to arrive in time. `adaptiveDelay` follows the round trip.
 
-## The loop drives it
+</Claim>
+
+<Claim title="One call per step drives the match">
 
 Each step of the fixed-step loop, the session reads the network, rolls back
-if a guess was wrong, ticks, and sends this peer's input.
+if a guess was wrong, ticks, and sends this peer's input. Rendering runs
+outside the simulation, so it sees a rollback as ordinary changes.
 
 ```ts twoslash title="loop.ts"
 import { Clock, FixedLoop } from "@typeonce/ritmo"
@@ -143,17 +174,16 @@ FixedLoop.start({
 })
 ```
 
-Rendering sees a rollback as ordinary changes: a shot undone and redone is a
-shot that moved, so its sprite stays put.
+</Claim>
 
-## What a rollback would break does not compile
+<Claim title="What a rollback would break does not compile">
 
-A rollback runs ticks again, so whatever they do runs again. A service that
-is not input, plain data, or rewindable (audio, say) would act twice, and
-state a system keeps in `local` would not come back. The session refuses
-both:
+A rollback runs ticks again, so whatever they do runs again. State a system
+keeps in `local` would not come back, and a service that is not input,
+plain data, or rewindable (audio, say) would act twice. The session refuses
+both.
 
-```ts twoslash
+```ts twoslash title="combo.ts"
 import { Clock, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
 import { InputCapture } from "@typeonce/ritmo-browser"
 import { Netcode, type NetworkLink } from "@typeonce/ritmo-netcode"
@@ -182,14 +212,15 @@ Netcode.rollback(runtime, {
 })
 ```
 
-## A physics engine rolls back with the game
+</Claim>
+
+<Claim title="A physics engine rolls back with the game">
 
 A physics engine keeps its own world, so a rollback would leave it ahead of
 the game. Wrapped with `Checkpoint.rewindable`, it is saved at every
-checkpoint and restored with every rollback. Systems read its `current`
-value each tick:
+checkpoint and restored with every rollback.
 
-```ts twoslash
+```ts twoslash title="physics.ts"
 import { Checkpoint, Descriptor, Result, Schema } from "@typeonce/ritmo"
 declare class PhysicsWorld {
   step(): void
@@ -223,13 +254,15 @@ Checksums see only the world, so copy what gameplay reads from the engine
 (positions, contacts) into components each tick. That is what peers
 compare, and what a resync restores.
 
-## Sounds play once
+</Claim>
+
+<Claim title="Sounds play once, even when a tick runs twice">
 
 A tick run again publishes its events again. The session hands the host
-each event in three streams: `confirmed` once its tick can no longer change,
-`predicted` while it may, and `withdrawn` for ticks a rollback undid.
+each event in three streams: `predicted` while its tick may change,
+`withdrawn` for ticks a rollback undid, and `confirmed` once it cannot.
 
-```ts twoslash
+```ts twoslash title="sounds.ts"
 import { Descriptor } from "@typeonce/ritmo"
 import type { Netcode } from "@typeonce/ritmo-netcode"
 const Hit = Descriptor.Event<{ readonly kind: "body" | "shield"; readonly x: number }>()("Game/Hit")
@@ -249,12 +282,14 @@ for (const { value } of hits.confirmed()) {
 }
 ```
 
-## A hidden tab does not end the match
+</Claim>
+
+<Claim title="A hidden tab does not end the match">
 
 A browser stops a hidden tab, so that peer goes silent. Given the tab's
 visibility, the session tells the others the moment it hides. They wait for
-it (`"stall"`), or play on with idle input for it and resync it when it
-comes back (`"resync-on-return"`):
+it (`"stall"`), or play on with idle input and resync it when it comes back
+(`"resync-on-return"`).
 
 ```ts twoslash title="hidden.ts"
 import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
@@ -294,14 +329,8 @@ const away = session.value
   .hidden.flatMap((hidden, seat) => (hidden ? [names[seat]] : []))
 ```
 
-## Peers agree, or say so
+</Claim>
 
-Every 30 ticks, the peers compare a checksum of a tick all real input has
-reached. A mismatch means the game is not deterministic somewhere:
-the session reports `Desynced`, and `session.update` resyncs every peer
-from seat 0's world. `session.status()` shows how far they agree, for a HUD or a test.
-
-
-A [sync test](/features/bugs/#rollback-checked-on-every-tick) finds a desync
-in a test run instead, on the tick it starts. Matches hold across machines
+For a turn-based game, `Netcode.lockstep` takes the same options and waits
+for every seat's input instead of guessing. Matches hold across machines
 because the game is the [same everywhere](/features/determinism/).

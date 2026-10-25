@@ -1,77 +1,44 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Replays that become tests
-description: Save the last seconds of play as a file, open it headless, ask what happened, and keep the moment that matters as a test.
+description: The last seconds of play, saved as a file you open headless, ask what happened, and keep as a test.
 ---
 
+import Claim from "../../components/Claim.astro"
 import Game from "../../components/Game.astro"
 
-A bug seen once in a playtest is the hardest kind to fix: by the time
-someone reads the report, the moment is gone. A replay keeps it, plays it
-back exactly, and turns it into a test once you find the cause.
+A bug seen once in a playtest is gone by the time someone reads the report.
+A replay keeps the moment, plays it back exactly, and becomes the test that
+proves the fix.
 
 <Game id="replay" />
 
 Move and dash for a few seconds, then press **Replay** in the corner. The
-last ten seconds open as a fresh world in this tab, play back tick by tick,
-and answer questions about what happened.
+last seconds open as a fresh world in this tab and answer what happened.
 
-## What you get
+<Claim title="Ask the replay why a value changed">
 
-- The last seconds of play as plain JSON, a few kilobytes a second.
-- Saved on a key, on a failed tick, or the moment a rule breaks.
-- A headless world in Node that plays it back and checks itself.
-- Answers to why a value changed, frame by frame.
-- A few ticks cut out as a regression test.
+The replay opens as a headless world with a debug session over it. This is
+what the demo above printed after three dashes:
 
-## The moment is saved for you
+```text title="replay in the page"
+# 205 ticks saved, 32.2 KB of JSON
 
-In a development build, a recorder keeps a rolling window of the
-simulation's updates. It saves on demand, when a tick fails, or when a rule
-you wrote breaks.
+replay.play()
+run update: 205 frames (f1-f205) in 0ms, completed
+checkpoints match
 
-```ts twoslash title="dev.ts"
-import { Clock, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
-import { Schema as S } from "effect"
-const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
-  const json = S.toCodecJson(schema)
-  return { "~standard": S.toStandardSchemaV1(json)["~standard"], "~encode": S.toStandardSchemaV1(S.flip(json)) }
-}
-import { Invariant, Replay } from "@typeonce/ritmo-devtools"
-import * as ReplayViteSink from "@typeonce/ritmo-devtools/ReplayViteSink"
-const Score = Descriptor.ConstructedResource(codec(S.Finite))("Game/Score")
-const Game = Schema.bind(Schema.fragment({ resources: { Score } }))
-const update = Game.Schedule()
-const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock: HostClock.standard } })
-if (!made.ok) throw new Error("setup")
-const runtime = made.value
-declare const ScoreNeverDrops: Invariant.Invariant
-// ---cut---
-const recorder = Replay.recorder(runtime, {
-  schedule: update,
-  name: "update",
-  keep: 30, // seconds
-  step: Clock.hz(60),
-  hostClock: HostClock.standard,
-
-  // Posts each replay to the dev server, which writes it to .replays/
-  sink: ReplayViteSink.make({ fetch }),
-
-  saveOn: { failure: true, invariants: [ScoreNeverDrops] } // [!code highlight]
-})
-
-// Bound to a key in the dev build
-recorder.save("the boss walked through the wall")
+session.whyResource(Dashes)
+Controls/Dashes is now 3; last 3 changes (oldest first):
+f58 update  Controls/MoveBall  resource Controls/Dashes 0 -> 1
+f113 update  Controls/MoveBall  resource Controls/Dashes 1 -> 2
+f173 update  Controls/MoveBall  resource Controls/Dashes 2 -> 3
 ```
 
-`ReplayVitePlugin.plugin()` in the Vite config receives the files and
-prints where it wrote each one.
-
-## Ask it what happened
-
-The replay opens in Node as a normal headless world. The game builds itself
-with the recorded input in place of the devices, and a debug session runs
-over the replayed ticks:
+Every question of [headless debugging](/docs/devtools/) works here: `why`,
+`journal`, and invariants that stop the run on the first bad frame. In
+Node, the game builds itself with the recorded input in place of the
+devices:
 
 ```ts twoslash title="debug.ts"
 import { Descriptor, HostClock, Schema } from "@typeonce/ritmo"
@@ -112,30 +79,66 @@ if (replay.ok) {
 }
 ```
 
-```text
-run update: 168 frames (f1-f168) in 0ms, completed
-checkpoints match
+</Claim>
 
-Controls/Dashes is now 2; last 2 changes (oldest first):
-f82 update  Controls/MoveBall  resource Controls/Dashes 0 -> 1
-f137 update  Controls/MoveBall  resource Controls/Dashes 1 -> 2
+<Claim title="The replay checks itself as it plays">
+
+The file holds hashes of the world as it was recorded. "Checkpoints match"
+means the replayed world matched every one, so what you debug is what the
+player saw, not a near copy.
+
+</Claim>
+
+<Claim title="The moment is saved before anyone asks">
+
+In a development build, a recorder keeps a rolling window of the
+simulation's updates. It saves on a key, when a tick fails, or the moment a
+rule you wrote breaks.
+
+```ts twoslash title="dev.ts"
+import { Clock, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
+import { Schema as S } from "effect"
+const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
+  const json = S.toCodecJson(schema)
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], "~encode": S.toStandardSchemaV1(S.flip(json)) }
+}
+import { Invariant, Replay } from "@typeonce/ritmo-devtools"
+import * as ReplayViteSink from "@typeonce/ritmo-devtools/ReplayViteSink"
+const Score = Descriptor.ConstructedResource(codec(S.Finite))("Game/Score")
+const Game = Schema.bind(Schema.fragment({ resources: { Score } }))
+const update = Game.Schedule()
+const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock: HostClock.standard } })
+if (!made.ok) throw new Error("setup")
+const runtime = made.value
+declare const ScoreNeverDrops: Invariant.Invariant
+// ---cut---
+const recorder = Replay.recorder(runtime, {
+  schedule: update,
+  name: "update",
+  keep: 30, // seconds
+  step: Clock.hz(60),
+  hostClock: HostClock.standard,
+
+  // Posts each replay to the dev server, which writes it to .replays/
+  sink: ReplayViteSink.make({ fetch }),
+
+  saveOn: { failure: true, invariants: [ScoreNeverDrops] } // [!code highlight]
+})
+
+// Bound to a key in the dev build
+recorder.save("the boss walked through the wall")
 ```
 
-"Checkpoints match" is the replay checking itself: the file holds hashes of
-the world as it was recorded, and the replayed world matched every one.
-All the questions of [headless debugging](/docs/devtools/) work here:
-`why`, `journal`, invariants that stop the run on the first bad frame.
+`ReplayVitePlugin.plugin()` in the Vite config receives the files and
+prints where it wrote each one.
 
-In a browser game, the controls service is declared as the merged controls'
-snapshot only, `InputCapture.SourceOf<...>`. One descriptor then serves
-every case: the page provides the live devices, a test scripted ones, and a
-replay what it recorded. The [fuzzer](/features/bugs/) uses it too.
+</Claim>
 
-## The moment becomes a test
+<Claim title="A few ticks become a test">
 
 A long replay is something to read, not to keep. Once you find the bug, cut
-the ticks that show it into a small replay with its own start, and keep that
-next to a test:
+the ticks that show it into a small replay with its own start, and keep it
+next to a test.
 
 ```ts twoslash title="debug.ts"
 import { Replay, Verify } from "@typeonce/ritmo-devtools"
@@ -150,15 +153,26 @@ const small = Replay.extract(make, file, { from: 1400, to: 1412 })
 const same = await Verify.acrossEngines(make, file)
 ```
 
-## A replay that cannot work does not compile
+</Claim>
 
-The simulation reads only what is in the world: time from its clock,
-randomness from a seeded generator, and input through services that hand
-out plain snapshots. So the input is all a replay needs to store.
+<Claim title="One input service for the page, the test, and the replay">
 
-A service that is not plain data could not be replayed, so it is a compile
-error that names it, not a replay that silently goes wrong.
+The game declares its controls service as the merged controls' snapshot
+only, `InputCapture.SourceOf<...>`. The page provides the live devices, a
+test scripted ones, a replay what it recorded, and the
+[fuzzer](/features/bugs/) random input a real device could report.
+
+</Claim>
+
+<Claim title="A replay that cannot work does not compile">
+
+The simulation reads time from its clock, randomness from a seeded
+generator, and input through services that hand out plain snapshots. So
+the input is all a replay stores. A service that is not plain data is a
+compile error that names it, not a replay that drifts.
+
+</Claim>
 
 The same property makes the game play the
-[same on every device](/features/determinism/). The
-[fuzzer](/features/bugs/) makes replays too, by playing the game for you.
+[same on every device](/features/determinism/), and lets the
+[fuzzer](/features/bugs/) hand its findings back as replays.
