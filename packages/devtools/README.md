@@ -18,8 +18,8 @@ its `label`. This checks the supplied inputs on the current JavaScript
 engine.
 
 Debug sessions for `ritmo` runtimes: run schedules headless, keep a trace
-history, and ask what happened as text. Built for coding agents first; the
-same data will back human-facing tools.
+history, and ask what happened as text. Built for coding agents: every
+answer is text and data, and nothing draws in the page.
 
 ```sh
 pnpm add -D @typeonce/ritmo-devtools
@@ -39,8 +39,10 @@ const runtime = Game.Runtime.make({
   services,
   debug: import.meta.env.DEV ? { hostClock: BrowserHostClock.make(window) } : undefined
 }).value
-if (runtime.debug !== undefined) Monitor.attach({ debug: runtime.debug }, { schedules, host: window })
 ```
+
+In the browser, record a replay (see [Replays](#replays)) and debug it
+headless with a `Session`.
 
 ## The debugging loop
 
@@ -171,38 +173,6 @@ f186 update  -                   transition Game/Flow Playing -> Paused applied
 - Large objects print only their changed paths:
   `~ up.held: false -> true, left.held: false -> true`.
 
-## Live monitor (browser)
-
-`Monitor.attach(runtime, { schedules, host: window })` adds a panel to a running game for
-people who want to see how it works without reading its code. Toggle it
-with the backslash key or the corner button. It observes the runtime only while it is
-open, so a closed monitor costs nothing.
-
-```ts
-const monitor = Monitor.attach(runtime, {
-  schedules: { fixedUpdate: step, frame },           // the schedule objects you tick
-  host: window,                                      // its document, timers, events, and clock
-  pick: (event) => entityUnderPointer(event),        // optional: "Pick on screen"
-  locate: (entity) => clientPositionOf(entity)       // optional: ring on the selected entity
-})
-```
-
-- **Overview:** time per schedule tick, the busiest systems, entity counts
-  per component as sparklines (a line that only rises is a leak), state
-  machines, and alerts (failed systems, NaN or infinite writes, messages
-  discarded by skipped systems).
-- **Systems:** every schedule as its systems in order, grouped by run
-  conditions. Each system shows what it writes, emits, spawns (learned
-  while running), and reads. A dot shows whether it is working, idle, or
-  skipped. Hover a name to light up its writers (orange) and readers (blue).
-  Click a system for rates, skip reasons, spawn kinds, and its last error.
-- **Entity:** pick an entity on screen, by id, or by component, and follow
-  its components live along with the changes systems make to it.
-
-Timings include tracing overhead, so compare systems with each other rather
-than with a run where the monitor is closed. `Monitor.Collector` is the same
-data without DOM, for a custom UI.
-
 ## Report warnings
 
 | Code | Meaning |
@@ -298,7 +268,7 @@ const recorder = Replay.recorder(runtime, {
   hostClock: BrowserHostClock.make(window),  // for savedAt
   saveOn: { failure: true, invariants: [DeadAreGone] } // saves by itself
 })
-Monitor.attach(runtime, { schedules, host: window, replay: recorder }) // adds "Save replay"
+recorder.save("player stuck")              // on demand, e.g. from a dev-only key
 
 // vite.config.ts: writes posted replays to .replays/<time>.json and logs them.
 plugins: [ReplayVitePlugin.plugin()]
