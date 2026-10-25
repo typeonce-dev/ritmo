@@ -4,6 +4,7 @@
  *
  *   ritmo-devtools lint <entry>
  *   ritmo-devtools verify <entry> <replay> [--engines node,chromium,webkit,firefox] [--json]
+ *   ritmo-devtools scan <entry> [--json]
  *
  * `lint` imports `<entry>` (a module exporting `lintTarget`, see the `Lint` module),
  * prints every lint of its schedules with its fix, and exits with 1 when one
@@ -30,8 +31,19 @@
  * printed with its install command and fails the check. `--json` prints the
  * result as JSON instead of text.
  *
- * Exit codes: 0 ok, 1 lint warning, uncovered module, or an engine that
- * differs or did not run, 2 usage error.
+ * `scan` resolves every file `<entry>` (the simulation entry) imports,
+ * `node_modules` included, and runs the oxlint rules `ritmo/use-ops-for-math`,
+ * `ritmo/use-clock-for-time`, and `ritmo/use-random-for-randomness` over them,
+ * so a dependency that calls `Math.sin`, `Date.now`, or `Math.random` shows
+ * before a desync does. Findings are printed per package with what to do next;
+ * `--json` prints them as JSON instead. It is a hint, not a verdict: it exits
+ * with 0 with or without findings. It needs `rolldown` (Vite 8 includes it)
+ * and the game's `oxlint` with `@typeonce/oxlint-plugin-ritmo`; a missing one
+ * is printed with its install command and exits with 2.
+ *
+ * Exit codes: 0 ok (and every `scan` that ran), 1 lint warning, uncovered
+ * module, or an engine that differs or did not run, 2 usage error (for `scan`
+ * also an unreadable entry, an import that does not resolve, or a missing tool).
  * Requires Node 22.15 or later for `module.registerHooks`; on older Node it
  * prints that coverage was not checked.
  *
@@ -42,6 +54,7 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
+import * as DependencyScan from "./internal/dependencyScan.ts"
 import * as SimulationCoverage from "./internal/simulationCoverage.ts"
 import * as Lint from "./Lint.ts"
 import * as Replay from "./Replay.ts"
@@ -50,8 +63,10 @@ import * as Verify from "./Verify.ts"
 const usage = [
   "usage: ritmo-devtools lint <entry>",
   "       ritmo-devtools verify <entry> <replay> [--engines node,chromium,webkit,firefox] [--json]",
+  "       ritmo-devtools scan <entry> [--json]",
   "  lint:   <entry> exports lintTarget: () => { runtime, schedules, describe?, hostEvents? } (see the Lint module)",
-  "  verify: <entry> exports replayTarget: (playback) => { runtime, schedules, hostClock } (see the Verify module)"
+  "  verify: <entry> exports replayTarget: (playback) => { runtime, schedules, hostClock } (see the Verify module)",
+  "  scan:   <entry> is the simulation's entry module; every file it imports, node_modules included, is checked for Math, clock, and randomness calls"
 ].join("\n")
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null
@@ -70,6 +85,7 @@ const main = async (args: ReadonlyArray<string>): Promise<number> => {
   const [command, ...rest] = args
   if (command === "lint" && rest.length === 1) return lint(rest[0]!)
   if (command === "verify") return verify(rest)
+  if (command === "scan") return scan(rest)
   console.error(usage)
   return 2
 }
@@ -158,6 +174,29 @@ const verify = async (args: ReadonlyArray<string>): Promise<number> => {
   }
   console.log(json ? JSON.stringify(result.ok ? { ok: true, ...result.value.data } : { ok: false, ...withoutText(result.error) }, null, 2) : result.ok ? result.value.text : result.error.text)
   return result.ok ? 0 : 1
+}
+
+const scan = async (args: ReadonlyArray<string>): Promise<number> => {
+  const json = args.includes("--json")
+  const positional = args.filter((arg) => arg !== "--json")
+  if (positional.length !== 1 || positional[0]!.startsWith("-")) {
+    console.error(usage)
+    return 2
+  }
+  const result = await DependencyScan.run(positional[0]!, process.cwd())
+  if (!result.ok) {
+    const error = result.error
+    console.error(error._tag === "ToolMissing"
+      ? `scan needs ${error.tool}, which is not installed: ${error.install}`
+      : error._tag === "ResolveFailed"
+      ? `the imports of ${positional[0]} could not be resolved: ${error.message}`
+      : error._tag === "LintFailed"
+      ? `oxlint did not run: ${error.message}`
+      : error.message)
+    return 2
+  }
+  console.log(json ? JSON.stringify(result.value, null, 2) : DependencyScan.format(result.value))
+  return 0
 }
 
 const withoutText = ({ text: _text, ...error }: Verify.VerifyError) => error

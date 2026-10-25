@@ -147,6 +147,12 @@ importers:
       '@typeonce/ritmo-netcode':
         specifier: workspace:^
         version: link:../netcode
+      oxlint:
+        specifier: '>=1.86.0'
+        version: 1.88.0
+      rolldown:
+        specifier: '>=1.0.0-rc.12'
+        version: 1.2.15
     devDependencies:
       playwright:
         specifier: ^1.64.1

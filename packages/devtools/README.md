@@ -353,7 +353,7 @@ const replay = file.ok ? Replay.session(make, file.value) : file
 replay.value.play()                       // run the ticks; reports checkpoint divergence
 replay.value.session.why(12, Position)    // a normal Session over the replayed frames
 Replay.session(make, file.value, { labels: Labels }) // names entities, as in Session.make
-Replay.verify(make, file.value)           // replays twice: nondeterminism shows up
+await Verify.acrossEngines(make, file.value) // replays twice here and against the recording
 Replay.extract(make, file.value, { from: 1400, to: 1412 }) // a small replay for a test
 ```
 
@@ -373,9 +373,11 @@ older schema".
 
 ## Verify across engines
 
-`Replay.verify` replays on one engine. `ritmo-devtools verify` plays the
-same replay in Node and in real browser engines and reports the first tick
-whose world differs, with every value that differs there. Run it before
+`Verify.acrossEngines` is the one replay check. With no engines it plays
+the replay twice in this process and against the recording, the check a
+test runs; `ritmo-devtools verify` plays the same replay in Node and in real
+browser engines and reports the first tick whose world differs, with every
+value that differs there. Run it before
 trusting a lockstep or rollback match across browsers, and in CI on a
 committed replay of the game:
 
@@ -415,7 +417,8 @@ export const replayTarget = (playback: Replay.Playback) => {
   error (arguments, a file that is not a replay, an entry without
   `replayTarget`). `--json` prints the result as JSON.
 
-The same check from code, for a game's own test:
+The same check from code, for a game's own test (leave out `engines` to
+check this process alone):
 
 ```ts
 import { Verify } from "@typeonce/ritmo-devtools"
@@ -434,6 +437,36 @@ The error side is `ReplayInvalid` (the replay does not open here) or
 `against`, `differences`), `EngineMissing` (`install`), or `EngineFailed`.
 For another host (a webview, a console), run `Verify.trace` and
 `Verify.snapshotAt` there and wrap them as a `Verify.Engine`.
+
+## Scan dependencies
+
+oxlint skips `node_modules`, so a dependency the simulation calls can still
+use `Math.sin`, `Date.now`, or `Math.random`. `ritmo-devtools scan <entry>`
+resolves every file the simulation entry imports, `node_modules` included,
+and runs `ritmo/use-ops-for-math`, `ritmo/use-clock-for-time`, and
+`ritmo/use-random-for-randomness` over them, grouped by package:
+
+```sh
+ritmo-devtools scan src/simulation/index.ts
+# fake-physics (2 findings)
+#   node_modules/fake-physics/index.js:4:17  ritmo/use-ops-for-math  Math.sin
+#   node_modules/fake-physics/index.js:6:32  ritmo/use-random-for-randomness  Math.random
+#
+# scanned 4 files in 2 packages imported by src/simulation/index.ts: 2 findings in 1 package
+```
+
+- A finding is a hint, not a verdict: code the simulation never calls is
+  fine. For a dependency it calls, vendor it into the game's source and run
+  `oxlint --fix`, or replace it. A clean scan does not prove the run is
+  deterministic: confirm with `ritmo-devtools verify` or `Netcode.syncTest`.
+- It uses the game's `oxlint` and `@typeonce/oxlint-plugin-ritmo`, and
+  `rolldown` to resolve imports the way a build does (Vite 8 includes it;
+  otherwise `npm install --save-dev rolldown`). A missing tool is printed
+  with its install command.
+- Exit codes: 0 whenever the scan ran, with or without findings, 2 usage
+  error (arguments, an unreadable entry, an import that does not resolve, a
+  missing tool). `--json` prints
+  `{ entry, files, packages: [{ name, files, findings: [{ file, line, column, rule, snippet }] }] }`.
 
 ## Fuzzing
 

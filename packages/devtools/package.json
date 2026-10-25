@@ -75,11 +75,19 @@
     "@typeonce/ritmo-netcode": "workspace:^"
   },
   "peerDependencies": {
+    "oxlint": ">=1.86.0",
     "playwright": ">=1.40",
+    "rolldown": ">=1.0.0-rc.12",
     "vite": ">=6"
   },
   "peerDependenciesMeta": {
+    "oxlint": {
+      "optional": true
+    },
     "playwright": {
+      "optional": true
+    },
+    "rolldown": {
       "optional": true
     },
     "vite": {

@@ -6,17 +6,19 @@
  * player's next shot), arms new shots through an
  * `added` filter (so it depends on every reader's position), draws from a
  * random state kept in a resource, keeps shots in a scope the round wipes,
- * and has a state machine with per-state data.
+ * and has a state machine with per-state data. Shots aim at the other
+ * player and slow down through `Ops` (`atan2`, `cos`, `sin`, `exp`), so a
+ * replay of a match checks that `Ops` gives the same bits on every engine.
  *
  * Input comes from one source service per runtime: each seat's input for
  * the tick being run, filled by a `Netcode` session (confirmed input, or a
  * guess) or, for the reference runtime, by the test.
  */
-import { Clock, Descriptor, Entity, Random, Schema } from "@typeonce/ritmo"
+import { Clock, Descriptor, Entity, Ops, Random, Schema } from "@typeonce/ritmo"
 import { InputCapture } from "@typeonce/ritmo-browser"
 import { Netcode } from "@typeonce/ritmo-netcode"
 
-import { guard, integer, nullable, struct, tuple } from "./codecs.ts"
+import { finite, guard, integer, nullable, struct, tuple } from "./codecs.ts"
 
 export const Root = Schema.defineRoot("Netcode")
 export const step = Clock.hz(60)
@@ -41,7 +43,7 @@ export const idle: PlayerInput = { dx: 0, dy: 0, fire: false }
 
 export const arena = { width: 200, height: 100 } as const
 
-const point = struct({ x: integer, y: integer })
+const point = struct({ x: finite, y: finite })
 export const Position = Descriptor.ConstructedComponent(point)("Netcode/Position")
 /** A player's seat, and the step it may fire again on (`null` until its first shot). */
 export const Player = Descriptor.ConstructedComponent(struct({
@@ -50,11 +52,17 @@ export const Player = Descriptor.ConstructedComponent(struct({
 }))("Netcode/Player")
 /** Steps between two shots of one player. */
 const reload = Clock.durationOfSteps(step, 9)
+/** A shot's velocity in units per tick, and the ticks it has left. */
 export const Shot = Descriptor.ConstructedComponent(struct({
   owner: guard("a player handle", Entity.isHandle(Root, Player)),
-  dx: integer,
+  vx: finite,
+  vy: finite,
   life: integer
 }))("Netcode/Shot")
+/** Units per tick a shot leaves the muzzle at. */
+const muzzleSpeed = 4
+/** The share of its speed a shot loses per second. */
+const drag = 0.6
 
 export const Time = Clock.resource("Netcode/Time", step)
 export const Rng = Descriptor.ConstructedResource(Random.codec)("Netcode/Rng")
@@ -108,16 +116,19 @@ const Fire = Game.System("Netcode/Fire", {
   const time = resources.time.get()
   const inputs = resources.inputs.get()
   const random = Random.draw(resources.rng)
-  for (const { entity, data } of queries.players.each()) {
+  const players = queries.players.each()
+  for (const { entity, data } of players) {
     const player = data.player.get()
     if (player.ready !== null && !Clock.reached(time, player.ready)) continue
     if (!inputs[player.seat]!.fire) continue
     const at = data.position.get()
-    // Shots leave a little above or below the muzzle: the spread is the game's randomness.
-    const spread = random.integer(-2, 3)
+    const target = players.find((other) => other.data.player.get().seat !== player.seat)?.data.position.get()
+    // Aim at the other player, a little off: the spread is the game's randomness.
+    const aim = target === undefined ? (player.seat === 0 ? 0 : Math.PI) : Ops.atan2(target.y - at.y, target.x - at.x)
+    const heading = aim + random.integer(-2, 3) * 0.05
     commands.spawnIn(Rally, Game.Command.spawn(
-      [Position, { x: at.x, y: clamp(at.y + spread, 0, arena.height) }],
-      [Shot, { owner: Game.Entity.handle(entity.id, Player), dx: player.seat === 0 ? 4 : -4, life: 0 }]
+      [Position, { x: at.x, y: at.y }],
+      [Shot, { owner: Game.Entity.handle(entity.id, Player), vx: Ops.cos(heading) * muzzleSpeed, vy: Ops.sin(heading) * muzzleSpeed, life: 0 }]
     ))
     data.player.set({ ...player, ready: Clock.deadline(time, reload) })
   }
@@ -139,16 +150,18 @@ const Fly = Game.System("Netcode/Fly", {
   events: { hit: Game.System.writeEvent(Hit) },
   commands: Game.System.commands(Game.System.despawns(Shot))
 }, ({ queries, resources, events, commands }) => {
+  // The same share of speed lost every tick, frame-rate independent.
+  const slow = Ops.exp(-drag * step.dt)
   for (const { entity, data } of queries.shots.each()) {
     const shot = data.shot.get()
     const at = data.position.get()
-    const next = { x: at.x + shot.dx, y: at.y }
-    if (shot.life <= 1 || next.x < 0 || next.x > arena.width) {
+    const next = { x: at.x + shot.vx, y: at.y + shot.vy }
+    if (shot.life <= 1 || next.x < 0 || next.x > arena.width || next.y < 0 || next.y > arena.height) {
       commands.despawn(entity)
       continue
     }
     data.position.set(next)
-    data.shot.set({ ...shot, life: shot.life - 1 })
+    data.shot.set({ ...shot, vx: shot.vx * slow, vy: shot.vy * slow, life: shot.life - 1 })
     const owner = queries.players.getHandle(shot.owner)
     const seat = owner.ok ? owner.value.data.player.get().seat : -1
     for (const target of queries.players.each()) {
