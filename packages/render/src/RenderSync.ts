@@ -188,7 +188,8 @@ export interface Options<
    * node: a child's transform is local to its parent. Despawning a parent
    * despawns its children (hierarchies despawn together), so their nodes go
    * with it; a parent that only loses its node hands its children's nodes
-   * back to the root.
+   * back to the root. Each run checks every renderable entity that has a
+   * parent, so the cost grows with the number of children, not of changes.
    */
   readonly hierarchy?: HierarchyOption<S, Hierarchy>
   /** Builds the node for a new renderable entity. */
@@ -342,37 +343,34 @@ export const system = <
 
 // Moves every node whose parent changed since it was attached: the entity
 // gained, lost, or changed its parent, or the parent gained or lost its node.
-// Leaving parents go first, then the rest in depth order (parents before
-// children), so a node never moves under a node that is still inside it and
-// each move happens once.
-// The lookups `reattach` uses, with the generic ids erased.
-interface HierarchyLookup {
-  parent(entity: number, relation: unknown): { readonly ok: boolean }
-  ancestors(entity: number, relation: unknown): { readonly ok: true; readonly value: ReadonlyArray<number> } | { readonly ok: false }
-}
-
-interface ParentedQuery {
-  each(): Iterable<{ readonly entity: { readonly id: number }; readonly data: { readonly __parent: { get(): number } } }>
-}
-
+// There is no per-reader filter for relation edges, so every parented entity
+// is checked each run. Leaving parents go first, then the rest in depth
+// order (parents before children), so a node never moves under a node that
+// is still inside it and each move happens once.
 const reattach = (
   registry: NodeRegistry<unknown>,
   parented: ParentedQuery,
   lookup: HierarchyLookup,
   hierarchy: unknown
 ): void => {
-  const toRoot: Array<number> = []
-  for (const [entity] of registry.parents) {
-    if (!lookup.parent(entity, hierarchy).ok) toRoot.push(entity)
-  }
-  for (const entity of toRoot) registry.reparent(entity, undefined)
-
   let moves: Array<{ readonly entity: number; readonly parent: number | undefined; depth: number }> | undefined
+  // Nested nodes whose entity still has a parent; any other nested node lost it.
+  let stillParented = 0
   for (const { entity, data } of parented.each()) {
+    const attached = registry.parents.get(entity.id)
+    if (attached !== undefined) stillParented++
     const parent = data.__parent.get()
+    if (attached === parent) continue
     const wanted = registry.get(parent) === undefined ? undefined : parent
-    if (registry.parents.get(entity.id) === wanted || registry.get(entity.id) === undefined) continue
+    if (attached === wanted || registry.get(entity.id) === undefined) continue
     ;(moves ??= []).push({ entity: entity.id, parent: wanted, depth: 0 })
+  }
+  if (stillParented < registry.parents.size) {
+    const toRoot: Array<number> = []
+    for (const [entity] of registry.parents) {
+      if (!lookup.parent(entity, hierarchy).ok) toRoot.push(entity)
+    }
+    for (const entity of toRoot) registry.reparent(entity, undefined)
   }
   if (moves === undefined) return
   if (moves.length > 1) {
