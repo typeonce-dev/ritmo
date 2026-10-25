@@ -1,4 +1,5 @@
 import { Clock, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
+import type * as Result from "@typeonce/ritmo/Result"
 import * as Codecs from "../../core/test/codecs.ts"
 import type * as Schedule from "@typeonce/ritmo/Schedule"
 import type * as Snapshot from "@typeonce/ritmo/Snapshot"
@@ -255,5 +256,40 @@ describe("Desync.compare", () => {
   it("compares two saves into rendered differences", () => {
     expect(Desync.compare).type.toBe<(mine: Snapshot.WorldSnapshot, theirs: Snapshot.WorldSnapshot, options?: Desync.CompareOptions) => Rendered.Rendered<ReadonlyArray<Desync.Difference>>>()
     expect(Desync.compare).type.not.toBeCallableWith({ entities: [] }, { entities: [] })
+  })
+})
+
+describe("Session.step", () => {
+  const Move = Game.System("DevtoolsTypes/StepMove", { resources: { limit: Game.System.readResource(Limit) } }, () => {})
+  const Hurt = Game.System("DevtoolsTypes/StepHurt", { events: { request: Game.System.writeEvent(Request) } }, () => {})
+  const Render = Game.System("DevtoolsTypes/StepRender", {}, () => {})
+  const stepped = Game.Schedule(Move, Game.Schedule.applyDeferred(), Game.Schedule(Hurt))
+  const render = Game.Schedule(Render)
+  const session = Session.make(Game.Runtime.make({ services: Game.Runtime.services(), resources: { Limit: 1 }, debug: { hostClock } }).value, {
+    hostClock,
+    schedules: { stepped, render }
+  })
+
+  it("steps only named schedules", () => {
+    expect(session.step).type.toBeCallableWith("stepped")
+    // @ts-expect-error Argument of type '"nope"' is not assignable to parameter of type '"stepped" | "render"'
+    session.step("nope")
+  })
+
+  it("stops only before a system the schedule runs as a step", () => {
+    const frame = session.step("stepped")
+    expect(frame.until).type.toBeCallableWith(Move)
+    expect(frame.until).type.toBeCallableWith(Hurt)
+    expect(frame.until).type.not.toBeCallableWith(Render)
+    expect(frame.until).type.not.toBeCallableWith("DevtoolsTypes/StepMove")
+  })
+
+  it("returns typed results and finishes as run does", () => {
+    const frame = session.step("stepped")
+    expect(frame.until(Move).data).type.toBe<Result.Result<Session.StepReached, Session.StepStop>>()
+    expect(frame.next().data).type.toBe<Result.Result<Session.StepRan, Session.StepStop>>()
+    expect(frame.check().data).type.toBe<Result.Result<void, Session.CheckStop>>()
+    expect(frame.finish()).type.toBe<Rendered.Rendered<Session.RunResult>>()
+    expect<Session.StepStop["reason"]>().type.toBe<"frameEnded" | "notAhead" | "failure" | "defect" | "missingRequirements" | "tickOrder">()
   })
 })
