@@ -16,6 +16,7 @@ export interface MatchOptions {
   readonly jitterMS?: number
   readonly loss?: number
   readonly inputDelay?: number
+  readonly adaptiveDelay?: Netcode.AdaptiveDelay
   readonly maxRollback?: number
   /** Frames each seat presses input on; idle afterwards. */
   readonly frames?: number
@@ -54,7 +55,9 @@ export const setUpMatch = (options: MatchOptions) => {
       links: [links.value[seat]!],
       hostClock,
       step,
-      ...(options.inputDelay === undefined ? {} : { inputDelay: options.inputDelay })
+      ...(options.adaptiveDelay !== undefined
+        ? { adaptiveDelay: options.adaptiveDelay }
+        : options.inputDelay === undefined ? {} : { inputDelay: options.inputDelay })
     }
     const session = options.mode === "rollback"
       ? Netcode.rollback(peer.runtime, { ...shared, simulate, ...(options.maxRollback === undefined ? {} : { maxRollback: options.maxRollback }) })

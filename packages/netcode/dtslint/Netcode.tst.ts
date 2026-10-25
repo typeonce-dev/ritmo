@@ -38,6 +38,7 @@ if (!made.ok) throw new Error("the resources are valid")
 const runtime = made.value
 const hostClock = HostClock.test()
 declare const link: NetworkLink.NetworkLink
+declare const theLinks: ReadonlyArray<MemoryNetworkLink.MemoryNetworkLink>
 const options = { seats: theSeats, seat: 0, links: [link], hostClock, step }
 
 describe("Netcode.seats", () => {
@@ -223,5 +224,37 @@ describe("Visibility", () => {
     expect(BrowserVisibility.make(document)).type.toBeAssignableTo<Visibility.Visibility>()
     expect(MemoryVisibility.make()).type.toBe<MemoryVisibility.MemoryVisibility>()
     expect(MemoryVisibility.make()).type.toBeAssignableTo<Visibility.Visibility>()
+  })
+})
+
+describe("adaptiveDelay", () => {
+  it("takes bounds in place of inputDelay, on both sessions", () => {
+    expect(Netcode.rollback(runtime, { ...options, simulate, adaptiveDelay: { min: 1, max: 4 } })).type.toBe<Result.Result<Netcode.Session<Input, SystemFailure<"NetTypes/Fail", "Overflow">, typeof Hit>, Netcode.InvalidOptions>>()
+    expect(Netcode.lockstep(runtime, { ...options, simulate, adaptiveDelay: { min: 1, max: 4 } })).type.toBe<Result.Result<Netcode.Session<Input, SystemFailure<"NetTypes/Fail", "Overflow">, typeof Hit>, Netcode.InvalidOptions>>()
+    expect(Netcode.rollback(runtime, { ...options, simulate, inputDelay: 3 })).type.toBe<Result.Result<Netcode.Session<Input, SystemFailure<"NetTypes/Fail", "Overflow">, typeof Hit>, Netcode.InvalidOptions>>()
+  })
+
+  it("reports the delay in use and how often it moved", () => {
+    expect<Netcode.Status["inputDelay"]>().type.toBe<number>()
+    expect<Netcode.Status["delayChanges"]>().type.toBe<number>()
+  })
+
+  it("rejects inputDelay and adaptiveDelay together", () => {
+    // @ts-expect-error give inputDelay or adaptiveDelay, not both
+    Netcode.rollback(runtime, { ...options, simulate, inputDelay: 2, adaptiveDelay: { min: 1, max: 4 } })
+    // @ts-expect-error give inputDelay or adaptiveDelay, not both
+    Netcode.lockstep(runtime, { ...options, simulate, inputDelay: 2, adaptiveDelay: { min: 1, max: 4 } })
+  })
+
+  it("needs both bounds", () => {
+    // @ts-expect-error Property 'max' is missing
+    Netcode.rollback(runtime, { ...options, simulate, adaptiveDelay: { min: 1 } })
+  })
+})
+
+describe("MemoryNetworkLink.setLatency", () => {
+  it("changes a link's latency, and can fail", () => {
+    expect<MemoryNetworkLink.MemoryNetworkLink["setLatency"]>().type.toBe<(latencyMS: number) => Result.Result<void, MemoryNetworkLink.InvalidOptions>>()
+    expect(theLinks[0]!.setLatency(80)).type.toBe<Result.Result<void, MemoryNetworkLink.InvalidOptions>>()
   })
 })

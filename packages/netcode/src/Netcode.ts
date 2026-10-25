@@ -98,7 +98,11 @@ export interface Source<Input> extends System.Consumes<"snapshot"> {
 export interface Seats<Input> {
   /** How many seats, one per player. */
   readonly count: number
-  /** The input of a seat that pressed nothing: before its first input arrives, and for the first `inputDelay` ticks. */
+  /**
+   * The input of a seat that pressed nothing: before its first input
+   * arrives, for the first `inputDelay` (or `adaptiveDelay.max`) ticks after
+   * a save, and for the ticks a rise of an adaptive delay skips.
+   */
   readonly idle: Input
   /** The service the simulation reads input from. One session fills it. */
   readonly source: Source<Input>
@@ -126,7 +130,8 @@ export const seats = <const S extends Descriptor.Codec<any, any>>(
 /**
  * What one `advance` did. `input` is the tick the local input was recorded
  * for, or `undefined` when it was dropped: the session is waiting, or
- * already holds as many inputs ahead as `inputDelay` allows.
+ * already holds as many inputs ahead as its input delay allows (as for a
+ * few frames after an adaptive delay falls).
  */
 export type Advanced =
   /**
@@ -243,6 +248,10 @@ export interface Status {
    * announced with the `hidden` option: draw who everyone is waiting for.
    */
   readonly hidden: ReadonlyArray<boolean>
+  /** The input delay this seat uses now, in ticks: `inputDelay`, or where `adaptiveDelay` moved it. */
+  readonly inputDelay: number
+  /** How many times `adaptiveDelay` moved the delay, in total (0 with a fixed `inputDelay`). */
+  readonly delayChanges: number
 }
 
 /** One event the simulation published, and the session tick that published it. */
@@ -318,8 +327,8 @@ export interface Session<Input, TickError, Events extends Descriptor.Descriptor<
   /**
    * Runs this frame: reads the links, rolls back if real input contradicts
    * a guess (rollback), records `local` as this seat's input for the tick
-   * `inputDelay` ticks ahead, ticks the simulation, and sends what the other
-   * peers need. Call it once per fixed step, from `FixedLoop`'s `update`.
+   * `status().inputDelay` ticks ahead, ticks the simulation, and sends what
+   * the other peers need. Call it once per fixed step, from `FixedLoop`'s `update`.
    */
   readonly advance: (local: Input) => Result.Result<Advanced, SessionError<TickError>>
   /**
@@ -384,7 +393,7 @@ export interface HiddenOptions {
   readonly then: HiddenPolicy
 }
 
-/** Options both sessions take. */
+/** Options both sessions take, with one of {@link Delay}'s. */
 export interface Options<Input> {
   readonly seats: Seats<Input>
   /** This peer's seat: `0` hosts. */
@@ -395,8 +404,6 @@ export interface Options<Input> {
   readonly hostClock: HostClock.HostClock
   /** The simulation's fixed step, as given to `FixedLoop`. */
   readonly step: Clock.Step
-  /** Ticks between pressing and the tick the input is for (2 by default): fewer rollbacks, or less waiting, for a little lag. */
-  readonly inputDelay?: number
   /** Ticks between checksum comparisons (30 by default). */
   readonly checksumEvery?: number
   /** A seat that sends nothing for this long is gone (5000 by default). */
@@ -412,6 +419,45 @@ export interface Options<Input> {
    */
   readonly hidden?: HiddenOptions
 }
+
+/**
+ * Bounds of an adaptive input delay, in ticks (whole numbers, `0 <= min <=
+ * max`). The session starts at `max` and moves the delay to cover half the
+ * smoothed round trip to the slowest other seat, `ceil(roundTripMS / 2 /
+ * step ms)` clamped to the bounds, once that target held for 4
+ * measurements in a row (one per 250 ms).
+ */
+export interface AdaptiveDelay {
+  readonly min: number
+  readonly max: number
+}
+
+/**
+ * How a session picks its input delay, the ticks between pressing and the
+ * tick the input is for: fixed with `inputDelay` (2 by default), or moved
+ * with the connection with `adaptiveDelay`. Never both.
+ *
+ * More delay means fewer rollbacks (rollback) or less waiting (lockstep),
+ * for a little lag. Each seat's delay is its own: an adaptive delay moves
+ * without any agreement between peers, since every input carries its tick.
+ * A rise leaves the ticks it skips idle, and a fall drops this seat's input
+ * for as many frames as it fell (`Advanced.input` is `undefined`). Every
+ * peer must give the same `inputDelay`, or the same `adaptiveDelay.max`:
+ * after a save, that many ticks are idle for every seat.
+ */
+export type Delay =
+  | {
+    /** Ticks between pressing and the tick the input is for (2 by default). */
+    readonly inputDelay?: number
+    /** Not with `inputDelay`. */
+    readonly adaptiveDelay?: "inputDelay fixes the delay: give inputDelay or adaptiveDelay, not both"
+  }
+  | {
+    /** Moves the delay within these bounds from the measured round trip. */
+    readonly adaptiveDelay: AdaptiveDelay
+    /** Not with `adaptiveDelay`. */
+    readonly inputDelay?: "adaptiveDelay moves the delay: give inputDelay or adaptiveDelay, not both"
+  }
 
 /** Options of {@link rollback}. */
 export interface RollbackOptions<Input> extends Options<Input> {
@@ -447,7 +493,7 @@ export const rollback = <
   const Simulate extends AnySchedule<S, Root>
 >(
   runtime: Runtime.Runtime<S, Services, Resources, Root, Machines> & ValidateSaveable<S>,
-  options: RollbackOptions<Input> & {
+  options: RollbackOptions<Input> & Delay & {
     /** The schedule every peer ticks the same way. */
     readonly simulate: Simulate & Checkpoint.ValidateRewindable<Simulate> & Runtime.ValidateScheduleArray<readonly [Simulate], Services, Resources, Machines>
   }
@@ -469,7 +515,7 @@ export const lockstep = <
   const Simulate extends AnySchedule<S, Root>
 >(
   runtime: Runtime.Runtime<S, Services, Resources, Root, Machines> & ValidateSaveable<S>,
-  options: Options<Input> & {
+  options: Options<Input> & Delay & {
     /** The schedule every peer ticks the same way. */
     readonly simulate: Simulate & Runtime.ValidateScheduleArray<readonly [Simulate], Services, Resources, Machines>
   }

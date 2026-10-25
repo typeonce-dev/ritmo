@@ -6,7 +6,9 @@
  * plus a seeded jitter, so later messages can overtake earlier ones, and a
  * share of them can be lost. Time is the injected `HostClock` (a
  * `HostClock.test()` the test moves), and the jitter and loss come from
- * `seed`, so a test that fails fails the same way again.
+ * `seed`, so a test that fails fails the same way again. A link's
+ * `setLatency` changes its peer's latency mid-match, and `close` makes it
+ * leave.
  *
  * @module MemoryNetworkLink
  * @docGroup netcode
@@ -25,7 +27,7 @@ import { Random } from "@typeonce/ritmo-math"
 
 import * as NetworkLink from "./NetworkLink.ts"
 
-/** A link of {@link make}, which a test can close. */
+/** A link of {@link make}, which a test can close and slow down. */
 export interface MemoryNetworkLink extends NetworkLink.NetworkLink {
   /**
    * Closes this peer's link, as when it leaves: it reads `Closed` with
@@ -33,6 +35,12 @@ export interface MemoryNetworkLink extends NetworkLink.NetworkLink {
    * peers hear nothing more from it (their links stay open, like a relay's).
    */
   readonly close: (reason: string) => void
+  /**
+   * Sets the latency of the messages this peer sends from now on (those
+   * already flying keep theirs), as when its connection gets better or
+   * worse mid-match. Fails, changing nothing, unless 0 or more.
+   */
+  readonly setLatency: (latencyMS: number) => Result.Result<void, InvalidOptions>
 }
 
 /** How the links behave. */
@@ -51,7 +59,7 @@ export interface Options {
   readonly loss?: number
 }
 
-/** An option {@link make} rejected. */
+/** An option {@link make} or `setLatency` rejected. */
 export interface InvalidOptions {
   readonly _tag: "InvalidOptions"
   readonly field: "peers" | "latencyMS" | "jitterMS" | "loss"
@@ -78,6 +86,7 @@ export const make = (options: Options): Result.Result<ReadonlyArray<MemoryNetwor
   const inboxes: Array<Array<Flying>> = Array.from({ length: options.peers }, () => [])
   let order = 0
   const closedReasons: Array<string | undefined> = Array.from({ length: options.peers }, () => undefined)
+  const latencies: Array<number> = Array.from({ length: options.peers }, () => options.latencyMS)
 
   const link = (self: number): MemoryNetworkLink => ({
     send: (message) => {
@@ -87,7 +96,7 @@ export const make = (options: Options): Result.Result<ReadonlyArray<MemoryNetwor
         if (peer === self || closedReasons[peer] !== undefined) continue
         // Both draws are made for every message, so the sequence does not depend on which are lost.
         const lost = random.next() < loss
-        const delay = options.latencyMS + random.next() * jitterMS
+        const delay = latencies[self]! + random.next() * jitterMS
         if (!lost) inboxes[peer]!.push({ from: self, at: now + delay, order: order++, message })
       }
     },
@@ -109,6 +118,11 @@ export const make = (options: Options): Result.Result<ReadonlyArray<MemoryNetwor
       inboxes[self] = []
       // What it sent and is still on its way is lost with it.
       for (let peer = 0; peer < options.peers; peer++) inboxes[peer] = inboxes[peer]!.filter((entry) => entry.from !== self)
+    },
+    setLatency: (latencyMS) => {
+      if (!(latencyMS >= 0 && Number.isFinite(latencyMS))) return Result.failure({ _tag: "InvalidOptions", field: "latencyMS", value: latencyMS })
+      latencies[self] = latencyMS
+      return Result.success(undefined)
     }
   })
 
