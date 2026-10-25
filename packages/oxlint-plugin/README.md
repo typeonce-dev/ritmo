@@ -7,6 +7,7 @@ Ritmo's types reject wrong calls, and its devtools lints reject wrong runs. Thes
 - simulation code that reads the wall clock, `Math.random`, engine-dependent math, or the page;
 - timers counted in floats;
 - data that cannot be saved;
+- casts that claim a brand's check without running it;
 - state values that keep a previous state's fields;
 - runtime results that are dropped.
 
@@ -41,14 +42,15 @@ Register the plugin and turn the rules on in `.oxlintrc.json`. The simulation ru
         "ritmo/use-ops-for-math": "error",
         "ritmo/keep-simulation-headless": "error",
         "ritmo/no-infinity-in-simulation-data": "error",
-        "ritmo/no-float-timers": "error"
+        "ritmo/no-float-timers": "error",
+        "ritmo/no-brand-cast": "error"
       }
     }
   ]
 }
 ```
 
-Rules are named `ritmo/<rule>`. `ritmo/use-ops-for-math` and `ritmo/use-cell-value` fix themselves with `oxlint --fix` (`use-ops-for-math` once `Ops` is imported in the file).
+Rules are named `ritmo/<rule>`. `ritmo/use-ops-for-math` and `ritmo/use-cell-value` fix themselves with `oxlint --fix`.
 
 A deliberate exception, such as a host-time module inside a simulation folder, takes a disable comment with the reason:
 
@@ -61,10 +63,11 @@ const started = performance.now()
 |---|---|---|---|
 | [`use-clock-for-time`](#ritmouse-clock-for-time) | simulation | `Date.now()`, `performance.now()`, `new Date()`, timers | `Clock` |
 | [`use-random-for-randomness`](#ritmouse-random-for-randomness) | simulation | `Math.random()`, `crypto` randomness | `Random.draw(resources.rng)` |
-| [`use-ops-for-math`](#ritmouse-ops-for-math) | simulation | `Math.sin`, `Math.hypot`, `a ** b`, ... | `Ops` |
+| [`use-ops-for-math`](#ritmouse-ops-for-math) | simulation | `Math.sin`, `Math.hypot`, `a ** b`, `const { sin } = Math`, ... | `Ops` |
 | [`keep-simulation-headless`](#ritmokeep-simulation-headless) | simulation | page globals, host I/O, renderer imports | input and data from the host, drawing in a render schedule |
 | [`no-infinity-in-simulation-data`](#ritmono-infinity-in-simulation-data) | simulation | `Infinity` / `NaN` in object literals | `null` |
 | [`no-float-timers`](#ritmono-float-timers) | simulation | `timer -= dt`, `cooldown - time.dt` | `Clock.deadline` / `Clock.reached` |
+| [`no-brand-cast`](#ritmono-brand-cast) | simulation | `raw as UserId`, `1 as Random.State` | the schema or constructor that brands it |
 | [`handle-tick-result`](#ritmohandle-tick-result) | everywhere | a dropped `runtime.tick(...)` / `restore(...)` / `rewind(...)` result | check `.ok` |
 | [`prefix-descriptor-and-system-names`](#ritmoprefix-descriptor-and-system-names) | everywhere | `"Position"`, `Game.System("Move", ...)` | `"Game/Position"` |
 | [`use-cell-value`](#ritmouse-cell-value) | everywhere | `cell.present ? cell.get() : undefined` | `cell.value()` |
@@ -106,19 +109,23 @@ Catches `Math.random()`, `crypto.getRandomValues()`, and `crypto.randomUUID()`. 
 
 ### `ritmo/use-ops-for-math`
 
-The spec lets engines approximate `Math.sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `expm1`, `log`, `log2`, `log10`, `log1p`, `cbrt`, `pow`, `hypot`, `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, and `a ** b`, and they do: Chrome, Safari, macOS, and Linux disagree in the last bit, and a simulation grows that bit into a different run. [`Ops`](https://github.com/typeonce-dev/ritmo/blob/main/packages/math/README.md#determinism-across-devices) from `@typeonce/ritmo-math` has each of them as a port that returns the same bits everywhere.
+The spec lets engines approximate `Math.sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `exp`, `expm1`, `log`, `log2`, `log10`, `log1p`, `cbrt`, `pow`, `hypot`, `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, and `a ** b`, and they do: Chrome, Safari, macOS, and Linux disagree in the last bit, and a simulation grows that bit into a different run. [`Ops`](https://github.com/typeonce-dev/ritmo/blob/main/packages/core/README.md) from `@typeonce/ritmo` has each of them as a port that returns the same bits everywhere.
 
 ```ts
 const turn = Math.atan2(Math.sin(b - a), Math.cos(b - a))     // reported
 const beauty = base * repeat ** n                              // reported
 
 // instead
-import { Ops } from "@typeonce/ritmo-math"
+import { Ops } from "@typeonce/ritmo"
 const turn = Ops.atan2(Ops.sin(b - a), Ops.cos(b - a))
 const beauty = base * Ops.pow(repeat, n)
 ```
 
-`Math.sqrt`, `abs`, `min`, `max`, `floor`, `ceil`, `round`, `trunc`, `sign`, `+ - * /`, and `x ** 2` are exact everywhere and are not reported. With `Ops` imported in the file, `oxlint --fix` rewrites the calls.
+`Math.sqrt`, `abs`, `min`, `max`, `floor`, `ceil`, `round`, `trunc`, `sign`, `+ - * /`, and `x ** 2` are exact everywhere and are not reported (`Math.PI`, `Math["floor"]`, and `const { abs, PI } = Math` neither).
+
+`oxlint --fix` does the whole change in one run: it rewrites `Math.sin(x)` to `Ops.sin(x)`, `a ** b` to `Ops.pow(a, b)`, and `x **= y` to `x = Ops.pow(x, y)`, and adds `import { Ops } from "@typeonce/ritmo"` once, after the last import (`const { Ops } = require("@typeonce/ritmo")` in a CommonJS file). It uses `Ops` where the file already imports it, under any name (`import { Ops as M }`, `import * as Ops from "@typeonce/ritmo/Ops"`). It leaves the report unfixed where a rewrite could change the code: `body.speed **= y` (the rewrite would evaluate `body` twice), and a file or function where the name `Ops` already means something else (a type-only import included).
+
+The global Math handed on as a value hides the calls made through it from the rule, so it is reported too (without a fix): an alias (`const M = Math`), a destructured function or rest element (`const { sin } = Math`), an argument (`apply(Math, "sin", x)`), a computed key (`Math[name]`), and `globalThis.Math` used the same ways. Call `Ops.sin` directly, and read exact members by name. A local named `Math` is not the global and is not reported.
 
 ### `ritmo/keep-simulation-headless`
 
@@ -170,6 +177,29 @@ const bar = ready === null ? 0 : Clock.remaining(time, ready) / Clock.steps(cool
 ```
 
 Catches a stored value (a local or a field) plus or minus a tick's seconds on their own: `dt`, `deltaTime`, or `deltaSeconds`, as a local, a field (`time.dt`), or a resource read (`resources.deltaTime.get()`), in `x -= dt`, `x += dt`, and `x - dt` / `x + dt` anywhere (`Math.max(0, x - dt)`, an object literal). A rate scaled by `dt` (`position.x += velocity.x * dt`) is integration and is not reported, nor is a count of whole steps (`cooldown - 1`), nor a `delta` that is not time (a pointer's).
+
+### `ritmo/no-brand-cast`
+
+A branded type (`UserId`, `Random.State`, `Clock.Deadline<60>`) stands for a check the value passed. A cast claims the brand without running the check, so an invalid value travels as a valid one: a save holding it fails to load, or the simulation computes with it.
+
+```ts
+const UserId = z.string().uuid().brand("UserId")
+type UserId = z.infer<typeof UserId>
+const id = raw as UserId                                       // reported
+const rng = Random.resource("Game/Rng", 1 as Random.State)     // reported
+
+// instead
+const id = UserId.parse(raw)                                   // Effect: Schema.decodeUnknownSync(UserId)(raw)
+const rng = Random.resource("Game/Rng", Random.seed(1))
+```
+
+Oxlint has no type information, so the rule reads the brand from the code: a cast (`x as T` or `<T>x`) to
+- a brand helper: `Brand.Branded<...>`, Effect's `Brand.Brand<...>`, Zod's `z.BRAND<...>` / `z.$brand<...>`, or a `Brand<...>` / `Branded<...>` of any library;
+- an object type with a brand key: `T & { readonly __brand: "UserId" }` (also `_brand`, `__type`), or a key declared as `declare const brand: unique symbol`;
+- a type alias or interface in the same file that is one of these, or the type of a schema in the same file built with `.brand(...)` / `Schema.brand(...)` (`z.infer<typeof UserId>`, `typeof Gold.Type`, `Schema.Schema.Type<typeof Gold>`);
+- a branded Ritmo export imported from `@typeonce/ritmo` (or a subpath such as `@typeonce/ritmo/Clock`): `Clock.Deadline`, `Clock.Step`, `Clock.Duration`, `Clock.ClockResource`, `Entity.Handle`, `Entity.EntityId`, `Random.State`, `Checkpoint.Checkpoint`, `Checkpoint.Rewindable`.
+
+Make the value through its check: decode at the boundary with the game's schema, or with Ritmo's constructor or guard (`Random.seed` / `Random.result`, `Clock.deadline` / `Clock.isDeadline`, `Game.Entity.handle` / `Entity.isHandle`). `as const`, `satisfies`, and casts to types without a brand are not reported, nor are brands imported from another file of the game (the rule cannot see them).
 
 ## Rules for every file
 

@@ -34,6 +34,15 @@
         "ritmo/no-infinity-in-simulation-data": "error",
         "ritmo/no-float-timers": "error"
       }
+    },
+    {
+      // Game code only: package sources make their brands, in the constructors the brand stands for.
+      "files": [
+        "integration/*/**"
+      ],
+      "rules": {
+        "ritmo/no-brand-cast": "error"
+      }
     }
   ],
   "ignorePatterns": [
