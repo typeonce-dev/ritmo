@@ -1,8 +1,6 @@
-import { Gamepad, Keyboard, Pointer } from "@typeonce/ritmo-browser"
-
 import { pickupLayout } from "./content.ts"
 import { Facing, Game, Locomotion } from "./schema.ts"
-import { Actions, inputBindings, mouseBindings, padBindings } from "./types.ts"
+import { Actions, idleDevices } from "./types.ts"
 import type { FrameContextValue } from "./types.ts"
 
 export const makeEmptyFocusedCollectable = () => ({
@@ -13,7 +11,7 @@ export const makeEmptyFocusedCollectable = () => ({
 
 export const initialResources = (frame: FrameContextValue) => ({
   DeltaTime: frame.deltaSeconds,
-  InputState: Actions.idle({ keyboard: Keyboard.idle(inputBindings), mouse: Pointer.idle(mouseBindings), gamepad: Gamepad.idle(padBindings) }),
+  InputState: Actions.idle(idleDevices),
   FocusedCollectable: makeEmptyFocusedCollectable(),
   CollectedCount: 0,
   TotalCollectables: pickupLayout.length
