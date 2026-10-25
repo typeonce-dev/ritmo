@@ -7,6 +7,8 @@ import { describe, expect, it } from "tstyche"
 
 interface Node {
   destroy(): void
+  addChild(child: Node): void
+  removeChild(child: Node): void
   x: number
 }
 
@@ -21,6 +23,17 @@ describe("@typeonce/ritmo-pixi", () => {
     expect(PixiNodeRegistry.make(layer)).type.toBe<NodeRegistry.NodeRegistry<Node>>()
     expect(PixiNodeRegistry.make).type.not.toBeCallableWith({ addChild(_child: { x: number }) {}, removeChild(_child: { x: number }) {} })
     expect(PixiNodeRegistry.make(new Container<Graphics>())).type.toBe<NodeRegistry.NodeRegistry<Graphics>>()
+    expect(PixiNodeRegistry.make(new Container())).type.toBe<NodeRegistry.NodeRegistry<Container>>()
+  })
+
+  it("rejects nodes that cannot hold their child entities' nodes", () => {
+    interface Leaf {
+      destroy(): void
+      x: number
+    }
+    const layer = { addChild(_child: Leaf) {}, removeChild(_child: Leaf) {} }
+    // @ts-expect-error "each node must be a container (addChild and removeChild), so it can hold its child entities' nodes"
+    PixiNodeRegistry.make(layer)
   })
 
   it("provides the generic render service without casts or adapter-specific system types", () => {
@@ -33,7 +46,7 @@ describe("@typeonce/ritmo-pixi", () => {
       renderable: Sprite,
       transform: Position,
       registry: Nodes,
-      create: () => ({ destroy() {}, x: 0 }),
+      create: () => ({ destroy() {}, addChild() {}, removeChild() {}, x: 0 }),
       apply: (node, { transform }) => { node.x = transform.x }
     })
     const layer = { addChild(_child: Node) {}, removeChild(_child: Node) {} }
