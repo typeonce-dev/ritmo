@@ -26,8 +26,8 @@ export const validate = <Output>(schema: StandardSchema<unknown, Output>, raw: u
 
 /**
  * What a constructed descriptor carries: `decode` turns raw (saved-form)
- * input into a value, and `encode`, when the schema has one, turns a value
- * back into its saved form.
+ * input into a value, and `encode`, when the schema has a `"~encode"`, turns
+ * a value back into its saved form.
  */
 export interface Construction {
   readonly codec: Codec<unknown, unknown>
@@ -43,7 +43,7 @@ export const constructionOf = (descriptor: object): Construction | undefined =>
   (descriptor as { readonly [constructionKey]?: Construction })[constructionKey]
 
 export const construction = (codec: Codec<unknown, unknown>): Construction => {
-  const encoder = codec.encode
+  const encoder = codec["~encode"]
   return {
     codec,
     decode: (raw) => validate(codec, raw),

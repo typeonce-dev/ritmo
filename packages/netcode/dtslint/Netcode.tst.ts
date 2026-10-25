@@ -50,7 +50,7 @@ describe("Netcode.seats", () => {
   })
 
   it("rejects a schema that transforms without an encode, like a constructed descriptor", () => {
-    // @ts-expect-error give it an `encode` schema back to the saved form
+    // @ts-expect-error give it a ~encode schema back to the saved form
     Netcode.seats(Transforming, { count: 2, idle: new Date(0) })
   })
 })

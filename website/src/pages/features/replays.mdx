@@ -28,7 +28,7 @@ import { Clock, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
 import { Schema as S } from "effect"
 const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
   const json = S.toCodecJson(schema)
-  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], "~encode": S.toStandardSchemaV1(S.flip(json)) }
 }
 import { Invariant, Replay } from "@typeonce/ritmo-devtools"
 import * as ReplayViteSink from "@typeonce/ritmo-devtools/ReplayViteSink"
@@ -71,7 +71,7 @@ import { Descriptor, HostClock, Schema } from "@typeonce/ritmo"
 import { Schema as S } from "effect"
 const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
   const json = S.toCodecJson(schema)
-  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], "~encode": S.toStandardSchemaV1(S.flip(json)) }
 }
 import { Replay } from "@typeonce/ritmo-devtools"
 import type * as Schedule from "@typeonce/ritmo/Schedule"

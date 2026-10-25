@@ -43,7 +43,7 @@ export const stateCodec = (states: States): Codec<StateValue, StateValue> => {
     const shared = empty.get(tag)
     if (shared !== undefined) return Result.success(side === "decode" ? shared : { _tag: tag })
     const definition = states[tag] as Codec<object, unknown>
-    const schema: StandardSchema<unknown, unknown> | undefined = side === "decode" ? definition : definition.encode
+    const schema: StandardSchema<unknown, unknown> | undefined = side === "decode" ? definition : definition["~encode"]
     const { _tag, ...data } = raw
     if (schema === undefined) return Result.success({ _tag: tag, ...data })
     const value = validate(schema, data)
@@ -60,5 +60,5 @@ export const stateCodec = (states: States): Codec<StateValue, StateValue> => {
       }
     }
   })
-  return { ...toStandard("decode"), encode: toStandard("encode") }
+  return { ...toStandard("decode"), "~encode": toStandard("encode") }
 }

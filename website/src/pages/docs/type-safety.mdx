@@ -232,7 +232,7 @@ import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
 import { Schema as S } from "effect"
 const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
   const json = S.toCodecJson(schema)
-  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], "~encode": S.toStandardSchemaV1(S.flip(json)) }
 }
 const Health = Descriptor.Component<number>()("Arena/Health")
 const Game = Schema.bind(Schema.fragment({ components: { Health } }))

@@ -83,11 +83,11 @@ export const handle = <Root, const Intent extends Descriptor<"component", string
 
 /**
  * A codec whose value transforms: a `ReadonlyMap` saved as its entries, with
- * the `encode` back to them. The shape of a codec a game gets from Effect's
+ * the `"~encode"` back to them. The shape of a codec a game gets from Effect's
  * `Schema.ReadonlyMap` or a Zod codec.
  */
 export const map = <V>(value: TestCodec<V>): Codec<ReadonlyMap<string, V>, ReadonlyArray<readonly [string, V]>> & {
-  readonly encode: StandardSchema<ReadonlyMap<string, V>, ReadonlyArray<readonly [string, V]>>
+  readonly "~encode": StandardSchema<ReadonlyMap<string, V>, ReadonlyArray<readonly [string, V]>>
 } => {
   const entries = array(make<readonly [string, V]>((raw) => {
     if (!Array.isArray(raw) || raw.length !== 2 || typeof raw[0] !== "string") return fail("Expected a [key, value] entry")
@@ -103,7 +103,7 @@ export const map = <V>(value: TestCodec<V>): Codec<ReadonlyMap<string, V>, Reado
         return "issues" in decoded ? decoded : { value: new Map(decoded.value) }
       }
     },
-    encode: {
+    "~encode": {
       "~standard": {
         version: 1,
         vendor: "ritmo-test",

@@ -123,28 +123,39 @@ export namespace StandardSchema {
 }
 
 /**
- * A codec (like Effect's `Schema.Codec` and Zod's `z.codec`): what a
- * constructed component or resource, or a state with data, is validated and
- * saved with. It is a Standard Schema that decodes the saved form
- * (`Encoded`) into the value (`Type`), carrying an `encode` schema back to
- * the saved form when the two differ (an `Option`, a `Map`, a class).
+ * A codec: what a constructed component or resource, or a state with data,
+ * is validated and saved with. It is a Standard Schema that decodes the
+ * saved form (`Encoded`) into the value (`Type`), carrying under `"~encode"`
+ * a Standard Schema back to the saved form when the two differ (an
+ * `Option`, a `Map`, a `Date`, a class).
  *
  * A schema whose value is already its saved form (plain numbers, strings,
- * arrays, and objects) needs no `encode`; a schema that transforms its value
- * does not compile without one. `runtime.snapshot()` runs `encode`, and
- * `runtime.restore(...)` and the raw APIs (`setRaw`, `entryRaw`) run the
- * schema.
+ * arrays, and objects) needs no `"~encode"`, so a Zod, Valibot, or ArkType
+ * schema passes as it is. A schema that transforms its value does not
+ * compile without one: build it with the skill's helper for Zod or Effect
+ * (`playbooks/zod.md`, `playbooks/effect.md`), or write the reverse schema
+ * with any library (`{ "~standard": decode["~standard"], "~encode": back }`).
+ * The key starts with `~`, like
+ * Standard Schema's own, so it never collides with a library's methods (Zod
+ * schemas have an `encode()` method). `runtime.snapshot()` runs
+ * `"~encode"`, and `runtime.restore(...)` and the raw APIs (`setRaw`,
+ * `entryRaw`) run the schema.
  *
  * @example
  * ```ts
- * // A plain value: the schema as it is (Zod here)
+ * // A plain value: the schema as it is (Zod here; Valibot and ArkType alike)
  * const Position = Descriptor.ConstructedComponent(z.object({ x: z.number(), y: z.number() }))("Game/Position")
- * // A value that transforms: the schema and its encode (Effect, through the playbook's `codec`)
+ * // A value that transforms: the schema and its "~encode" (Effect, through the playbook's `codec`)
  * const Inventory = Descriptor.ConstructedComponent(codec(Schema.ReadonlyMap(Schema.String, Schema.Int)))("Game/Inventory")
+ * // Any library: the reverse schema by hand (Valibot here)
+ * const Born = Descriptor.ConstructedComponent({
+ *   "~standard": v.pipe(v.string(), v.isoTimestamp(), v.transform((text) => new Date(text)))["~standard"],
+ *   "~encode": v.pipe(v.date(), v.transform((date) => date.toISOString()))
+ * })("Game/Born")
  * ```
  */
 export type Codec<Type, Encoded = Type> = StandardSchema<Encoded, Type> & {
-  readonly encode?: StandardSchema<Type, Encoded> | undefined
+  readonly "~encode"?: StandardSchema<Type, Encoded> | undefined
 }
 
 /** Why a value did not validate: the schema library's own issues, each with its path. */
@@ -156,7 +167,7 @@ export interface SchemaIssues {
 /** The value a codec decodes to. */
 export type CodecType<S> = S extends StandardSchema<infer _Encoded, infer Type> ? Type : never
 
-/** The saved form a codec decodes from (and its `encode` returns). */
+/** The saved form a codec decodes from (and its `"~encode"` returns). */
 export type CodecEncoded<S> = S extends StandardSchema<infer Encoded, infer _Type> ? Encoded : never
 
 // `true` when every value of `T` survives `JSON.stringify` unchanged:
@@ -175,13 +186,13 @@ type PlainEncoded<Encoded> = false extends PlainData<Encoded>
 
 /** The message naming what is wrong with schema `S`, or `never` when Ritmo can validate and save with it. */
 export type CodecRejection<S> = S extends StandardSchema<infer Encoded, infer Type>
-  ? S extends { readonly encode: StandardSchema<infer EncodeInput, infer EncodeOutput> }
+  ? S extends { readonly "~encode": StandardSchema<infer EncodeInput, infer EncodeOutput> }
     ? [Type] extends [EncodeInput]
       ? [EncodeOutput] extends [Encoded] ? PlainEncoded<Encoded>
-      : "its encode does not return the saved form the schema decodes: make encode the schema's inverse"
-    : "its encode does not take the value the schema decodes: make encode the schema's inverse"
+      : "its ~encode does not return the saved form the schema decodes: make ~encode the schema's inverse"
+    : "its ~encode does not take the value the schema decodes: make ~encode the schema's inverse"
   : [Type] extends [Encoded] ? PlainEncoded<Encoded>
-  : "this schema changes its value when it decodes (an Option, a Map, a class): give it an `encode` schema back to the saved form (with Effect, the playbook's `codec`)"
+  : "this schema changes its value when it decodes (an Option, a Map, a Date, a class): give it a ~encode schema back to the saved form (the skill's codec helper for Zod or Effect, or the reverse schema by hand)"
   : never
 
 /** The schema argument of a constructed descriptor, or the message naming what is wrong with it. */
@@ -379,7 +390,7 @@ export const Component = <Value>(): CheckedValue<"component", Value, <const Name
  * Defines a component descriptor whose values are validated by a schema the
  * game brings (any Standard Schema, see {@link Codec}): raw input
  * (`setRaw`, `Game.Command.entryRaw`) and saved values are decoded by it,
- * and snapshots save its values through its `encode`.
+ * and snapshots save its values through its `"~encode"`.
  *
  * Use this for every component a snapshot saves, and for values that should
  * never exist in the world in an unvalidated shape (vectors, sizes, ids).
@@ -625,7 +636,7 @@ export const Resource = <Value>(): CheckedValue<"resource", Value, <const Name e
  * Defines a resource descriptor whose value is validated by a schema the
  * game brings (see {@link ConstructedComponent}): raw values given to
  * `Game.Runtime.make`, `setRaw`, and saved values are decoded by it, and
- * snapshots save it through its `encode`.
+ * snapshots save it through its `"~encode"`.
  *
  * @example
  * ```ts

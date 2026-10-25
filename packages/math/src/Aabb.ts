@@ -88,9 +88,10 @@ export const result: (raw: Raw) => Result.Result<Aabb, Error> = internal.result
 /**
  * The codec of `Aabb` (a Standard Schema, see `Descriptor.Codec`): give it to
  * `Descriptor.ConstructedComponent(...)` so raw input and saves are validated.
- * Its saved form is the raw shape, so it needs no `encode`. To put a `Aabb`
+ * Its saved form is the raw shape, so it needs no `"~encode"`. To put a `Aabb`
  * inside your own object schema, use {@link is} with your library's guard
- * schema (`Schema.declare`, `z.custom`).
+ * schema, one that narrows to the guard's type (`Schema.declare(is)`,
+ * `z.unknown().refine(is)`, `v.pipe(v.unknown(), v.guard(is))`).
  *
  * @example
  * ```ts

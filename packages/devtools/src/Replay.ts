@@ -260,7 +260,7 @@ export const recorder = <S extends Schema.Any, Root, const Recorded extends AnyS
 
   const takePoint = () => {
     const snapshot = runtime.snapshot()
-    // A tick whose world an `encode` rejects is no starting point; the window keeps the previous one.
+    // A tick whose world a `"~encode"` rejects is no starting point; the window keeps the previous one.
     if (!snapshot.ok) return
     points.push({ tick, snapshot: snapshot.value, pendingCommands: runtime.debug.dump({ limit: 0 }).pendingCommands.length })
     checkpoints.push({ tick, hash: worldHash(runtime.checksum()) })
@@ -287,7 +287,7 @@ export const recorder = <S extends Schema.Any, Root, const Recorded extends AnyS
 
   const save = (reason: string): ReplayFile => {
     const start = points[0]
-    if (start === undefined) throw new Error("no tick of this run could be saved: an `encode` rejected the world every time (see runtime.snapshot())")
+    if (start === undefined) throw new Error("no tick of this run could be saved: a `~encode` rejected the world every time (see runtime.snapshot())")
     const file: ReplayFile = {
       format: "ritmo-replay",
       version: 1,
@@ -438,7 +438,7 @@ export interface ReplaySession<S extends Schema.Any, Names extends string> {
   readonly play: (options?: { readonly to?: number }) => Rendered.Rendered<PlayResult>
   /** Hashes of the world at the end of each replayed tick so far. */
   readonly hashes: () => ReadonlyMap<number, string>
-  /** The world as plain data now, or the value an `encode` rejected. */
+  /** The world as plain data now, or the value a `"~encode"` rejected. */
   readonly snapshot: () => Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError>
 }
 

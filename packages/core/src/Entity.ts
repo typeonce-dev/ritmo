@@ -305,14 +305,14 @@ export const handle = <
  * it with `queries.x.getHandle(...)` (through a declared query) stays the
  * checked step, so any positive integer id passes. Object-shaped handles and
  * other non-numeric values are rejected. A handle is a number, so it needs no
- * `encode`.
+ * `"~encode"`.
  *
  * @example
  * ```ts
  * // Effect
  * const Target = Descriptor.ConstructedComponent(codec(Schema.Struct({ enemy: Schema.declare(Entity.isHandle(Root, Health)) })))("Game/Target")
  * // Zod
- * const Target = Descriptor.ConstructedComponent(z.object({ enemy: z.custom(Entity.isHandle(Root, Health)) }))("Game/Target")
+ * const Target = Descriptor.ConstructedComponent(z.object({ enemy: z.unknown().refine(Entity.isHandle(Root, Health)) }))("Game/Target")
  * ```
  */
 export const isHandle = <

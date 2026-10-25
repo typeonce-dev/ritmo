@@ -12,7 +12,7 @@ const asyncNumber: StandardSchema<number, number> = {
 // A codec whose encode refuses negative values, to show a snapshot that cannot be saved.
 const unsigned = {
   ...Codecs.integer,
-  encode: Codecs.primitiveOf("a value of 0 or more", (raw): raw is number => typeof raw === "number" && raw >= 0)
+  "~encode": Codecs.primitiveOf("a value of 0 or more", (raw): raw is number => typeof raw === "number" && raw >= 0)
 }
 
 const Inventory = Descriptor.ConstructedResource(Codecs.map(Codecs.integer))("Codec/Inventory")
@@ -33,7 +33,7 @@ const cart = {
       return "value" in decoded ? { value: { items: decoded.value } } : decoded
     }
   },
-  encode: {
+  "~encode": {
     "~standard": {
       version: 1,
       vendor: "test",
@@ -41,7 +41,7 @@ const cart = {
     }
   }
 } as Descriptor.Codec<{ readonly items: ReadonlyMap<string, number> }, { readonly items: ReadonlyArray<readonly [string, number]> }> & {
-  readonly encode: StandardSchema<{ readonly items: ReadonlyMap<string, number> }, { readonly items: ReadonlyArray<readonly [string, number]> }>
+  readonly "~encode": StandardSchema<{ readonly items: ReadonlyMap<string, number> }, { readonly items: ReadonlyArray<readonly [string, number]> }>
 }
 const Mode = Game.StateMachine("Codec/Mode", { Idle: {}, Shopping: cart })
 

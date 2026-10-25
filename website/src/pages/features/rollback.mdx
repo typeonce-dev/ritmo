@@ -39,7 +39,7 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 import { Schema as S } from "effect"
 const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
   const json = S.toCodecJson(schema)
-  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], "~encode": S.toStandardSchemaV1(S.flip(json)) }
 }
 import { InputCapture } from "@typeonce/ritmo-browser"
 import { Netcode } from "@typeonce/ritmo-netcode"

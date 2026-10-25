@@ -27,7 +27,7 @@ ground and moving up.
 ```ts twoslash title="schema.ts"
 const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
   const json = S.toCodecJson(schema)
-  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], "~encode": S.toStandardSchemaV1(S.flip(json)) }
 }
 // ---cut---
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -65,7 +65,7 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 import { Schema as S } from "effect"
 const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
   const json = S.toCodecJson(schema)
-  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], "~encode": S.toStandardSchemaV1(S.flip(json)) }
 }
 const Contact = Descriptor.EntityState("Brawl/Contact", {
   ground: codec(S.Struct({ platform: S.NullOr(S.Int) })),
@@ -94,7 +94,7 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 import { Schema as S } from "effect"
 const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
   const json = S.toCodecJson(schema)
-  return { "~standard": S.toStandardSchemaV1(json)["~standard"], encode: S.toStandardSchemaV1(S.flip(json)) }
+  return { "~standard": S.toStandardSchemaV1(json)["~standard"], "~encode": S.toStandardSchemaV1(S.flip(json)) }
 }
 const Contact = Descriptor.EntityState("Brawl/Contact", {
   ground: codec(S.Struct({ platform: S.NullOr(S.Int) })),
