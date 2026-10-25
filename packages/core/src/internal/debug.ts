@@ -234,7 +234,7 @@ const collectSchedules = (
   return result
 }
 
-const describeStep = (step: Schedule.ScheduleStep): Debug.StepDescription => {
+export const describeStep = (step: Schedule.ScheduleStep): Debug.StepDescription => {
   if (Schedule.isSystemStep(step)) return { kind: "system", system: step.name }
   if (step.kind === "applyDeferred") return { kind: "applyDeferred" }
   return {

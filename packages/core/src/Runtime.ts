@@ -2411,6 +2411,16 @@ const makeValidatedRuntime = <
   let inTick = false
 
   /**
+   * Whether a frame begun with `debug.beginFrame` is still open (debug
+   * runtimes only). Between its steps nothing runs, but the frame is not
+   * over: `tick`, `tryTick`, `send`, `snapshot`, `checksum`, `restore`,
+   * `checkpoint`, and `rewind` are defects until its last step has run.
+   */
+  let frameOpen = false
+  const openFrameDefect = (call: string): Error =>
+    new Error(`${call} was called while a stepped frame is open (debug.beginFrame): run its remaining steps first (with devtools, call finish() on the stepped frame)`)
+
+  /**
    * Runs one schedule. A failing system stops the schedule; systems that
    * already succeeded stay committed, and their pending work stays pending.
    */
@@ -2432,6 +2442,7 @@ const makeValidatedRuntime = <
   let hostEvents = new Set<string>()
 
   const send = (descriptor: Descriptor<"event", string, any>, value: unknown): void => {
+    if (frameOpen) throw openFrameDefect(`runtime.send(${descriptor.name})`)
     if (inTick) throw new Error(`runtime.send(${descriptor.name}) was called while a schedule is running: emit from a system instead`)
     if (!eventsByKey.has(descriptor.key)) throw new Error(`runtime.send: ${descriptor.name} is not an event of this runtime's schema`)
     const published = world.advanceTick()
@@ -2500,6 +2511,7 @@ const makeValidatedRuntime = <
   }
 
   const tickUnsafe = (schedules: ReadonlyArray<ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>>): Result.Result<void, SystemFailure> => {
+    if (frameOpen) throw openFrameDefect("runtime.tick")
     if (ticking) throw new Error("runtime.tick cannot run inside another tick")
     if (debugEnabled) reportUnread("next-tick")
     ticking = true
@@ -2556,6 +2568,7 @@ const makeValidatedRuntime = <
   const tryRunSchedule = <const Selected extends ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>>(
     schedule: Selected
   ): Result.Result<void, MissingRuntimeRequirements | TickOrderViolation | Schedule.FailureOf<Selected>> => {
+    if (frameOpen) throw openFrameDefect("runtime.tryTick")
     if (debugEnabled) reportUnread("next-tick")
     const missing = schedule.requirements
       .filter((requirement) => !hasRequirement(requirement))
@@ -2639,6 +2652,7 @@ const makeValidatedRuntime = <
     schema?.encode === undefined ? Result.success(value) : schema.encode(value)
 
   const snapshot = (): Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError> => {
+    if (frameOpen) throw openFrameDefect("runtime.snapshot")
     if (inTick) throw new Error("runtime.snapshot was called while a schedule is running: it would capture writes a failing system rolls back; take it between ticks")
     const savedEntities = world.exportEntities(DescriptorModule.isTransient)
     for (const entity of savedEntities) {
@@ -2682,6 +2696,7 @@ const makeValidatedRuntime = <
   }
 
   const checksum = (): Result.Result<string, Snapshot.SnapshotError> => {
+    if (frameOpen) throw openFrameDefect("runtime.checksum")
     if (inTick) throw new Error("runtime.checksum was called while a schedule is running: it would hash writes a failing system rolls back; take it between ticks")
     const saved = snapshot()
     return saved.ok ? Result.success(Checksum.checksum(saved.value)) : saved
@@ -2829,6 +2844,7 @@ const makeValidatedRuntime = <
   }
 
   const tracedRestore = (data: unknown): Result.Result<void, Snapshot.RestoreError> => {
+    if (frameOpen) throw openFrameDefect("runtime.restore")
     if (inTick) throw new Error("runtime.restore was called while a schedule is running: the running systems' queued commands would land on the restored world; restore between ticks")
     const result = restore(data)
     if (tracing) emit({ type: "restore", frame: frameCount, tick: world.currentTick(), ok: result.ok })
@@ -2901,6 +2917,7 @@ const makeValidatedRuntime = <
   }
 
   const checkpoint = (schedule: ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>): Checkpoint.Checkpoint<Root> => {
+    if (frameOpen) throw openFrameDefect("runtime.checkpoint")
     if (inTick) throw new Error("runtime.checkpoint was called while a schedule is running: the running systems' writes are not committed yet; take it between ticks")
     const systems = new Set<SystemDefinition<any, any, any>>()
     rewoundSystems(schedule.steps, systems)
@@ -2969,6 +2986,7 @@ const makeValidatedRuntime = <
   }
 
   const rewind = (value: Checkpoint.Checkpoint<Root>): Result.Result<void, Checkpoint.RewindError> => {
+    if (frameOpen) throw openFrameDefect("runtime.rewind")
     if (inTick) throw new Error("runtime.rewind was called while a schedule is running: the running systems' queued commands would land on the rewound world; rewind between ticks")
     const mark = CheckpointInternal.internalOf(value) as RuntimeMark | undefined
     if (mark === undefined || mark.owner !== checkpointOwner) return Result.failure({ _tag: "OtherRuntime" })
@@ -3145,7 +3163,102 @@ const makeValidatedRuntime = <
     return result
   }
 
+  /**
+   * `debug.beginFrame`: the frame `tryTick(schedule)` runs, one step per
+   * `next()`. It replays `tryTick`, `runScheduleUnsafe`, and `runSteps` in
+   * order (checks, frame advance, host and trace events, steps, ignored
+   * failures), so a stepped frame and a ticked one are the same frame.
+   */
+  const beginFrame = (
+    schedule: ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>
+  ): Result.Result<Debug.FrameCursor<SystemFailure>, MissingRuntimeRequirements | TickOrderViolation> => {
+    if (frameOpen) throw openFrameDefect("debug.beginFrame")
+    if (inTick) throw new Error("debug.beginFrame was called while a schedule is running: begin a frame between ticks")
+    reportUnread("next-tick")
+    const missing = schedule.requirements
+      .filter((requirement) => !hasRequirement(requirement))
+      .map(({ kind, name }) => ({ kind, name }))
+    if (missing.length > 0) {
+      return watchResult(Result.failure({ kind: "MissingRuntimeRequirements" as const, requirements: missing }), [schedule])
+    }
+    const issues = OrderInternal.tickOrderIssues(schedule.steps)
+    if (issues.length > 0) {
+      return watchResult(Result.failure({ kind: "TickOrderViolation" as const, issues }), [schedule])
+    }
+    const steps = schedule.steps
+    inTick = true
+    try {
+      advanceFrame()
+    } finally {
+      inTick = false
+    }
+    const frame = frameCount
+    const hosted = hostListeners.size > 0
+    if (hosted) emitHost({ type: "tick.start", schedules: [schedule], frame })
+    changedMachines = new Set()
+    const label = scheduleName(schedule)
+    // Like `traceSchedule`: the schedule events are emitted when tracing was on at its start.
+    const traced = tracing
+    if (traced) emit({ type: "schedule.start", frame, schedule: label })
+    const started = traced ? now() : 0
+    let index = 0
+    let ended = false
+    frameOpen = true
+    const end = (result: Result.Result<void, SystemFailure>): void => {
+      ended = true
+      frameOpen = false
+      if (traced) emit({ type: "schedule.end", frame, schedule: label, ok: result.ok, ms: HostClockModule.elapsed(started, now()) })
+      if (hosted) {
+        emitHost(result.ok
+          ? { type: "tick.end", schedules: [schedule], frame, outcome: "ok" }
+          : { type: "tick.end", schedules: [schedule], frame, outcome: "failed", error: result.error })
+      }
+    }
+    const runStep = (step: Schedule.ScheduleStep, at: number): Result.Result<void, SystemFailure> => {
+      if (Schedule.isSystemStep(step)) return runSystem(step as SystemDefinition<any, any, any>, schedule, at)
+      if (step.kind === "applyDeferred") {
+        applyDeferred()
+        return succeeded
+      }
+      return applyStateTransitions(step.bundle as never)
+    }
+    const cursor: Debug.FrameCursor<SystemFailure> = {
+      frame,
+      remaining: () => ended ? [] : steps.slice(index).map(DebugInternal.describeStep),
+      next: () => {
+        if (ended) throw new Error("FrameCursor.next was called after the frame ended: begin another frame")
+        const at = index
+        const step = steps[at]!
+        index += 1
+        inTick = true
+        schedulePath.push(label)
+        let result: Result.Result<void, SystemFailure>
+        try {
+          result = runStep(step, at)
+        } catch (defect) {
+          ended = true
+          frameOpen = false
+          if (hosted) emitHost({ type: "tick.end", schedules: [schedule], frame, outcome: "defect", error: defect })
+          throw defect
+        } finally {
+          schedulePath.pop()
+          inTick = false
+        }
+        if (!result.ok) {
+          end(result)
+          return watchResult(result, [schedule]) as unknown as Result.Result<Debug.StepOutcome, SystemFailure>
+        }
+        const last = index === steps.length
+        if (last) end(result)
+        return Result.success({ step: DebugInternal.describeStep(step), ended: last })
+      }
+    }
+    if (steps.length === 0) end(succeeded)
+    return Result.success(cursor)
+  }
+
   const handle: Debug.Handle<S, Root> = {
+    beginFrame: beginFrame as Debug.Handle<S, Root>["beginFrame"],
     nameSchedules(named) {
       scheduleNames.clear()
       for (const [name, schedule] of Object.entries(named)) scheduleNames.set(schedule, name)

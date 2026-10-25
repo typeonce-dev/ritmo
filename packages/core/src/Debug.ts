@@ -23,6 +23,8 @@
  *   system that queued it and its structural effects.
  * - `streams()` reports each event, transition-event, and relation-failure
  *   stream: its size, and each reader's unread count and loss.
+ * - `beginFrame(schedule)` runs one frame of a schedule a step at a time, so
+ *   a tool can read the world between two systems (see {@link FrameCursor}).
  *
  * Values in descriptions, dumps, and traces are shared with the world, not
  * copied. World values are immutable by contract, so they stay valid as a
@@ -49,7 +51,9 @@
  */
 import type { HostClock } from "./HostClock.ts"
 import type * as Machine from "./Machine.ts"
-import type { AnyScheduleOrder, ExecutableScheduleDefinition } from "./Schedule.ts"
+import type * as Result from "./Result.ts"
+import type { MissingRuntimeRequirements, TickOrderViolation } from "./Runtime.ts"
+import type { AnyScheduleOrder, ExecutableScheduleDefinition, FailureOf } from "./Schedule.ts"
 import type { Schema } from "./Schema.ts"
 
 /** Version of the description, dump, and trace formats. */
@@ -104,8 +108,66 @@ export interface Handle<S extends Schema.Any = Schema.Any, Root = unknown> {
   readonly streams: () => ReadonlyArray<StreamStatus>
   /** Live entity count and, per component, how many entities have it. Cheap enough to sample every frame. */
   readonly population: () => Population
-  /** Number of frames (`tick`/`tryTick` calls) run so far. */
+  /** Number of frames (`tick`/`tryTick` calls and begun frames) run so far. */
   readonly frame: () => number
+  /**
+   * Begins one frame of `schedule` and returns a cursor that runs its steps
+   * one `next()` at a time: the frame `tryTick(schedule)` would run, with
+   * the same semantics and trace events, paused between steps. Each system
+   * run commits at its end, markers apply at their position, and reader
+   * cursors advance as in a whole tick. Missing requirements and `thisTick`
+   * order violations fail here, as `tryTick` returns them, and begin
+   * nothing.
+   *
+   * While the frame is open the world can be read (`dump`, `inspect`,
+   * `streams`), but `tick`, `tryTick`, `send`, `snapshot`, `checksum`,
+   * `restore`, `checkpoint`, `rewind`, and another `beginFrame` are defects:
+   * run the remaining steps first. A frame cannot be abandoned halfway.
+   *
+   * For tools: devtools' `session.step(name)` wraps it with typed system
+   * names, invariants, and labels. Games use `tick`.
+   *
+   * @example
+   * ```ts
+   * const frame = runtime.debug.beginFrame(update)
+   * if (frame.ok) {
+   *   frame.value.next() // the first step
+   *   console.log(runtime.debug.dump({ entities: [12] }))
+   *   while (frame.value.remaining().length > 0) frame.value.next()
+   * }
+   * ```
+   */
+  readonly beginFrame: <const Selected extends ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>(
+    schedule: Selected
+  ) => Result.Result<FrameCursor<FailureOf<Selected>>, MissingRuntimeRequirements | TickOrderViolation>
+}
+
+/**
+ * One frame of a schedule begun with `debug.beginFrame`, run one step at a
+ * time. The frame ends after its last step, after a system that fails, or
+ * when a step throws (the defect is rethrown); once ended, `remaining()` is
+ * empty and `next()` is a defect.
+ */
+export interface FrameCursor<Failure = unknown> {
+  /** The frame number, as `debug.frame()` reports it. */
+  readonly frame: number
+  /** The steps not run yet, in order; empty once the frame has ended. */
+  readonly remaining: () => ReadonlyArray<StepDescription>
+  /**
+   * Runs the next step: a system (committed at its end, or skipped by its
+   * conditions) or a marker (applying commands, and for
+   * `applyStateTransitions` the transitions and their schedules). A system
+   * failure ends the frame and is returned, as `tryTick` returns it; the
+   * steps after it do not run this frame.
+   */
+  readonly next: () => Result.Result<StepOutcome, Failure>
+}
+
+/** The step a {@link FrameCursor} ran, and whether it ended the frame. */
+export interface StepOutcome {
+  readonly step: StepDescription
+  /** `true` when it was the frame's last step: the frame has ended. */
+  readonly ended: boolean
 }
 
 /**
