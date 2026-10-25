@@ -4,7 +4,8 @@
  *
  * A replay is a debug artifact, not a long-term test: open it, find the bug
  * with `why` / `journal`, `extract` the few ticks that show it into a test,
- * then delete the replay.
+ * then delete the replay. `Fuzz.run` writes one too: the shrunk input that
+ * breaks an invariant, ready to become that test.
  *
  * - `recorder(runtime, options)` keeps a rolling window of one schedule's
  *   ticks: periodic world snapshots (so the window has a start), what each
@@ -12,8 +13,8 @@
  *   (stored as changes from the previous tick), and every `runtime.send`.
  *   Time and randomness live in the world, so that is everything the
  *   simulation reads. `save(reason)` hands the file to a `Sink`.
- * - `session(make, file)` restores the start and replays the ticks in a
- *   normal devtools `Session`; `verify` replays twice and compares the
+ * - `session(make, file, { invariants })` restores the start and replays
+ *   the ticks in a normal devtools `Session`; `verify` replays twice and compares the
  *   checkpoint hashes to find nondeterminism; `extract` cuts a range of
  *   ticks into a small replay with its own start, for a test.
  *
@@ -410,15 +411,32 @@ export interface Playback {
  * name, and the clock the replay session times runs with
  * (`HostClock.test()` for identical text output).
  */
-export interface Target<S extends Schema.Any, Root> {
+export interface Target<
+  S extends Schema.Any,
+  Root,
+  Schedules extends Readonly<Record<string, AnySchedule<S, Root>>> = Readonly<Record<string, AnySchedule<S, Root>>>,
+  Services extends Record<string, unknown> = Record<string, unknown>,
+  Resources extends object = object,
+  Machines extends Record<string, unknown> = Record<string, unknown>
+> {
   readonly hostClock: HostClock.HostClock
-  readonly runtime: Session.Target<S, Root> & {
+  readonly runtime: Session.Target<S, Root, Services, Resources, Machines> & {
     readonly snapshot: () => Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError>
     readonly checksum: () => Result.Result<string, Snapshot.SnapshotError>
     readonly restore: (data: unknown) => Result.Result<void, Snapshot.RestoreError>
     readonly send: (descriptor: never, value: never) => void
   }
-  readonly schedules: Readonly<Record<string, AnySchedule<S, Root>>>
+  readonly schedules: Schedules
+}
+
+/** How `session` checks the replayed ticks. */
+export interface SessionOptions<Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>>> {
+  /**
+   * Checked after every replayed tick, as in `Session.make`: `play` stops at
+   * the first violation. Pass the invariants a `Fuzz.run` found broken, so
+   * the replay stops where the bug shows.
+   */
+  readonly invariants?: Invariants
 }
 
 /** What one `ReplaySession.play` did: the session run, and the checkpoints that differ. */
@@ -444,11 +462,22 @@ export interface ReplaySession<S extends Schema.Any, Names extends string> {
 
 /**
  * Opens a replay: builds the game with `make(playback)`, checks the schema,
- * restores the start, and returns a session ready to `play`.
+ * restores the start, and returns a session ready to `play`, checking
+ * `options.invariants` after every tick. An invariant that reads something
+ * the runtime does not provide does not compile.
  */
-export const session = <S extends Schema.Any, Root>(
-  make: (playback: Playback) => Target<S, Root>,
-  file: ReplayFile
+export const session = <
+  S extends Schema.Any,
+  Root,
+  Schedules extends Readonly<Record<string, AnySchedule<S, Root>>>,
+  Services extends Record<string, unknown>,
+  Resources extends object,
+  Machines extends Record<string, unknown>,
+  const Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>> = readonly []
+>(
+  make: (playback: Playback) => Target<S, Root, Schedules, Services, Resources, Machines>,
+  file: ReplayFile,
+  options?: SessionOptions<Invariants> & Session.ValidateInvariants<Invariants, Services, Resources, Machines>
 ): Result.Result<ReplaySession<S, string>, ReplayError> => {
   /** The last tick replayed (the start's tick before any). */
   let ran = file.start.tick
@@ -468,7 +497,8 @@ export const session = <S extends Schema.Any, Root>(
     constant: (descriptor) => file.constants[descriptor.name]
   }
   const target = make(playback)
-  const schedule = target.schedules[file.schedule]
+  const schedules: Readonly<Record<string, AnySchedule<S, Root> | undefined>> = target.schedules
+  const schedule = schedules[file.schedule]
   if (schedule === undefined) return Result.failure({ _tag: "MissingSchedule", schedule: file.schedule })
   const current = schemaHash(target.runtime.debug)
   if (current !== file.schema) {
@@ -476,7 +506,10 @@ export const session = <S extends Schema.Any, Root>(
   }
   const restored = target.runtime.restore(file.start.snapshot)
   if (!restored.ok) return Result.failure({ _tag: "RestoreFailed", error: restored.error })
-  const replay = Session.make(target.runtime, { schedules: { [file.schedule]: schedule }, hostClock: target.hostClock })
+  const runtime: Session.Target<S, Root> = target.runtime
+  // The signature checked the invariants against this runtime's provisions.
+  const invariants = (options?.invariants ?? []) as readonly []
+  const replay = Session.make(runtime, { schedules: { [file.schedule]: schedule }, hostClock: target.hostClock, invariants })
   const send = target.runtime.send as (descriptor: { readonly kind: "event"; readonly name: string; readonly key: symbol }, value: unknown) => void
   const events = new Map(target.runtime.debug.describe().events.map(({ name }) => [name, { kind: "event" as const, name, key: Symbol.for(`ritmo/event/${name}`) }]))
   const hashes = new Map<number, string>([[ran, worldHash(target.runtime.checksum())]])
