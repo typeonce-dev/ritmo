@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { Descriptor, HostClock, Schema } from "@typeonce/ritmo"
 import { Controls, Gamepad, InputCapture, Keyboard, Pointer, Touch } from "@typeonce/ritmo-browser"
+import * as Random from "@typeonce/ritmo-math/Random"
 
 const idle = { held: false, pressed: false, released: false }
 const keyBindings = { jump: [" "], pause: ["Escape"] } as const
@@ -269,5 +270,35 @@ describe("Controls vector actions", () => {
     expect(snapshot.vectors).toEqual({ move: { x: 0.6, y: 0 }, aim: { x: 0, y: -1 } })
     expect(snapshot.available).toEqual({ jump: true, move: true, aim: true })
     expect(snapshot.lastUsed).toBe("touch")
+  })
+
+  it("draws a fuzzed snapshot with the states a merge reports, keeping device data idle", () => {
+    const Moving = Controls.actions({ buttons: ["jump"], vectors: ["move"] })
+    const moveKeys = { move: Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"], right: ["d"] }), jump: [" "] } as const
+    const devices = { keyboard: Keyboard.idle(moveKeys) }
+    const random = Random.make(1)
+    const draws = Array.from({ length: 300 }, () => Moving.random(random, devices))
+    const states = new Set(draws.map(({ actions }) => JSON.stringify(actions.jump)))
+    expect([...states].sort()).toEqual([
+      { held: false, pressed: false, released: false },
+      { held: true, pressed: false, released: false },
+      { held: true, pressed: true, released: false },
+      { held: false, pressed: true, released: true },
+      { held: false, pressed: false, released: true }
+    ].map((state) => JSON.stringify(state)).sort())
+    for (const draw of draws) {
+      expect(Math.hypot(draw.vectors.move.x, draw.vectors.move.y)).toBeLessThanOrEqual(1 + 1e-9)
+      expect(draw.devices).toBe(devices)
+      expect(draw.available).toEqual({ jump: true, move: true })
+      expect(draw.lastUsed).toBe(null)
+    }
+    // Zero, full directions, and shorter tilts all come up.
+    const lengths = draws.map(({ vectors }) => Math.hypot(vectors.move.x, vectors.move.y))
+    expect(lengths.some((length) => length === 0)).toBe(true)
+    expect(lengths.some((length) => Math.abs(length - 1) < 1e-9)).toBe(true)
+    expect(lengths.some((length) => length > 0 && length < 0.99)).toBe(true)
+    // The same seed draws the same input.
+    const again = Random.make(1)
+    expect(Array.from({ length: 300 }, () => Moving.random(again, devices))).toEqual(draws)
   })
 })
