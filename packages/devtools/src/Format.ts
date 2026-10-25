@@ -227,11 +227,8 @@ export const description = (input: Debug.Description): string => {
   if (input.schedules.length === 0) lines.push("(none named; call runtime.debug.nameSchedules({...}))")
   for (const schedule of input.schedules) {
     lines.push(`${schedule.name}:`)
-    schedule.steps.forEach((step, index) => {
-      const text = step.kind === "system" ? step.system
-        : step.kind === "applyDeferred" ? "<applyDeferred>"
-        : `<applyStateTransitions${step.schedules.length > 0 ? `: ${step.schedules.join(", ")}` : ""}>`
-      lines.push(`  ${String(index).padStart(2)} ${text}`)
+    schedule.steps.forEach((entry, index) => {
+      lines.push(`  ${String(index).padStart(2)} ${step(entry)}`)
     })
   }
   if (input.systems.length > 0) {
@@ -250,6 +247,12 @@ export const description = (input: Debug.Description): string => {
   }
   return [...lintLines(input.lints), "", ...lines].join("\n")
 }
+
+/** One schedule step: the system's name, or `<applyDeferred>` / `<applyStateTransitions: ...>` for a marker. */
+export const step = (input: Debug.StepDescription): string =>
+  input.kind === "system" ? input.system
+  : input.kind === "applyDeferred" ? "<applyDeferred>"
+  : `<applyStateTransitions${input.schedules.length > 0 ? `: ${input.schedules.join(", ")}` : ""}>`
 
 /** One entity per line (named with `labels`), then resources, machines, and pending commands. */
 export const dump = (input: Debug.WorldDump, options: ValueOptions = {}, labels?: Labels): string => {

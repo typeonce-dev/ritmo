@@ -83,6 +83,7 @@ f121 update  TopDown/MovePlayer  write e1 TopDown/Position {x:139.34,y:128.007} 
 | `session.dump({ with: [Player] })` | The entities, resources, and state machines right now |
 | `session.whyResource(Score)` | The latest changes to a resource |
 | `session.journal({ frames: [100, 120], entity })` | Everything that touched an entity in a range of frames |
+| `session.step("update")` | One frame a system at a time: `until(MovePlayer)` stops before it, `next()` runs one step, `finish()` reports the frame like `run` |
 
 ## Lints
 

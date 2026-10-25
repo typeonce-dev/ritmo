@@ -98,6 +98,9 @@ importers:
       '@typeonce/ritmo-browser':
         specifier: workspace:*
         version: link:../../packages/browser
+      '@typeonce/ritmo-devtools':
+        specifier: workspace:*
+        version: link:../../packages/devtools
       '@typeonce/ritmo-math':
         specifier: workspace:*
         version: link:../../packages/math
@@ -147,6 +150,13 @@ importers:
       '@typeonce/ritmo-math':
         specifier: workspace:^
         version: link:../math
+    devDependencies:
+      playwright:
+        specifier: ^1.64.1
+        version: 1.64.1
+      vite:
+        specifier: ^8.0.3
+        version: 8.3.5(@types/node@25.5.0)(esbuild@0.28.2)(tsx@4.21.0)(yaml@2.9.1)
 
   packages/math:
     dependencies:
@@ -2716,6 +2726,16 @@ packages:
 
   pixi.js@8.22.0:
     resolution: {integrity: sha512-QbTANHMZ751MIjLiLSUSM8a7LNMWwMIf0KbRCqlW+SPS9hNLfSVS+cl1O2SEp9g1K/wyLzj/OJHv+1TUfiPr/w==}
+
+  playwright-core@1.64.1:
+    resolution: {integrity: sha512-BC4s8y6SEVA6Q1rSxZTto8hI1KUI3xXlHGZgvGqP4IqPdI/a6FX9H29IDNz7vKo9l21b6LfYosScPL6M3xxyDQ==}
+    engines: {node: '>=20'}
+    hasBin: true
+
+  playwright@1.64.1:
+    resolution: {integrity: sha512-HCrVhHr5QQuwYoswEUGTb7gGp522yflbv/ST8nF4sFWGuLjQCt17Q/EubpGGSNKYn1tsTCPZxqHhHCfVURu7UA==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   postcss@8.5.31:
     resolution: {integrity: sha512-YUbWYCgErwnMAVkjUnYa+KlMBzGpHwiIt/DE7f0G33AuX2LH9UcTk6KgWxd3zRU+pN3u/C+Xl3EnMLM4Hea7Sg==}
@@ -5508,6 +5528,12 @@ snapshots:
       ismobilejs: 1.1.1
       parse-svg-path: 0.2.0
       tiny-lru: 11.4.7
+
+  playwright-core@1.64.1: {}
+
+  playwright@1.64.1:
+    dependencies:
+      playwright-core: 1.64.1
 
   postcss@8.5.31:
     dependencies:
