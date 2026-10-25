@@ -74,6 +74,22 @@
     "@typeonce/ritmo": "workspace:^",
     "@typeonce/ritmo-math": "workspace:^"
   },
+  "peerDependencies": {
+    "playwright": ">=1.40",
+    "vite": ">=6"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": true
+    },
+    "vite": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "playwright": "^1.64.1",
+    "vite": "^8.0.3"
+  },
   "engines": {
     "node": ">=22.15"
   }

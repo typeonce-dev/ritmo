@@ -44,6 +44,53 @@ jobs:
       - name: Check packed packages
         run: pnpm pack:check
 
+  determinism:
+    name: Determinism across engines
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The browsers match the playwright version in the lockfile.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm --dir packages/devtools exec playwright install --with-deps chromium webkit firefox
+
+      # Cached browsers still need the system libraries they link against.
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm --dir packages/devtools exec playwright install-deps chromium webkit firefox
+
+      # Ops gives the same bits on every engine, and a replay plays the same in
+      # every browser: this runs both claims on a committed netcode match.
+      # Regenerate it with: node --import tsx integration/netcode/replay/record.ts
+      - name: Verify the netcode replay on every engine
+        run: pnpm --dir integration/netcode exec ritmo-devtools verify replay/target.ts replay/match.json --engines node,chromium,webkit,firefox
+
+      # The check job skips these without browsers.
+      - name: Browser engine tests
+        run: pnpm vitest run packages/devtools/test/PlaywrightEngine.test.ts
+
   bench:
     name: Performance regressions
     runs-on: ubuntu-latest

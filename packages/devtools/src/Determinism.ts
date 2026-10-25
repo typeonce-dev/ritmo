@@ -8,7 +8,8 @@
  * system or schedule marker after which the worlds differ. If that rerun
  * does not reproduce it, `after` is undefined: the original mismatch still
  * fails the check. This checks repeatability on the current JS engine, not
- * equality between platforms or every possible input sequence.
+ * equality between platforms (`Verify.acrossEngines` plays a replay in real
+ * browsers for that) or every possible input sequence.
  *
  * A difference inside an entity names it (`entity`), and with `labels` (the
  * session's labels inspector) also its label, read on the first world at the

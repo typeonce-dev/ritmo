@@ -15,7 +15,8 @@ every call. A difference reports its frame, value path, and the first system
 or schedule marker found by a diagnostic rerun; inside an entity, it names
 the entity (`entity`) and, given `labels` (the session's labels inspector),
 its `label`. This checks the supplied inputs on the current JavaScript
-engine.
+engine; [Verify across engines](#verify-across-engines) plays a replay in
+Node and real browsers.
 
 Debug sessions for `ritmo` runtimes: run schedules headless, keep a trace
 history, and ask what happened as text. Built for coding agents: every
@@ -329,6 +330,70 @@ compile error naming that fix: a replay can only stand in for its
 
 A replay recorded with another schema fails with "replay recorded with an
 older schema".
+
+## Verify across engines
+
+`Replay.verify` replays on one engine. `ritmo-devtools verify` plays the
+same replay in Node and in real browser engines and reports the first tick
+whose world differs, with every value that differs there. Run it before
+trusting a lockstep or rollback match across browsers, and in CI on a
+committed replay of the game:
+
+```sh
+ritmo-devtools verify src/replay-target.ts replays/boss-fight.json --engines node,chromium,webkit,firefox
+# NOT verified: 1800 ticks of simulate
+# node: agrees with a second node run and the recording over 1800 ticks
+# chromium: agrees with node over 1800 ticks
+# tick 1412: webkit differs from node in e41 Game/Position.x (40.000000000000014 -> 40)
+#   1 difference (node -> webkit):
+#     e41 Game/Position.x: 40.000000000000014 -> 40
+# firefox: not installed (the firefox browser is not downloaded): npx playwright install firefox
+```
+
+`<entry>` exports `replayTarget`, the `make(playback)` factory
+`Replay.session` takes (above). It must load in a browser too: keep Node
+built-ins out of it.
+
+```ts
+// src/replay-target.ts
+export const replayTarget = (playback: Replay.Playback) => {
+  const hostClock = HostClock.test()
+  return { runtime: makeRuntime({ input: playback.source(Input), debug: { hostClock } }), schedules: { simulate }, hostClock }
+}
+```
+
+- Node always runs, as the reference: twice (a difference is
+  nondeterminism here) and against the recording's checkpoints (a
+  difference is a code change since recording, or the recording engine).
+  `--engines node`, the default, needs no other dependency.
+- Browser engines run headless through Playwright, with the entry served by
+  a bare Vite dev server (the game's `vite.config` is not read). Install
+  them where the check runs: `npm install --save-dev playwright vite` and
+  `npx playwright install chromium webkit firefox`. An engine that is not
+  installed is printed with its install command and fails the check.
+- Exit codes: 0 every engine agrees, 1 one differs or did not run, 2 usage
+  error (arguments, a file that is not a replay, an entry without
+  `replayTarget`). `--json` prints the result as JSON.
+
+The same check from code, for a game's own test:
+
+```ts
+import { Verify } from "@typeonce/ritmo-devtools"
+import * as PlaywrightEngine from "@typeonce/ritmo-devtools/PlaywrightEngine"
+
+const browsers = PlaywrightEngine.make({ entry: "src/replay-target.ts", browsers: ["chromium", "webkit", "firefox"] })
+const verified = await Verify.acrossEngines(replayTarget, file, { engines: browsers.engines })
+await browsers.close()
+if (!verified.ok && verified.error._tag === "NotVerified") {
+  for (const outcome of verified.error.outcomes) if (outcome._tag === "Diverged") console.log(outcome.tick, outcome.differences)
+}
+```
+
+The error side is `ReplayInvalid` (the replay does not open here) or
+`NotVerified`, one outcome per engine: `Agreed`, `Diverged` (`tick`,
+`against`, `differences`), `EngineMissing` (`install`), or `EngineFailed`.
+For another host (a webview, a console), run `Verify.trace` and
+`Verify.snapshotAt` there and wrap them as a `Verify.Engine`.
 
 ## Fuzzing
 
