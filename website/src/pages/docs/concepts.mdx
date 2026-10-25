@@ -1,18 +1,21 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Concepts
-description: The pieces of a Ritmo game, and the rule each one keeps.
+description: The pieces of a Ritmo game, built up as one small arena, and the rule each one keeps.
 ---
 
-A **world** of entities, **systems** that change it, and **schedules** that
-run them in a checked order, one fixed step at a time. Hover any name for its
-type.
+A Ritmo game is a **world** of entities, **systems** that change it, and
+**schedules** that run them in a checked order, one fixed step at a time.
+This page builds one small arena with all of them. After it, you can read
+any Ritmo game and know where each piece lives.
+
+Hover any name for its type.
 
 ## The world
 
 Components belong to entities, resources to the whole world, and events are
-messages sent within a tick. `Schema.bind` turns them into `Game`, and every
-other API comes from `Game`.
+messages between systems. Each has a unique name and a type. `Schema.bind`
+turns them into `Game`, and every other API comes from `Game`.
 
 ```ts twoslash title="schema.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -41,8 +44,9 @@ const Game = Schema.bind(
 
 ## Systems
 
-The spec declares everything the system touches, and the function gets only
-that.
+A system's spec declares everything it touches, and its function gets only
+that. The runtime, the devtools, and the schedule checks all read the same
+spec.
 
 ```ts twoslash title="damage.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -80,8 +84,12 @@ const Damage = Game.System(
 
 ## Queries
 
-`selection` is the data per entity, `with` / `without` filter, and `changed`
-keeps only what changed since this system last ran.
+`selection` is the data each match gets, `with` and `without` filter by
+component, and `changed` keeps only what changed since this system last ran.
+
+Every read in Ritmo works this way: changes, events, and transitions are
+streams per reader. Each system sees what was published since its own
+previous run, once.
 
 ```ts twoslash title="queries.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -105,8 +113,9 @@ const Wounded = Game.Query({
 
 ## Commands
 
-Spawns and despawns are queued, and they land together at the next
-`applyDeferred()`.
+Spawns, despawns, inserts, and removes are queued, and they land together at
+the next `applyDeferred()`. No system sees the world change shape while it
+runs.
 
 ```ts twoslash title="waves.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -137,7 +146,8 @@ const Cull = Game.System(
 ## Schedules and the tick
 
 A schedule lists the systems in order and marks where commands land. A tick
-returns a `Result`. If a system fails, its writes are rolled back.
+returns a `Result`. If a system fails, its writes are rolled back and the
+tick names the system.
 
 ```ts twoslash title="update.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -166,6 +176,9 @@ const ticked = runtime.tick(update)
 ```
 
 ## State machines
+
+A game-wide mode is a state machine: a closed list of states, each with
+only its own data.
 
 ```ts twoslash title="flow.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -201,23 +214,23 @@ const Simulate = Game.System(
 ```
 
 The change applies at `applyStateTransitions()`, the state and its data
-together. A game over always has a winner, and nothing else does.
+together. A game over always has a winner, and nothing else does. See
+[States that can't go wrong](/features/states/).
 
 ## Validating and saving values
 
-Ritmo validates with the schema library the game already uses: any
+Ritmo validates with the schema library your game already uses: any
 [Standard Schema](https://standardschema.dev), from Zod, Valibot, ArkType,
 or Effect. A constructed descriptor takes one. Raw input and saves are
-checked by it, and `runtime.snapshot()` saves each value in the schema's
-encoded form.
+checked by it.
 
-A schema of plain data passes as it is. A value that changes shape when
-saved, like a `Map`, an `Option`, or a `Date`, needs a schema with a
-`"~encode"` back, and Ritmo says so if it is missing. The Ritmo skill has a
-helper for Zod and one for Effect; with any other library, `"~encode"` is
-the reverse schema, written by hand.
+`runtime.snapshot()` saves each value in its schema's encoded form. A
+schema of plain data passes as it is. A value that changes shape when saved
+(a `Map`, an `Option`, a `Date`) needs a schema with a `"~encode"` back, and
+the descriptor does not compile without one.
 
-With Effect, one helper in the game turns any schema into that shape:
+The skill has a helper for Zod and one for Effect. With Effect, one helper
+in the game turns any schema into that shape:
 
 ```ts twoslash title="codec.ts"
 import { Descriptor, Entity, Schema } from "@typeonce/ritmo"
@@ -267,6 +280,12 @@ if (runtime.ok) {
 ## Same input, same game
 
 The simulation advances in fixed steps (`Clock.hz(60)`). Time comes from
-`Clock`, randomness from a seeded `Random`, and trigonometry from `Ops`. That
-makes replays and [headless tests](/docs/devtools/) exact, and the lint rules
-reject `Math.random`, `Date.now` and page APIs inside systems.
+`Clock`, randomness from a seeded `Random`, and trigonometry from `Ops`. The
+lint rules reject `Math.random`, `Date.now`, and page APIs inside systems.
+
+That makes a run exact: replays, [headless tests](/docs/devtools/), and
+[online play](/features/rollback/) all rely on it. See [Same game
+everywhere](/features/determinism/).
+
+Next: [Type safety](/docs/type-safety/), the mistakes all of this turns into
+compile errors.

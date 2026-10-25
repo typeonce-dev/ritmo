@@ -4,8 +4,13 @@ title: Headless debugging
 description: Run the game without a browser, check rules every frame, and ask why a value changed.
 ---
 
-The whole game runs in Node with scripted input. `@typeonce/ritmo-devtools`
-records every write, so a run can answer questions in plain text.
+Your game runs in Node with scripted input, with no page and no renderer.
+`@typeonce/ritmo-devtools` records every write, so a run answers questions
+in plain text: which rule broke, on which frame, and which system wrote the
+wrong value.
+
+After this page you can reproduce a bug in a script, check a rule every
+frame, and read why a value changed. An agent debugs the same way.
 
 ```sh
 pnpm add -D @typeonce/ritmo-devtools
@@ -13,14 +18,17 @@ pnpm add -D @typeonce/ritmo-devtools
 
 ## A scripted run
 
-120 frames of the top-down game. The **invariant** is checked every frame,
-and the run stops at the first frame that breaks it.
+This runs 120 frames of the [top-down demo](/docs/browser/) with a scripted
+keyboard. The **invariant** is checked every frame, and the run stops at the
+first frame that breaks it.
 
 ```ts twoslash title="debug.ts"
 import { HostClock } from "@typeonce/ritmo"
 import { Gamepad, Keyboard, Pointer } from "@typeonce/ritmo-browser"
 import { Invariant, Session } from "@typeonce/ritmo-devtools"
-import { PlayerPositionQuery } from "@typeonce/ritmo-integration-top-down/queries.ts"
+import {
+  PlayerPositionQuery
+} from "@typeonce/ritmo-integration-top-down/queries.ts"
 import { Game, Position } from "@typeonce/ritmo-integration-top-down/schema.ts"
 import {
   createTopDownSimulation
@@ -37,7 +45,7 @@ const keyboard = Keyboard.scripted(inputBindings, [
   { frame: 50, press: ["interact"], release: ["interact"] }
 ])
 
-// A test clock keeps every timing at 0, so the output is the same on every run.
+// A test clock keeps every timing at 0, so the output is the same each run
 const hostClock = HostClock.test()
 const mouse = Pointer.scripted(mouseBindings, [])
 const gamepad = Gamepad.scripted(padBindings, [])
@@ -79,28 +87,40 @@ console.log(session.why(1, Position)) // [!code highlight]
 
 ## Asking why
 
-The latest changes to a value, and the system behind each:
+`session.why(1, Position)` prints the latest changes to the player's
+position, each with its frame, schedule, and system (long lines wrapped
+here):
 
 ```text
 e1 TopDown/Position is now {x:134.673,y:128.007}; last 5 changes (oldest first):
 could have spawned it: TopDown/SetupWorld
-f117 update  TopDown/MovePlayer  write e1 TopDown/Position {x:158.007,y:128.007} -> {x:153.34,y:128.007}
-f118 update  TopDown/MovePlayer  write e1 TopDown/Position {x:153.34,y:128.007} -> {x:148.673,y:128.007}
-f119 update  TopDown/MovePlayer  write e1 TopDown/Position {x:148.673,y:128.007} -> {x:144.007,y:128.007}
-f120 update  TopDown/MovePlayer  write e1 TopDown/Position {x:144.007,y:128.007} -> {x:139.34,y:128.007}
-f121 update  TopDown/MovePlayer  write e1 TopDown/Position {x:139.34,y:128.007} -> {x:134.673,y:128.007}
+f117 update  TopDown/MovePlayer  write e1 TopDown/Position
+  {x:158.007,y:128.007} -> {x:153.34,y:128.007}
+f118 update  TopDown/MovePlayer  write e1 TopDown/Position
+  {x:153.34,y:128.007} -> {x:148.673,y:128.007}
+f119 update  TopDown/MovePlayer  write e1 TopDown/Position
+  {x:148.673,y:128.007} -> {x:144.007,y:128.007}
+f120 update  TopDown/MovePlayer  write e1 TopDown/Position
+  {x:144.007,y:128.007} -> {x:139.34,y:128.007}
+f121 update  TopDown/MovePlayer  write e1 TopDown/Position
+  {x:139.34,y:128.007} -> {x:134.673,y:128.007}
 ```
 
-When the system that wrote the value only passed on a wrong input, raise
-`depth`: under each change it lists what that system declared it reads, and
-which system produced each, one system further back per step. They are
-possible causes read from declarations, so every such line says `(declared)`.
+Sometimes the system that wrote the value only passed on a wrong input.
+Raise `depth`, and under each change it lists what that system declared it
+reads and which system produced each, one system further back per step.
+
+These are possible causes read from declarations, so each such line says
+`(declared)`:
 
 ```text
 f181 update  Game/ApplyDamage  write e12 Game/Health 70 -> 40
   read Game/Damage [{amount:30}] (declared), emitted by Game/Hitscan at f181
-    read resource Game/Aim {target:12} (declared), written by Game/AimAtNewest at f180
+    read resource Game/Aim {target:12} (declared),
+      written by Game/AimAtNewest at f180
 ```
+
+Other questions a session answers:
 
 | Call | Answers |
 |---|---|
@@ -113,13 +133,16 @@ f181 update  Game/ApplyDamage  write e12 Game/Health 70 -> 40
 
 ## Lints
 
-Things that compile but are probably wrong: an event nobody reads, a state
-never applied, a one-frame lag.
+Some code compiles and is still probably wrong: an event nobody reads, a
+state never applied, a one-frame lag. `describe()` lists these lints first:
 
 ```text
 # Lints
-info command-permission-unused: TopDown/CollectFocusedCollectable may despawn TopDown/Collectable but never did in this session
+info command-permission-unused: TopDown/CollectFocusedCollectable may
+despawn TopDown/Collectable but never did in this session
 ```
+
+Two commands run them in the game's check:
 
 ```sh
 # Schedule lints, fails on a warning
@@ -131,4 +154,15 @@ oxlint
 ## Same input, same game
 
 `Determinism.check` runs the same script twice and reports the first frame,
-value and system that diverged.
+value, and system that diverged. `ritmo-devtools verify` plays a recorded
+replay in Node, Chromium, WebKit, and Firefox and names the first tick they
+disagree on. See [Same game
+everywhere](/features/determinism/).
+
+## From a script to a test
+
+A scripted run with an invariant is already most of a test. The fuzzer goes
+further: it writes the input itself, plays until an invariant breaks, and
+shrinks the failure to a replay you keep as a test. See [Bugs found before
+players](/features/bugs/) and [Replays that become
+tests](/features/replays/).
