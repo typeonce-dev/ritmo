@@ -99,35 +99,10 @@
         "medianMs": 3.102,
         "score": 0.994
       },
-      "math/vector2-move-10k": {
-        "minMs": 0.155,
-        "medianMs": 0.1578,
-        "score": 0.0522
-      },
-      "math/vector2-validate-10k": {
-        "minMs": 0.1225,
-        "medianMs": 0.1444,
-        "score": 0.0414
-      },
-      "math/scalar-approach-clamp-10k": {
-        "minMs": 0.035,
-        "medianMs": 0.0351,
-        "score": 0.0118
-      },
-      "math/aabb-intersects-200x200": {
-        "minMs": 0.0673,
-        "medianMs": 0.0676,
-        "score": 0.0227
-      },
-      "math/input-axis-10k": {
-        "minMs": 0.1362,
-        "medianMs": 0.1996,
-        "score": 0.046
-      },
-      "math/spatial-grid-1k": {
-        "minMs": 0.2782,
-        "medianMs": 0.2974,
-        "score": 0.0938
+      "math/vec2-steer-10k": {
+        "minMs": 1.1929,
+        "medianMs": 1.2369,
+        "score": 0.3665
       },
       "math/flow-field-search": {
         "minMs": 0.1548,
