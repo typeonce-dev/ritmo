@@ -23,6 +23,21 @@ describe("MemoryNetworkLink.make", () => {
     expect(links[1]!.receive()).toEqual([])
   })
 
+  it("changes one peer's latency for what it sends next, and rejects a negative one", () => {
+    const { hostClock, links } = linksOf({ peers: 2, seed: 1, latencyMS: 50 })
+    links[0]!.send("slow")
+    expect(links[0]!.setLatency(10).ok).toBe(true)
+    links[0]!.send("fast")
+    links[1]!.send("back")
+    hostClock.adjust(10)
+    expect(links[1]!.receive()).toEqual(["fast"])
+    expect(links[0]!.receive()).toEqual([])
+    hostClock.adjust(40)
+    expect(links[1]!.receive()).toEqual(["slow"])
+    expect(links[0]!.receive()).toEqual(["back"])
+    expect(links[0]!.setLatency(-1)).toMatchObject({ ok: false, error: { _tag: "InvalidOptions", field: "latencyMS", value: -1 } })
+  })
+
   it("lets a later message overtake an earlier one, the same way for the same seed", () => {
     const order = (seed: number) => {
       const { hostClock, links } = linksOf({ peers: 2, seed, latencyMS: 10, jitterMS: 100 })

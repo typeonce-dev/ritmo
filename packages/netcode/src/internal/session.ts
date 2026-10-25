@@ -10,6 +10,11 @@
  * restore it at its tick `T`, and the inputs of ticks `T` to `T + delay - 1`
  * are idle for every seat, so a peer that restores it late agrees with one
  * that restored it early. Inputs for earlier ticks are ignored from then on.
+ * That `delay` is `inputDelay`, or `adaptiveDelay.max`, on every peer.
+ *
+ * Each seat's input delay is its own (`./delay.ts`): a seat records its
+ * input for the tick its current delay names, and the other peers read the
+ * tick from the message, so a seat moves its delay without telling anyone.
  *
  * Rollback: a peer runs tick `next` once its own input for it is known and
  * `next` is at most `maxRollback` past the confirmed tick, guessing the
@@ -32,7 +37,8 @@ import type { Descriptor } from "@typeonce/ritmo/Descriptor"
 import * as Result from "@typeonce/ritmo/Result"
 import type * as Snapshot from "@typeonce/ritmo/Snapshot"
 
-import type { Advanced, Ended, Halted, HiddenOptions, InvalidOptions, Seats, Session, SessionError, Status } from "../Netcode.ts"
+import type { AdaptiveDelay, Advanced, Ended, Halted, HiddenOptions, InvalidOptions, Seats, Session, SessionError, Status } from "../Netcode.ts"
+import * as Delay from "./delay.ts"
 import * as Events from "./events.ts"
 import { isHalted } from "./halted.ts"
 import * as Hidden from "./hidden.ts"
@@ -61,6 +67,7 @@ export interface MakeOptions {
   readonly hostClock: HostClock.HostClock
   readonly step: Clock.Step
   readonly inputDelay?: number
+  readonly adaptiveDelay?: AdaptiveDelay
   readonly checksumEvery?: number
   readonly timeoutMS?: number
   readonly keepSnapshots?: boolean
@@ -94,8 +101,16 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   const seat = options.seat
   if (!Number.isSafeInteger(seat) || seat < 0 || seat >= count) return invalid("seat", seat, `a seat is a whole number from 0 to ${count - 1}`)
   if (options.links.length === 0) return invalid("links", options.links, "a session needs a link to the other peers")
-  const delay = options.inputDelay ?? 2
-  if (!wholeNumber(delay, 0)) return invalid("inputDelay", delay, "a whole number of ticks, 0 or more")
+  if (options.inputDelay !== undefined && options.adaptiveDelay !== undefined) {
+    return invalid("adaptiveDelay", options.adaptiveDelay, "give inputDelay or adaptiveDelay, not both")
+  }
+  const fixedDelay = options.inputDelay ?? 2
+  if (options.adaptiveDelay === undefined && !wholeNumber(fixedDelay, 0)) return invalid("inputDelay", fixedDelay, "a whole number of ticks, 0 or more")
+  const madePolicy = options.adaptiveDelay === undefined ? Result.success(Delay.fixed(fixedDelay)) : Delay.make(options.adaptiveDelay, options.step.dt * 1000)
+  if (!madePolicy.ok) return madePolicy
+  const policy = madePolicy.value
+  /** The idle ticks after a save: the same on every peer, whatever delay each uses now. */
+  const saveDelay = policy.delay()
   const every = options.checksumEvery ?? 30
   if (!wholeNumber(every, 1)) return invalid("checksumEvery", every, "a whole number of ticks, 1 or more")
   const timeoutMS = options.timeoutMS ?? 5000
@@ -152,6 +167,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   /** Per seat, the key of the input each tick ran with. */
   const used: Array<Map<number, string>> = Array.from({ length: count }, () => new Map())
   let wrong: number | undefined
+  /** Ticks a rise of the delay skipped, filled idle by the next `record`. */
+  let raised = 0
   const history = new Map<number, Checkpoint.Checkpoint>()
 
   // Checksums.
@@ -364,7 +381,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     for (const ledger of ledgers.values()) ledger.reset()
     epoch = newEpoch
     syncTick = tick
-    floorTick = tick + delay
+    floorTick = tick + saveDelay
     next = tick
     history.clear()
     wrong = undefined
@@ -537,6 +554,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       broadcast({ k: "ping", from: seat, epoch, at: now, shown: tracker.shown[seat]! })
       // Repeated: the announcement may have been lost, and seat 0 needs it to answer the return.
       if (Hidden.hidden(tracker, seat) || Hidden.away(tracker, seat)) broadcast(Hidden.message(tracker, seat, epoch))
+      adapt()
     }
     if (epoch === 0) {
       broadcast({ k: "hello", from: seat, epoch })
@@ -579,9 +597,32 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     for (const ledger of ledgers.values()) ledger.resolve()
   }
 
+  /** One measurement for the delay policy, at the ping cadence: the round trip to the slowest other seat. */
+  const adapt = (): void => {
+    let slowest = 0
+    for (let other = 0; other < count; other++) {
+      if (other === seat) continue
+      const measured = roundTrip[other]
+      if (measured === undefined) return
+      slowest = Math.max(slowest, measured)
+    }
+    const before = policy.delay()
+    const changed = policy.measure(slowest)
+    if (changed !== undefined) raised += Math.max(0, changed - before)
+  }
+
   /** Records `local` for the tick `inputDelay` ahead, and returns that tick (`undefined`: already that far ahead). */
   const record = (local: unknown): number | undefined => {
+    const delay = policy.delay()
     if (localNext > next + delay) return undefined
+    // After a rise, the ticks between the old delay and the new one get no input from this seat: idle, as after a save.
+    const skipped = Math.min(raised, next + delay - localNext)
+    raised = 0
+    for (let index = 0; index < skipped; index++) {
+      inputs[seat]!.set(localNext, idle)
+      sent.set(localNext, encodeLocal(idle))
+      localNext += 1
+    }
     const tick = localNext
     inputs[seat]!.set(tick, local)
     sent.set(tick, encodeLocal(local))
@@ -689,6 +730,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       rollbacks,
       dropped,
       ahead: ahead(),
+      inputDelay: policy.delay(),
+      delayChanges: policy.changes(),
       roundTripMS: roundTrip.map((value, other) => other === seat ? 0 : value),
       hidden: tracker.hides.map((_, other) => Hidden.hidden(tracker, other))
     }),
