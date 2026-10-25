@@ -204,12 +204,12 @@ describe("Netcode.rollback", () => {
     const link: NetworkLink.NetworkLink = { send: () => {}, receive: () => inbox.splice(0), status: () => NetworkLink.open }
     const peer = makePeer()
     const session = valueOf(Netcode.rollback(peer.runtime, { simulate, seats: peer.seats, seat: 0, links: [link], hostClock, step }))
-    inbox.push("not json", JSON.stringify({ v: 1, k: "hello", from: 7, epoch: 0 }))
+    inbox.push("not json", JSON.stringify({ v: 2, k: "hello", from: 7, epoch: 0 }))
     expect(session.advance(idle).ok).toBe(true)
     expect(session.status().dropped).toBe(2)
-    inbox.push(JSON.stringify({ v: 2, k: "hello", from: 1, epoch: 0 }))
+    inbox.push(JSON.stringify({ v: 1, k: "hello", from: 1, epoch: 0 }))
     const advanced = session.advance(idle)
-    expect(advanced.ok ? undefined : advanced.error).toEqual({ _tag: "ProtocolMismatch", version: 2 })
+    expect(advanced.ok ? undefined : advanced.error).toEqual({ _tag: "ProtocolMismatch", version: 1 })
   })
 })
 
