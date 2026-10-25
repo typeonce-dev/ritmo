@@ -38,7 +38,7 @@
 - A package owns an integration boundary, holds infrastructure (not gameplay), and is varied through typed inputs and callbacks. Feature bundles stay in games.
 - A plugin is `(Game, options) => System | Schedule`: no plugin objects, registries, or composition steps.
 - Generic contracts have generic names (`NodeRegistry`); adapters name their implementation (`PixiNodeRegistry`) and export only it. The host provides the adapter as a service.
-- Core and generic modules call no platform API (`performance`, `window`, timers, file system, network): a platform detail is a contract with injected implementations (`HostClock` / `BrowserHostClock`). Package configs get only the ES2022 lib; a host package lists `"DOM"` itself, as devtools does.
+- Core and generic modules call no platform API (`performance`, `window`, timers, file system, network): a platform detail is a contract with injected implementations (`HostClock` / `BrowserHostClock`). Package configs get only the ES2022 lib; a host package that needs DOM types lists `"DOM"` itself.
 - Package and simulation code read time from `Clock`, randomness from `Random`, and transcendental math from `Ops`; `pnpm lint` enforces this with the repo's own plugin. Disable a rule only with `// oxlint-disable-next-line ritmo/<rule> -- <reason>`.
 - A pattern games must follow that types and devtools cannot catch becomes a rule in `packages/oxlint-plugin`, tested with real code, whose message says what goes wrong and the API to use instead.
 

@@ -1,4 +1,4 @@
-/** Value checks shared by sessions and the monitor. */
+/** Value checks used by sessions. */
 
 /**
  * The path of the first NaN or infinite number inside a value (`""` for the

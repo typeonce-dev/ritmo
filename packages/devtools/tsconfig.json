@@ -3,9 +3,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     // For the `ritmo-devtools` CLI (src/cli.ts); its declarations export nothing that needs them.
-    "types": ["node"],
-    // For `Monitor`, the one devtools module that runs on a DOM host.
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "types": ["node"]
   },
   "include": ["src"],
   "references": [
