@@ -1,14 +1,44 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Concepts
-description: The pieces of a Ritmo game, built up as one small arena, and the rule each one keeps.
+description: The pieces of a Ritmo game, built up as one small arena, and why the whole game can describe itself.
 ---
+
+Every system in a Ritmo game declares what it reads, writes, and spawns.
+So the game can print itself: here is the [top-down demo](/docs/browser/)
+describing its own update, from `session.describe()`:
+
+```text title="session.describe(), an excerpt"
+update:
+   0 TopDown/CaptureFrameContext
+   1 TopDown/CaptureInput
+   2 TopDown/PlanPlayerVelocity
+   3 TopDown/MovePlayer
+   4 TopDown/UpdateFocusedCollectable
+   5 TopDown/CollectFocusedCollectable
+   6 TopDown/ResolveFacing
+   7 TopDown/ResolveLocomotion
+   8 <applyDeferred>
+   9 <applyStateTransitions>
+
+TopDown/MovePlayer  @ update#3
+  query player: read TopDown/Collider, TopDown/Player; write TopDown/Position, TopDown/Velocity
+  query walls: read TopDown/Position, TopDown/Collider, TopDown/Wall
+  reads resources: TopDown/DeltaTime
+TopDown/CollectFocusedCollectable  @ update#5
+  query collectables: read TopDown/Position, TopDown/Collider, TopDown/Collectable
+  reads resources: TopDown/InputState
+  writes resources: TopDown/FocusedCollectable, TopDown/CollectedCount
+  may despawn: TopDown/Collectable
+```
+
+The compiler checks each system against those declarations, the schedule
+checks the order, and the devtools read them to explain a run. This page
+builds one small arena with every piece. After it, you can read any Ritmo
+game and know where each piece lives.
 
 A Ritmo game is a **world** of entities, **systems** that change it, and
 **schedules** that run them in a checked order, one fixed step at a time.
-This page builds one small arena with all of them. After it, you can read
-any Ritmo game and know where each piece lives.
-
 Hover any name for its type.
 
 ## The world

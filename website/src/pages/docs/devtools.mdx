@@ -1,31 +1,35 @@
 ---
 layout: ../../layouts/Docs.astro
 title: Headless debugging
-description: Run the game without a browser, check rules every frame, and ask why a value changed.
+description: Run the game in Node, stop on the frame a rule breaks, and read which system wrote the wrong value and what it read.
 ---
 
-Your game runs in Node with scripted input, with no page and no renderer.
-`@typeonce/ritmo-devtools` records every write, so a run answers questions
-in plain text: which rule broke, on which frame, and which system wrote the
-wrong value.
+import Claim from "../../components/Claim.astro"
+import Game from "../../components/Game.astro"
 
-After this page you can reproduce a bug in a script, check a rule every
-frame, and read why a value changed. An agent debugs the same way.
+A bug report says "the ball ended up inside the wall". A Ritmo game can
+tell you which frame, which system, and why, in plain text, with no page
+open.
 
-```sh
-pnpm add -D @typeonce/ritmo-devtools
-```
+<Game id="why" ratio="16 / 9" />
 
-## A scripted run
+The ball must never enter the red zone. A session plays a scripted keyboard
+with no page and checks the rule after every frame. The dash on f62 carries
+the ball in on f66: the run stops there, and `why` names the system that
+moved it and the dash that sent it.
 
-This runs 120 frames of the [top-down demo](/docs/browser/) with a scripted
-keyboard. The **invariant** is checked every frame, and the run stops at the
-first frame that breaks it.
+Everything above runs in this tab, with the code a test runs in Node.
+
+<Claim title="The run stops on the frame a rule breaks">
+
+Write the rule once, as an **invariant**. A session ticks the real
+schedules frame by frame, checks every invariant after each one, and stops
+at the first frame that breaks it. This walks the
+[top-down demo](/docs/browser/)'s player left until it leaves the room:
 
 ```ts twoslash title="debug.ts"
 import { HostClock } from "@typeonce/ritmo"
 import { Gamepad, Keyboard, Pointer } from "@typeonce/ritmo-browser"
-import { Invariant, Session } from "@typeonce/ritmo-devtools"
 import {
   PlayerPositionQuery
 } from "@typeonce/ritmo-integration-top-down/queries.ts"
@@ -38,17 +42,17 @@ import {
   mouseBindings,
   padBindings
 } from "@typeonce/ritmo-integration-top-down/types.ts"
-
-const keyboard = Keyboard.scripted(inputBindings, [
-  { frame: 0, press: ["move.up", "move.left"] },
-  { frame: 40, release: ["move.up"] },
-  { frame: 50, press: ["interact"], release: ["interact"] }
-])
-
-// A test clock keeps every timing at 0, so the output is the same each run
 const hostClock = HostClock.test()
 const mouse = Pointer.scripted(mouseBindings, [])
 const gamepad = Gamepad.scripted(padBindings, [])
+// ---cut---
+import { Invariant, Session } from "@typeonce/ritmo-devtools"
+
+// The input, by action name, frame by frame
+const keyboard = Keyboard.scripted(inputBindings, [
+  { frame: 0, press: ["move.up", "move.left"] },
+  { frame: 40, release: ["move.up"] }
+])
 const simulation = createTopDownSimulation({
   keyboard,
   mouse,
@@ -58,16 +62,15 @@ const simulation = createTopDownSimulation({
 if (!simulation.ok) throw new Error(simulation.error.message)
 const { runtime, setup, update } = simulation.value
 
-// Returns a message when the rule is broken, undefined while it holds.
-const PlayerInsideWorld = Invariant.fromInspector(
+// A message when the rule is broken, undefined while it holds
+const StaysInRoom = Invariant.fromInspector(
   Game.Inspector(
-    "player inside world",
+    "player stays in the first room",
     { queries: { player: PlayerPositionQuery } },
     ({ queries }) => {
       for (const match of queries.player.each()) {
-        const { x, y } = match.data.position.get()
-        if (x < 0 || x > 2200 || y < 0 || y > 1600)
-          return `player at (${x}, ${y})`
+        const { x } = match.data.position.get()
+        if (x < 150) return `player at x ${x}`
       }
       return undefined
     }
@@ -77,72 +80,85 @@ const PlayerInsideWorld = Invariant.fromInspector(
 const session = Session.make(runtime, {
   hostClock,
   schedules: { setup, update },
-  invariants: [PlayerInsideWorld] // [!code highlight]
+  invariants: [StaysInRoom] // [!code highlight]
 })
-
 session.run("setup")
-session.run("update", { frames: 120 })
-console.log(session.why(1, Position)) // [!code highlight]
+console.log(session.run("update", { frames: 300 }).text) // [!code highlight]
 ```
 
-## Asking why
+```text title="output"
+run update: 117 frames (f2-f118) in 0ms, INVARIANT "player stays in the
+first room" violated at f118: player at x 148.67340084517744
+```
 
-`session.why(1, Position)` prints the latest changes to the player's
-position, each with its frame, schedule, and system (long lines wrapped
-here):
+</Claim>
 
-```text
-e1 TopDown/Position is now {x:134.673,y:128.007}; last 5 changes (oldest first):
+<Claim title="why names the system that wrote the value">
+
+`session.why(entity, component)` lists the latest changes to one value,
+each with its frame, its schedule, and the system that made it. Every write
+is recorded, so nothing has to be logged in advance.
+
+```text title="session.why(1, Position, { limit: 3 })"
+e1 TopDown/Position is now {x:148.673,y:128.007}; last 3 changes (oldest first):
 could have spawned it: TopDown/SetupWorld
+f116 update  TopDown/MovePlayer  write e1 TopDown/Position
+  {x:162.673,y:128.007} -> {x:158.007,y:128.007}
 f117 update  TopDown/MovePlayer  write e1 TopDown/Position
   {x:158.007,y:128.007} -> {x:153.34,y:128.007}
 f118 update  TopDown/MovePlayer  write e1 TopDown/Position
   {x:153.34,y:128.007} -> {x:148.673,y:128.007}
-f119 update  TopDown/MovePlayer  write e1 TopDown/Position
-  {x:148.673,y:128.007} -> {x:144.007,y:128.007}
-f120 update  TopDown/MovePlayer  write e1 TopDown/Position
-  {x:144.007,y:128.007} -> {x:139.34,y:128.007}
-f121 update  TopDown/MovePlayer  write e1 TopDown/Position
-  {x:139.34,y:128.007} -> {x:134.673,y:128.007}
 ```
 
-Sometimes the system that wrote the value only passed on a wrong input.
-Raise `depth`, and under each change it lists what that system declared it
-reads and which system produced each, one system further back per step.
+</Claim>
 
-These are possible causes read from declarations, so each such line says
-`(declared)`:
+<Claim title="And follows it back to the input">
 
-```text
-f181 update  Game/ApplyDamage  write e12 Game/Health 70 -> 40
-  read Game/Damage [{amount:30}] (declared), emitted by Game/Hitscan at f181
-    read resource Game/Aim {target:12} (declared),
-      written by Game/AimAtNewest at f180
+Often the system that wrote the value only passed on a wrong input. Raise
+`depth`, and under each change `why` lists what that system declared it
+reads, and which system produced each value, one step further back per
+level.
+
+```text title="session.why(1, Position, { depth: 3, limit: 3 }), the last change"
+f118 update  TopDown/MovePlayer  write e1 TopDown/Position
+  {x:153.34,y:128.007} -> {x:148.673,y:128.007}
+  read e1 TopDown/Collider {width:36,height:36} (declared),
+    spawned by TopDown/SetupWorld at f1
+    TopDown/SetupWorld declares no other reads (declared)
+  read e1 TopDown/Player {} (declared), spawned by TopDown/SetupWorld at f1
+    TopDown/SetupWorld declares no other reads (declared)
+  read e1 TopDown/Velocity {x:-280,y:0} (declared),
+    written by TopDown/PlanPlayerVelocity at f42
+    read e1 TopDown/Collider {width:36,height:36} (declared),
+      spawned by TopDown/SetupWorld at f1
+    read e1 TopDown/Player {} (declared), spawned by TopDown/SetupWorld at f1
+    read e1 TopDown/Position {x:508.007,y:128.007} (declared),
+      written by TopDown/MovePlayer at f41 (cycle: not followed)
+    …+1 more declared reads of TopDown/PlanPlayerVelocity (raise limit to
+    see them)
+  …+2 more declared reads of TopDown/MovePlayer (raise limit to see them)
 ```
 
-Other questions a session answers:
+The velocity of -280 was set on f42, the frame the up key was released. A
+system's spec says what it reads, so these lines come from declarations
+and end in `(declared)`: possible causes, not observed reads.
 
-| Call | Answers |
-|---|---|
-| `session.describe()` | The schema, every schedule step, and who reads and writes each component, resource, and event, with lints first |
-| `session.report()` | Warnings, time per system, and how many entities have each component |
-| `session.dump({ with: [Player] })` | The entities, resources, and state machines right now |
-| `session.whyResource(Score)` | The latest changes to a resource |
-| `session.journal({ frames: [100, 120], entity })` | Everything that touched an entity in a range of frames |
-| `session.step("update")` | One frame a system at a time: `until(MovePlayer)` stops before it, `next()` runs one step, `finish()` reports the frame like `run` |
+</Claim>
 
-## Lints
+<Claim title="The game describes itself, warnings first" id="lints">
 
-Some code compiles and is still probably wrong: an event nobody reads, a
-state never applied, a one-frame lag. `describe()` lists these lints first:
+`session.describe()` prints the schema, every schedule step, and who reads
+and writes each value. Code that compiles and is still probably wrong (an
+event nobody reads, a state never applied, a one-frame lag) is listed
+first:
 
-```text
+```text title="session.describe(), the top"
 # Lints
 info command-permission-unused: TopDown/CollectFocusedCollectable may
 despawn TopDown/Collectable but never did in this session
 ```
 
-Two commands run them in the game's check:
+Two commands run these checks in the game's check script:
 
 ```sh
 # Schedule lints, fails on a warning
@@ -151,18 +167,36 @@ ritmo-devtools lint src/simulation.ts
 oxlint
 ```
 
-## Same input, same game
+</Claim>
 
-`Determinism.check` runs the same script twice and reports the first frame,
+## Every other question, one call each
+
+```sh
+pnpm add -D @typeonce/ritmo-devtools
+```
+
+| Call | Answers |
+|---|---|
+| `session.report()` | Warnings, time per system, and how many entities have each component |
+| `session.dump({ with: [Player] })` | The entities, resources, and state machines right now |
+| `session.whyResource(Score)` | The latest changes to a resource |
+| `session.journal({ frames: [100, 120], entity })` | Everything that touched an entity in a range of frames |
+| `session.step("update")` | One frame a system at a time: `until(MovePlayer)` stops before it, `next()` runs one step, `finish()` reports the frame like `run` |
+
+`Determinism.check` runs the same script twice and names the first frame,
 value, and system that diverged. `ritmo-devtools verify` plays a recorded
 replay in Node, Chromium, WebKit, and Firefox and names the first tick they
-disagree on. See [Same game
-everywhere](/features/determinism/).
+disagree on. See [Same game everywhere](/features/determinism/).
 
-## From a script to a test
+## An agent debugs the same way
 
-A scripted run with an invariant is already most of a test. The fuzzer goes
-further: it writes the input itself, plays until an invariant breaks, and
-shrinks the failure to a replay you keep as a test. See [Bugs found before
-players](/features/bugs/) and [Replays that become
-tests](/features/replays/).
+A coding agent cannot watch the game. It writes a script like the one
+above, reads the text, and fixes the system `why` names. The bug-fix
+playbook in the skill starts there: reproduce the bug headless, encode it
+as an invariant, then change code. See [With a coding
+agent](/docs/with-an-agent/).
+
+A scripted run with an invariant is most of a test already. The fuzzer
+writes the input itself, plays until an invariant breaks, and shrinks the
+failure to a replay you keep as a test: [Bugs found before
+players](/features/bugs/).

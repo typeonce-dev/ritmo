@@ -1,83 +1,100 @@
 ---
 layout: ../../layouts/Docs.astro
 title: With a coding agent
-description: You direct the game, an agent writes the code, and Ritmo catches its mistakes at three layers.
+description: You direct the game, an agent writes the code, and Ritmo catches its mistakes in the compiler, the linter, and headless runs, each with the fix.
 ---
 
-Ritmo is built for games whose code a coding agent writes. You say what the
-game should do; the agent writes the systems; Ritmo stops its mistakes
-before you play them. After this page you can set up a project so the agent
-works inside those guardrails.
+import Claim from "../../components/Claim.astro"
 
-## Three guardrails
+You say what the game should do, and a coding agent writes the systems. The
+agent cannot play the game, so Ritmo tells it what is wrong, where, and
+what to change, at three layers. Each card below is real output.
 
-| Layer | What catches the mistake |
-|---|---|
-| **Compile time** | Wrong code does not compile, and the error names the fix |
-| **Headless runs** | The game plays in Node, checks rules every frame, and explains why a value changed |
-| **Tests** | A fuzzer finds the bug, and its shrunk replay becomes the test |
+<Claim title="Wrong code does not compile, and the error names the fix">
 
-### The error names the fix
+An agent adds a noise effect to the wave spawner. The spawner never
+declared it may spawn `Noise`, so the call is a red underline, and the
+message says where the permission goes.
 
-A system that uses a service the runtime was not given does not compile. The
-agent reads the fix in the error and applies it, without reading the rest of
-the game.
-
-```ts twoslash title="report.ts"
+```ts twoslash title="waves.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
+const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
 const Health = Descriptor.Component<number>()("Arena/Health")
-const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
+const Noise = Descriptor.Component<number>()("Arena/Noise")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy, Noise } }))
 // ---cut---
-// @errors: 2345
-const Logger = Descriptor.Service<{ log(message: string): void }>()(
-  "Arena/Logger"
+// @errors: 2379
+Game.System(
+  "Arena/SpawnWave",
+  {
+    commands: Game.System.commands(
+      Game.System.spawns(Position, Health, Enemy)
+    )
+  },
+  ({ commands }) => {
+    commands.spawn(Game.Command.spawn([Position, { x: 0, y: 0 }], [Noise, 1]))
+  }
 )
-
-const Report = Game.System(
-  "Arena/Report",
-  { services: { logger: Game.System.service(Logger) } },
-  ({ services }) => services.logger.log("tick")
-)
-
-const made = Game.Runtime.make({ services: Game.Runtime.services() })
-if (made.ok) made.value.tick(Game.Schedule(Report))
 ```
 
-What the compiler cannot see, the lint rules catch, with the replacement in
-the message:
+[Type safety](/docs/type-safety/) has a card for every mistake the compiler
+stops.
 
-```text
-error ritmo(use-random-for-randomness): Math.random() cannot be seeded or
-saved, so the run cannot replay. Draw from the world's Random resource:
-`const random = Random.draw(resources.rng)` (declare
-`rng: Game.System.writeResource(Rng)`), then `random.next()`, ...
+</Claim>
+
+<Claim title="What compiles but cannot replay, the linter names">
+
+Two lines that type check, and break every replay and online match. The
+lint rules that ship with Ritmo catch both, with the replacement in the
+message:
+
+```ts title="src/spin.ts"
+export const spin = (angle: number) => {
+  const wobble = Math.random() * 0.1
+  return Math.sin(angle + wobble)
+}
 ```
 
-[Type safety](/docs/type-safety/) lists every mistake the compiler stops.
+```text title="oxlint src/spin.ts"
+src/spin.ts:2:18: error ritmo(use-random-for-randomness): Math.random() cannot be seeded or saved, so the run cannot replay. Draw from the world's Random resource: `const random = Random.draw(resources.rng)` (declare `rng: Game.System.writeResource(Rng)`), then `random.next()`, `random.range(min, max)`, `random.integer(min, max)`, `random.pick(items)`, or `random.shuffle(items)`.
+src/spin.ts:3:10: error ritmo(use-ops-for-math): Math.sin may return a different last bit on another browser or CPU, and the simulation grows that bit into a different run. Use `Ops.sin` from `@typeonce/ritmo` (`import { Ops } from "@typeonce/ritmo"`), which returns the same bits everywhere. Math.sqrt, abs, min, max, floor, ceil, round, trunc, and sign are exact everywhere and stay as they are.
+```
 
-### The game explains itself
+</Claim>
 
-The agent cannot watch the game. It runs it headless with scripted input and
-asks why a value is wrong, in plain text:
+<Claim title="A headless run says which system wrote the wrong value">
 
-```text
-e1 TopDown/Position is now {x:134.673,y:128.007}; last 5 changes (oldest first):
+The agent runs the game in Node with scripted input, stops on the frame a
+rule breaks, and asks why. The answer is text it can act on:
+
+```text title="session.why(1, Position, { limit: 3 })"
+e1 TopDown/Position is now {x:148.673,y:128.007}; last 3 changes (oldest first):
 could have spawned it: TopDown/SetupWorld
-...
-f120 update  TopDown/MovePlayer  write e1 TopDown/Position
-  {x:144.007,y:128.007} -> {x:139.34,y:128.007}
-f121 update  TopDown/MovePlayer  write e1 TopDown/Position
-  {x:139.34,y:128.007} -> {x:134.673,y:128.007}
+f116 update  TopDown/MovePlayer  write e1 TopDown/Position {x:162.673,y:128.007} -> {x:158.007,y:128.007}
+f117 update  TopDown/MovePlayer  write e1 TopDown/Position {x:158.007,y:128.007} -> {x:153.34,y:128.007}
+f118 update  TopDown/MovePlayer  write e1 TopDown/Position {x:153.34,y:128.007} -> {x:148.673,y:128.007}
 ```
 
-[Headless debugging](/docs/devtools/) shows the session that produced this.
+[Headless debugging](/docs/devtools/) shows the session that printed this,
+and how `why` follows a value back to the input.
 
-### Every bug becomes a test
+</Claim>
 
-The fuzzer plays the game with seeded input until an invariant breaks, then
-shrinks the run to the few inputs that still break it. That replay is
-already a test: the fix makes it pass, and it keeps the bug from coming
-back. See [Bugs found before players](/features/bugs/).
+<Claim title="Every bug it finds becomes a test">
+
+The fuzzer plays the game with seeded random input until a rule breaks,
+then shrinks the run to the frames that still break it. A thousand frames
+of noise become a replay short enough to read:
+
+```text title="found.error.shrink"
+{ attempts: 249, steps: 35, fromFrames: 1022, toFrames: 31 }
+```
+
+The replay fails until the bug is fixed, and guards the fix after. See
+[Bugs found before players](/features/bugs/).
+
+</Claim>
 
 ## Set up a project
 

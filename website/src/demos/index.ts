@@ -62,6 +62,15 @@ export const demos = {
     controls: "Move and dash for a while, then press Replay in the corner.",
     source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/controls",
     load: () => import("./controls/replay.ts")
+  },
+  why: {
+    title: "Headless session",
+    description: "A devtools session plays a scripted run of the ball, stops on the frame that breaks a rule, and says why the ball is there.",
+    controls: "Watch the trace record each write, the run stop inside the red zone, and why() name the dash that put it there.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/why",
+    // Takes no input: starts on its own when scrolled into view.
+    autoplay: true,
+    load: () => import("./why/game.ts")
   }
 } as const
 
