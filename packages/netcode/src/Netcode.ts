@@ -32,7 +32,11 @@
  *
  * Host code outside the simulation (rendering, sound, a HUD) never rewinds:
  * it sees a rollback as ordinary changes, and events of ticks run again are
- * published again; act on them once their tick is confirmed (`status()`).
+ * published again. It reads the simulation's events through
+ * `session.events(descriptor)` ({@link EventStreams}): `confirmed()` hands
+ * out each event once, when its tick can no longer run again; `predicted()`
+ * the events of ticks that may still be undone; `withdrawn()` the ticks a
+ * rollback undid.
  * A frame the session cannot run (`Stalled`) drops its input, so feed it
  * state (held, aimed at) rather than one-frame edges.
  *
@@ -65,10 +69,12 @@ import type * as Descriptor from "@typeonce/ritmo/Descriptor"
 import * as Result from "@typeonce/ritmo/Result"
 import type * as Runtime from "@typeonce/ritmo/Runtime"
 import type { AnyScheduleOrder, ExecutableScheduleDefinition, FailureOf } from "@typeonce/ritmo/Schedule"
+import type { ReadonlyValue } from "@typeonce/ritmo/Query"
 import type { Schema } from "@typeonce/ritmo/Schema"
 import type * as Snapshot from "@typeonce/ritmo/Snapshot"
 import type * as System from "@typeonce/ritmo/System"
 
+import * as EventsInternal from "./internal/events.ts"
 import * as HaltedInternal from "./internal/halted.ts"
 import * as Internal from "./internal/session.ts"
 import * as SeatsInternal from "./internal/seats.ts"
@@ -205,7 +211,7 @@ export interface Status {
   readonly epoch: number
   /** The next tick to run. */
   readonly tick: number
-  /** Every tick before this one has every seat's real input: its events will not be published again. */
+  /** Every tick before this one has every seat's real input: it will not run again (`session.events(...)` hands out its events as confirmed). */
   readonly confirmed: number
   /** The last tick whose checksum every seat agreed on (`-1`: none yet in this epoch). */
   readonly verified: number
@@ -221,8 +227,76 @@ export interface Status {
   readonly roundTripMS: ReadonlyArray<number | undefined>
 }
 
-/** A networked session around one runtime. */
-export interface Session<Input, TickError> {
+/** One event the simulation published, and the session tick that published it. */
+export interface EventRecord<Value> {
+  readonly tick: number
+  readonly value: Value
+}
+
+/** A tick whose events `predicted()` handed out, and a rollback or a resync undid: cancel what they started. */
+export interface Withdrawn {
+  readonly tick: number
+}
+
+/**
+ * Confirmed events dropped before the reader read them, from tick `from` up
+ * to `to` (excluded): the reader did not call `confirmed()` for more than
+ * {@link eventWindow} ticks, or one tick published more than the runtime's
+ * `streamCapacity` events.
+ */
+export interface EventsLost {
+  readonly _tag: "EventsLost"
+  readonly from: number
+  readonly to: number
+}
+
+/** How many confirmed ticks of events a reader of `session.events(...)` that stopped reading keeps; older ones are {@link EventsLost}. */
+export const eventWindow: number = EventsInternal.window
+
+/**
+ * One host reader of one event of the simulation, made by
+ * `session.events(descriptor)`. Each read hands out what is new since this
+ * reader's previous read of the same stream, once, oldest tick first; make
+ * one reader per place that acts on the event (sound, particles), and read
+ * it after `advance` (from `FixedLoop`'s `render`).
+ *
+ * Act on `confirmed()` for effects that must happen exactly once (a sound,
+ * a score sent to a server). For effects that must feel immediate
+ * (particles), act on `predicted()` and undo with `withdrawn()`. A tick a
+ * rollback runs again keeps what `predicted()` handed out when it publishes
+ * the same events (plain data compared by value; a class instance or a map
+ * counts as changed); otherwise it is withdrawn, and its new events are
+ * predicted again. A resync withdraws every predicted tick. A reader sees
+ * the ticks run from when it was made.
+ */
+export interface EventStreams<Value> {
+  /**
+   * Events of ticks that will not run again, each handed out once: a
+   * rolled-back tick is handed out only as it finally ran. A lockstep
+   * session confirms every tick it runs.
+   */
+  readonly confirmed: () => ReadonlyArray<EventRecord<Value>>
+  /**
+   * Events of ticks that may still be rolled back, each run handed out once.
+   * A tick waiting in `withdrawn()` is held back until it is read there, so
+   * a cancel never undoes the new run. Confirmed ticks are not repeated
+   * here: an event first seen confirmed never appears as predicted.
+   */
+  readonly predicted: () => ReadonlyArray<EventRecord<Value>>
+  /**
+   * Ticks whose `predicted()` events a rollback or a resync undid since the
+   * previous read: the tick ran again with other events, or not at all.
+   */
+  readonly withdrawn: () => ReadonlyArray<Withdrawn>
+  /** Confirmed events dropped since the previous call before this reader read them: `undefined` when none. */
+  readonly lost: () => EventsLost | undefined
+}
+
+/**
+ * A networked session around one runtime. `Events` are the events of the
+ * runtime's schema, which `events(...)` reads.
+ */
+export interface Session<Input, TickError, Events extends Descriptor.Descriptor<"event", string, any> = never> {
   /**
    * Runs this frame: reads the links, rolls back if real input contradicts
    * a guess (rollback), records `local` as this seat's input for the tick
@@ -254,6 +328,11 @@ export interface Session<Input, TickError> {
     readonly onHalted: (error: Halted<TickError>) => void
   }) => () => Result.Result<void, Ended>
   readonly status: () => Status
+  /**
+   * A new host reader of `descriptor`'s events, an event of the runtime's
+   * schema: see {@link EventStreams}. It sees the ticks run from now on.
+   */
+  readonly events: <D extends Events>(descriptor: D) => EventStreams<ReadonlyValue<Descriptor.Descriptor.Value<D>>>
 }
 
 /** Options both sessions take. */
@@ -315,8 +394,8 @@ export const rollback = <
     /** The schedule every peer ticks the same way. */
     readonly simulate: Simulate & Checkpoint.ValidateRewindable<Simulate> & Runtime.ValidateScheduleArray<readonly [Simulate], Services, Resources, Machines>
   }
-): Result.Result<Session<Input, FailureOf<Simulate>>, InvalidOptions> =>
-  Internal.make("rollback", runtime as unknown as Internal.Driven, options as unknown as Internal.MakeOptions) as Result.Result<Session<Input, FailureOf<Simulate>>, InvalidOptions>
+): Result.Result<Session<Input, FailureOf<Simulate>, Schema.EventDescriptor<S>>, InvalidOptions> =>
+  Internal.make("rollback", runtime as unknown as Internal.Driven, options as unknown as Internal.MakeOptions) as Result.Result<Session<Input, FailureOf<Simulate>, Schema.EventDescriptor<S>>, InvalidOptions>
 
 /**
  * A lockstep session: ticks only with every seat's real input, so nothing
@@ -337,5 +416,5 @@ export const lockstep = <
     /** The schedule every peer ticks the same way. */
     readonly simulate: Simulate & Runtime.ValidateScheduleArray<readonly [Simulate], Services, Resources, Machines>
   }
-): Result.Result<Session<Input, FailureOf<Simulate>>, InvalidOptions> =>
-  Internal.make("lockstep", runtime as unknown as Internal.Driven, options as unknown as Internal.MakeOptions) as Result.Result<Session<Input, FailureOf<Simulate>>, InvalidOptions>
+): Result.Result<Session<Input, FailureOf<Simulate>, Schema.EventDescriptor<S>>, InvalidOptions> =>
+  Internal.make("lockstep", runtime as unknown as Internal.Driven, options as unknown as Internal.MakeOptions) as Result.Result<Session<Input, FailureOf<Simulate>, Schema.EventDescriptor<S>>, InvalidOptions>

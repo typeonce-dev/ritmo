@@ -24,10 +24,12 @@
 import type { HostClock } from "@typeonce/ritmo"
 import type * as Checkpoint from "@typeonce/ritmo/Checkpoint"
 import type * as Clock from "@typeonce/ritmo/Clock"
+import type { Descriptor } from "@typeonce/ritmo/Descriptor"
 import * as Result from "@typeonce/ritmo/Result"
 import type * as Snapshot from "@typeonce/ritmo/Snapshot"
 
 import type { Advanced, Ended, Halted, InvalidOptions, Seats, Session, SessionError, Status } from "../Netcode.ts"
+import * as Events from "./events.ts"
 import { isHalted } from "./halted.ts"
 import type { NetworkLink } from "../NetworkLink.ts"
 import { canonical, decode, encode, stateOf } from "./seats.ts"
@@ -35,6 +37,8 @@ import * as Wire from "./wire.ts"
 
 /** What a session calls on its runtime. The public constructors check the real types. */
 export interface Driven {
+  readonly schema: unknown
+  readonly inspect: (inspector: unknown) => unknown
   readonly services: Readonly<Record<string, unknown>>
   readonly tick: (schedule: unknown) => Result.Result<void, unknown>
   readonly checkpoint: (schedule: unknown) => Checkpoint.Checkpoint
@@ -73,7 +77,7 @@ const invalid = (field: string, value: unknown, reason: string): Result.Failure<
 
 const wholeNumber = (value: number, least: number): boolean => Number.isSafeInteger(value) && value >= least
 
-export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.Result<Session<unknown, unknown>, InvalidOptions> => {
+export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.Result<Session<unknown, unknown, Descriptor<"event", string, any>>, InvalidOptions> => {
   const seatsState = stateOf(options.seats)
   if (seatsState === undefined) return invalid("seats", options.seats, "make seats with Netcode.seats")
   if (seatsState.owner !== undefined) return invalid("seats", options.seats, "these seats already belong to a session: make one Netcode.seats for each runtime")
@@ -159,6 +163,18 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   let rollbacks = 0
   let again = 0
   let dropped = 0
+
+  // Host event readers (`events(...)`): one ledger per descriptor.
+  const ledgers = new Map<unknown, Events.Ledger>()
+  /** Every tick before this one will not run again. */
+  let settled = 0
+  const settle = (): void => {
+    const now = Math.min(confirmed() + 1, next)
+    if (now <= settled) return
+    const previous = settled
+    settled = now
+    for (const ledger of ledgers.values()) ledger.settle(previous, now)
+  }
 
   const broadcast = (message: Wire.Message): void => {
     const text = Wire.write(message)
@@ -253,7 +269,9 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       if (other !== seat) used[other]!.set(tick, keyOf(input))
     }
     seatsState.current = current
+    for (const ledger of ledgers.values()) ledger.skip()
     const ticked = runtime.tick(options.simulate)
+    if (ticked.ok) for (const ledger of ledgers.values()) ledger.record(tick)
     if (!ticked.ok) {
       halted ??= { _tag: "TickFailed", tick, error: ticked.error }
       return false
@@ -287,6 +305,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       return
     }
     const previous = next
+    // Every unsettled tick is gone: the save replaces them.
+    for (const ledger of ledgers.values()) ledger.reset()
     epoch = newEpoch
     syncTick = tick
     floorTick = tick + delay
@@ -478,10 +498,12 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       halted ??= { _tag: "CheckpointLost", error: rewound.error }
       return
     }
+    for (const ledger of ledgers.values()) ledger.rewind(from)
     const present = next
     next = from
     rollbacks += 1
     again += runUpTo(present)
+    for (const ledger of ledgers.values()) ledger.resolve()
   }
 
   /** Records `local` for the tick `inputDelay` ahead, and returns that tick (`undefined`: already that far ahead). */
@@ -542,13 +564,14 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     sendAll()
     if (ended !== undefined) return Result.failure(ended)
     if (halted !== undefined) return Result.failure(halted)
+    settle()
     const ranAgain = again - before
     return ran === 0 && ranAgain === 0
       ? Result.success({ _tag: "Stalled", input })
       : Result.success({ _tag: "Ran", tick: next, ticks: ran + ranAgain, again: ranAgain, input })
   }
 
-  const session: Session<unknown, unknown> = {
+  const session: Session<unknown, unknown, Descriptor<"event", string, any>> = {
     advance,
     resync: () => {
       if (ended !== undefined || epoch === 0) return
@@ -588,7 +611,12 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       dropped,
       ahead: ahead(),
       roundTripMS: roundTrip.map((value, other) => other === seat ? 0 : value)
-    })
+    }),
+    events: (descriptor) => {
+      let ledger = ledgers.get(descriptor)
+      if (ledger === undefined) ledgers.set(descriptor, ledger = Events.make({ schema: runtime.schema, inspect: runtime.inspect, settled: () => settled }, descriptor))
+      return ledger.reader(next) as never
+    }
   }
   return Result.success(session)
 }
