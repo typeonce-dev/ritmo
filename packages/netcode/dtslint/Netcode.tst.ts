@@ -1,7 +1,7 @@
 import { Clock, Descriptor, FixedLoop, HostClock, Result, Schema } from "@typeonce/ritmo"
-import { InputCapture } from "@typeonce/ritmo-browser"
+import { BrowserVisibility, InputCapture } from "@typeonce/ritmo-browser"
 import type { SystemFailure } from "@typeonce/ritmo/System"
-import { MemoryNetworkLink, Netcode, NetworkLink, WebRtcNetworkLink, WebSocketNetworkLink } from "@typeonce/ritmo-netcode"
+import { MemoryNetworkLink, MemoryVisibility, Netcode, NetworkLink, Visibility, WebRtcNetworkLink, WebSocketNetworkLink } from "@typeonce/ritmo-netcode"
 import { describe, expect, it } from "tstyche"
 
 interface Input {
@@ -185,5 +185,43 @@ describe("session.update", () => {
     const error = {} as Netcode.SessionError<"Overflow">
     if (Netcode.isHalted(error)) expect(error).type.toBe<Netcode.Halted<"Overflow">>()
     else expect(error).type.toBe<Netcode.Ended>()
+  })
+})
+
+describe("hidden", () => {
+  const visibility = MemoryVisibility.make()
+
+  it("takes a visibility, a bound, and a policy, in both sessions", () => {
+    expect(Netcode.rollback(runtime, { ...options, simulate, hidden: { visibility, afterMS: 10_000, then: "resync-on-return" } })).type.toBe<Result.Result<Netcode.Session<Input, SystemFailure<"NetTypes/Fail", "Overflow">>, Netcode.InvalidOptions>>()
+    expect(Netcode.lockstep(runtime, { ...options, simulate, hidden: { visibility, afterMS: 10_000, then: "stall" } })).type.toBe<Result.Result<Netcode.Session<Input, SystemFailure<"NetTypes/Fail", "Overflow">>, Netcode.InvalidOptions>>()
+    expect<Netcode.HiddenPolicy>().type.toBe<"stall" | "resync-on-return">()
+  })
+
+  it("rejects a policy it does not know", () => {
+    // @ts-expect-error Type '"drop"' is not assignable to type 'HiddenPolicy'
+    Netcode.rollback(runtime, { ...options, simulate, hidden: { visibility, afterMS: 10_000, then: "drop" } })
+  })
+
+  it("rejects hidden without a visibility", () => {
+    // @ts-expect-error Property 'visibility' is missing
+    Netcode.rollback(runtime, { ...options, simulate, hidden: { afterMS: 10_000, then: "stall" } })
+  })
+
+  it("reports each seat's page in status", () => {
+    const session = Netcode.rollback(runtime, { ...options, simulate })
+    if (!session.ok) return
+    expect(session.value.status().hidden).type.toBe<ReadonlyArray<boolean>>()
+  })
+})
+
+describe("Visibility", () => {
+  it("is two methods any platform implements, and the browser's document is one", () => {
+    expect<Visibility.Visibility>().type.toBe<{
+      readonly hidden: () => boolean
+      readonly subscribe: (listener: (hidden: boolean) => void) => () => void
+    }>()
+    expect(BrowserVisibility.make(document)).type.toBeAssignableTo<Visibility.Visibility>()
+    expect(MemoryVisibility.make()).type.toBe<MemoryVisibility.MemoryVisibility>()
+    expect(MemoryVisibility.make()).type.toBeAssignableTo<Visibility.Visibility>()
   })
 })

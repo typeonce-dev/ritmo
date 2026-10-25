@@ -79,6 +79,7 @@ import * as HaltedInternal from "./internal/halted.ts"
 import * as Internal from "./internal/session.ts"
 import * as SeatsInternal from "./internal/seats.ts"
 import type { NetworkLink } from "./NetworkLink.ts"
+import type { Visibility } from "./Visibility.ts"
 
 /**
  * The simulation's input: one value per seat, for the tick being run.
@@ -124,7 +125,11 @@ export const seats = <const S extends Descriptor.Codec<any, any>>(
  * already holds as many inputs ahead as `inputDelay` allows.
  */
 export type Advanced =
-  /** No match yet: seat 0 has not heard from every seat, or this peer has not received its save. The input was dropped. */
+  /**
+   * No match yet: seat 0 has not heard from every seat, or this peer has not
+   * received its save (also while hidden under `"resync-on-return"`, and
+   * until seat 0's save answers its return). The input was dropped.
+   */
   | { readonly _tag: "Waiting" }
   /**
    * Nothing ran: lockstep is waiting for another seat's input, or rollback
@@ -179,7 +184,11 @@ export interface SyncFailed {
   readonly error: Snapshot.SnapshotError | Snapshot.RestoreError
 }
 
-/** A link closed (`seat` is unknown), or a seat sent nothing for `timeoutMS`. Ends the session. */
+/**
+ * A link closed (`seat` is unknown), or a seat sent nothing for `timeoutMS`
+ * (`timeoutMS + afterMS` while it is hidden, with the `hidden` option). Ends
+ * the session.
+ */
 export interface Disconnected {
   readonly _tag: "Disconnected"
   readonly seat: number | undefined
@@ -225,6 +234,11 @@ export interface Status {
   readonly ahead: number
   /** The smoothed round trip to each other seat, in milliseconds (`undefined`: not measured yet). */
   readonly roundTripMS: ReadonlyArray<number | undefined>
+  /**
+   * Whether each seat's page is hidden (this seat's own included), as it
+   * announced with the `hidden` option: draw who everyone is waiting for.
+   */
+  readonly hidden: ReadonlyArray<boolean>
 }
 
 /** One event the simulation published, and the session tick that published it. */
@@ -335,6 +349,37 @@ export interface Session<Input, TickError, Events extends Descriptor.Descriptor<
   readonly events: <D extends Events>(descriptor: D) => EventStreams<ReadonlyValue<Descriptor.Descriptor.Value<D>>>
 }
 
+/**
+ * What the other peers do while a seat's page is hidden:
+ *
+ * - `"stall"`: they wait for its input, as for any slow seat (rollback runs
+ *   `maxRollback` ticks on guesses, then stalls; lockstep stalls at once),
+ *   and the hidden seat goes on from where it stopped when it shows again.
+ * - `"resync-on-return"`: they play on, with idle input for the hidden seat
+ *   after its last sent input. When it shows again, seat 0 sends a save and
+ *   it restores it, as in `resync()`; until then its `advance` is
+ *   `Waiting`. Seat 0 itself is never played around (every save comes from
+ *   its world): when seat 0 hides, the others wait, as with `"stall"`.
+ */
+export type HiddenPolicy = "stall" | "resync-on-return"
+
+/**
+ * The `hidden` option: how this peer learns that its page hides, and what
+ * the others do meanwhile. Every peer passes the same `afterMS` and `then`.
+ */
+export interface HiddenOptions {
+  /** This peer's page: `BrowserVisibility.make(document)` in the browser, `MemoryVisibility.make()` in tests. */
+  readonly visibility: Visibility
+  /**
+   * How long the others hold the policy for a hidden seat before its
+   * silence counts again: a seat that hides and never returns (the tab was
+   * closed) ends the session with `Disconnected` at most `afterMS +
+   * timeoutMS` after it hid.
+   */
+  readonly afterMS: number
+  readonly then: HiddenPolicy
+}
+
 /** Options both sessions take. */
 export interface Options<Input> {
   readonly seats: Seats<Input>
@@ -354,6 +399,14 @@ export interface Options<Input> {
   readonly timeoutMS?: number
   /** Keeps the save of each compared tick until the peers agree, so `Desynced` carries it. Costs a save per comparison. */
   readonly keepSnapshots?: boolean
+  /**
+   * Announces to the other peers when this page hides, so they apply a
+   * policy (and show it in `status().hidden`) instead of timing out. The
+   * session unsubscribes from `visibility` once it ends. Without it, a
+   * hidden peer is silent, and the others end with `Disconnected` after
+   * `timeoutMS`.
+   */
+  readonly hidden?: HiddenOptions
 }
 
 /** Options of {@link rollback}. */
