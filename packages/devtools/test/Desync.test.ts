@@ -45,6 +45,6 @@ describe("Desync.compare", () => {
       "machine Game/Round.winner"
     ])
     expect(compared.text).toContain("7 differences (mine -> theirs):")
-    expect(compared.text).toContain("  entity 1 Game/Position.y: 2 -> 3")
+    expect(compared.text).toContain("  e1 Game/Position.y: 2 -> 3")
   })
 })

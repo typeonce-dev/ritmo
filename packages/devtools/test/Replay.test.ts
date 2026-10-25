@@ -95,6 +95,18 @@ describe("Replay", () => {
     expect(positionOf(worldOf(opened.value.snapshot()))).toEqual({ x: (1 + 2 + 3 + 5) * 2 + 10 })
   })
 
+  it("names entities with labels in the replay session", () => {
+    const { runtime, recorder } = record([1, 2])
+    for (let step = 0; step < 2; step++) runtime.tick(update)
+    const Labels = Game.Inspector("labels", {
+      queries: { movers: Game.Query({ selection: { position: Game.Query.read(Position) } }) }
+    }, ({ queries }) => new Map(queries.movers.each().map((match) => [match.entity.id, "mover"] as const)))
+    const opened = Replay.session(make, recorder.save("labels"), { labels: Labels })
+    if (!opened.ok) throw new Error(JSON.stringify(opened.error))
+    opened.value.play()
+    expect(opened.value.session.why(1, Position).text.split("\n")[0]).toBe("mover e1 Replay/Position is now {x:6}; last 2 changes (oldest first):")
+  })
+
   it("keeps only the last seconds, from the newest snapshot before them", () => {
     const { runtime, recorder } = record(Array.from({ length: 20 }, () => 1), { keep: 4, every: 2 })
     for (let step = 0; step < 20; step++) runtime.tick(update)

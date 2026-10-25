@@ -22,6 +22,12 @@
  *
  * Everything returns a `Rendered` value that prints as text.
  *
+ * With `labels`, every entity in that text prints as `player e12` instead of
+ * `e12`: journal and `why` lines, `dump`, report warnings, and invariant
+ * messages. Labels are evaluated after every frame of a `run`, so a line
+ * shows the label its entity had at the end of the line's frame; an entity
+ * despawned by then keeps the last label it had.
+ *
  * @module Session
  * @docGroup devtools
  *
@@ -30,7 +36,8 @@
  * const session = Session.make(runtime, {
  *   hostClock: HostClock.test(),
  *   schedules: { setup: setupSchedule, update: updateSchedule },
- *   invariants: [PlayerInsideWorld]
+ *   invariants: [PlayerInsideWorld],
+ *   labels: Labels
  * })
  * session.run("setup")
  * console.log(session.run("update", { frames: 300 }))
@@ -97,12 +104,59 @@ export type ValidateInvariants<
   ? unknown
   : { readonly __fixInvariantRequirements__: InvariantRequirementErrors<Invariants, Services, Resources, Machines> }
 
+/**
+ * Names entities in devtools text: a `Game.Inspector` returning a
+ * `ReadonlyMap<number, string>` from entity id to label (`player`,
+ * `enemy:slime`). It reads the world like an invariant does and is checked
+ * the same way; {@link ValidateLabels} rejects one returning anything else.
+ * It runs only in a debug session: the game and its runtime never call it.
+ *
+ * @example
+ * ```ts
+ * const Labels = Game.Inspector("labels", {
+ *   queries: { players: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] }) }
+ * }, ({ queries }) => new Map(queries.players.each().map((match) => [match.entity.id, "player"] as const)))
+ * Session.make(runtime, { hostClock, schedules: { update }, labels: Labels })
+ * ```
+ */
+export type LabelsInspector<Root = any> = Inspector.InspectorDefinition<any, unknown, Root, any, any>
+
+type LabelsRequirementErrors<
+  Labels extends Inspector.Inspector.Any,
+  Services extends Record<string, unknown>,
+  Resources extends object,
+  Machines extends Record<string, unknown>
+> = Runtime.ValidateInspector<Labels, Services, Resources, Machines> extends {
+  readonly __fixRuntimeRequirements__: infer Errors
+}
+  ? Errors
+  : never
+
+/**
+ * Rejects a `labels` inspector that does not return a
+ * `ReadonlyMap<number, string>`, or that reads a resource, service, or
+ * machine the runtime does not provide (named like invariants' are).
+ */
+export type ValidateLabels<
+  Labels extends Inspector.Inspector.Any,
+  Services extends Record<string, unknown>,
+  Resources extends object,
+  Machines extends Record<string, unknown>
+> = [Labels] extends [never]
+  ? unknown
+  : [Inspector.Inspector.Value<Labels>] extends [ReadonlyMap<number, string>]
+    ? [LabelsRequirementErrors<Labels, Services, Resources, Machines>] extends [never]
+      ? unknown
+      : { readonly __fixLabelsRequirements__: LabelsRequirementErrors<Labels, Services, Resources, Machines> }
+    : { readonly __fixLabels__: "labels must return a ReadonlyMap<number, string> from entity id to label" }
+
 /** What `Session.make` drives and checks, and how it prints. */
 export interface Options<
   S extends Schema.Any,
   Root,
   Names extends string,
-  Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>> = readonly []
+  Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>> = readonly [],
+  Labels extends LabelsInspector<Root> = never
 > {
   /** The schedules `run` can drive, by name. Also names them in traces. */
   readonly schedules: Readonly<Record<Names, ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>>
@@ -124,6 +178,14 @@ export interface Options<
    * stops the run. Built with `Invariant.fromInspector(Game.Inspector(...))`.
    */
   readonly invariants?: Invariants
+  /**
+   * Names entities in all text output (`player e12`), from a
+   * {@link LabelsInspector}. Evaluated after every frame of a `run` (and
+   * when a query finds frames ticked outside `run`), so journal lines show
+   * the label from the end of their frame; despawned entities keep their
+   * last label.
+   */
+  readonly labels?: Labels
   /** Frames of trace history kept for `journal` and `why`. Defaults to 600. */
   readonly history?: number
   /**
@@ -156,6 +218,8 @@ export type Stop =
   | { readonly reason: "invariant"; readonly frame: number; readonly invariant: string; readonly message: string }
   /** The invariant itself threw: a bug in the check, not a violation. Fix the check, then run again. */
   | { readonly reason: "invariant-threw"; readonly frame: number; readonly invariant: string; readonly error: unknown }
+  /** The `labels` inspector threw: a bug in it. Fix it, then run again. */
+  | { readonly reason: "labels-threw"; readonly frame: number; readonly error: unknown }
   /**
    * A failed tick result nobody read (for example a setup tick the game ran
    * before this run): `frame` is the failed tick's, `skipped` the systems
@@ -315,7 +379,12 @@ export interface Session<S extends Schema.Any, Names extends string> {
 interface FrameRecord {
   readonly frame: number
   readonly events: Array<Debug.TraceEvent>
+  /** The labels at the end of this frame, when they were evaluated then. */
+  labels?: ReadonlyMap<number, string>
 }
+
+/** `e12` tokens in free text (not `&e12` handles), as an invariant writes them. */
+const entityToken = /(?<![\w&])e(\d+)\b/g
 
 const inRange = (frame: number, frames: number | readonly [number, number] | undefined): boolean =>
   frames === undefined ? true
@@ -358,12 +427,16 @@ export const make = <
   Resources extends object,
   Machines extends Record<string, unknown>,
   const Names extends string,
-  const Invariants extends ReadonlyArray<Invariant<Inspector.InspectorDefinition<any, string | undefined, Root, any, any>>> = readonly []
+  const Invariants extends ReadonlyArray<Invariant<Inspector.InspectorDefinition<any, string | undefined, Root, any, any>>> = readonly [],
+  const Labels extends LabelsInspector<Root> = never
 >(
   runtime: Target<S, Root, Services, Resources, Machines>,
-  options: Options<S, Root, Names, Invariants> & ValidateInvariants<Invariants, Services, Resources, Machines>
+  options:
+    & Options<S, Root, Names, Invariants, Labels>
+    & ValidateInvariants<Invariants, Services, Resources, Machines>
+    & ValidateLabels<Labels, Services, Resources, Machines>
 ): Session<S, Names> => {
-  const inspect = runtime.inspect as (inspector: Inspector.Inspector.Any) => string | undefined
+  const inspect = runtime.inspect as (inspector: Inspector.Inspector.Any) => unknown
   const debug = runtime.debug
   const capacity = options.history ?? 600
   const format = options.format ?? {}
@@ -385,8 +458,45 @@ export const make = <
     }
     return entry
   }
-  const warnings = new Map<string, { code: Warning["code"]; message: string; count: number; firstFrame: number; lastFrame: number }>()
-  const warn = (code: Warning["code"], key: string, message: string, frame: number) => {
+  const labelsInspector = options.labels as LabelsInspector | undefined
+  /** Each labelled entity's latest label; a despawned entity keeps its last one. */
+  const lastLabels = new Map<number, string>()
+  /** The labels of the last evaluation. */
+  let latestLabels: ReadonlyMap<number, string> = new Map()
+  /** Evaluates the labels for the frame that just ended and stamps it on its record. */
+  const evaluateLabels = (): void => {
+    if (labelsInspector === undefined) return
+    const labels = inspect(labelsInspector) as ReadonlyMap<number, string>
+    const dropped = [...latestLabels.keys()].filter((id) => !labels.has(id))
+    // An entity that lost its label while alive has none now; a despawned one keeps it.
+    if (dropped.length > 0) for (const alive of debug.dump({ entities: dropped }).entities) lastLabels.delete(alive.id)
+    for (const [id, label] of labels) lastLabels.set(id, label)
+    latestLabels = labels
+    current.labels = labels
+  }
+  /** Evaluates labels when frames ran outside `run` (queries print the latest world). */
+  const refreshLabels = (): void => {
+    if (labelsInspector === undefined || current.labels !== undefined) return
+    try {
+      evaluateLabels()
+    } catch {
+      // A throwing labels inspector stops `run` as `labels-threw`; queries print ids alone.
+    }
+  }
+  /** The labels for a line of `frame`: that frame's (or the next evaluated one's), then each entity's last. */
+  const labelsAt = (frame: number): Format.Labels | undefined => {
+    if (labelsInspector === undefined) return undefined
+    const own = history.find((entry) => entry.frame >= frame && entry.labels !== undefined)?.labels
+    return { get: (id) => own?.get(id) ?? lastLabels.get(id) }
+  }
+  const nowLabels = (): Format.Labels | undefined => {
+    refreshLabels()
+    return labelsAt(debug.frame())
+  }
+
+  type WarningMessage = string | ((labels: Format.Labels | undefined) => string)
+  const warnings = new Map<string, { code: Warning["code"]; message: WarningMessage; count: number; firstFrame: number; lastFrame: number }>()
+  const warn = (code: Warning["code"], key: string, message: WarningMessage, frame: number) => {
     const existing = warnings.get(key)
     if (existing) {
       existing.count += 1
@@ -428,7 +538,7 @@ export const make = <
     warn(
       "non-finite-value",
       `nonfinite:${system}:${subject}`,
-      `${system} wrote a NaN or infinite number to ${entity === undefined ? "" : `e${entity} `}${subject}${path} (first at f${frame}; why() shows its history)`,
+      (labels) => `${system} wrote a NaN or infinite number to ${entity === undefined ? "" : `${Format.entity(entity, labels)} `}${subject}${path} (first at f${frame}; why() shows its history)`,
       frame
     )
   }
@@ -578,11 +688,17 @@ export const make = <
             : { reason: "failure", frame, system: typeof error.system === "string" ? error.system : "(unknown)", error: error.error }
         break
       }
+      try {
+        evaluateLabels()
+      } catch (error) {
+        stop = { reason: "labels-threw", frame, error }
+        break
+      }
       let checked: Stop | undefined
       for (const invariant of options.invariants ?? []) {
         let message: string | undefined
         try {
-          message = inspect(invariant.inspector)
+          message = inspect(invariant.inspector) as string | undefined
         } catch (error) {
           checked = { reason: "invariant-threw", frame, invariant: invariant.name, error }
           break
@@ -645,7 +761,7 @@ export const make = <
     const warningText = raisedCodes.length === 0
       ? ""
       : `\nwarnings during the run (see report()): ${raisedCodes.map(([code, count]) => `${code} x${count}`).join(", ")}`
-    return Rendered.make(data, renderRun(data, format) + lintText + warningText)
+    return Rendered.make(data, renderRun(data, format, labelsAt(debug.frame())) + lintText + warningText)
   }
 
   /** Lines hidden by the last `collectLines` call because they record no change. */
@@ -653,13 +769,15 @@ export const make = <
 
   const collectLines = (filter: JournalFilter<S>): Array<Format.Line> => {
     hidden = 0
+    refreshLabels()
     const subject = filter.component?.name ?? filter.resource?.name ?? filter.event?.name ?? filter.machine?.name
     const records = filter.last === undefined ? history : history.slice(-filter.last)
     const result: Array<Format.Line> = []
     for (const entry of records) {
       if (!inRange(entry.frame, filter.frames)) continue
+      const labels = labelsAt(entry.frame)
       for (const event of entry.events) {
-        for (const line of Format.lines(event, format)) {
+        for (const line of Format.lines(event, format, labels)) {
           if (filter.entity !== undefined && line.entity !== filter.entity) continue
           if (subject !== undefined && line.subject !== subject && !(line.kind === "effect" && line.subject === undefined && filter.entity !== undefined)) continue
           if (filter.system !== undefined && line.system !== filter.system) continue
@@ -693,11 +811,12 @@ export const make = <
   const why = (entity: number, component: Schema.ComponentDescriptor<S>, whyOptions: { readonly limit?: number } = {}) => {
     const lines = collectLines({ entity, component, kinds: ["write", "effect"], limit: whyOptions.limit ?? 5 })
     const currentValue = debug.dump({ entities: [entity] }).entities[0]
+    const name = Format.entity(entity, nowLabels())
     const now = currentValue === undefined
-      ? `e${entity} is not alive`
+      ? `${name} is not alive`
       : component.name in currentValue.components
-        ? `e${entity} ${component.name} is now ${Format.value(currentValue.components[component.name], format)}`
-        : `e${entity} has no ${component.name} now`
+        ? `${name} ${component.name} is now ${Format.value(currentValue.components[component.name], format)}`
+        : `${name} has no ${component.name} now`
     const changes = lines.length === 0
       ? `${now}; no change to it in ${rangeText()}`
       : `${now}; last ${lines.length} changes (oldest first):`
@@ -766,7 +885,10 @@ export const make = <
       frames: debug.frame(),
       history: historyRange(),
       systems,
-      warnings: [...warnings.values()].map((warning) => ({ ...warning })),
+      warnings: [...warnings.values()].map((warning) => ({
+        ...warning,
+        message: typeof warning.message === "string" ? warning.message : warning.message(labelsAt(warning.firstFrame))
+      })),
       streams: debug.streams().filter((stream) => stream.heldBy !== undefined || stream.readers.some((reader) => reader.lagged)),
       lints: debug.describe().lints,
       population: debug.population()
@@ -800,7 +922,7 @@ export const make = <
     },
     dump: (filter) => {
       const dumped = debug.dump(filter)
-      return Rendered.make(dumped, Format.dump(dumped, format))
+      return Rendered.make(dumped, Format.dump(dumped, format, nowLabels()))
     },
     streams: () => {
       const status = debug.streams()
@@ -815,7 +937,7 @@ export const make = <
   }
 }
 
-const renderRun = (result: RunResult, format: Format.ValueOptions): string => {
+const renderRun = (result: RunResult, format: Format.ValueOptions, labels: Format.Labels | undefined): string => {
   const frames = result.range === undefined ? "no frames" : `f${result.range[0]}-f${result.range[1]}`
   const head = `run ${result.schedule}: ${result.frames} frames (${frames}) in ${Format.value(result.ms)}ms`
   const stop = result.stop
@@ -831,9 +953,11 @@ const renderRun = (result: RunResult, format: Format.ValueOptions): string => {
     case "defect":
       return `${head}, DEFECT at f${stop.frame}: ${stop.error instanceof Error ? stop.error.stack ?? stop.error.message : Format.value(stop.error, format)}`
     case "invariant":
-      return `${head}, INVARIANT "${stop.invariant}" violated at f${stop.frame}: ${stop.message}`
+      return `${head}, INVARIANT "${stop.invariant}" violated at f${stop.frame}: ${stop.message.replace(entityToken, (_token, id: string) => Format.entity(Number(id), labels))}`
     case "invariant-threw":
       return `${head}, INVARIANT "${stop.invariant}" threw at f${stop.frame}: ${stop.error instanceof Error ? stop.error.stack ?? stop.error.message : Format.value(stop.error, format)}`
+    case "labels-threw":
+      return `${head}, LABELS threw at f${stop.frame}: ${stop.error instanceof Error ? stop.error.stack ?? stop.error.message : Format.value(stop.error, format)}`
     case "tickOrder":
       return `${head}, NOT RUN after f${stop.frame}: ${stop.issues.join("; ")}`
     case "ignored-failure":
