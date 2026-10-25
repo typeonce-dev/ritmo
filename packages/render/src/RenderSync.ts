@@ -26,6 +26,12 @@
  * services declared in `services`. Those resources and services become
  * runtime requirements like the registry itself.
  *
+ * With `hierarchy` (a `Descriptor.Hierarchy` of the game), a child's node is
+ * attached under its parent's node instead of the root, and moved whenever
+ * its parent changes, so the renderer composes the transforms: `apply` sets
+ * the child's own (local) transform, relative to the parent's node, and no
+ * world-transform math happens in the system.
+ *
  * Its spec is erased, so it does not count as a writer for
  * `Game.System.thisTick(...)` order checks.
  *
@@ -52,6 +58,7 @@
 import type { Descriptor } from "@typeonce/ritmo/Descriptor"
 import type { Condition, ConditionNeedsFromConditions } from "@typeonce/ritmo/Machine"
 import type * as Entity from "@typeonce/ritmo/Entity"
+import type { Relation } from "@typeonce/ritmo/Relation"
 import type { OptionalReadAccess, OptionalReadCell, ReadAccess, ReadCell, ReadonlyValue } from "@typeonce/ritmo/Query"
 import type { Schema } from "@typeonce/ritmo/Schema"
 import type { NodeRegistry } from "./NodeRegistry.ts"
@@ -59,6 +66,18 @@ import type { NodeRegistry } from "./NodeRegistry.ts"
 type RegistryService = Descriptor<"service", string, NodeRegistry<any>>
 type ServiceDescriptor = Descriptor<"service", string, any>
 type ResourceDescriptor = Descriptor<"resource", string, any>
+
+/**
+ * The `hierarchy` option: a `Descriptor.Hierarchy` relation of the game's
+ * schema, or a message naming the fix for anything else.
+ */
+export type HierarchyOption<S extends Schema.Any, H> =
+  [H] extends [undefined] ? H
+  : [H] extends [Schema.RelationDescriptor<S>]
+    ? [H] extends [Relation.Hierarchy]
+      ? H
+      : "hierarchy must be a Descriptor.Hierarchy relation: a Descriptor.Relation does not make a parent's node hold its children"
+    : "hierarchy must be a relation of the game's schema: add it to Schema.fragment({ relations })"
 
 /**
  * The node type held by a registry service.
@@ -123,7 +142,8 @@ export interface Options<
   Select extends Selection<S>,
   Services extends Readonly<Record<string, ServiceDescriptor>>,
   Resources extends Readonly<Record<string, Schema.ResourceDescriptor<S>>> = {},
-  When extends ReadonlyArray<Condition> = readonly []
+  When extends ReadonlyArray<Condition> = readonly [],
+  Hierarchy extends Relation.Any | undefined = undefined
 > {
   /** The system name. */
   readonly name: string
@@ -157,6 +177,20 @@ export interface Options<
    * seen when the system runs again.
    */
   readonly when?: When
+  /**
+   * A `Descriptor.Hierarchy` of the game whose tree the nodes follow: a
+   * child's node is attached under its parent's node (`attach(node, parent)`)
+   * when the parent has a node in this registry, and at the root otherwise,
+   * and is moved when the parent changes, is removed, or gains or loses its
+   * node. Only the direct parent counts: a child of a parent without a node
+   * sits at the root, not under a grandparent. `apply` then receives the
+   * child's own components, which the renderer composes with its parent's
+   * node: a child's transform is local to its parent. Despawning a parent
+   * despawns its children (hierarchies despawn together), so their nodes go
+   * with it; a parent that only loses its node hands its children's nodes
+   * back to the root.
+   */
+  readonly hierarchy?: HierarchyOption<S, Hierarchy>
   /** Builds the node for a new renderable entity. */
   readonly create: (context: NodeContext<S, Root, Renderable, Transform, Select, Services, Resources>) => NodeOf<Registry>
   /**
@@ -187,10 +221,11 @@ export const system = <
   const Services extends Readonly<Record<string, ServiceDescriptor>> = {},
   const Resources extends Readonly<Record<string, Schema.ResourceDescriptor<S>>> = {},
   const When extends ReadonlyArray<Condition<Root>> = readonly [],
-  const Transform extends Schema.ComponentDescriptor<S> | undefined = undefined
+  const Transform extends Schema.ComponentDescriptor<S> | undefined = undefined,
+  const Hierarchy extends Relation.Any | undefined = undefined
 >(
   Game: Schema.Game<S, Root>,
-  options: Options<S, Root, Renderable, Transform, Registry, Select, Services, Resources, When>
+  options: Options<S, Root, Renderable, Transform, Registry, Select, Services, Resources, When, Hierarchy>
 ): RenderSystem<S, Root, Registry | Services[keyof Services] | Resources[keyof Resources] | ConditionNeedsFromConditions<When>> => {
   type Node = NodeOf<Registry>
   type Context = NodeContext<S, Root, Renderable, Transform, Select, Services, Resources>
@@ -200,10 +235,12 @@ export const system = <
   const Query = Game.Query as unknown as (spec: object) => object
   const anyOf = Game.Query.anyOf as unknown as (...filters: ReadonlyArray<object>) => object
   const transform = options.transform as Schema.ComponentDescriptor<S> | undefined
+  const hierarchy = options.hierarchy as Schema.RelationDescriptor<S> | undefined
   const selection = {
     ...options.select,
     __renderable: Game.Query.read(options.renderable),
-    ...(transform === undefined ? {} : { __transform: Game.Query.read(transform) })
+    ...(transform === undefined ? {} : { __transform: Game.Query.read(transform) }),
+    ...(hierarchy === undefined ? {} : { __parent: Game.Query.optionalRelation(hierarchy) })
   }
   const services: Record<string, unknown> = { __registry: Game.System.service(options.registry) }
   for (const [key, descriptor] of Object.entries(options.services ?? {})) {
@@ -258,6 +295,11 @@ export const system = <
     selection: { __renderable: Game.Query.read(options.renderable) },
     with: required.filter((descriptor) => descriptor !== options.renderable)
   })
+  // Every renderable entity with a parent: checked each run against where
+  // its node is attached. There is no per-reader filter for relation edges.
+  if (hierarchy !== undefined) {
+    queries["parented"] = Query({ selection: { __parent: Game.Query.readRelation(hierarchy) }, with: [options.renderable] })
+  }
 
   return System(options.name, {
     queries,
@@ -265,7 +307,7 @@ export const system = <
     resources,
     services,
     when: options.when ?? []
-  }, ({ queries, removed, resources, services }) => {
+  }, ({ queries, removed, resources, services, lookup }) => {
     const registry = services.__registry as NodeRegistry<Node>
     // Destroy first: an entity that lost a required component has no node,
     // and one that lost it and got it back since the last run gets a fresh one.
@@ -288,9 +330,59 @@ export const system = <
 
     for (const { entity, data } of queries["sync"].each()) {
       const context = contextOf(entity, data, services, resources)
-      options.apply(registry.ensure(entity.id, () => options.create(context)), context)
+      // A child met before its parent's node exists starts at the root; the
+      // pass below moves it under the parent in this same run.
+      const parent: number | undefined = hierarchy === undefined || !data["__parent"].present ? undefined : data["__parent"].get()
+      options.apply(registry.ensure(entity.id, () => options.create(context), parent), context)
     }
+
+    if (hierarchy !== undefined) reattach(registry as NodeRegistry<unknown>, queries["parented"], lookup, hierarchy)
   }) as RenderSystem<S, Root, Registry | Services[keyof Services] | Resources[keyof Resources] | ConditionNeedsFromConditions<When>>
+}
+
+// Moves every node whose parent changed since it was attached: the entity
+// gained, lost, or changed its parent, or the parent gained or lost its node.
+// Leaving parents go first, then the rest in depth order (parents before
+// children), so a node never moves under a node that is still inside it and
+// each move happens once.
+// The lookups `reattach` uses, with the generic ids erased.
+interface HierarchyLookup {
+  parent(entity: number, relation: unknown): { readonly ok: boolean }
+  ancestors(entity: number, relation: unknown): { readonly ok: true; readonly value: ReadonlyArray<number> } | { readonly ok: false }
+}
+
+interface ParentedQuery {
+  each(): Iterable<{ readonly entity: { readonly id: number }; readonly data: { readonly __parent: { get(): number } } }>
+}
+
+const reattach = (
+  registry: NodeRegistry<unknown>,
+  parented: ParentedQuery,
+  lookup: HierarchyLookup,
+  hierarchy: unknown
+): void => {
+  const toRoot: Array<number> = []
+  for (const [entity] of registry.parents) {
+    if (!lookup.parent(entity, hierarchy).ok) toRoot.push(entity)
+  }
+  for (const entity of toRoot) registry.reparent(entity, undefined)
+
+  let moves: Array<{ readonly entity: number; readonly parent: number | undefined; depth: number }> | undefined
+  for (const { entity, data } of parented.each()) {
+    const parent = data.__parent.get()
+    const wanted = registry.get(parent) === undefined ? undefined : parent
+    if (registry.parents.get(entity.id) === wanted || registry.get(entity.id) === undefined) continue
+    ;(moves ??= []).push({ entity: entity.id, parent: wanted, depth: 0 })
+  }
+  if (moves === undefined) return
+  if (moves.length > 1) {
+    for (const move of moves) {
+      const ancestors = lookup.ancestors(move.entity, hierarchy)
+      move.depth = ancestors.ok ? ancestors.value.length : 0
+    }
+    moves.sort((a, b) => a.depth - b.depth)
+  }
+  for (const move of moves) registry.reparent(move.entity, move.parent)
 }
 
 /** A 2D position, the value `interpolate` blends when no `blend` is given. */

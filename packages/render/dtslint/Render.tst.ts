@@ -270,4 +270,43 @@ describe("@typeonce/ritmo-render", () => {
       place: () => {}
     })
   })
+
+  it("types the registry's tree: attach receives the parent node, ensure and reparent take parent keys", () => {
+    const registry = NodeRegistry.make<Node>({
+      attach: (node, parent) => {
+        expect(node).type.toBe<Node>()
+        expect(parent).type.toBe<Node | undefined>()
+      },
+      detach() {}
+    })
+    expect(registry.ensure(2, () => ({ destroy() {}, x: 0 }), 1)).type.toBe<Node>()
+    expect(registry.reparent(2, undefined)).type.toBe<boolean>()
+    expect(registry.parents).type.toBe<ReadonlyMap<number, number>>()
+    expect(NodeRegistry.make<Node>).type.not.toBeCallableWith({ attach: (_node: Node, _parent: Node) => {}, detach() {} })
+  })
+
+  it("accepts a hierarchy of the bound schema and rejects plain relations and foreign hierarchies", () => {
+    const { relation: Attached } = Descriptor.Hierarchy("RenderTypes/Attached", "RenderTypes/Attachments")
+    const { relation: Targeting } = Descriptor.Relation("RenderTypes/Targeting", "RenderTypes/TargetedBy")
+    const { relation: Foreign } = Descriptor.Hierarchy("RenderTypes/Foreign", "RenderTypes/ForeignChildren")
+    const Tree = Schema.bind(Schema.fragment({ components: { Position, Sprite }, relations: { Attached, Targeting } }))
+    const base = {
+      name: "RenderTypes/Tree",
+      renderable: Sprite,
+      transform: Position,
+      registry: Nodes,
+      create: () => ({ destroy() {}, x: 0 }),
+      apply: () => {}
+    }
+    const render = RenderSync.system(Tree, { ...base, hierarchy: Attached })
+    const runtime = Tree.Runtime.make({
+      services: Tree.Runtime.services(Tree.Runtime.service(Nodes, NodeRegistry.make<Node>({ attach() {}, detach() {} })))
+    }).value
+    expect(runtime.tick(Tree.Schedule(render))).type.toBe<Result.Result<void, never>>()
+
+    // @ts-expect-error "hierarchy must be a Descriptor.Hierarchy relation: a Descriptor.Relation does not make a parent's node hold its children"
+    RenderSync.system(Tree, { ...base, hierarchy: Targeting })
+    // @ts-expect-error "hierarchy must be a relation of the game's schema: add it to Schema.fragment({ relations })"
+    RenderSync.system(Tree, { ...base, hierarchy: Foreign })
+  })
 })
