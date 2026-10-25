@@ -6,7 +6,7 @@
 import { Clock, HostClock } from "@typeonce/ritmo"
 import { MemoryNetworkLink, Netcode } from "@typeonce/ritmo-netcode"
 
-import { Game, idle, makePeer, pressed, Seats, simulate, step, type Peer, type PlayerInput } from "./game.ts"
+import { Fired, Game, idle, makePeer, pressed, Seats, simulate, step, type Peer, type PlayerInput } from "./game.ts"
 
 export interface MatchOptions {
   readonly mode: "rollback" | "lockstep"
@@ -26,7 +26,7 @@ export interface MatchOptions {
 }
 
 export interface MatchPeer extends Peer {
-  readonly session: Netcode.Session<PlayerInput, unknown>
+  readonly session: Netcode.Session<PlayerInput, unknown, typeof Fired>
   /** The input this seat's session recorded, by tick. */
   readonly recorded: Map<number, PlayerInput>
   readonly results: Array<Netcode.Advanced>
@@ -96,12 +96,15 @@ export const play = (options: MatchOptions) => {
   return match
 }
 
+const ReadFired = Game.Inspector("NetTest/ReadFired", { events: { fired: Game.System.readEvent(Fired) } }, ({ events }) => events.fired.all())
+
 /**
- * The checksum at the start of each tick of one runtime that knew every
- * input: the setup, the save every peer restored at tick 0, then each tick
- * with the input each seat's session recorded (idle otherwise).
+ * One runtime that knew every input: the setup, the save every peer
+ * restored at tick 0, then each tick with the input each seat's session
+ * recorded (idle otherwise). `sums` is the checksum at the start of each
+ * tick, `fired` every `Fired` event with the tick that published it.
  */
-export const truth = (peers: ReadonlyArray<MatchPeer>, ticks: number): ReadonlyArray<string> => {
+export const reference = (peers: ReadonlyArray<MatchPeer>, ticks: number) => {
   const count = peers.length
   let current: ReadonlyArray<PlayerInput> = Array.from({ length: count }, () => idle)
   const source: Netcode.Source<PlayerInput> = { snapshot: () => current }
@@ -116,6 +119,7 @@ export const truth = (peers: ReadonlyArray<MatchPeer>, ticks: number): ReadonlyA
   const saved = reference.runtime.snapshot()
   if (!saved.ok || !runtime.restore(JSON.parse(JSON.stringify(saved.value))).ok) throw new Error("the reference could not restore the start")
   const sums: Array<string> = []
+  const fired: Array<{ readonly tick: number; readonly value: { readonly seat: number; readonly x: number } }> = []
   for (let tick = 0; tick <= ticks; tick++) {
     const sum = runtime.checksum()
     if (!sum.ok) throw new Error("the reference did not checksum")
@@ -123,9 +127,13 @@ export const truth = (peers: ReadonlyArray<MatchPeer>, ticks: number): ReadonlyA
     current = peers.map((peer) => peer.recorded.get(tick) ?? idle)
     const ran = runtime.tick(simulate)
     if (!ran.ok) throw new Error("the reference failed a tick")
+    for (const value of runtime.inspect(ReadFired)) fired.push({ tick, value })
   }
-  return sums
+  return { sums, fired }
 }
+
+/** The checksum at the start of each tick of the {@link reference} runtime. */
+export const truth = (peers: ReadonlyArray<MatchPeer>, ticks: number): ReadonlyArray<string> => reference(peers, ticks).sums
 
 export const checksumOf = (peer: Peer): string => {
   const sum = peer.runtime.checksum()

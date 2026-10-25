@@ -49,6 +49,25 @@ FixedLoop.start({
 
 What does not compile: a rollback `simulate` that cannot be rewound (a service with effects, `local` state; a library that keeps its own world, like a physics engine, is provided through `Checkpoint.rewindable` from `@typeonce/ritmo` instead), a schedule whose requirements the runtime does not provide, and a runtime that cannot save (a component or resource without a schema). What fails at construction, as a typed `Result`: a seat out of range, seats the runtime does not provide or another session took, and a `maxRollback` larger than the checkpoints the runtime keeps.
 
+## Effects under rollback
+
+A rollback runs ticks again, and a tick run again publishes its events again: a sound played from an event would play once per run. Host code (sound, particles, a message to a server) reads the simulation's events through the session, one reader per place that acts on them:
+
+```ts
+const hits = session.events(Hit) // an event of the runtime's schema; one reader per call
+
+// After each frame's steps (in FixedLoop's render):
+for (const { tick } of hits.withdrawn()) particles.cancel(tick) // a rollback undid this tick's hits
+for (const { tick, value } of hits.predicted()) particles.burst(tick, value.at) // may still be undone
+for (const { value } of hits.confirmed()) sounds.play(value.kind) // exactly once per hit
+const lost = hits.lost() // a reader that stopped reading: EventsLost, never silent
+```
+
+- `confirmed()` hands out each event once, when its tick can no longer run again. A lockstep session confirms every tick it runs.
+- `predicted()` hands out events of ticks that may still be rolled back. A tick a rollback runs again keeps what was handed out when it publishes the same events (plain data, compared by value); otherwise it is withdrawn and its new events are predicted again.
+- `withdrawn()` names those ticks, so the host cancels what it started. A resync withdraws every predicted tick. A tick waiting to be withdrawn is held back from `predicted()` until `withdrawn()` named it, so a cancel never undoes the new run.
+- A reader that does not call `confirmed()` for more than `Netcode.eventWindow` ticks loses the oldest: `lost()` reports them as `EventsLost`.
+
 When checksums differ, `advance` fails with `Desynced` until `resync()`. With `keepSnapshots: true` it carries this peer's save of that tick; `Desync.compare(mine, theirs)` from [`@typeonce/ritmo-devtools`](https://github.com/typeonce-dev/ritmo/blob/main/packages/devtools/README.md) lists what differs.
 
 Released together with [`@typeonce/ritmo`](https://github.com/typeonce-dev/ritmo/blob/main/packages/core/README.md), always with the same version.

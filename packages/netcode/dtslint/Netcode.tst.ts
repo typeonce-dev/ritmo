@@ -16,8 +16,10 @@ const Seats = Descriptor.Service<Netcode.Source<Input>>()("NetTypes/Seats")
 const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("NetTypes/Inputs")
 const Score = Descriptor.ConstructedResource(Whole)("NetTypes/Score")
 const Sound = Descriptor.Service<{ readonly play: () => void }>()("NetTypes/Sound")
+const Hit = Descriptor.Event<{ readonly seat: number; readonly at: { readonly x: number } }>()("NetTypes/Hit")
+const Elsewhere = Descriptor.Event<{ readonly seat: number }>()("NetTypes/Elsewhere")
 
-const Game = Schema.bind(Schema.fragment({ resources: { Inputs, Score } }))
+const Game = Schema.bind(Schema.fragment({ resources: { Inputs, Score }, events: { Hit } }))
 const Capture = InputCapture.system(Game, { name: "NetTypes/Capture", source: Seats, resource: Inputs })
 const Fail = Game.System("NetTypes/Fail", {}, () => Result.failure("Overflow" as const))
 const Remember = Game.System("NetTypes/Remember", { local: () => ({ runs: 0 }) }, ({ local }) => {
@@ -57,7 +59,7 @@ describe("Netcode.seats", () => {
 
 describe("Netcode.rollback", () => {
   it("returns a session of the seats' input and the schedule's failure", () => {
-    expect(Netcode.rollback(runtime, { ...options, simulate })).type.toBe<Result.Result<Netcode.Session<Input, SystemFailure<"NetTypes/Fail", "Overflow">>, Netcode.InvalidOptions>>()
+    expect(Netcode.rollback(runtime, { ...options, simulate })).type.toBe<Result.Result<Netcode.Session<Input, SystemFailure<"NetTypes/Fail", "Overflow">, typeof Hit>, Netcode.InvalidOptions>>()
   })
 
   it("narrows what advance did, and why it failed", () => {
@@ -93,9 +95,39 @@ describe("Netcode.rollback", () => {
   })
 })
 
+describe("session.events", () => {
+  const session = Netcode.rollback(runtime, { ...options, simulate })
+  if (!session.ok) throw new Error("the options are valid")
+
+  it("reads an event of the runtime's schema, with its value type and the tick", () => {
+    const hits = session.value.events(Hit)
+    expect(hits).type.toBe<Netcode.EventStreams<{ readonly seat: number; readonly at: { readonly x: number } }>>()
+    expect(hits.confirmed()).type.toBe<ReadonlyArray<Netcode.EventRecord<{ readonly seat: number; readonly at: { readonly x: number } }>>>()
+    expect(hits.predicted()).type.toBe<ReadonlyArray<Netcode.EventRecord<{ readonly seat: number; readonly at: { readonly x: number } }>>>()
+    expect(hits.withdrawn()).type.toBe<ReadonlyArray<Netcode.Withdrawn>>()
+    expect(hits.lost()).type.toBe<Netcode.EventsLost | undefined>()
+    for (const { tick, value } of hits.confirmed()) {
+      expect(tick).type.toBe<number>()
+      // @ts-expect-error Cannot assign to 'seat' because it is a read-only property
+      value.seat = 1
+    }
+  })
+
+  it("rejects an event outside the runtime's schema", () => {
+    expect(session.value.events).type.toBeCallableWith(Hit)
+    // @ts-expect-error Argument of type 'Descriptor<"event", "NetTypes/Elsewhere"
+    session.value.events(Elsewhere)
+  })
+
+  it("reads nothing through a session typed without its events", () => {
+    const untyped: Netcode.Session<Input, unknown> = session.value
+    expect(untyped.events).type.not.toBeCallableWith(Hit)
+  })
+})
+
 describe("Netcode.lockstep", () => {
   it("runs a schedule with local state: nothing is run again", () => {
-    expect(Netcode.lockstep(runtime, { ...options, simulate: Game.Schedule(Capture, Remember) })).type.toBe<Result.Result<Netcode.Session<Input, never>, Netcode.InvalidOptions>>()
+    expect(Netcode.lockstep(runtime, { ...options, simulate: Game.Schedule(Capture, Remember) })).type.toBe<Result.Result<Netcode.Session<Input, never, typeof Hit>, Netcode.InvalidOptions>>()
   })
 
   it("takes no rollback options", () => {

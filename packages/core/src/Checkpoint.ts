@@ -49,8 +49,10 @@
  * an entity the rewind took away and the ticks after it brought back (the
  * same id: ids are exact) is seen as changed, never as despawned and spawned
  * again. They may see a value as changed that ended up equal. Events they
- * read during ticks that are ticked again are published again: act on
- * events of confirmed ticks only, or de-duplicate them by tick.
+ * read during ticks that are ticked again are published again. A networked
+ * game reads them through its session instead (`session.events(...)` in
+ * `@typeonce/ritmo-netcode`), which hands each event out once, when its tick
+ * is confirmed, and names the predicted ticks a rollback undid.
  *
  * @module Checkpoint
  * @docGroup runtime

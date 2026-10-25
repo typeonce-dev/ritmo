@@ -39,10 +39,12 @@ export const Total = Descriptor.ConstructedResource(Whole)("NetTest/Total")
 export const Time = Clock.resource("NetTest/Time", step)
 export const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("NetTest/Seats")
 export const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("NetTest/Inputs")
+/** A seat fired, where its player stood: what host code reads through `session.events`. */
+export const Fired = Descriptor.Event<{ readonly seat: number; readonly x: number }>()("NetTest/Fired")
 /** Host-side and out of band: lets a test break one peer's determinism on purpose. */
 export const Drift = Descriptor.ConstructedResource(Whole)("NetTest/Drift")
 
-export const Game = Schema.bind(Schema.fragment({ components: { Player, Marker }, resources: { Total, Time, Inputs, Drift } }))
+export const Game = Schema.bind(Schema.fragment({ components: { Player, Marker }, resources: { Total, Time, Inputs, Drift }, events: { Fired } }))
 
 const Capture = InputCapture.system(Game, { name: "NetTest/Capture", source: Seats, resource: Inputs })
 const Ticking = Clock.system(Game, { name: "NetTest/Clock", resource: Time })
@@ -50,15 +52,19 @@ const Ticking = Clock.system(Game, { name: "NetTest/Clock", resource: Time })
 const Move = Game.System("NetTest/Move", {
   resources: { inputs: Game.System.readResource(Inputs), total: Game.System.writeResource(Total), drift: Game.System.readResource(Drift) },
   queries: { players: Game.Query({ selection: { player: Game.Query.write(Player) } }) },
+  events: { fired: Game.System.writeEvent(Fired) },
   commands: Game.System.commands(Game.System.spawns(Marker))
-}, ({ resources, queries, commands }) => {
+}, ({ resources, queries, events, commands }) => {
   const inputs = resources.inputs.get()
   for (const { data } of queries.players.each()) {
     const player = data.player.get()
     const input = inputs[player.seat]!
     data.player.set({ ...player, x: player.x + input.dx })
     resources.total.update((total) => (total * 3 + input.dx + resources.drift.get()) % 1_000_003)
-    if (input.fire) commands.spawn(Game.Command.spawn([Marker, 4]))
+    if (input.fire) {
+      commands.spawn(Game.Command.spawn([Marker, 4]))
+      events.fired.emit({ seat: player.seat, x: player.x + input.dx })
+    }
   }
 })
 

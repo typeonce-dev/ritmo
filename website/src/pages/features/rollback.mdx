@@ -234,6 +234,33 @@ declare const session: Netcode.Session<unknown, never>
 const { tick, confirmed, verified, rollbacks } = session.status()
 ```
 
+## Sounds play once
+
+A tick run again publishes its events again, so a sound played from an event
+would play once per run. The session hands the host each event of the
+simulation in three streams: `confirmed` once its tick can no longer change,
+`predicted` while it still may, and `withdrawn` for the ticks a rollback
+undid.
+
+```ts twoslash
+import { Descriptor } from "@typeonce/ritmo"
+import type { Netcode } from "@typeonce/ritmo-netcode"
+const Hit = Descriptor.Event<{ readonly kind: "body" | "shield"; readonly x: number }>()("Game/Hit")
+declare const session: Netcode.Session<unknown, never, typeof Hit>
+declare const sounds: { readonly play: (kind: "body" | "shield") => void }
+declare const particles: { readonly burst: (tick: number, x: number) => void; readonly cancel: (tick: number) => void }
+// ---cut---
+const hits = session.events(Hit) // one reader for each place that acts on hits
+
+// Every frame, after the session advanced:
+for (const { tick } of hits.withdrawn()) particles.cancel(tick) // a rollback undid it
+for (const { tick, value } of hits.predicted()) particles.burst(tick, value.x) // at once
+for (const { value } of hits.confirmed()) sounds.play(value.kind) // exactly once
+```
+
+A tick that runs again with the same hits keeps its particles: only hits
+that changed are withdrawn and predicted again.
+
 ## Under the hood: checkpoints
 
 A session rolls back with the runtime's own checkpoints, which a game can also
