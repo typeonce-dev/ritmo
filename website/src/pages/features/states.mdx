@@ -4,42 +4,23 @@ title: States that can't go wrong
 description: Each state of an entity holds only its own data, so a fighter on the ground with an upward speed has no type to be.
 ---
 
-A fighter is on the ground or in the air, never both. With Ritmo the type
-says so too: each state carries only its own fields, and a move between
-states must write the new state whole.
+import Claim from "../../components/Claim.astro"
+import Game from "../../components/Game.astro"
 
-## What you get
+A fighter is on the ground or in the air, never both. A flat record lets it
+be both, and one day it is.
 
-- A value that pairs a state with another state's data does not compile.
-- Moving to a new state takes every field it needs and nothing from the
-  old one.
-- Only the moves you allow exist. `to` offers only the states the graph
-  permits from `from`.
-- Every write checks the state it expects first, and says what it found
-  when the entity has already moved on.
-- Saved games and snapshots are checked state by state when they load.
+<Game id="states" ratio="16 / 9" />
 
-## The bug it removes
+The same script plays both fighters: a jump, a landing, a guard. The guard
+sets a small upward speed. On the left it lands on a body that is still
+`grounded`, gravity skips it, and it rises for good. On the right there is
+no speed on the ground to set.
 
-A fighter in a test game started drifting up after a guard. Everything
-about its body lived in one record:
+<Claim title="A grounded body with a speed has no type to be">
 
-```ts
-interface Body {
-  readonly grounded: boolean // [!code highlight]
-  readonly vy: number // [!code highlight]
-  readonly platform: number | null
-  readonly coyote: number
-}
-```
-
-The guard set `vy: 2` and left `grounded: true`. Gravity skips a grounded
-body, so nothing pulled it back down. The record could describe a body on
-the ground and moving up, and one day it did.
-
-## One state, its own fields
-
-`Descriptor.EntityState` gives each state only the fields it has:
+`Descriptor.EntityState` gives each state only the fields it has. Hover
+`ContactValue`: it is one state or the other, never a mix.
 
 ```ts twoslash title="schema.ts"
 const codec = <T extends S.Top & { readonly DecodingServices: never; readonly EncodingServices: never }>(schema: T) => {
@@ -68,15 +49,12 @@ type ContactValue = Descriptor.EntityStateOf<typeof Contact>
 //   ^?
 ```
 
-A grounded body with a `vy` no longer has a type to be. Each state's data
-is one schema from the game's schema library, so a saved game is checked
-state by state when it loads.
+</Claim>
 
-## Moving takes the new state's fields
+<Claim title="Moving writes the new state whole">
 
-A system moves an entity with `transition`. It writes the target state from
-scratch: every field the target needs, and nothing from the state it
-leaves.
+`transition` takes every field the target state needs, and nothing from the
+state it leaves. Landing without the platform underfoot does not compile.
 
 ```ts twoslash title="breaker.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -108,8 +86,13 @@ Game.System("Brawl/Breaker", { queries: { bodies: Bodies } }, ({ queries }) => {
 })
 ```
 
-Staying in a state is `update`: it changes that state's fields, and only
-those.
+</Claim>
+
+<Claim title="Another state's field does not compile, even through a spread">
+
+Staying in a state is `update`, and it changes only that state's fields.
+Both writes check the state first: an entity that already moved on returns
+an `EntityStateMismatch` that says where it is.
 
 ```ts twoslash title="fall.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
@@ -142,21 +125,14 @@ Game.System("Brawl/Fall", { queries: { bodies: Bodies } }, ({ queries }) => {
 })
 ```
 
-Both are a compare-and-set: they write only while the entity is still in
-the state they expect. Otherwise they return an `EntityStateMismatch`
-failure that says which state it was in.
+</Claim>
 
-The editor completes each part: `from` offers every state, `to` only the
-moves the graph allows, and `data` the target's fields.
+<Claim title="The one gap is a lint error">
 
-## The one gap, and its lint
+Pure functions that build the next value can spread the old state and change
+`_tag`. TypeScript lets it through; the lint names it and the fix.
 
-Game code written as pure functions builds the new value itself. Spreading
-the old state and changing `_tag` compiles, because TypeScript does not
-check the fields a spread brings along, and the old fields survive. The
-lint rule names it:
-
-```text
+```text title="oxlint"
 error ritmo(no-state-spread): This sets `_tag` over a spread of `air`: every
 field of the previous state survives at runtime, though the type of the new
 state hides it, so it comes back when the value is saved, compared, or
@@ -165,22 +141,18 @@ which takes the new state's fields; anywhere else, write the new state's
 fields out: `{ _tag: "air", vy, coyote }`.
 ```
 
-## What it buys
+</Claim>
 
-- Whole kinds of bug stop compiling: hitstun outside a hit, a hit flag left
-  over from the last attack, a grounded body that drifts.
-- Reading a value narrows on `_tag`, so code that uses a state's data runs
-  only in that state.
-- An entity state is a component like any other: it is saved, traced, and
-  rolled back with the rest of the world, so
-  [online play](/features/rollback/) and [replays](/features/replays/) keep
-  it exact.
-- When the fighter test game moved its body and action records to entity
-  states, it played back bit for bit the same. The only casualty was a
-  branch that could never run, which the old record had hidden.
+<Claim title="Saved, replayed, and rolled back like any component">
 
-An entity state is per entity. One mode for the whole game (menu, playing,
-paused) is a state machine, which changes at a known point in the tick and
-gates systems: see [Concepts](/docs/concepts/#state-machines). For
-components that come and go, see
-[Entities that change shape](/features/composition/).
+An entity state is a component: snapshots check it state by state when they
+load, and [replays](/features/replays/) and
+[online play](/features/rollback/) keep it exact. When the fighter test game
+moved its bodies to entity states, it played back bit for bit the same. The
+only casualty was a branch that could never run.
+
+</Claim>
+
+One mode for the whole game (menu, playing, paused) is a state machine: see
+[Concepts](/docs/concepts/#state-machines). For components that come and go,
+see [Entities that change shape](/features/composition/).

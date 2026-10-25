@@ -38,6 +38,24 @@ export const demos = {
     source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/rollback",
     load: () => import("./rollback/game.ts")
   },
+  fuzz: {
+    title: "Fuzzer",
+    description: "The fuzzer plays the ball at random until it breaks a planted rule, then shrinks the run to the few frames that still break it.",
+    controls: "Watch it search, break the rule, and shrink. Press the button for another seed.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/fuzz",
+    // Takes no input: starts on its own when scrolled into view.
+    autoplay: true,
+    load: () => import("./fuzz/game.ts")
+  },
+  states: {
+    title: "States",
+    description: "The same script plays two fighters: one keeps its body in a record and drifts up after a guard, one keeps it in an entity state and cannot.",
+    controls: "Watch both jump and land, then the guard: the left fighter rises for good, the right one has no speed on the ground to set.",
+    source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/states",
+    // Takes no input: starts on its own when scrolled into view.
+    autoplay: true,
+    load: () => import("./states/game.ts")
+  },
   replay: {
     title: "Controls, recorded",
     description: "The same ball, recording the last ten seconds as a replay you can open on the spot.",

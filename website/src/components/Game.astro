@@ -18,7 +18,7 @@ const demo = demos[id]
 const href = `/play/${id}/`
 ---
 
-<figure class="game" data-demo={id}>
+<figure class="game" data-demo={id} data-autoplay={"autoplay" in demo && demo.autoplay ? "" : undefined}>
   <div class="frame" style={`aspect-ratio: ${ratio}`}>
     <iframe src={href} title={`${demo.title}, a game made with Ritmo`} loading="lazy" allow="gamepad; fullscreen"></iframe>
   </div>
@@ -65,6 +65,19 @@ const href = `/play/${id}/`
     button.hidden = false
     button.addEventListener("click", () => void play(game))
   }
+
+  // A demo that takes no input starts by itself once most of it is on screen,
+  // without taking focus or going full screen.
+  const autoplay = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue
+      autoplay.unobserve(entry.target)
+      const iframe = entry.target.querySelector<HTMLIFrameElement>("iframe")
+      if (iframe === null) continue
+      void loaded(iframe).then(() => iframe.contentWindow?.postMessage("ritmo:autoplay", location.origin))
+    }
+  }, { threshold: 0.4 })
+  for (const game of document.querySelectorAll<HTMLElement>("figure.game[data-autoplay]")) autoplay.observe(game)
 
   for (const button of document.querySelectorAll<HTMLElement>("[data-play]")) {
     button.addEventListener("click", () => {
