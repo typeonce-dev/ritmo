@@ -67,8 +67,8 @@ export const demos = {
   },
   composition: {
     title: "Composition",
-    description: "One guard, stunned and recovering: a component added and removed while the game runs, and which systems that turns on and off.",
-    controls: "Four steps, about 13 seconds: the panel on the right shows the guard's components and which systems ran on it this tick.",
+    description: "Four guards; hits add a Stunned component, and Move skips any guard that holds one.",
+    controls: "Watch the chips beside each guard: Stunned snaps on, drains, and comes off.",
     source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/composition",
     // Takes no input: starts on its own when scrolled into view.
     autoplay: true,

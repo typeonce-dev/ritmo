@@ -1,20 +1,12 @@
-// The composition demo: one guard, four slow steps. The left half is the
-// guard walking; the right half is what it has (its components) and which
-// systems ran on it this tick. A hit adds Stunned, Move skips the guard
-// because its query says `without: [Stunned]`, and when Stunned is removed
-// Move picks it up again and Recover hears the removal once.
-import { EDGES, makeGuard } from "./guard.ts"
+// The composition demo: four guards, one lane each, their components beside
+// them. Hits keep landing: a Stunned chip snaps on, Move stops touching that
+// guard because its query says `without: [Stunned]`, and when the chip
+// drains away the guard walks again. No steps, one line of code on top.
+import { EDGES, LANES, STUN, makeGuards } from "./guard.ts"
 
 const WIDTH = 960
 const HEIGHT = 540
 const STEP_MS = 1000 / 60
-
-/** The script, in frames at 60 per second. */
-const HIT_AT = 240
-const STUN = 240
-const SKIP_AT = HIT_AT + 90
-const REMOVED_AT = HIT_AT + STUN
-const LOOP = REMOVED_AT + 330
 
 const FG = "#f3f1ec"
 const MUTED = "#8a8f98"
@@ -22,33 +14,15 @@ const ACCENT = "#ff5a36"
 const OK = "#7fd18b"
 const LINE = "#2f343c"
 const BG = "#0e1013"
-const PANEL = "#16191e"
+const CHIP = "#1b1f25"
 const MONO = "'JetBrains Mono', monospace"
 const font = (weight: number, size: number) => `${weight} ${size}px ${MONO}`
 
-const STEPS = [
-  {
-    from: 0,
-    say: ["The guard is an entity with three components.", "Move runs on every Guard that is not Stunned."],
-    code: "Game.Query({ selection: { … }, with: [Guard], without: [Stunned] })"
-  },
-  {
-    from: HIT_AT,
-    say: ["A hit adds a fourth component: Stunned.", "A command inserts it, at a known point in the tick."],
-    code: "commands.insert(guard, [Stunned, { frames: 240 }])"
-  },
-  {
-    from: SKIP_AT,
-    say: ["Move asks for guards without Stunned, so it skips this one.", "The guard stops. There is no if-statement in Move."],
-    code: "Game.Query({ selection: { … }, with: [Guard], without: [Stunned] })"
-  },
-  {
-    from: REMOVED_AT,
-    say: ["Stunned runs out and is removed. Move picks the guard up again,", "and Recover hears the removal exactly once."],
-    code: "removed: { recovered: Game.System.readRemoved(Stunned) }"
-  }
-] as const
-const stepAt = (frame: number) => STEPS.reduce((at, step, index) => (frame >= step.from ? index : at), 0)
+const TOP = 110
+const LANE = (HEIGHT - TOP - 20) / LANES
+const TRACK = { from: 430, to: 920 }
+/** How long a hit's flash stays, in frames. */
+const FLASH = 24
 
 export const mount = async (host: HTMLElement) => {
   const canvas = document.createElement("canvas")
@@ -58,122 +32,113 @@ export const mount = async (host: HTMLElement) => {
   host.append(canvas)
   const g = canvas.getContext("2d")!
 
-  let guard = makeGuard()
-  let frame = 0
+  const guards = makeGuards()
+  /** Frames left on each lane's hit flash. */
+  const flash = Array.from({ length: LANES }, () => 0)
   let raf = 0
   let stopped = false
   let last = performance.now()
   let carry = 0
 
   const step = () => {
-    if (frame === HIT_AT) guard.hit(STUN)
-    guard.step()
-    frame++
-    if (frame >= LOOP) {
-      guard = makeGuard()
-      frame = 0
-    }
+    for (let lane = 0; lane < LANES; lane++) flash[lane] = Math.max(0, flash[lane]! - 1)
+    const hit = guards.step()
+    if (hit !== null) flash[hit] = FLASH
   }
 
-  const chip = (text: string, x: number, y: number, lit: boolean) => {
-    g.font = font(500, 16)
-    const width = g.measureText(text).width + 24
-    g.fillStyle = lit ? "rgba(255,90,54,0.2)" : "#1b1f25"
-    g.strokeStyle = lit ? ACCENT : LINE
+  const chip = (text: string, x: number, y: number, style: "on" | "lit" | "empty", fill = 1) => {
+    g.font = font(500, 14)
+    const width = g.measureText(text).width + 20
     g.lineWidth = 1.5
     g.beginPath()
-    g.roundRect(x, y, width, 30, 15)
-    g.fill()
-    g.stroke()
-    g.fillStyle = lit ? ACCENT : FG
-    g.fillText(text, x + 12, y + 20)
+    g.roundRect(x, y, width, 28, 14)
+    if (style === "empty") {
+      g.setLineDash([4, 4])
+      g.strokeStyle = LINE
+      g.stroke()
+      g.setLineDash([])
+      g.fillStyle = LINE
+    } else {
+      g.fillStyle = style === "lit" ? "rgba(255,90,54,0.18)" : CHIP
+      g.fill()
+      // How much of the stun is left, drained from the right
+      if (style === "lit") {
+        g.save()
+        g.clip()
+        g.fillStyle = "rgba(255,90,54,0.35)"
+        g.fillRect(x, y, width * fill, 28)
+        g.restore()
+      }
+      g.strokeStyle = style === "lit" ? ACCENT : LINE
+      g.stroke()
+      g.fillStyle = FG
+    }
+    g.fillText(text, x + 10, y + 19)
+    return x + width + 8
   }
 
   const draw = () => {
-    const seen = guard.read()
-    const at = stepAt(frame)
-    const current = STEPS[at]!
+    const seen = guards.read()
+    const walking = seen.guards.filter((guard) => guard.stunned === null).length
 
     g.fillStyle = BG
     g.fillRect(0, 0, WIDTH, HEIGHT)
 
-    // Step counter and the sentence for this step
-    g.font = font(600, 14)
+    // The one line that decides who moves
+    g.font = font(700, 20)
+    g.fillStyle = FG
+    g.fillText("Move", 40, 58)
+    g.font = font(400, 20)
     g.fillStyle = MUTED
-    g.fillText(`step ${at + 1} of ${STEPS.length}`, 40, 40)
-    STEPS.forEach((_, index) => {
-      g.fillStyle = index === at ? ACCENT : index < at ? MUTED : LINE
-      g.fillRect(180 + index * 34, 32, 26, 6)
-    })
-    current.say.forEach((line, index) => {
-      g.font = index === 0 ? font(700, 22) : font(400, 18)
-      g.fillStyle = index === 0 ? FG : MUTED
-      g.fillText(line, 40, 82 + index * 32)
-    })
-
-    // Left: the arena
-    const arena = { x: 40, y: 150, width: 520, height: 260 }
-    g.strokeStyle = LINE
-    g.lineWidth = 2
-    g.strokeRect(arena.x, arena.y, arena.width, arena.height)
-    const ground = arena.y + arena.height - 40
-    g.beginPath()
-    g.moveTo(arena.x + 20, ground)
-    g.lineTo(arena.x + arena.width - 20, ground)
-    g.stroke()
-    const x = arena.x + 30 + ((seen.x - EDGES.min) / (EDGES.max - EDGES.min)) * (arena.width - 60)
-    const stunned = seen.stunned !== null
-    g.fillStyle = stunned ? ACCENT : FG
-    g.beginPath()
-    g.roundRect(x - 24, ground - 90, 48, 90, 12)
-    g.fill()
-    g.fillStyle = BG
-    g.fillRect(x + 4, ground - 72, 9, 9)
-    if (stunned) {
-      g.font = font(700, 20)
-      g.fillStyle = ACCENT
-      g.fillText("✦ ✦", x - 24, ground - 104)
-    }
-    g.font = font(600, 14)
-    g.fillStyle = MUTED
-    g.fillText("the game", arena.x, arena.y - 12)
-
-    // Right: what the guard has, and which systems ran on it
-    const panel = { x: 600, y: 150, width: 320, height: 260 }
-    g.fillStyle = PANEL
-    g.beginPath()
-    g.roundRect(panel.x, panel.y, panel.width, panel.height, 10)
-    g.fill()
-    g.font = font(600, 14)
-    g.fillStyle = MUTED
-    g.fillText("the guard, this tick", panel.x, panel.y - 12)
-    g.fillText("components", panel.x + 20, panel.y + 30)
-    chip("Guard", panel.x + 20, panel.y + 42, false)
-    chip("Position", panel.x + 106, panel.y + 42, false)
-    chip("Velocity", panel.x + 20, panel.y + 80, false)
-    if (stunned) chip(`Stunned { frames: ${seen.stunned} }`, panel.x + 20, panel.y + 118, frame - HIT_AT < 90)
-
-    g.font = font(600, 14)
-    g.fillStyle = MUTED
-    g.fillText("systems", panel.x + 20, panel.y + 182)
+    const query = "Query({ with: [Guard], without: [Stunned] })"
+    g.fillText(query, 110, 58)
     g.font = font(600, 16)
-    g.fillStyle = FG
-    g.fillText("Move", panel.x + 20, panel.y + 210)
-    g.fillStyle = seen.ran.move ? OK : ACCENT
-    g.fillText(seen.ran.move ? "runs on it" : "skips it", panel.x + 110, panel.y + 210)
-    g.fillStyle = FG
-    g.fillText("Recover", panel.x + 20, panel.y + 240)
-    g.fillStyle = seen.ran.heard > 0 ? ACCENT : MUTED
-    g.fillText(`heard ${seen.ran.heard} removal${seen.ran.heard === 1 ? "" : "s"}`, panel.x + 110, panel.y + 240)
+    g.fillStyle = OK
+    g.textAlign = "right"
+    g.fillText(`runs on ${walking} of ${LANES}`, WIDTH - 40, 58)
+    g.textAlign = "left"
 
-    // Bottom: the line of Ritmo behind this step
-    g.fillStyle = PANEL
-    g.beginPath()
-    g.roundRect(40, HEIGHT - 82, WIDTH - 80, 46, 8)
-    g.fill()
-    g.font = font(400, 16)
-    g.fillStyle = FG
-    g.fillText(current.code, 60, HEIGHT - 52)
+    for (const guard of seen.guards) {
+      const y = TOP + guard.lane * LANE
+      const middle = y + LANE / 2
+      const stunned = guard.stunned !== null
+
+      g.strokeStyle = LINE
+      g.lineWidth = 1
+      g.beginPath()
+      g.moveTo(40, y + LANE)
+      g.lineTo(WIDTH - 40, y + LANE)
+      g.stroke()
+
+      // What the guard holds: three chips, and a slot for Stunned
+      let x = chip("Guard", 40, middle - 14, "on")
+      x = chip("Position", x, middle - 14, "on")
+      x = chip("Velocity", x, middle - 14, "on")
+      if (stunned) chip("Stunned", x, middle - 14, "lit", guard.stunned! / STUN)
+      else chip("Stunned", x, middle - 14, "empty")
+
+      // The guard on its track
+      const at = TRACK.from + ((guard.x - EDGES.min) / (EDGES.max - EDGES.min)) * (TRACK.to - TRACK.from)
+      const flashing = flash[guard.lane]!
+      if (flashing > 0) {
+        g.strokeStyle = ACCENT
+        g.globalAlpha = flashing / FLASH
+        g.lineWidth = 3
+        g.beginPath()
+        g.arc(at, middle, 22 + (FLASH - flashing) * 1.5, 0, Math.PI * 2)
+        g.stroke()
+        g.globalAlpha = 1
+      }
+      g.fillStyle = stunned ? ACCENT : FG
+      g.beginPath()
+      g.roundRect(at - 16, middle - 26, 32, 52, 9)
+      g.fill()
+      if (stunned) {
+        g.font = font(700, 14)
+        g.fillStyle = ACCENT
+        g.fillText("✦ ✦", at - 18, middle - 34)
+      }
+    }
   }
 
   const tick = (now: number) => {
