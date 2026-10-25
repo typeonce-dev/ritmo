@@ -5,8 +5,8 @@
  * small number of stable namespaces instead of many deep internal paths.
  */
 /**
- * Branding helpers for packages that author validated value types (like
- * `@typeonce/ritmo-math`). Game code validates through descriptors instead.
+ * Brand types for Ritmo's own validated values (`Random.State`,
+ * `Clock.Deadline`). Game code brands through its schema library instead.
  */
 export * as Brand from "./Brand.ts"
 /**
@@ -45,6 +45,14 @@ export * as HostClock from "./HostClock.ts"
  * Read-only typed world projections.
  */
 export * as Inspector from "./Inspector.ts"
+/**
+ * Math functions that return the same bits on every engine, for simulation code.
+ */
+export * as Ops from "./Ops.ts"
+/**
+ * Deterministic random numbers whose whole state is one integer, kept in a resource.
+ */
+export * as Random from "./Random.ts"
 /**
  * Explicit success/failure helpers.
  */

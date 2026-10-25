@@ -3,7 +3,7 @@
 // the page is built, and in the reader's browser when the page opens. The
 // two match bit for bit, on any engine and CPU, because the rules read time
 // from the clock and trigonometry from `Ops`.
-import * as Ops from "@typeonce/ritmo-math/Ops"
+import * as Ops from "@typeonce/ritmo/Ops"
 import { Gamepad, Keyboard, Pointer, Touch } from "@typeonce/ritmo-browser"
 
 import { createControlsSimulation, keyBindings, makeControls, mouseBindings, padBindings, ReadLab, setupSchedule, touchNames, updateSchedule } from "./sim.ts"

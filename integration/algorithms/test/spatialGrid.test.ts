@@ -1,17 +1,19 @@
+import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 
-import { Random, Scalar, SpatialGrid } from "@typeonce/ritmo-math"
+import { Random, Result } from "@typeonce/ritmo"
+import * as SpatialGrid from "../spatialGrid.ts"
 
-const cellSize = (value: number): Scalar.Positive => {
-  const size = Scalar.Positive.result(value)
-  if (!size.ok) throw new Error("test cell size")
-  return size.value
+const gridOf = (cellSize: number): SpatialGrid.SpatialGrid => {
+  const made = SpatialGrid.make(cellSize)
+  if (!made.ok) throw new Error("test cell size")
+  return made.value
 }
 
 describe("SpatialGrid", () => {
   it("visits every circle overlapping the query box exactly once, matching brute force", () => {
     const random = Random.make(11)
-    const grid = SpatialGrid.make(cellSize(32))
+    const grid = gridOf(32)
     for (let round = 0; round < 20; round++) {
       // Rebuilt each round, as each step does.
       grid.clear()
@@ -32,7 +34,7 @@ describe("SpatialGrid", () => {
   })
 
   it("forgets circles on clear", () => {
-    const grid = SpatialGrid.make(cellSize(10))
+    const grid = gridOf(10)
     grid.insert(0, 5, 5, 1)
     grid.clear()
     grid.insert(1, 50, 50, 1)
@@ -44,7 +46,7 @@ describe("SpatialGrid", () => {
 
 describe("SpatialGrid bounds", () => {
   it("throws on non-finite input and finishes a huge box", () => {
-    const grid = SpatialGrid.make(cellSize(10))
+    const grid = gridOf(10)
     grid.insert(0, 5, 5, 1)
     expect(() => grid.insert(1, Number.NaN, 0, 1)).toThrow("SpatialGrid.insert needs finite numbers, got NaN")
     expect(() => grid.forEachIn(-Infinity, 0, 10, 10, () => {})).toThrow("SpatialGrid.forEachIn needs finite numbers, got -Infinity")
@@ -59,7 +61,7 @@ describe("SpatialGrid scans", () => {
     const random = Random.make(11)
     const size = 8
     const circles = Array.from({ length: 60 }, () => ({ x: random.range(-200, 200), y: random.range(-200, 200), r: random.range(0, 12) }))
-    const grid = SpatialGrid.make(cellSize(size))
+    const grid = gridOf(size)
     circles.forEach((circle, index) => grid.insert(index, circle.x, circle.y, circle.r))
     const cellsOf = (min: number, max: number) => [Math.floor(min / size), Math.floor(max / size)] as const
     for (let query = 0; query < 200; query++) {
@@ -81,3 +83,20 @@ describe("SpatialGrid scans", () => {
   })
 })
 
+describe("SpatialGrid cell size", () => {
+  it("fails with InvalidCellSize unless the cell size is finite and above 0", () => {
+    for (const cellSize of [0, -4, Number.NaN, Infinity]) {
+      expect(SpatialGrid.make(cellSize)).toEqual(Result.failure({ _tag: "InvalidCellSize", value: cellSize }))
+    }
+  })
+})
+
+describe("SpatialGrid source", () => {
+  it("is the module the skill's spatial-grid playbook gives games to copy", () => {
+    const playbook = readFileSync(new URL("../../../packages/core/skills/ritmo/playbooks/spatial-grid.md", import.meta.url), "utf8")
+    const source = readFileSync(new URL("../spatialGrid.ts", import.meta.url), "utf8")
+    const block = playbook.slice(playbook.lastIndexOf("```ts\n") + 6, playbook.lastIndexOf("\n```"))
+    const code = (text: string) => text.slice(text.indexOf("import { Result }")).trimEnd()
+    expect(code(block)).toBe(code(source))
+  })
+})

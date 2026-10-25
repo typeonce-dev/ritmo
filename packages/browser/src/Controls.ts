@@ -356,7 +356,7 @@ export interface ActionSet<A extends string, V extends string = never> {
   ): Snapshot<A, V, Devices, never>
 }
 
-/** A generator `random` draws from: ritmo-math's `Random`, as `Fuzz.input`'s `generate` hands it over. */
+/** A generator `random` draws from: `Random` from `@typeonce/ritmo`, as `Fuzz.input`'s `generate` hands it over. */
 export interface Draw {
   /** Uniform in [0, 1). */
   next(): number

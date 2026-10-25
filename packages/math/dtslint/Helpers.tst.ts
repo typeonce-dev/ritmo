@@ -1,30 +1,60 @@
-import { Box2, Collide2, FlowField, Ops, Random, Scalar, Segment2, SpatialGrid, Vec2, Vector2 } from "@typeonce/ritmo-math"
+import type { Result } from "@typeonce/ritmo"
+import { Angle, Box2, Collide2, FlowField, Scalar, Segment2, Vec2 } from "@typeonce/ritmo-math"
 import { describe, expect, it } from "tstyche"
 
-declare const size: Scalar.Positive
-declare const validated: Vector2.Vector2
+declare const field: FlowField.FlowField
 
 describe("hot-path helpers", () => {
-  it("Vec2 works on plain and validated vectors alike", () => {
-    expect(Vec2.add({ x: 1, y: 2 }, validated)).type.toBe<Vec2.Vec2>()
-    expect(Vec2.length(validated)).type.toBe<number>()
+  it("Vec2 works on plain { x, y } values", () => {
+    expect(Vec2.add({ x: 1, y: 2 }, { x: 3, y: 4 })).type.toBe<Vec2.Vec2>()
+    expect(Vec2.length({ x: 3, y: 4 })).type.toBe<number>()
     expect(Vec2.normalizeOr({ x: 1, y: 2 }, Vec2.zero)).type.toBe<Vec2.Vec2>()
     // @ts-expect-error Property 'y' is missing
-    Vec2.add({ x: 1 }, validated)
+    Vec2.add({ x: 1 }, { x: 3, y: 4 })
   })
 
-  it("Ops takes and returns plain numbers", () => {
-    expect(Ops.sin(1)).type.toBe<number>()
-    expect(Ops.atan2(1, 2)).type.toBe<number>()
-    expect(Ops.pow(2, 0.5)).type.toBe<number>()
-    expect(Ops.hypot(3, 4)).type.toBe<number>()
-    // @ts-expect-error Expected 2 arguments, but got 3
-    Ops.hypot(1, 2, 3)
+  it("Vec2 turns, goes to and from angles, and decays toward a target", () => {
+    expect(Vec2.perpendicular({ x: 1, y: 2 })).type.toBe<Vec2.Vec2>()
+    expect(Vec2.fromAngle(1)).type.toBe<Vec2.Vec2>()
+    expect(Vec2.angle({ x: 1, y: 2 })).type.toBe<number>()
+    expect(Vec2.decayToward({ x: 1, y: 2 }, Vec2.zero, 4, 1 / 60)).type.toBe<Vec2.Vec2>()
+    // @ts-expect-error Property 'y' is missing
+    Vec2.angle({ x: 1 })
+    // @ts-expect-error Expected 1 arguments, but got 2
+    Vec2.fromAngle(1, 10)
+    // @ts-expect-error Expected 4 arguments, but got 3
+    Vec2.decayToward({ x: 1, y: 2 }, Vec2.zero, 4)
   })
+
+  it("Angle wraps and turns plain numbers", () => {
+    expect(Angle.wrap(4)).type.toBe<number>()
+    expect(Angle.turnToward(0, 1, 0.1)).type.toBe<number>()
+    // @ts-expect-error Argument of type '{ x: number; y: number; }' is not assignable to parameter of type 'number'
+    Angle.wrap({ x: 1, y: 0 })
+    // @ts-expect-error Expected 3 arguments, but got 2
+    Angle.turnToward(0, 1)
+  })
+
+  it("Scalar moves plain numbers toward a target", () => {
+    expect(Scalar.moveToward(0, 10, 1)).type.toBe<number>()
+    expect(Scalar.lerp(0, 10, 0.5)).type.toBe<number>()
+    expect(Scalar.decayToward(0, 10, 4, 1 / 60)).type.toBe<number>()
+    // @ts-expect-error Expected 4 arguments, but got 3
+    Scalar.decayToward(0, 10, 4)
+    // @ts-expect-error Argument of type '{ x: number; y: number; }' is not assignable to parameter of type 'number'
+    Scalar.moveToward({ x: 0, y: 0 }, 10, 1)
+  })
+
 
   it("Box2 and Collide2 report contacts as optional values", () => {
     const box = Box2.around(0, 0, 1, 1)
     expect(box).type.toBe<Box2.Box2>()
+    expect(Box2.closestPoint(box, { x: 3, y: 0 })).type.toBe<Vec2.Vec2>()
+    expect(Collide2.overlapsCircleCircle({ x: 0, y: 0 }, 1, { x: 3, y: 0 }, 1)).type.toBe<boolean>()
+    // @ts-expect-error Property 'maxY' is missing
+    Box2.closestPoint({ minX: 0, minY: 0, maxX: 1 }, { x: 3, y: 0 })
+    // @ts-expect-error Expected 4 arguments, but got 3
+    Collide2.overlapsCircleCircle({ x: 0, y: 0 }, 1, { x: 3, y: 0 })
     expect(Collide2.sweepCircleBox({ x: 0, y: 0 }, { x: 1, y: 0 }, 1, box)).type.toBe<Collide2.Hit | undefined>()
     expect(Collide2.sweepCircleCircle({ x: 0, y: 0 }, { x: 1, y: 0 }, 1, { x: 3, y: 0 }, 1)).type.toBe<number | undefined>()
     expect(Collide2.moveCircle({ x: 0, y: 0 }, { x: 1, y: 0 }, 1, { boxes: [box] })).type.toBe<Collide2.MoveResult>()
@@ -48,35 +78,12 @@ describe("hot-path helpers", () => {
     Collide2.moveCircle({ x: 0, y: 0 }, { x: 1, y: 0 }, 1, [box])
   })
 
-  it("Random makes absence explicit", () => {
-    const random = Random.make(1)
-    expect(random).type.toBe<Random.Random>()
-    expect(random.pick(["a", "b"] as const)).type.toBe<"a" | "b" | undefined>()
-    expect(random.weighted([{ weight: 1 }], (item) => item.weight)).type.toBe<{ weight: number } | undefined>()
-    expect(random.shuffle([1, 2])).type.toBe<Array<number>>()
-    // @ts-expect-error Cannot assign to 'state' because it is a read-only property
-    random.state = 3
-  })
 
-  it("SpatialGrid and FlowField need a positive cell size", () => {
-    expect(SpatialGrid.make(size)).type.toBe<SpatialGrid.SpatialGrid>()
-    expect(FlowField.make(size)).type.toBe<FlowField.FlowField>()
-    expect(FlowField.make(size).way({ x: 0, y: 0 })).type.toBe<Vec2.Vec2 | undefined>()
-    expect(FlowField.make(size).distance({ x: 0, y: 0 })).type.toBe<number | undefined>()
-    // @ts-expect-error Argument of type 'number' is not assignable to parameter of type 'Positive'
-    SpatialGrid.make(16)
-    // @ts-expect-error Argument of type 'number' is not assignable to parameter of type 'Positive'
-    FlowField.make(16)
-  })
-})
-
-describe("Random resource", () => {
-  it("draws only from the cell of a random resource", () => {
-    expect(Random.seed(1)).type.toBe<Random.State>()
-    const cell = { get: () => Random.seed(1), set: (_: Random.State) => {}, update: () => {} }
-    expect(Random.draw(cell)).type.toBe<Random.Random>()
-    const score = { get: () => 1, set: (_: number) => {}, update: () => {} }
-    // @ts-expect-error Type 'number' is not assignable to type 'State'
-    Random.draw(score)
+  it("FlowField.make fails with a typed InvalidCellSize", () => {
+    expect(FlowField.make(16)).type.toBe<Result.Result<FlowField.FlowField, FlowField.InvalidCellSize>>()
+    expect(field.way({ x: 0, y: 0 })).type.toBe<Vec2.Vec2 | undefined>()
+    expect(field.distance({ x: 0, y: 0 })).type.toBe<number | undefined>()
+    // @ts-expect-error Property 'setGoal' does not exist on type 'Result<FlowField, InvalidCellSize>'
+    FlowField.make(16).setGoal({ x: 0, y: 0 })
   })
 })

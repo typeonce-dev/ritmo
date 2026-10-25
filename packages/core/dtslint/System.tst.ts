@@ -1,6 +1,5 @@
 import { Descriptor, Result, Schema } from "@typeonce/ritmo"
-import * as Size2 from "@typeonce/ritmo-math/Size2"
-import * as Vector2 from "@typeonce/ritmo-math/Vector2"
+import * as Codecs from "../test/codecs.ts"
 import type { EntityMut } from "@typeonce/ritmo/Entity"
 import * as Query from "@typeonce/ritmo/Query"
 import * as System from "@typeonce/ritmo/System"
@@ -13,9 +12,9 @@ const Time = Descriptor.Resource<number>()("Time")
 const TickEvent = Descriptor.Event<{ dt: number }>()("TickEvent")
 const Phase = Descriptor.Resource<"Running" | "Paused">()("Phase")
 const Logger = Descriptor.Service<{ log: (message: string) => void }>()("Logger")
-const SafePosition = Descriptor.ConstructedComponent(Vector2.codec)("SafePosition")
-const Viewport = Descriptor.ConstructedResource(Size2.codec)("Viewport")
-const Camera = Descriptor.ConstructedResource(Vector2.codec)("Camera")
+const SafePosition = Descriptor.ConstructedComponent(Codecs.safeVector)("SafePosition")
+const Viewport = Descriptor.ConstructedResource(Codecs.safeSize)("Viewport")
+const Camera = Descriptor.ConstructedResource(Codecs.safeVector)("Camera")
 
 const Game = Schema.bind(Schema.fragment({
   components: {
@@ -68,10 +67,10 @@ describe("System", () => {
         {
           expect(queries.moving.each()).type.toBe<ReadonlyArray<{
             readonly entity: EntityMut<typeof schema, {
-              readonly position: Query.ReadonlyValue<Vector2.Vector2>
+              readonly position: Query.ReadonlyValue<Codecs.SafeVector>
               readonly velocity: Query.ReadonlyValue<{ x: number; y: number }>
             }, {
-              readonly position: Query.ReadonlyValue<Vector2.Vector2>
+              readonly position: Query.ReadonlyValue<Codecs.SafeVector>
             }, unknown, typeof SafePosition | typeof Velocity>
             readonly data: QueryTypes.Cells<typeof query>
           }>>()
@@ -143,10 +142,10 @@ describe("System", () => {
         {
           expect(queries.moving.each()).type.toBe<ReadonlyArray<{
             readonly entity: EntityMut<typeof schema, {
-              readonly position: Query.ReadonlyValue<Vector2.Vector2>
+              readonly position: Query.ReadonlyValue<Codecs.SafeVector>
               readonly velocity: Query.ReadonlyValue<{ x: number; y: number }>
             }, {
-              readonly position: Query.ReadonlyValue<Vector2.Vector2>
+              readonly position: Query.ReadonlyValue<Codecs.SafeVector>
             }, unknown, typeof SafePosition | typeof Velocity>
             readonly data: QueryTypes.Cells<typeof query>
           }>>()

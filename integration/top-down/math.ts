@@ -1,45 +1,23 @@
-import * as Aabb from "@typeonce/ritmo-math/Aabb"
-import * as Scalar from "@typeonce/ritmo-math/Scalar"
-import * as Vector2Module from "@typeonce/ritmo-math/Vector2"
+import type { Vec2 } from "@typeonce/ritmo-math"
 import { WORLD_HEIGHT, WORLD_WIDTH } from "./constants.ts"
-import type { Vector2 } from "./types.ts"
 
-export const clamp = (value: number, min: number, max: number): number => {
-  const nextValue = Scalar.Finite.option(value)
-  const nextMin = Scalar.Finite.option(min)
-  const nextMax = Scalar.Finite.option(max)
-  if (!nextValue || !nextMin || !nextMax) {
-    return value
-  }
+export const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max)
 
-  return Scalar.clamp(nextValue, nextMin, nextMax)
-}
-
-export const lengthSquared = (vector: Vector2): number => Vector2Module.lengthSquared(vector)
-
+/** Whether two centered boxes overlap; touching edges do not count. */
 export const intersects = (
-  firstPosition: Vector2,
+  firstPosition: Vec2.Vec2,
   firstCollider: { width: number; height: number },
-  secondPosition: Vector2,
+  secondPosition: Vec2.Vec2,
   secondCollider: { width: number; height: number }
-): boolean => {
-  const first = Aabb.option({
-    position: firstPosition,
-    size: firstCollider
-  })
-  const second = Aabb.option({
-    position: secondPosition,
-    size: secondCollider
-  })
-
-  return !!first && !!second && Aabb.intersects(first, second)
-}
+): boolean =>
+  Math.abs(firstPosition.x - secondPosition.x) * 2 < firstCollider.width + secondCollider.width &&
+  Math.abs(firstPosition.y - secondPosition.y) * 2 < firstCollider.height + secondCollider.height
 
 export const resolveHorizontalMovement = (
-  position: Vector2,
+  position: Vec2.Vec2,
   deltaX: number,
   collider: { width: number; height: number },
-  walls: ReadonlyArray<{ position: Vector2; collider: { width: number; height: number } }>
+  walls: ReadonlyArray<{ position: Vec2.Vec2; collider: { width: number; height: number } }>
 ): number => {
   if (deltaX === 0) {
     return position.x
@@ -49,14 +27,7 @@ export const resolveHorizontalMovement = (
   let nextX = clamp(position.x + deltaX, halfWidth, WORLD_WIDTH - halfWidth)
 
   for (const wall of walls) {
-    const candidate = Vector2Module.option({
-      x: nextX,
-      y: position.y
-    })
-    if (!candidate) {
-      continue
-    }
-    if (!intersects(candidate, collider, wall.position, wall.collider)) {
+    if (!intersects({ x: nextX, y: position.y }, collider, wall.position, wall.collider)) {
       continue
     }
 
@@ -71,10 +42,10 @@ export const resolveHorizontalMovement = (
 }
 
 export const resolveVerticalMovement = (
-  position: Vector2,
+  position: Vec2.Vec2,
   deltaY: number,
   collider: { width: number; height: number },
-  walls: ReadonlyArray<{ position: Vector2; collider: { width: number; height: number } }>
+  walls: ReadonlyArray<{ position: Vec2.Vec2; collider: { width: number; height: number } }>
 ): number => {
   if (deltaY === 0) {
     return position.y
@@ -84,14 +55,7 @@ export const resolveVerticalMovement = (
   let nextY = clamp(position.y + deltaY, halfHeight, WORLD_HEIGHT - halfHeight)
 
   for (const wall of walls) {
-    const candidate = Vector2Module.option({
-      x: position.x,
-      y: nextY
-    })
-    if (!candidate) {
-      continue
-    }
-    if (!intersects(candidate, collider, wall.position, wall.collider)) {
+    if (!intersects({ x: position.x, y: nextY }, collider, wall.position, wall.collider)) {
       continue
     }
 

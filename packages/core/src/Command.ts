@@ -304,8 +304,8 @@ export const entry = <D extends Descriptor<"component", string, any>>(
  * owns its schema (`Descriptor.ConstructedComponent(schema)`), and `raw` is
  * the schema's saved form, decoded by it. Values that are already valid use
  * a plain `[Descriptor, value]` entry instead. To validate authored
- * constants once at module load, call the type's constructor
- * (`Vector2.result(...)`) and keep the carried value.
+ * constants once at module load, decode them with the game's schema and
+ * keep the decoded value.
  *
  * @example
  * ```ts

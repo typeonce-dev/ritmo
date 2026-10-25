@@ -20,8 +20,8 @@
  * ```ts
  * // Validate several authored inputs and keep every failure explicit.
  * const built = Result.all({
- *   position: Vector2.result({ x: 4, y: 8 }),
- *   size: Size2.result({ width: 16, height: 16 })
+ *   rng: Random.result(seed),
+ *   paths: FlowField.make(cellSize)
  * })
  * ```
  *
@@ -118,7 +118,7 @@ export const isFailure: <Value, Error>(result: Result<Value, Error>) => result i
  *
  * @example
  * ```ts
- * const label = Result.match(Vector2.result({ x: 0, y: 0 }), {
+ * const label = Result.match(Random.result(seed), {
  *   onSuccess: () => "ok",
  *   onFailure: () => "invalid"
  * })
@@ -144,9 +144,9 @@ export const match: <Value, Error, SuccessReturn, FailureReturn>(
  *
  * @example
  * ```ts
- * const geometry = Result.all({
- *   position: Vector2.result({ x: 10, y: 20 }),
- *   size: Size2.result({ width: 32, height: 16 })
+ * const setup = Result.all({
+ *   rng: Random.result(seed),
+ *   paths: FlowField.make(30)
  * })
  * ```
  *

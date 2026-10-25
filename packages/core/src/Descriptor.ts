@@ -480,7 +480,8 @@ export const Component = <Value>(): CheckedValue<"component", Value, <const Name
  * @example
  * ```ts
  * const Position = Descriptor.ConstructedComponent(z.object({ x: z.number(), y: z.number() }))("Game/Position")
- * const Velocity = Descriptor.ConstructedComponent(Vector2.schema)("Game/Velocity")
+ * // A branded value: only the schema's decode makes one, never a cast.
+ * const Velocity = Descriptor.ConstructedComponent(z.object({ x: z.number(), y: z.number() }).brand<"Velocity">())("Game/Velocity")
  * // A tuning value that says what its number means:
  * const Health = Descriptor.ConstructedComponent(z.object({ hp: z.number() }))("Game/Health", {
  *   meta: { hp: { unit: "points", range: [0, 100], hint: "Hit points left; 0 despawns the entity." } }
@@ -786,8 +787,7 @@ export const Event = <Value>(): CheckedValue<"event", Value, <const Name extends
  *
  * Use them for capabilities owned by the host instead of the ECS world:
  * render/audio bridges, logs, storage, or network clients. Simulation time
- * is `Clock` and randomness is the `Random` resource from
- * `@typeonce/ritmo-math`, not services. Systems request them explicitly with
+ * is `Clock` and randomness is the `Random` resource, not services. Systems request them explicitly with
  * `Game.System.service(...)` (or `Game.System.consumeService(...)` for the
  * one system that drains it), and the runtime provides them through
  * `Game.Runtime.services(...)`. A service's effects (a sound played, a

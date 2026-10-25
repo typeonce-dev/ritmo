@@ -5,7 +5,7 @@
  * `run(make, options)` builds a fresh simulation per run with the same
  * `make(playback)` factory `Replay.session` opens replays with, feeds each
  * fuzzed source a value drawn from a seeded `Random` (from
- * `@typeonce/ritmo-math`) every frame, and ticks the schedule in a `Session`
+ * `@typeonce/ritmo`) every frame, and ticks the schedule in a `Session`
  * until an invariant breaks, a system fails, or something throws. The
  * failing timeline is then shrunk by delta debugging: ranges of frames are
  * dropped, then each remaining value is moved toward the input's `neutral`
@@ -52,7 +52,7 @@ import type { Schema } from "@typeonce/ritmo/Schema"
 import type * as Snapshot from "@typeonce/ritmo/Snapshot"
 import type * as Checkpoint from "@typeonce/ritmo/Checkpoint"
 import type * as CoreDescriptor from "@typeonce/ritmo/Descriptor"
-import * as Random from "@typeonce/ritmo-math/Random"
+import * as Random from "@typeonce/ritmo/Random"
 import type * as Netcode from "@typeonce/ritmo-netcode/Netcode"
 
 import * as FuzzNetwork from "./internal/fuzzNetwork.ts"

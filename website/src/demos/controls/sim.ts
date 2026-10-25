@@ -6,7 +6,7 @@
 import type { HostClock } from "@typeonce/ritmo"
 import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
 import { Controls, Gamepad, InputCapture, Keyboard, Pointer, Touch } from "@typeonce/ritmo-browser"
-import * as Ops from "@typeonce/ritmo-math/Ops"
+import * as Ops from "@typeonce/ritmo/Ops"
 import { Schema as S } from "effect"
 
 import { codec } from "../codec.ts"

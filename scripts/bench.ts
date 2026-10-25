@@ -307,7 +307,9 @@ const main = (): void => {
       console.error("\nNo baseline found. Run pnpm bench:update first.")
       process.exit(1)
     }
-    const missing = Object.keys(reference ?? {}).filter((name) => !(name in runtime.results) && !filter)
+    // A case that no longer runs fails only while the committed baseline still lists it:
+    // removing a case from baseline.json is how a change declares the removal on purpose.
+    const missing = Object.keys(reference ?? {}).filter((name) => !(name in runtime.results) && !filter && name in (baseline?.runtime.cases ?? {}))
     for (const name of missing) failures.push(`runtime ${name}: case exists in the ${referenceLabel} but no longer runs`)
     if (failures.length > 0) {
       console.error(`\nPerformance regressions:\n${failures.map((failure) => `  - ${failure}`).join("\n")}`)

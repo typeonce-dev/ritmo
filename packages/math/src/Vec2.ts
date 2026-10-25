@@ -1,11 +1,10 @@
 /**
  * Plain two-dimensional vector arithmetic for hot paths.
  *
- * `Vector2` validates values at a boundary (authored data, saves, components);
- * `Vec2` is the arithmetic that runs every frame on numbers already known to
- * be sane. Values are immutable `{ x, y }` records and every helper returns a
- * new one. A branded `Vector2` is a `Vec2`, so validated values flow into
- * these helpers without conversion.
+ * Values are immutable `{ x, y }` records and every helper returns a new
+ * one, so a component's value (validated once by the game's schema when it
+ * entered the world) passes straight in. Lengths and angles go through
+ * `Ops`, so the results replay the same on every engine.
  *
  * @example
  * ```ts
@@ -24,7 +23,7 @@
  * Immutable arithmetic, measurement, and steering helpers.
  */
 
-import * as Ops from "./Ops.ts"
+import * as Ops from "@typeonce/ritmo/Ops"
 
 /**
  * A two-dimensional vector in world units.
@@ -65,7 +64,8 @@ export const subtract = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x - b.x, y: a.y - b.
 export const scale = (a: Vec2, factor: number): Vec2 => ({ x: a.x * factor, y: a.y * factor })
 
 /**
- * `a` turned by `angle` radians (counter-clockwise for a y-up frame).
+ * `a` turned by `angle` radians (counter-clockwise for a y-up frame). For a
+ * quarter turn use {@link perpendicular}, which is exact.
  *
  * @category Operations
  */
@@ -76,11 +76,42 @@ export const rotate = (a: Vec2, angle: number): Vec2 => {
 }
 
 /**
- * Dot product.
+ * `a` turned a quarter turn counter-clockwise (for a y-up frame):
+ * `{ x: -a.y, y: a.x }`. Exact. For the normal of a wall or a direction, a
+ * sideways push, and the signed side of a point: `dot(perpendicular(forward),
+ * offset)` is positive on the left of `forward`, negative on its right.
+ *
+ * @category Operations
+ */
+export const perpendicular = (a: Vec2): Vec2 => ({ x: -a.y, y: a.x })
+
+/**
+ * Dot product. With {@link perpendicular} it is also the 2D cross product:
+ * `dot(perpendicular(a), b)`.
  *
  * @category Operations
  */
 export const dot = (a: Vec2, b: Vec2): number => a.x * b.x + a.y * b.y
+
+/**
+ * The unit vector at `angle` radians from the x axis (counter-clockwise for a
+ * y-up frame), through `Ops.cos` and `Ops.sin`. Multiply by a length with
+ * {@link scale}. The inverse of {@link angle}.
+ *
+ * @category Operations
+ */
+export const fromAngle = (angle: number): Vec2 => ({ x: Ops.cos(angle), y: Ops.sin(angle) })
+
+/**
+ * The angle of `a` from the x axis in radians, in (-π, π], through
+ * `Ops.atan2` (so no `y, x` argument order to get wrong). The zero vector
+ * gives 0, and so does `-0` in either coordinate where `Ops.atan2` would give
+ * `-0` or flip to -π. To keep it in `Angle`'s range [-π, π), use
+ * `Angle.wrap`; to turn toward it, `Angle.turnToward`.
+ *
+ * @category Operations
+ */
+export const angle = (a: Vec2): number => Ops.atan2(a.y + 0, a.x + 0)
 
 /**
  * Length of `a`.
@@ -154,4 +185,23 @@ export const moveToward = (current: Vec2, target: Vec2, maxDelta: number): Vec2 
 export const clampLength = (a: Vec2, max: number): Vec2 => {
   const len = Ops.hypot(a.x, a.y)
   return len <= max ? a : { x: (a.x / len) * max, y: (a.y / len) * max }
+}
+
+/**
+ * Moves `current` toward `target` by the share `rate` closes per second, over
+ * `dt` seconds, with one shared factor `exp(-rate * dt)` so the point moves
+ * along the straight line: the same total time gives the same result at any
+ * step rate. `current` unchanged when `rate * dt` is 0 or less, `target`
+ * itself when `rate` is `Infinity` (and `dt` positive). It nears `target`
+ * without reaching it; when it must arrive, use {@link moveToward}. For
+ * plain numbers use `Scalar.decayToward`.
+ *
+ * @category Operations
+ */
+export const decayToward = (current: Vec2, target: Vec2, rate: number, dt: number): Vec2 => {
+  const k = rate * dt
+  if (!(k > 0)) return current
+  if (k === Infinity) return target
+  const factor = Ops.exp(-k)
+  return { x: target.x + (current.x - target.x) * factor, y: target.y + (current.y - target.y) * factor }
 }

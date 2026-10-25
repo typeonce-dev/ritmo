@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest"
 import { Descriptor, Entity, Result, Schema, Snapshot } from "@typeonce/ritmo"
 import * as Codecs from "./codecs.ts"
-import * as Vector2 from "@typeonce/ritmo-math/Vector2"
 import { worldOf } from "./saved.ts"
 
 const Root = Schema.defineRoot("SnapshotTest")
-const Position = Descriptor.ConstructedComponent(Vector2.codec)("Snapshot/Position")
+const Position = Descriptor.ConstructedComponent(Codecs.safeVector)("Snapshot/Position")
 const Name = Descriptor.ConstructedComponent(Codecs.string)("Snapshot/Name")
 const Target = Descriptor.ConstructedComponent(Codecs.struct({ handle: Codecs.handle(Root, Name) }))("Snapshot/Target")
 const Sprite = Descriptor.TransientComponent<{ readonly frame: number }>()("Snapshot/Sprite")

@@ -3,7 +3,7 @@
 import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
 import type { Gamepad, InputCapture, Keyboard, Touch } from "@typeonce/ritmo-browser"
 import { Controls } from "@typeonce/ritmo-browser"
-import * as Random from "@typeonce/ritmo-math/Random"
+import * as Random from "@typeonce/ritmo/Random"
 import { Schema as S } from "effect"
 
 import { codec } from "../codec.ts"

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { Descriptor, HostClock, Schema } from "@typeonce/ritmo"
 import { Controls, Gamepad, Keyboard } from "@typeonce/ritmo-browser"
-import * as Random from "@typeonce/ritmo-math/Random"
+import * as Random from "@typeonce/ritmo/Random"
 
 const idle = { held: false, pressed: false, released: false }
 const Actions = Controls.actions({ buttons: ["join", "back", "jump"], vectors: ["move"] })

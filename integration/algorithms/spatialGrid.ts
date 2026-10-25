@@ -1,5 +1,7 @@
 /**
- * A uniform spatial hash for broad-phase queries over circles.
+ * A uniform spatial hash for broad-phase queries over circles: the version in
+ * the Ritmo skill's spatial-grid playbook, copied into the game as the
+ * playbook says (games own their broad phase and size it to their data).
  *
  * Rebuilt every step: `clear`, then `insert` each circle under the caller's
  * own index (its position in an array the caller keeps). Queries visit each
@@ -10,39 +12,15 @@
  * Cells are keyed by packing their coordinates into 16 bits per axis, so
  * cells from -32768 to 32767 on each axis are distinct. Coordinates beyond
  * that share keys with other cells: a query then visits extra candidates,
- * but never misses one.
- *
- * @example
- * ```ts
- * const grid = SpatialGrid.make(cellSize)
- * // Each step:
- * grid.clear()
- * bodies.forEach((body, index) => grid.insert(index, body.x, body.y, body.r))
- * grid.forEachIn(x - range, y - range, x + range, y + range, (index) => {
- *   const other = bodies[index]!
- *   // exact test against `other`
- * })
- * ```
- *
- * @module SpatialGrid
- * @docGroup helpers
- *
- * @categoryDescription Grid Types
- * The grid interface.
- *
- * @categoryDescription Construction
- * Making a grid.
+ * but never misses one. Only exact operations (`Math.floor`, `+ - * /`), so
+ * it replays the same on every engine.
  */
-import type * as Scalar from "./Scalar.ts"
+import { Result } from "@typeonce/ritmo"
 
-/**
- * A spatial hash over circles.
- *
- * @category Grid Types
- */
+/** A spatial hash over circles. */
 export interface SpatialGrid {
   /** The side of one square cell, in world units. */
-  readonly cellSize: Scalar.Positive
+  readonly cellSize: number
   /** Removes every circle, keeping the storage for the next rebuild. */
   clear(): void
   /**
@@ -57,6 +35,12 @@ export interface SpatialGrid {
    * covering more cells than are occupied scans the occupied cells instead.
    */
   forEachIn(minX: number, minY: number, maxX: number, maxY: number, visit: (index: number) => void): void
+}
+
+/** Why `make` made no grid: `value` is not a finite number above 0. */
+export interface InvalidCellSize {
+  readonly _tag: "InvalidCellSize"
+  readonly value: number
 }
 
 const key = (cx: number, cy: number): number => ((cx + 32768) << 16) | ((cy + 32768) & 0xffff)
@@ -74,14 +58,14 @@ const notFinite = (operation: string, ...values: ReadonlyArray<number>): never =
 }
 
 class Grid implements SpatialGrid {
-  readonly cellSize: Scalar.Positive
+  readonly cellSize: number
   private readonly cells = new Map<number, Array<number>>()
   private readonly used: Array<Array<number>> = []
   // `stamp[index] === query` marks a circle already visited by this query.
   private stamp = new Int32Array(64)
   private query = 0
 
-  constructor(cellSize: Scalar.Positive) {
+  constructor(cellSize: number) {
     this.cellSize = cellSize
   }
 
@@ -163,10 +147,12 @@ class Grid implements SpatialGrid {
 }
 
 /**
- * An empty grid with square cells of `cellSize` world units. Pick a size near
+ * An empty grid with square cells of `cellSize` world units, or
+ * `InvalidCellSize` when it is not a finite number above 0. Pick a size near
  * the typical query box: much smaller cells make every insert and query
  * touch many cells, much larger ones return many far candidates.
- *
- * @category Construction
  */
-export const make = (cellSize: Scalar.Positive): SpatialGrid => new Grid(cellSize)
+export const make = (cellSize: number): Result.Result<SpatialGrid, InvalidCellSize> =>
+  cellSize > 0 && cellSize < Infinity
+    ? Result.success(new Grid(cellSize))
+    : Result.failure({ _tag: "InvalidCellSize", value: cellSize })

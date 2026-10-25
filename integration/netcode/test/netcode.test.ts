@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { Random } from "@typeonce/ritmo-math"
+import { Random } from "@typeonce/ritmo"
 import { Netcode } from "@typeonce/ritmo-netcode"
 
 import { draw, idle, makeRuntime, playerInput, setup, simulate, type GameRuntime, type PlayerInput, type Screen } from "../game.ts"

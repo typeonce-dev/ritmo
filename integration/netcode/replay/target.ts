@@ -7,9 +7,8 @@
  *
  * `record.ts` writes the match it replays.
  */
-import { Clock, HostClock } from "@typeonce/ritmo"
+import { Clock, HostClock, Random } from "@typeonce/ritmo"
 import type { Replay } from "@typeonce/ritmo-devtools"
-import { Random } from "@typeonce/ritmo-math"
 import type { Netcode } from "@typeonce/ritmo-netcode"
 
 import { Game, idle, InputSource, Round, simulate, step, type PlayerInput } from "../game.ts"

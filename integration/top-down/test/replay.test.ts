@@ -1,6 +1,6 @@
 import { Clock, HostClock } from "@typeonce/ritmo"
 import { Gamepad, Keyboard, Pointer } from "@typeonce/ritmo-browser"
-import { Replay } from "@typeonce/ritmo-devtools"
+import { Replay, Verify } from "@typeonce/ritmo-devtools"
 import { describe, expect, it } from "vitest"
 
 import { CollectedAtMostTotal, PlayerInsideWorld } from "../invariants.ts"
@@ -55,8 +55,8 @@ describe("top-down replays", () => {
     expect(replayed.value.resources[CollectedCount.name]).toBe(1)
   })
 
-  it("replays deterministically", () => {
+  it("replays deterministically: twice the same here, and the same as the recording", async () => {
     const { file } = recordLive()
-    expect(Replay.verify(makeReplaySimulation, file)).toMatchObject({ ok: true, value: { data: { deterministic: true, diverged: [] } } })
+    expect(await Verify.acrossEngines(makeReplaySimulation, file)).toMatchObject({ ok: true, value: { data: { engines: ["node"] } } })
   })
 })

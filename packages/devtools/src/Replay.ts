@@ -597,33 +597,6 @@ export const session = <
 }
 
 /**
- * Replays twice and compares the world after every tick: different hashes
- * mean the simulation reads something the replay does not hold (wall time,
- * `Math.random`, host state). This checks one engine; `Verify.acrossEngines`
- * also plays the replay in real browsers and names the values that differ.
- */
-export const verify = <S extends Schema.Any, Root>(
-  make: (playback: Playback) => Target<S, Root>,
-  file: ReplayFile
-): Result.Result<Rendered.Rendered<{ readonly deterministic: boolean; readonly firstDifference: number | undefined; readonly diverged: PlayResult["diverged"] }>, ReplayError> => {
-  const first = session(make, file)
-  if (!first.ok) return first
-  const second = session(make, file)
-  if (!second.ok) return second
-  const played = first.value.play()
-  second.value.play()
-  const ticks = [...first.value.hashes().keys()].sort((left, right) => left - right)
-  const firstDifference = ticks.find((tick) => first.value.hashes().get(tick) !== second.value.hashes().get(tick))
-  const deterministic = firstDifference === undefined
-  return Result.success(Rendered.make(
-    { deterministic, firstDifference, diverged: played.data.diverged },
-    deterministic
-      ? `deterministic over ${ticks.length - 1} ticks${played.data.diverged.length === 0 ? ", and matches the recording" : `, but differs from the recording at tick ${played.data.diverged[0]!.tick}`}`
-      : `NOT deterministic: two replays differ from tick ${firstDifference}`
-  ))
-}
-
-/**
  * Cuts ticks `from`..`to` (recorder tick numbers) into a smaller replay that
  * starts at the end of tick `from - 1`: few enough ticks to keep next to a
  * test and play with `session`.

@@ -4,19 +4,21 @@
  *
  * - `Random` spawns the chasers from a state kept in a resource.
  * - `FlowField` leads every chaser around the wall to the player (one search
- *   for all of them), `SpatialGrid` finds nearby chasers to keep apart from,
+ *   for all of them), a spatial grid (the skill's playbook, in
+ *   `spatialGrid.ts`) finds nearby chasers to keep apart from,
  *   and `Collide2.moveCircle` slides them along the walls.
  * - Shots sweep against the walls and the chasers, so a fast shot hits the
  *   first thing on its path instead of skipping past it.
  */
-import { Collide2, FlowField, Random, Scalar, SpatialGrid, Vec2 } from "@typeonce/ritmo-math"
+import { Random, type Result } from "@typeonce/ritmo"
+import { Collide2, FlowField, Vec2 } from "@typeonce/ritmo-math"
 import { Body, Chaser, Frame, Game, Hits, Player, Position, Rng, Shot, Walls } from "./schema.ts"
+import * as SpatialGrid from "./spatialGrid.ts"
 
-const positive = (value: number): Scalar.Positive => {
-  const checked = Scalar.Positive.result(value)
+const made = <A>(result: Result.Result<A, { readonly value: number }>): A => {
   // Authored constants below: a failure is a typo in this file.
-  if (!checked.ok) throw new Error(`Not a positive cell size: ${value}`)
-  return checked.value
+  if (!result.ok) throw new Error(`Not a positive cell size: ${result.error.value}`)
+  return result.value
 }
 
 /** A 600 × 400 room with a wall down the middle, open at the bottom. */
@@ -43,7 +45,7 @@ const Spawn = Game.System("Algorithms/Spawn", {
 })
 
 const Chase = Game.System("Algorithms/Chase", {
-  local: () => ({ paths: FlowField.make(positive(20)), grid: SpatialGrid.make(positive(32)), bodies: new Array<Vec2.Vec2>() }),
+  local: () => ({ paths: made(FlowField.make(20)), grid: made(SpatialGrid.make(32)), bodies: new Array<Vec2.Vec2>() }),
   queries: {
     chasers: Game.Query({ selection: { position: Game.Query.write(Position), body: Game.Query.read(Body) }, with: [Chaser] }),
     player: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] })

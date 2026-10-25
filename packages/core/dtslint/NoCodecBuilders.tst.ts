@@ -20,7 +20,7 @@ describe("Ritmo exports no codec builders", () => {
   })
 
   it("would name a builder if one were exported", () => {
-    const Module = { Values: { number: (): StandardSchema<number, number> => RitmoMath.Scalar.Finite.codec } }
+    const Module = { Values: { number: (): StandardSchema<number, Ritmo.Random.State> => Ritmo.Random.codec } }
     expect<Builders<typeof Module>>().type.toBe<"Values.number">()
   })
 })

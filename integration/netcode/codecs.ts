@@ -15,6 +15,8 @@ const make = <T>(check: Check<T>): Codec<T> => ({ check, "~standard": { version:
 
 const fail = (message: string) => ({ issues: [{ message }] })
 
+export const finite = make<number>((raw) => typeof raw === "number" && Number.isFinite(raw) ? { value: raw } : fail("Expected a finite number"))
+
 export const integer = make<number>((raw) => Number.isSafeInteger(raw) ? { value: raw as number } : fail("Expected an integer"))
 
 export const guard = <T>(expected: string, test: (raw: unknown) => raw is T): Codec<T> =>

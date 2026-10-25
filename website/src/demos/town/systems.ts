@@ -1,7 +1,7 @@
 // The town's rules. Each system declares exactly what it reads and writes;
 // the schedule (schedules.ts) decides when each runs.
 import { Clock } from "@typeonce/ritmo"
-import * as Random from "@typeonce/ritmo-math/Random"
+import * as Random from "@typeonce/ritmo/Random"
 
 import { cellInFront, cellPosition, directions, isOpenGround, opposite, playerStart, sameCell, signs, TILE_SIZE, villagers } from "./map.ts"
 import type { Cell, Direction } from "./map.ts"

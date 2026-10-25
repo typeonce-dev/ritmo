@@ -1,4 +1,6 @@
 node_modules/
+# The fake dependency of the devtools scan fixture.
+!packages/devtools/test/fixtures/scan/node_modules/
 dist/
 coverage/
 .DS_Store

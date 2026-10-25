@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest"
 
-import { type Box2, FlowField, Scalar, type Vec2 } from "@typeonce/ritmo-math"
+import { Result } from "@typeonce/ritmo"
+import { type Box2, FlowField, type Vec2 } from "@typeonce/ritmo-math"
 
-const cellSize = (value: number): Scalar.Positive => {
-  const size = Scalar.Positive.result(value)
-  if (!size.ok) throw new Error("test cell size")
-  return size.value
+const fieldOf = (cellSize: number): FlowField.FlowField => {
+  const made = FlowField.make(cellSize)
+  if (!made.ok) throw new Error("test cell size")
+  return made.value
 }
 
 /** A walled room 600 wide with a wall down its middle, open only at the bottom. */
@@ -32,7 +33,7 @@ const walk = (field: FlowField.FlowField, from: Vec2.Vec2, goal: Vec2.Vec2, stri
 
 describe("FlowField", () => {
   it("leads around a wall in between, through the opening, never into a wall", () => {
-    const field = FlowField.make(cellSize(20))
+    const field = fieldOf(20)
     field.setWalls(room, 15)
     const goal = { x: 450, y: 100 }
     field.setGoal(goal)
@@ -48,7 +49,7 @@ describe("FlowField", () => {
   })
 
   it("has no way out of a walled-off place, or outside the walls", () => {
-    const field = FlowField.make(cellSize(20))
+    const field = fieldOf(20)
     field.setWalls([...room.slice(0, 4), { minX: 290, minY: 0, maxX: 310, maxY: 600 }], 15)
     field.setGoal({ x: 450, y: 100 })
     expect(field.way({ x: 150, y: 100 })).toBeUndefined()
@@ -58,7 +59,7 @@ describe("FlowField", () => {
   })
 
   it("knows no way before a goal, and searches again when the walls change", () => {
-    const field = FlowField.make(cellSize(20))
+    const field = fieldOf(20)
     field.setWalls(room, 15)
     expect(field.distance({ x: 150, y: 100 })).toBeUndefined()
     field.setGoal({ x: 450, y: 100 })
@@ -71,11 +72,18 @@ describe("FlowField", () => {
 
   it("never cuts a wall's corner diagonally", () => {
     // Two blocks touching at a corner; the diagonal between them is closed.
-    const field = FlowField.make(cellSize(10))
+    const field = fieldOf(10)
     const blocks = [{ minX: 0, minY: 0, maxX: 50, maxY: 50 }, { minX: 50, minY: 50, maxX: 100, maxY: 100 }, { minX: -10, minY: -10, maxX: 110, maxY: -9 }]
     field.setWalls(blocks, 1)
     field.setGoal({ x: 75, y: 25 })
     const way = field.way({ x: 25, y: 75 })
     expect(way === undefined || !(way.x > 0 && way.y < 0)).toBe(true)
+  })
+
+  it("fails with InvalidCellSize unless the cell size is finite and above 0", () => {
+    for (const cellSize of [0, -1, -0, Number.NaN, Infinity, -Infinity]) {
+      expect(FlowField.make(cellSize)).toEqual(Result.failure({ _tag: "InvalidCellSize", value: cellSize }))
+    }
+    expect(fieldOf(Number.MIN_VALUE).cellSize).toBe(Number.MIN_VALUE)
   })
 })

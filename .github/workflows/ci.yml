@@ -81,8 +81,9 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: pnpm --dir packages/devtools exec playwright install-deps chromium webkit firefox
 
-      # Ops gives the same bits on every engine, and a replay plays the same in
-      # every browser: this runs both claims on a committed netcode match.
+      # The committed netcode match aims and slows its shots through Ops (atan2,
+      # cos, sin, exp), so this runs both claims on it: Ops gives the same bits
+      # on every engine, and a replay plays the same in every browser.
       # Regenerate it with: node --import tsx integration/netcode/replay/record.ts
       - name: Verify the netcode replay on every engine
         run: pnpm --dir integration/netcode exec ritmo-devtools verify replay/target.ts replay/match.json --engines node,chromium,webkit,firefox

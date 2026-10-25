@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import { Clock, Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
 import * as Codecs from "../../core/test/codecs.ts"
 import type * as Schedule from "@typeonce/ritmo/Schedule"
-import { Invariant, Replay } from "@typeonce/ritmo-devtools"
+import { Invariant, Replay, Verify } from "@typeonce/ritmo-devtools"
 import { worldOf } from "../../core/test/saved.ts"
 
 const hostClock = HostClock.test()
@@ -131,11 +131,11 @@ describe("Replay", () => {
     expect(opened.value.session.whyResource(Steps).text).toContain("Replay/Move")
   })
 
-  it("finds nondeterminism by replaying twice", () => {
+  it("finds nondeterminism by replaying twice with Verify.acrossEngines and no engines", async () => {
     const { runtime, recorder } = record([1, 1, 1, 1])
     for (let step = 0; step < 4; step++) runtime.tick(update)
     const file = recorder.save("nondeterministic")
-    expect(Replay.verify(make, file)).toMatchObject({ ok: true, value: { data: { deterministic: true, diverged: [] } } })
+    expect(await Verify.acrossEngines(make, file)).toMatchObject({ ok: true, value: { data: { engines: ["node"], ticks: 4 } } })
 
     let calls = 0
     const Noise = Game.System("Replay/Noise", { resources: { steps: Game.System.writeResource(Steps) } }, ({ resources }) => {
@@ -144,8 +144,8 @@ describe("Replay", () => {
       resources.steps.set(calls)
     })
     const noisy = (playback: Replay.Playback) => ({ ...make(playback), schedules: { update: Game.Schedule(Move, Noise) } })
-    const verdict = Replay.verify(noisy, file)
-    expect(verdict.ok && verdict.value.data.deterministic).toBe(false)
+    const verdict = await Verify.acrossEngines(noisy, file)
+    expect(verdict).toMatchObject({ ok: false, error: { _tag: "NotVerified", outcomes: [{ _tag: "Diverged", engine: "node" }] } })
   })
 
   it("extracts a range into a small replay that plays from its own start", () => {

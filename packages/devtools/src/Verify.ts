@@ -16,9 +16,10 @@
  *   and wrap them as an `Engine`.
  *
  * `ritmo-devtools verify <entry> <replay> --engines node,chromium,webkit,firefox`
- * is this module from the command line. `Replay.verify` is the quick check
- * on one engine; this is the one to run before trusting a replay or a
- * lockstep match across browsers.
+ * is this module from the command line. With no engines it is the quick
+ * check in this process alone (two runs and the recording), the one a test
+ * runs; with browsers it is the one to run before trusting a replay or a
+ * lockstep match across them.
  *
  * This module calls no platform API: engines are injected.
  *

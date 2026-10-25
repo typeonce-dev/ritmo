@@ -1,16 +1,16 @@
 import { Descriptor, Entity, Schema } from "@typeonce/ritmo"
 import type { InputCapture } from "@typeonce/ritmo-browser"
-import * as Size2 from "@typeonce/ritmo-math/Size2"
-import * as Vector2 from "@typeonce/ritmo-math/Vector2"
 
-import { finite, guard, integer, nullable, string, struct } from "./codecs.ts"
+import { finite, guard, integer, nonNegative, nullable, string, struct } from "./codecs.ts"
 import type { ControlsValue, FrameContextValue } from "./types.ts"
 
 export const Root = Schema.defineRoot("TopDown")
 
-export const Position = Descriptor.ConstructedComponent(Vector2.codec)("TopDown/Position")
-export const Velocity = Descriptor.ConstructedComponent(Vector2.codec)("TopDown/Velocity")
-export const Collider = Descriptor.ConstructedComponent(Size2.codec)("TopDown/Collider")
+const vector = struct({ x: finite, y: finite })
+
+export const Position = Descriptor.ConstructedComponent(vector)("TopDown/Position")
+export const Velocity = Descriptor.ConstructedComponent(vector)("TopDown/Velocity")
+export const Collider = Descriptor.ConstructedComponent(struct({ width: nonNegative, height: nonNegative }))("TopDown/Collider")
 // Every saved component and resource is constructed from a schema, so the
 // world can be saved and a replay can start from it.
 export const Player = Descriptor.ConstructedComponent(struct({}))("TopDown/Player")

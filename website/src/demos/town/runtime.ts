@@ -2,7 +2,7 @@
 import type { HostClock } from "@typeonce/ritmo"
 import { Clock } from "@typeonce/ritmo"
 import { Gamepad, Keyboard, Touch } from "@typeonce/ritmo-browser"
-import * as Random from "@typeonce/ritmo-math/Random"
+import * as Random from "@typeonce/ritmo/Random"
 
 import { Game, leftKeys, makePlayers, Mode, padBindings, Players, PlayersInput, rightKeys, step, touchButtons } from "./schema.ts"
 import type { HostValue } from "./schema.ts"

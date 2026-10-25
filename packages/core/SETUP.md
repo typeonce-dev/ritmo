@@ -4,7 +4,7 @@ Follow these steps once in a new project, and for any step an existing project i
 
 1. Install the runtime and the checks every Ritmo game uses:
    ```sh
-   pnpm add @typeonce/ritmo @typeonce/ritmo-math
+   pnpm add @typeonce/ritmo
    pnpm add -D @typeonce/ritmo-devtools @typeonce/oxlint-plugin-ritmo oxlint
    ```
 2. Link the Ritmo skill from the installed package into the folder your agent reads skills from (`.agents/skills`, `.claude/skills`, ...), so it updates with every Ritmo upgrade:
@@ -15,6 +15,7 @@ Follow these steps once in a new project, and for any step an existing project i
 3. Set up `.oxlintrc.json` from the `@typeonce/oxlint-plugin-ritmo` README and a `ritmo-devtools lint` entry from the `@typeonce/ritmo-devtools` README. One check script runs the type check, `oxlint`, `ritmo-devtools lint`, and the tests.
 
 Add-ons, installed only when the game needs them:
+- `@typeonce/ritmo-math`: 2D helpers on plain data (vectors, angles, swept circle collision, a flow field).
 - `@typeonce/ritmo-browser`: a browser host (animation-frame loop; keyboard, gamepad, pointer, and touch input, local multiplayer).
 - `@typeonce/ritmo-render`: mirrors entities into any renderer's nodes.
 - `@typeonce/ritmo-pixi`: the Pixi adapter for `@typeonce/ritmo-render`.

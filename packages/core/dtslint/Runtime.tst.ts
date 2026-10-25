@@ -1,7 +1,5 @@
 import { Descriptor, Entity, Result, Schema, Snapshot } from "@typeonce/ritmo"
 import * as Codecs from "../test/codecs.ts"
-import * as Size2 from "@typeonce/ritmo-math/Size2"
-import * as Vector2 from "@typeonce/ritmo-math/Vector2"
 import * as Runtime from "@typeonce/ritmo/Runtime"
 import * as Schedule from "@typeonce/ritmo/Schedule"
 import * as System from "@typeonce/ritmo/System"
@@ -10,8 +8,8 @@ import { describe, expect, it } from "tstyche"
 const Time = Descriptor.Resource<number>()("Time")
 const Counter = Descriptor.Resource<number>()("Counter")
 const Phase = Descriptor.Resource<"Running" | "Paused">()("Phase")
-const Viewport = Descriptor.ConstructedResource(Size2.codec)("Viewport")
-const Camera = Descriptor.ConstructedResource(Vector2.codec)("Camera")
+const Viewport = Descriptor.ConstructedResource(Codecs.safeSize)("Viewport")
+const Camera = Descriptor.ConstructedResource(Codecs.safeVector)("Camera")
 const Logger = Descriptor.Service<{ readonly log: (message: string) => void }>()("Logger")
 const PrefixedLogger = Descriptor.Service<{ readonly log: (message: string) => void }>()("RuntimeTypes/Logger")
 
@@ -141,7 +139,7 @@ describe("Runtime", () => {
       resources: {
         DeltaTime: 1 / 60,
         Counter: 0,
-        // @ts-expect-error Type 'Success<{ width: number; height: number; }>' is missing the following properties from type 'Raw'
+        // @ts-expect-error Type 'Success<{ width: number; height: number; }>' is missing the following properties from type '{ readonly width: number; readonly height: number; }': width, height
         Viewport: Result.success({ width: 320, height: 180 })
       }
     })
@@ -330,7 +328,7 @@ describe("Runtime", () => {
 describe("Runtime snapshots", () => {
   const Root = Schema.defineRoot("SnapshotTypes")
   const Label = Descriptor.Component<string>()("SnapshotTypes/Label")
-  const Place = Descriptor.ConstructedComponent(Vector2.codec)("SnapshotTypes/Place")
+  const Place = Descriptor.ConstructedComponent(Codecs.safeVector)("SnapshotTypes/Place")
   const Sprite = Descriptor.TransientComponent<{ readonly frame: number }>()("SnapshotTypes/Sprite")
   const Frame = Descriptor.TransientResource<number>()("SnapshotTypes/Frame")
   const Score = Descriptor.Resource<number>()("SnapshotTypes/Score")

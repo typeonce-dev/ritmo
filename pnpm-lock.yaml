@@ -101,9 +101,6 @@ importers:
       '@typeonce/ritmo-devtools':
         specifier: workspace:*
         version: link:../../packages/devtools
-      '@typeonce/ritmo-math':
-        specifier: workspace:*
-        version: link:../../packages/math
       '@typeonce/ritmo-netcode':
         specifier: workspace:*
         version: link:../../packages/netcode
@@ -147,12 +144,15 @@ importers:
       '@typeonce/ritmo':
         specifier: workspace:^
         version: link:../core
-      '@typeonce/ritmo-math':
-        specifier: workspace:^
-        version: link:../math
       '@typeonce/ritmo-netcode':
         specifier: workspace:^
         version: link:../netcode
+      oxlint:
+        specifier: '>=1.86.0'
+        version: 1.88.0
+      rolldown:
+        specifier: '>=1.0.0-rc.12'
+        version: 1.2.15
     devDependencies:
       playwright:
         specifier: ^1.64.1
@@ -172,9 +172,6 @@ importers:
       '@typeonce/ritmo':
         specifier: workspace:^
         version: link:../core
-      '@typeonce/ritmo-math':
-        specifier: workspace:^
-        version: link:../math
     devDependencies:
       '@typeonce/ritmo-browser':
         specifier: workspace:*
@@ -222,9 +219,6 @@ importers:
       '@typeonce/ritmo-integration-top-down':
         specifier: workspace:*
         version: link:../integration/top-down
-      '@typeonce/ritmo-math':
-        specifier: workspace:*
-        version: link:../packages/math
       '@typeonce/ritmo-netcode':
         specifier: workspace:*
         version: link:../packages/netcode

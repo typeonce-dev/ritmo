@@ -133,16 +133,16 @@ ticks that show it into a small replay of its own, with its own start, and
 keep that next to a test:
 
 ```ts twoslash title="debug.ts"
-import { Replay } from "@typeonce/ritmo-devtools"
+import { Replay, Verify } from "@typeonce/ritmo-devtools"
 declare const make: Parameters<typeof Replay.session>[0]
 declare const file: Replay.ReplayFile
 // ---cut---
 // Ticks 1400 to 1412 only: a few kilobytes for the test folder
 const small = Replay.extract(make, file, { from: 1400, to: 1412 })
 
-// Plays twice and compares:
+// Plays twice and against the recording:
 // a difference means something outside the world leaks in
-const same = Replay.verify(make, file)
+const same = await Verify.acrossEngines(make, file)
 ```
 
 ## Why it can work at all

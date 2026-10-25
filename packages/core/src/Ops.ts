@@ -10,12 +10,15 @@
  * in simulation code instead; each is a pure-JavaScript port of fdlibm (musl
  * libm) built only from operations every engine rounds exactly.
  *
- * Keep using `Math.abs`, `sign`, `min`, `max`, `floor`, `ceil`, `round`,
- * `trunc`, `sqrt`, `imul`, `fround`, `+ - * /`, and `x ** 2`: they are
- * already exact everywhere. Use `Random` for randomness and `Clock` for time.
+ * The list is closed: these 22 functions and `**` are every operation the
+ * spec lets engines approximate, so nothing else needs a replacement. Keep
+ * using `Math.abs`, `sign`, `min`, `max`, `floor`, `ceil`, `round`, `trunc`,
+ * `sqrt`, `imul`, `fround`, `clz32`, the constants (`Math.PI`, `Math.E`, ...),
+ * `+ - * /`, and `x ** 2`: they are already exact everywhere. Use `Random` for randomness and `Clock` for time.
  * Code that only draws (rendering, effects) can use `Math` freely. The
  * `ritmo/use-ops-for-math` rule (`@typeonce/oxlint-plugin-ritmo`) points
- * simulation code here.
+ * simulation code here, and `oxlint --fix` rewrites the calls and adds the
+ * import.
  *
  * @example
  * ```ts

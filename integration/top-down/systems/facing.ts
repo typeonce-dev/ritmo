@@ -1,5 +1,5 @@
 
-import { lengthSquared } from "../math.ts"
+import { Vec2 } from "@typeonce/ritmo-math"
 import { PlayerVelocityQuery } from "../queries.ts"
 import { Facing, Game, Locomotion } from "../schema.ts"
 
@@ -59,7 +59,7 @@ export const ResolveLocomotionSystem = Game.System(
 
       const velocity = player.value.data.velocity.get()
       nextMachines.locomotion.setIfChanged({
-        _tag: lengthSquared(velocity) > 0 ? "Walking" : "Idle"
+        _tag: Vec2.lengthSquared(velocity) > 0 ? "Walking" : "Idle"
       })
     }
 )

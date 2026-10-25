@@ -1,7 +1,7 @@
 {
   "name": "@typeonce/ritmo-math",
   "version": "0.14.0",
-  "description": "Validated math values and hot-path game helpers (collision, spatial grid, flow field, random) for Ritmo games",
+  "description": "The 2D helpers most Ritmo games would otherwise rewrite (vectors, angles, swept collision, flow field), plain data in and out, built on Ops so they replay the same on every engine",
   "author": "Sandro Maglione",
   "license": "MIT",
   "repository": {

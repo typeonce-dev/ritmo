@@ -99,10 +99,9 @@ writeFileSync(path.join(consumer, "tsconfig.json"), JSON.stringify({
 }, null, 2))
 
 const program = `
-import { Clock, Descriptor, FixedLoop, HostClock, Schema } from "@typeonce/ritmo"
+import { Clock, Descriptor, FixedLoop, HostClock, Ops, Random, Schema } from "@typeonce/ritmo"
 import * as Result from "@typeonce/ritmo/Result"
-import * as Vector2 from "@typeonce/ritmo-math/Vector2"
-import { Collide2, FlowField, Ops, Random, Scalar, Segment2, SpatialGrid } from "@typeonce/ritmo-math"
+import { Angle, Collide2, FlowField, Segment2, Vec2 } from "@typeonce/ritmo-math"
 import { BrowserHostClock, BrowserTickSource, Controls, Keyboard } from "@typeonce/ritmo-browser"
 import * as Browser from "@typeonce/ritmo-browser"
 import { NodeRegistry } from "@typeonce/ritmo-render"
@@ -122,10 +121,10 @@ const repeated = Determinism.check(({ hostClock }) => {
 }, { schedule: "update", frames: Clock.steps(Clock.duration(step, 0.5)), hostClock: HostClock.test() })
 if (!repeated.ok) throw new Error(JSON.stringify(repeated))
 
-const Position = Descriptor.ConstructedComponent(Vector2.codec)("Consumer/Position")
-const Game = Schema.bind(Schema.fragment({ components: { Position } }))
-const Spawn = Game.System("Consumer/Spawn", { commands: Game.System.commands(Game.System.spawns(Position)) }, ({ commands }) => {
-  const draft = Game.Command.spawn(Game.Command.entryRaw(Position, { x: 1, y: 2 }))
+const Seed = Descriptor.ConstructedComponent(Random.codec)("Consumer/Seed")
+const Game = Schema.bind(Schema.fragment({ components: { Seed } }))
+const Spawn = Game.System("Consumer/Spawn", { commands: Game.System.commands(Game.System.spawns(Seed)) }, ({ commands }) => {
+  const draft = Game.Command.spawn(Game.Command.entryRaw(Seed, 7))
   if (draft.ok) commands.spawn(draft.value)
 })
 const hostClock = HostClock.test()
@@ -136,11 +135,8 @@ const controls = Controls.actions({ buttons: ["jump"] }).merge({ keyboard: Keybo
 const registry = NodeRegistry.make<string>({ attach: () => {}, detach: () => {} })
 interface PixiNode { destroy(): void; addChild(child: PixiNode): void; removeChild(child: PixiNode): void }
 const sprites = PixiNodeRegistry.make<PixiNode>({ addChild: () => {}, removeChild: () => {} })
-const cell = Scalar.Positive.result(8)
-const grid = cell.ok ? SpatialGrid.make(cell.value) : undefined
-grid?.insert(0, 1, 1, 1)
-const field = cell.ok ? FlowField.make(cell.value) : undefined
-field?.setWalls([{ minX: 0, minY: 0, maxX: 16, maxY: 4 }], 1)
+const field = FlowField.make(8)
+if (field.ok) field.value.setWalls([{ minX: 0, minY: 0, maxX: 16, maxY: 4 }], 1)
 const moved = Collide2.moveCircle({ x: 0, y: 10 }, { x: 0, y: -20 }, 2, { boxes: [{ minX: -8, minY: 0, maxX: 8, maxY: 4 }], segments: [Segment2.between({ x: 20, y: 0 }, { x: 30, y: 10 })] })
 if (BrowserHostClock.make({ performance: { now: () => 7 } }).now() !== 7) throw new Error("BrowserHostClock misbehaves when packed")
 const frames: Array<(timestamp: number) => void> = []
@@ -159,7 +155,7 @@ frames.shift()?.(20)
 if (!loop.ok || loopUpdates !== 2) throw new Error("FixedLoop with BrowserTickSource misbehaves when packed")
 loop.value.stop()
 if ("FixedLoop" in Browser) throw new Error("Browser publishes the moved FixedLoop")
-if (!moved.blocked || Random.make(42).next() !== 0.6011037519201636 || Ops.hypot(3, 4) !== 5 || Ops.sin(0) !== 0) throw new Error("math helpers misbehave when packed")
+if (!moved.blocked || !field.ok || FlowField.make(0).ok || Angle.wrap(Math.PI) !== -Math.PI || Vec2.angle({ x: 0, y: 0 }) !== 0 || Random.make(42).next() !== 0.6011037519201636 || Ops.hypot(3, 4) !== 5 || Ops.sin(0) !== 0) throw new Error("math helpers misbehave when packed")
 if ("NodeRegistry" in Pixi || "RenderSync" in Pixi) throw new Error("Pixi publishes removed compatibility exports")
 const seats = Netcode.seats({ "~standard": { version: 1, vendor: "consumer", validate: (value: unknown) => ({ value: value as { readonly fire: boolean } }) } }, { count: 2, idle: { fire: false } })
 const links = MemoryNetworkLink.make({ peers: 2, hostClock, seed: 1, latencyMS: 16 })
