@@ -13,9 +13,9 @@ game long, and Ritmo keeps each change safe to reason about.
 
 <Game id="composition" ratio="16 / 9" />
 
-One world plays all three, left to right. Under each entity are the
-components it holds right now: a change lights up when it lands, and the
-line at the bottom of each lane is what a system heard about it.
+One guard, four steps. On the right is what the guard holds this tick,
+and which systems ran on it. A hit adds `Stunned`, and `Move` stops
+touching the guard because its query asks for guards without it.
 
 <Claim title="A system adds only what its spec names">
 
@@ -70,10 +70,10 @@ and land there together. The guard in the demo, tick by tick: the hit's
 tick it still moves, and from the next one `Move` skips it.
 
 ```text title="the guard, from the demo's world in Node"
-tick 30  x 208.0  Guard, Position, Velocity
-tick 31  x 209.6  Guard, Position, Velocity, Stunned { frames: 120 }
-tick 32  x 209.6  Guard, Position, Velocity, Stunned { frames: 119 }
-tick 33  x 209.6  Guard, Position, Velocity, Stunned { frames: 118 }
+tick 239  x 722.0  Guard, Position, Velocity
+tick 240  x 720.0  Guard, Position, Velocity, Stunned { frames: 240 }
+tick 241  x 720.0  Guard, Position, Velocity, Stunned { frames: 239 }
+tick 242  x 720.0  Guard, Position, Velocity, Stunned { frames: 238 }
 ```
 
 ```ts twoslash title="update.ts"
@@ -118,13 +118,13 @@ const update = Game.Schedule(Stun, Move, Game.Schedule.applyDeferred())
 
 `Game.Query.added(Stunned)` matches the entities that gained the component
 since this system last ran; `Game.System.readRemoved` lists the ones that
-lost it. In the demo the recovery is heard on tick 151, and only then:
+lost it. In the demo the recovery is heard on tick 480, and only then:
 
 ```text title="the guard recovering"
-tick 150  x 209.6  Guard, Position, Velocity, Stunned { frames: 1 }  heard 0
-tick 151  x 209.6  Guard, Position, Velocity  heard 1
-tick 152  x 211.2  Guard, Position, Velocity  heard 1
-tick 153  x 212.8  Guard, Position, Velocity  heard 1
+tick 479  x 720.0  Guard, Position, Velocity, Stunned { frames: 1 }  heard 0
+tick 480  x 720.0  Guard, Position, Velocity  heard 1
+tick 481  x 718.0  Guard, Position, Velocity  heard 1
+tick 482  x 716.0  Guard, Position, Velocity  heard 1
 ```
 
 ```ts twoslash title="feedback.ts"

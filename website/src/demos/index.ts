@@ -67,8 +67,8 @@ export const demos = {
   },
   composition: {
     title: "Composition",
-    description: "One world, three changes of shape: a guard stunned and recovering, a sword put in a hand, an archer dropping a target that fell.",
-    controls: "Three scenes, one change each: the component that changes lights up, or strikes out when it leaves, with the line of Ritmo that did it.",
+    description: "One guard, stunned and recovering: a component added and removed while the game runs, and which systems that turns on and off.",
+    controls: "Four steps, about 13 seconds: the panel on the right shows the guard's components and which systems ran on it this tick.",
     source: "https://github.com/typeonce-dev/ritmo/tree/main/website/src/demos/composition",
     // Takes no input: starts on its own when scrolled into view.
     autoplay: true,
