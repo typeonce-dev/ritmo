@@ -25,11 +25,17 @@
  *
  * @example
  * ```ts
- * // src/lint.ts
- * import { createSimulation } from "./simulation.ts"
- *
- * export const lintTarget = async (): Promise<Lint.Target<typeof Game.schema, typeof Game.schema>> => {
- *   const { render } = await import("./render.ts")
+ * // The game's own modules: src/simulation.ts and src/render.ts.
+ * declare const createSimulation: (devices: { readonly keyboard: Keyboard.Actions<typeof bindings> }) => {
+ *   readonly runtime: typeof runtime
+ *   readonly setup: typeof setup
+ *   readonly update: typeof update
+ * }
+ * declare const importRender: () => Promise<{ readonly render: typeof update }> // import("./render.ts")
+ * // ---cut---
+ * // src/lint.ts: render code loads only inside lintTarget, never in the simulation.
+ * export const lintTarget = async (): Promise<Lint.Target<typeof Game.schema, typeof Root>> => {
+ *   const { render } = await importRender()
  *   const sim = createSimulation({ keyboard: Keyboard.scripted(bindings, []) })
  *   return { runtime: sim.runtime, schedules: { setup: sim.setup, update: sim.update }, describe: { render } }
  * }

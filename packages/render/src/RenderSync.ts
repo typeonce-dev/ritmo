@@ -40,6 +40,10 @@
  *
  * @example
  * ```ts
+ * import { Sprite, type Texture } from "pixi.js"
+ *
+ * const Assets = Descriptor.Service<{ readonly textures: Readonly<Record<string, Texture>> }>()("Game/Assets")
+ * // ---cut---
  * const Sprites = Descriptor.Service<NodeRegistry.NodeRegistry<Sprite>>()("Game/Sprites")
  *
  * const Render = RenderSync.system(Game, {
@@ -52,7 +56,7 @@
  *   apply: (sprite, { transform }) => sprite.position.set(transform.x, transform.y)
  * })
  *
- * const update = Game.Schedule(Gameplay, Game.Schedule.applyDeferred(), Render)
+ * const update = Game.Schedule(Move, Game.Schedule.applyDeferred(), Render)
  * ```
  */
 import type { Descriptor } from "@typeonce/ritmo/Descriptor"
@@ -498,6 +502,18 @@ interface InterpolateBase<
  *
  * @example
  * ```ts
+ * import type { Sprite } from "pixi.js"
+ *
+ * interface Mesh { readonly position: { set(x: number, y: number, z: number): void } }
+ * const PrevPosition = Descriptor.Component<{ x: number; y: number }>()("Game/PrevPosition")
+ * const Position3 = Descriptor.Component<{ x: number; y: number; z: number }>()("Game/Position3")
+ * const PrevPosition3 = Descriptor.Component<{ x: number; y: number; z: number }>()("Game/PrevPosition3")
+ * const Game = Schema.bind(Schema.fragment({ components: { Position, PrevPosition, Position3, PrevPosition3 } }))
+ * const Sprites = Descriptor.Service<NodeRegistry.NodeRegistry<Sprite>>()("Game/Sprites")
+ * const Meshes = Descriptor.Service<NodeRegistry.NodeRegistry<Mesh>>()("Game/Meshes")
+ * // The loop's render alpha, provided by the host each frame:
+ * const RenderClock = Descriptor.Service<{ readonly alpha: number }>()("Game/RenderClock")
+ * // ---cut---
  * const Interpolate = RenderSync.interpolate(Game, {
  *   name: "Game/Interpolate",
  *   registry: Sprites,
@@ -506,7 +522,7 @@ interface InterpolateBase<
  *   clock: RenderClock,
  *   place: (sprite, { x, y }) => sprite.position.set(x, y)
  * })
- * const render = Game.Schedule(Sync, Interpolate)
+ * const render = Game.Schedule(Interpolate) // after the RenderSync.system that creates the nodes
  *
  * // 3D: blend every coordinate.
  * RenderSync.interpolate(Game, {

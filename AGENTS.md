@@ -15,6 +15,7 @@
 ## Verify
 - Every change: `pnpm run check`.
 - Changes to public APIs, or to `website/`: `pnpm --dir website build` (Node 22.23.4 or newer).
+- JSDoc `@example` blocks compile in `pnpm check` (`pnpm check-examples`): modules are in scope by name, the game from `scripts/examples/prelude.ts`, anything else above a `// ---cut---` line. The header of `scripts/check-examples.ts` is the convention.
 - Changes to what a package publishes (exports, `package.json`, build config): `pnpm pack:check`.
 - Every change to a published package: a changeset (`pnpm changeset`). A breaking entry carries its fix.
 - Changes to runtime internals or public types: `pnpm bench:check`; record an intended shift with `pnpm bench:update`. For runtime work, compare with your own machine: `pnpm bench --json .bench/before.json`, then `pnpm bench --compare .bench/before.json` (`--filter <text>` for one case). Under about 20% is noise; do not report it. Add a bench case for a new per-frame hot path.

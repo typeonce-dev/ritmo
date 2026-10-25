@@ -88,23 +88,31 @@ export interface RelationDefinition<
   }
 }
 
+/** Type-level helpers for relations, and the failures relation lookups and commands report. */
 export namespace Relation {
+  /** Any relation (`Descriptor.Hierarchy` or `Descriptor.Relation`); a bound for generic code. */
   export type Any = RelationDefinition<string, string, RelationKind, any>
+  /** Any related side of a relation (`Children`, `TargetedBy`): read, never written. */
   export type AnyRelated = RelatedDefinition<string, string, RelationKind, any>
+  /** Any relation made with `Descriptor.Hierarchy`: ordered children that despawn with their parent. */
   export type Hierarchy = RelationDefinition<string, string, "hierarchy", any>
+  /** The relation command a {@link MutationFailure} comes from. */
   export type MutationOperation = "relate" | "reorderChildren"
 
+  /** The entity a lookup or command named is not alive. */
   export interface MissingEntityError {
     readonly _tag: "MissingEntity"
     readonly entityId: number
   }
 
+  /** The entity is alive but has no target in `relation`. */
   export interface MissingRelationError {
     readonly _tag: "MissingRelation"
     readonly entityId: number
     readonly relation: string
   }
 
+  /** `relate` named a target that is not alive. */
   export interface MissingTargetEntityError {
     readonly _tag: "MissingTargetEntity"
     readonly entityId: number
@@ -112,12 +120,14 @@ export namespace Relation {
     readonly relation: string
   }
 
+  /** `relate` pointed an entity at itself in a relation that does not allow it. */
   export interface SelfRelationNotAllowedError {
     readonly _tag: "SelfRelationNotAllowed"
     readonly entityId: number
     readonly relation: string
   }
 
+  /** `relate` would make an entity its own ancestor in a hierarchy. */
   export interface HierarchyCycleError {
     readonly _tag: "HierarchyCycle"
     readonly entityId: number
@@ -125,6 +135,7 @@ export namespace Relation {
     readonly relation: string
   }
 
+  /** `reorderChildren` listed a child that is not alive. */
   export interface MissingChildEntityError {
     readonly _tag: "MissingChildEntity"
     readonly entityId: number
@@ -132,6 +143,7 @@ export namespace Relation {
     readonly relation: string
   }
 
+  /** `reorderChildren` listed the same child twice. */
   export interface DuplicateChildError {
     readonly _tag: "DuplicateChild"
     readonly entityId: number
@@ -139,6 +151,7 @@ export namespace Relation {
     readonly relation: string
   }
 
+  /** `reorderChildren` listed an entity that is not a child of this parent. */
   export interface ChildNotRelatedToParentError {
     readonly _tag: "ChildNotRelatedToParent"
     readonly entityId: number
@@ -146,6 +159,7 @@ export namespace Relation {
     readonly relation: string
   }
 
+  /** `reorderChildren` did not list exactly the parent's current children. */
   export interface ChildSetMismatchError {
     readonly _tag: "ChildSetMismatch"
     readonly entityId: number
@@ -198,112 +212,7 @@ export namespace Relation {
   }
 }
 
-export const missingEntityError = (entityId: number): Relation.MissingEntityError => ({
-  _tag: "MissingEntity",
-  entityId
-})
-
-export const missingRelationError = (
-  entityId: number,
-  relation: string
-): Relation.MissingRelationError => ({
-  _tag: "MissingRelation",
-  entityId,
-  relation
-})
-
-export const missingTargetEntityError = (
-  entityId: number,
-  targetId: number,
-  relation: string
-): Relation.MissingTargetEntityError => ({
-  _tag: "MissingTargetEntity",
-  entityId,
-  targetId,
-  relation
-})
-
-export const selfRelationNotAllowedError = (
-  entityId: number,
-  relation: string
-): Relation.SelfRelationNotAllowedError => ({
-  _tag: "SelfRelationNotAllowed",
-  entityId,
-  relation
-})
-
-export const hierarchyCycleError = (
-  entityId: number,
-  targetId: number,
-  relation: string
-): Relation.HierarchyCycleError => ({
-  _tag: "HierarchyCycle",
-  entityId,
-  targetId,
-  relation
-})
-
-export const missingChildEntityError = (
-  entityId: number,
-  childId: number,
-  relation: string
-): Relation.MissingChildEntityError => ({
-  _tag: "MissingChildEntity",
-  entityId,
-  childId,
-  relation
-})
-
-export const duplicateChildError = (
-  entityId: number,
-  childId: number,
-  relation: string
-): Relation.DuplicateChildError => ({
-  _tag: "DuplicateChild",
-  entityId,
-  childId,
-  relation
-})
-
-export const childNotRelatedToParentError = (
-  entityId: number,
-  childId: number,
-  relation: string
-): Relation.ChildNotRelatedToParentError => ({
-  _tag: "ChildNotRelatedToParent",
-  entityId,
-  childId,
-  relation
-})
-
-export const childSetMismatchError = (
-  entityId: number,
-  relation: string
-): Relation.ChildSetMismatchError => ({
-  _tag: "ChildSetMismatch",
-  entityId,
-  relation
-})
-
-export const mutationFailure = <
-  R extends Relation.Any,
-  S extends Schema.Any,
-  Root,
-  Operation extends Relation.MutationOperation
->(
-  relation: R,
-  operation: Operation,
-  source: EntityId<S, Root>,
-  target: EntityId<S, Root>,
-  error: Relation.MutationError
-): Relation.MutationFailure<R, S, Root, Operation> => ({
-  relation,
-  operation,
-  source,
-  target,
-  error
-})
-
+/** The query slot {@link read} returns; carried by `Game.Query.readRelation`. */
 export interface RelationReadAccess<
   R extends Relation.Any,
   S extends Schema.Any,
@@ -315,6 +224,7 @@ export interface RelationReadAccess<
   readonly __schemaRoot?: Root | undefined
 }
 
+/** The query slot {@link optional} returns; carried by `Game.Query.optionalRelation`. */
 export interface OptionalRelationReadAccess<
   R extends Relation.Any,
   S extends Schema.Any,
@@ -326,6 +236,7 @@ export interface OptionalRelationReadAccess<
   readonly __schemaRoot?: Root | undefined
 }
 
+/** The query slot {@link readRelated} returns; carried by `Game.Query.readRelated`. */
 export interface RelatedReadAccess<
   R extends Relation.Any,
   S extends Schema.Any,
@@ -337,6 +248,7 @@ export interface RelatedReadAccess<
   readonly __schemaRoot?: Root | undefined
 }
 
+/** The query slot {@link optionalRelated} returns; carried by `Game.Query.optionalRelated`. */
 export interface OptionalRelatedReadAccess<
   R extends Relation.Any,
   S extends Schema.Any,
@@ -348,6 +260,7 @@ export interface OptionalRelatedReadAccess<
   readonly __schemaRoot?: Root | undefined
 }
 
+/** Any relation query slot, as a query `selection` accepts it. */
 export type SelectionAccess<S extends Schema.Any, Root = unknown> =
   | RelationReadAccess<Relation.Any, S, Root>
   | OptionalRelationReadAccess<Relation.Any, S, Root>
@@ -395,6 +308,10 @@ export const optionalRelated = <R extends Relation.Any, S extends Schema.Any, Ro
   descriptor
 })
 
+/**
+ * One relation edge staged on a spawn draft with `Game.Command.relate(...)`,
+ * attached when the spawn applies at `applyDeferred()`.
+ */
 export interface StagedRelation<
   S extends Schema.Any,
   Root = unknown

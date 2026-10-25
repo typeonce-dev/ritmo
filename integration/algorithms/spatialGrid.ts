@@ -1,7 +1,7 @@
 /**
- * A uniform spatial hash for broad-phase queries over circles: the version in
- * the Ritmo skill's spatial-grid playbook, copied into the game as the
- * playbook says (games own their broad phase and size it to their data).
+ * A uniform spatial hash for broad-phase queries over circles: the Ritmo
+ * skill's `references/spatial-grid.ts`, copied into the game as its note
+ * says (games own their broad phase and size it to their data).
  *
  * Rebuilt every step: `clear`, then `insert` each circle under the caller's
  * own index (its position in an array the caller keeps). Queries visit each

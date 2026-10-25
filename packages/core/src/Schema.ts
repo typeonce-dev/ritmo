@@ -348,8 +348,8 @@ export const defineRoot = <const Name extends string>(name: Name): RootToken<Nam
  * @example
  * ```ts
  * const Combat = Schema.fragment({
- *   components: { Health, Damage, Enemy },
- *   events: { Hit },
+ *   components: { Health, Enemy },
+ *   events: { Hit, Damage },
  *   requires: [Schema.requires(Enemy, Health)]
  * })
  * ```
@@ -384,6 +384,9 @@ export const fragment = <
  *
  * @example
  * ```ts
+ * const Core = Schema.fragment({ components: { Position, Velocity } })
+ * const Combat = Schema.fragment({ components: { Health, Enemy }, events: { Hit } })
+ * // ---cut---
  * const Root = Schema.defineRoot("Game")
  * const Game = Schema.bind(Core, Combat, Root)
  * ```
@@ -391,13 +394,27 @@ export const fragment = <
 export function bind<
   S extends Schema.Any
 >(schema: S & ValidateFragments<[S]> & ValidateRequires<S>): Schema.Game<S, S>
+/**
+ * Binds one fragment under an explicit root (`Schema.defineRoot("Game")`),
+ * so descriptors can name the root before the game exists (stored handles:
+ * `Entity.Handle<typeof Root>`). The usual way to bind a game.
+ */
 export function bind<
   S extends Schema.Any,
   const Name extends string
 >(schema: S & ValidateFragments<[S]> & ValidateRequires<S>, root: RootToken<Name>): Schema.Game<S, RootToken<Name>>
+/**
+ * Composes two or more fragments into one bound game; a descriptor
+ * registered by two fragments must be the same descriptor. Pass a root last
+ * to name it explicitly.
+ */
 export function bind<
   const Fragments extends readonly [Schema.Any, Schema.Any, ...Array<Schema.Any>]
 >(...fragments: Fragments & ValidateFragments<Fragments> & ValidateRequires<BuildFragments<Fragments>>): Schema.Game<BuildFragments<Fragments>, BuildFragments<Fragments>>
+/**
+ * Composes two or more fragments into one bound game under an explicit root
+ * (`Schema.bind(Core, Combat, Root)`).
+ */
 export function bind<
   const Fragments extends readonly [Schema.Any, Schema.Any, ...Array<Schema.Any>],
   const Name extends string
@@ -519,15 +536,22 @@ export namespace Schema {
    */
   export type Any = SchemaDefinition<Registry, Registry, Registry, Record<string, Relation.Relation.Any>, RequirementPair>
 
+  /** The component descriptors a schema registers, keyed as in `Schema.fragment({ components })`. */
   export type Components<T extends Any> = T["components"]
+  /** The resource descriptors a schema registers, keyed as in `Schema.fragment({ resources })`. */
   export type Resources<T extends Any> = T["resources"]
+  /** The event descriptors a schema registers, keyed as in `Schema.fragment({ events })`. */
   export type Events<T extends Any> = T["events"]
+  /** The relations a schema registers, keyed as in `Schema.fragment({ relations })`. */
   export type Relations<T extends Any> = T["relations"]
   /** The component requirements of a schema, as `[requirer, required]` name pairs (`Schema.requires`). */
   export type Requires<T extends Any> = T extends SchemaDefinition<any, any, any, any, infer Pairs> ? Pairs : never
 
+  /** The value of the component registered under key `K`. */
   export type ComponentValue<T extends Any, K extends keyof Components<T>> = Descriptor.Value<Components<T>[K]>
+  /** The value of the resource registered under key `K`. */
   export type ResourceValue<T extends Any, K extends keyof Resources<T>> = Descriptor.Value<Resources<T>[K]>
+  /** The payload of the event registered under key `K`. */
   export type EventValue<T extends Any, K extends keyof Events<T>> = Descriptor.Value<Events<T>[K]>
 
   /** Union of the component descriptors registered in a schema. */
@@ -581,6 +605,10 @@ export namespace Schema {
     Parent = unknown
   > = Machine.StateMachineDefinition<Name, States, Root, Parent>
 
+  /**
+   * A schema-bound transition schedule (`Game.Schedule.onEnter` / `onExit` /
+   * `onTransition`), run by `applyStateTransitions(...)`.
+   */
   export type BoundTransitionSchedule<
     S extends Any,
     Root,
@@ -590,6 +618,7 @@ export namespace Schema {
     Order extends Schedule.AnyScheduleOrder = Schedule.AnyScheduleOrder
   > = Machine.TransitionScheduleDefinition<S, M, Needs, Root, Failure, Order>
 
+  /** A schema-bound bundle of transition schedules (`Game.Schedule.transitions(...)`). */
   export type BoundTransitionBundle<
     S extends Any,
     Root,
@@ -633,7 +662,7 @@ export namespace Schema {
      *
      * @example
      * ```ts
-     * const RunScope = Game.EntityScope("Shooter/Run", { despawnOnExit: [Flow, "Playing"] })
+     * const RunScope = Game.EntityScope("Shooter/Run", { despawnOnExit: [GameFlow, "Playing"] })
      * ```
      */
     readonly EntityScope: <
@@ -789,8 +818,12 @@ export namespace Schema {
      *   Exploring: {},
      *   Talking: z.object({ speaker: z.string(), page: z.int() })
      * })
-     * nextMachines.mode.set({ _tag: "Talking", speaker: "Mira", page: 0 })
-     * machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, page: talking.page + 1 }) })
+     * const Greet = Game.System("Town/Greet", { nextMachines: { mode: Game.System.nextState(Mode) } }, ({ nextMachines }) => {
+     *   nextMachines.mode.set({ _tag: "Talking", speaker: "Mira", page: 0 })
+     * })
+     * const TurnPage = Game.System("Town/TurnPage", { machines: { mode: Game.System.updateMachine(Mode) } }, ({ machines }) => {
+     *   machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, page: talking.page + 1 }) })
+     * })
      * ```
      */
     readonly StateMachine: {
@@ -819,6 +852,8 @@ export namespace Schema {
        *
        * @example
        * ```ts
+       * const Session = Game.StateMachine("Game/Session", { Lobby: {}, Playing: {} })
+       * // ---cut---
        * const Phase = Game.StateMachine("Game/Phase", { Setup: {}, Battle: z.object({ round: z.int() }) }, { within: [Session, "Playing"] })
        * ```
        */

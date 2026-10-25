@@ -24,8 +24,15 @@
  * const step = Clock.hz(60)
  * const Time = Clock.resource("Game/Time", step)
  * const Game = Schema.bind(Schema.fragment({ resources: { Time } }))
- * const AdvanceTime = Clock.system(Game, { name: "Game/AdvanceTime", resource: Time, hold: [paused] })
- * const runtime = Game.Runtime.make({ services, resources: { Time: Clock.start(step) } }).value
+ * const Pause = Game.StateMachine("Game/Pause", { Running: {}, Paused: {} })
+ * const AdvanceTime = Clock.system(Game, { name: "Game/AdvanceTime", resource: Time, hold: [Game.Condition.inState(Pause, "Paused")] })
+ * // The clock resource is validated, so `make` returns a Result to check.
+ * const runtime = Game.Runtime.make({
+ *   services: Game.Runtime.services(),
+ *   resources: { Time: Clock.start(step) },
+ *   machines: Game.Runtime.machines(Game.Runtime.machine(Pause, { _tag: "Running" }))
+ * })
+ * if (runtime.ok) runtime.value.tick(Game.Schedule(AdvanceTime))
  * ```
  *
  * @module Clock
@@ -365,12 +372,21 @@ export interface DeadlineBrand<Hz extends number> {
  *
  * @example
  * ```ts
- * const time = resources.time.get()
- * const { ready } = data.weapon.get()
- * if (ready === null || Clock.reached(time, ready)) {
- *   fire()
- *   data.weapon.set({ ready: Clock.deadline(time, Clock.duration(step, 0.5)) })
- * }
+ * const cooldown = Clock.duration(step, 0.5)
+ * const Fire = Game.System("Game/Fire", {
+ *   queries: { armed: Game.Query({ selection: { weapon: Game.Query.write(Weapon) } }) },
+ *   resources: { time: Game.System.readResource(Time) },
+ *   events: { hit: Game.System.writeEvent(Hit) }
+ * }, ({ queries, resources, events }) => {
+ *   const time = resources.time.get()
+ *   for (const { data } of queries.armed.each()) {
+ *     const { ready } = data.weapon.get()
+ *     if (ready === null || Clock.reached(time, ready)) {
+ *       events.hit.emit({ amount: 1 })
+ *       data.weapon.set({ ready: Clock.deadline(time, cooldown) })
+ *     }
+ *   }
+ * })
  * ```
  */
 export const deadline = <Hz extends number>(time: Time<Hz>, duration: Duration<NoInfer<Hz>>): Deadline<Hz> =>
@@ -403,11 +419,15 @@ export const remaining = <Hz extends number>(time: Time<Hz>, deadline: Deadline<
  *
  * @example
  * ```ts
- * const isReady = Clock.isDeadline(step)
  * // Zod
- * const Weapon = Descriptor.ConstructedComponent(z.object({ ready: z.unknown().refine(isReady).nullable() }))("Game/Weapon")
- * // Effect
- * const Weapon = Descriptor.ConstructedComponent(codec(Schema.Struct({ ready: Schema.NullOr(Schema.declare(isReady)) })))("Game/Weapon")
+ * const Weapon = Descriptor.ConstructedComponent(z.object({ ready: z.unknown().refine(Clock.isDeadline(step)).nullable() }))("Game/Weapon")
+ * ```
+ *
+ * ```ts
+ * // Effect, through the playbook's `codec`
+ * import { Schema } from "effect"
+ *
+ * const Weapon = Descriptor.ConstructedComponent(codec(Schema.Struct({ ready: Schema.NullOr(Schema.declare(Clock.isDeadline(step))) })))("Game/Weapon")
  * ```
  */
 export const isDeadline = <Hz extends number>(_step: Step<Hz>): (raw: unknown) => raw is Deadline<Hz> =>

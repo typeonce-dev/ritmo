@@ -9,6 +9,9 @@
  *
  * @example
  * ```ts
+ * declare const position: Vec2.Vec2, delta: Vec2.Vec2
+ * declare const radius: number
+ * // ---cut---
  * const fence = Segment2.between({ x: 0, y: 0 }, { x: 40, y: 30 })
  * const moved = Collide2.moveCircle(position, delta, radius, { segments: [fence] })
  * ```

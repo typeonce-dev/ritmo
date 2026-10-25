@@ -18,6 +18,9 @@
  *
  * @example
  * ```ts
+ * declare const seed: number
+ * declare const cellSize: number
+ * // ---cut---
  * // Validate several authored inputs and keep every failure explicit.
  * const built = Result.all({
  *   rng: Random.result(seed),
@@ -118,6 +121,8 @@ export const isFailure: <Value, Error>(result: Result<Value, Error>) => result i
  *
  * @example
  * ```ts
+ * declare const seed: number
+ * // ---cut---
  * const label = Result.match(Random.result(seed), {
  *   onSuccess: () => "ok",
  *   onFailure: () => "invalid"
@@ -144,6 +149,8 @@ export const match: <Value, Error, SuccessReturn, FailureReturn>(
  *
  * @example
  * ```ts
+ * declare const seed: number
+ * // ---cut---
  * const setup = Result.all({
  *   rng: Random.result(seed),
  *   paths: FlowField.make(30)

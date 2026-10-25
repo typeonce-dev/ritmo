@@ -8,7 +8,15 @@
  *
  * @example
  * ```ts
- * const loop = FixedLoop.start({ source: BrowserTickSource.make(window), step: Clock.hz(60), ... })
+ * const loop = FixedLoop.start({
+ *   source: BrowserTickSource.make(window),
+ *   step: Clock.hz(60),
+ *   maxFrameSeconds: 0.25,
+ *   maxStepsPerFrame: 5,
+ *   update: () => runtime.tick(update),
+ *   render: () => {},
+ *   onFailure: (failure) => console.error(failure)
+ * })
  * ```
  *
  * @module BrowserTickSource

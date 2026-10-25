@@ -60,7 +60,7 @@ const skillFiles = Object.keys(markdown)
     if (heading === undefined) throw new Error(`llms.txt: ${path} has no heading`)
     return file.endsWith("/SKILL.md")
       ? shipped(core, file, "Ritmo skill", "routes each change to its playbook and holds the principles; use it for every change")
-      : shipped(core, file, `Playbook: ${heading}`, "")
+      : shipped(core, file, `${file.includes("/references/") ? "Reference" : "Playbook"}: ${heading}`, "")
   })
 
 const agentFiles: ReadonlyArray<ShippedFile> = [
@@ -104,7 +104,7 @@ export const llmsTxt = `${intro}
 
 ## Agent docs
 
-- [Every agent doc in one file](${site}/llms-full.txt): Setup, the skill, its playbooks, and each package README
+- [Every agent doc in one file](${site}/llms-full.txt): Setup, the skill, its playbooks and references, and each package README
 ${agentFiles.map(link).join("\n")}
 
 ## Packages
@@ -129,7 +129,7 @@ ${games.join("\n")}
 /** Every shipped agent doc in one file, for agents that read a single URL. */
 export const llmsFullTxt = `${intro}
 
-Below is every agent doc that ships on npm, in order: Setup, the skill, its playbooks, then each package README. Relative links resolve against each file's source URL.
+Below is every agent doc that ships on npm, in order: Setup, the skill, its playbooks and references, then each package README. Relative links resolve against each file's source URL.
 
 ${[...agentFiles, ...packageFiles]
   .map((file) => `---\n\nSource: ${file.url}\n\n${(markdown[file.path] ?? "").replace(/^---\n[\s\S]*?\n---\n+/, "").trim()}`)

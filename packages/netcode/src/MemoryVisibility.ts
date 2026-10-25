@@ -11,8 +11,11 @@
  *
  * @example
  * ```ts
+ * // The test's own start: `Netcode.rollback(runtime, { ...options, hidden })` (see `Netcode`).
+ * declare const startMatch: (hidden: Netcode.HiddenOptions) => void
+ * // ---cut---
  * const visibility = MemoryVisibility.make()
- * const session = Netcode.rollback(runtime, { ...options, hidden: { visibility, afterMS: 10_000, then: "stall" } })
+ * startMatch({ visibility, afterMS: 10_000, then: "stall" })
  * visibility.hide()
  * ```
  */

@@ -47,8 +47,11 @@ export interface Trigger {
 
 /** Type-level helpers for entity scopes. */
 export namespace EntityScope {
+  /** Any entity scope, whatever its name and game; a bound for generic code. */
   export type Any = EntityScope<string, any>
+  /** The scope's name, as passed to `Game.EntityScope(name, ...)`. */
   export type Name<T extends Any> = T["name"]
+  /** The game root a scope belongs to. */
   export type Root<T extends Any> = T extends EntityScope<string, infer Root> ? Root : never
 }
 

@@ -22,9 +22,13 @@
  *
  * @example
  * ```ts
+ * declare const position: { x: number; y: number }
+ * declare const target: { x: number; y: number }
+ * declare const speed: number, friction: number, dt: number
+ * // ---cut---
  * // Inside a system: aim, then move along the heading.
  * const heading = Ops.atan2(target.y - position.y, target.x - position.x)
- * const step = { x: Ops.cos(heading) * speed * dt, y: Ops.sin(heading) * speed * dt }
+ * const offset = { x: Ops.cos(heading) * speed * dt, y: Ops.sin(heading) * speed * dt }
  * const damping = Ops.exp(-friction * dt)
  * ```
  *

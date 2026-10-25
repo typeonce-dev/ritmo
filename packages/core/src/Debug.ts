@@ -38,13 +38,13 @@
  *
  * @example
  * ```ts
- * const runtime = Game.Runtime.make({ services, resources, debug: { hostClock: HostClock.standard } }).value
- * runtime.debug.nameSchedules({ setup: setupSchedule, update: updateSchedule })
+ * // `runtime` was made with `debug: { hostClock: HostClock.standard }`.
+ * runtime.debug.nameSchedules({ setup, update })
  *
  * const stop = runtime.debug.observe((event) => {
  *   if (event.type === "system" && event.outcome !== "ok") console.log(event)
  * })
- * runtime.tick(setupSchedule)
+ * runtime.tick(setup)
  * console.log(runtime.debug.dump({ with: [Player] }))
  * stop()
  * ```

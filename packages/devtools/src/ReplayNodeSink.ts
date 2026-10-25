@@ -7,7 +7,10 @@
  *
  * @example
  * ```ts
- * const recorder = Replay.recorder(runtime, { ..., sink: ReplayNodeSink.make({ directory: ".replays" }) })
+ * const recorder = Replay.recorder(runtime, {
+ *   schedule: update, name: "update", keep: 30, step: Clock.hz(60),
+ *   sink: ReplayNodeSink.make({ directory: ".replays" }), hostClock: HostClock.standard
+ * })
  * ```
  */
 import { mkdirSync, writeFileSync } from "node:fs"

@@ -17,6 +17,9 @@
  *
  * @example
  * ```ts
+ * // The game's factory: a fresh runtime on the given host clock each call.
+ * declare const makeSimulation: (hostClock: HostClock.HostClock) => Replay.Target<typeof Game.schema, typeof Root>
+ * // ---cut---
  * const result = Determinism.check(({ hostClock }) => makeSimulation(hostClock), {
  *   schedule: "update", frames: 1800, hostClock: HostClock.test()
  * })

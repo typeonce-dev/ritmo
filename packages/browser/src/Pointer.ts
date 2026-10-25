@@ -31,6 +31,12 @@
  *
  * @example
  * ```ts
+ * declare const canvas: HTMLCanvasElement
+ * declare const aimAt: (position: Pointer.Position) => void
+ * declare const fire: () => void
+ * declare const zoomBy: (steps: number) => void
+ * declare const turn: (by: number) => void
+ * // ---cut---
  * const bindings = { fire: ["primary"], aim: ["secondary"], nextWeapon: ["wheelDown"] } as const
  * const mouse = Pointer.actions(canvas, window, bindings, { lock: document })
  *
@@ -649,6 +655,11 @@ export type InvalidRebinding = ButtonsInternal.InvalidRebinding
  *
  * @example
  * ```ts
+ * declare const canvas: HTMLCanvasElement
+ * const bindings = { fire: ["primary"], aim: ["secondary"] } as const
+ * const mouse = Pointer.actions(canvas, window, bindings)
+ * declare const stored: string
+ * // ---cut---
  * const saved = Pointer.parseRebinding(bindings, JSON.parse(stored))
  * if (saved.ok) mouse.rebind(saved.value)
  * ```

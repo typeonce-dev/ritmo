@@ -12,6 +12,8 @@
  *
  * @example
  * ```ts
+ * declare const playerId: Entity.EntityId<typeof Game.schema, typeof Root>
+ * // ---cut---
  * // Turn a current frame entity id into a durable reference.
  * const handle = Game.Entity.handle(playerId)
  *
@@ -55,10 +57,17 @@ import * as Result from "./Result.ts"
  *
  * @example
  * ```ts
- * const handle = Game.Entity.handle(playerId, Player)
- * // `players` is a query the system declares: queries: { players: PlayerQuery }
- * const resolved = queries.players.getHandle(handle)
- * if (!resolved.ok) return
+ * const PlayerQuery = Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] })
+ *
+ * const FollowPlayer = Game.System("Game/FollowPlayer", { queries: { players: PlayerQuery } }, ({ queries }) => {
+ *   for (const match of queries.players.each()) {
+ *     const handle = Game.Entity.handle(match.entity, Player)
+ *     // Later (another run, or after reading it back from a component):
+ *     const resolved = queries.players.getHandle(handle)
+ *     if (!resolved.ok) return
+ *     console.log(resolved.value.data.position.get())
+ *   }
+ * })
  * ```
  */
 export type EntityTypeId = "~ritmo/Entity"
@@ -119,8 +128,11 @@ export type Handle<
   }
 >
 
+/** Type-level helpers for entity handles. */
 export namespace Handle {
+  /** The game root a handle belongs to. */
   export type Root<T extends import("./Entity.ts").Handle<any, any>> = T extends import("./Entity.ts").Handle<infer R, any> ? R : never
+  /** The component a handle was made for (`Game.Entity.handle(id, Player)`), or `undefined` for a plain handle. */
   export type Intent<T extends import("./Entity.ts").Handle<any, any>> =
     T extends import("./Entity.ts").Handle<any, infer I extends Descriptor<"component", string, any> | undefined> ? I : never
 }
@@ -281,6 +293,10 @@ export type HandleTarget<S extends Schema.Any, Root = unknown> =
  *
  * @example
  * ```ts
+ * declare const playerId: Entity.EntityId<typeof Game.schema, typeof Root>
+ * const Players = Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] })
+ * declare const match: Query.QueryMatch<typeof Game.schema, typeof Players>
+ * // ---cut---
  * const any = Game.Entity.handle(match.entity)
  * const player = Game.Entity.handle(playerId, Player)
  * ```
@@ -309,10 +325,15 @@ export const handle = <
  *
  * @example
  * ```ts
- * // Effect
- * const Target = Descriptor.ConstructedComponent(codec(Schema.Struct({ enemy: Schema.declare(Entity.isHandle(Root, Health)) })))("Game/Target")
  * // Zod
  * const Target = Descriptor.ConstructedComponent(z.object({ enemy: z.unknown().refine(Entity.isHandle(Root, Health)) }))("Game/Target")
+ * ```
+ *
+ * ```ts
+ * // Effect, through the playbook's `codec`
+ * import { Schema } from "effect"
+ *
+ * const Target = Descriptor.ConstructedComponent(codec(Schema.Struct({ enemy: Schema.declare(Entity.isHandle(Root, Health)) })))("Game/Target")
  * ```
  */
 export const isHandle = <

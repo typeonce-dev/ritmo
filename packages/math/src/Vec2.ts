@@ -8,6 +8,9 @@
  *
  * @example
  * ```ts
+ * declare const position: Vec2.Vec2, target: Vec2.Vec2, current: Vec2.Vec2
+ * declare const speed: number, maxSpeed: number
+ * // ---cut---
  * // Steer toward a target at a capped speed.
  * const wanted = Vec2.scale(Vec2.normalizeOr(Vec2.subtract(target, position), Vec2.zero), speed)
  * const velocity = Vec2.clampLength(Vec2.add(current, wanted), maxSpeed)

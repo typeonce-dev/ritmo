@@ -18,6 +18,8 @@
  *
  * @example
  * ```ts
+ * declare const app: { readonly inBackground: boolean; onBackground(listener: (hidden: boolean) => void): () => void }
+ * // ---cut---
  * const visibility: Visibility.Visibility = {
  *   hidden: () => app.inBackground,
  *   subscribe: (listener) => app.onBackground(listener)

@@ -28,7 +28,7 @@
  *     sprite: Game.Query.optional(Sprite)
  *   },
  *   // Structural filters describe who participates in the system at all.
- *   with: [Movable],
+ *   with: [Player],
  *   without: [Frozen]
  * })
  *
@@ -552,8 +552,12 @@ export namespace Query {
  * ```ts
  * import type { ReadonlyValue } from "@typeonce/ritmo/Query"
  *
- * const spawnRate = (tuning: ReadonlyValue<Tuning>) => tuning.waves[0]?.rate ?? 1
- * spawnRate(resources.tuning.get())
+ * type TuningValue = Descriptor.Descriptor.Value<typeof Tuning>
+ * const spawnRate = (tuning: ReadonlyValue<TuningValue>) => tuning.waves[0]?.rate ?? 1
+ *
+ * Game.System("Game/Spawner", { resources: { tuning: Game.System.readResource(Tuning) } }, ({ resources }) => {
+ *   spawnRate(resources.tuning.get())
+ * })
  * ```
  */
 export type ReadonlyValue<T> =
@@ -611,7 +615,10 @@ export interface ConstructedWriteCell<T, Raw, Error> extends WriteCell<T> {
    *
    * @example
    * ```ts
-   * data.position.setRaw({ x: 16, y: 24 })
+   * declare const data: { readonly position: Query.WriteCellForDescriptor<typeof Position> }
+   * // ---cut---
+   * const written = data.position.setRaw({ x: 16, y: 24 })
+   * if (!written.ok) console.error(written.error)
    * ```
    */
   setRaw(raw: Raw): Result.Result<void, Error>
@@ -621,6 +628,8 @@ export interface ConstructedWriteCell<T, Raw, Error> extends WriteCell<T> {
    *
    * @example
    * ```ts
+   * declare const data: { readonly position: Query.WriteCellForDescriptor<typeof Position> }
+   * // ---cut---
    * data.position.updateRaw((position) => ({
    *   x: position.x + 1,
    *   y: position.y
@@ -701,6 +710,12 @@ export interface EntityStateWriteCell<States extends StateDefinitions, Transitio
    *
    * @example
    * ```ts
+   * const Phase = Descriptor.EntityState("Game/Phase", { windup: {}, active: {} }, { transitions: { windup: ["active"], active: [] } })
+   * declare const data: {
+   *   readonly contact: Query.WriteCellForDescriptor<typeof Contact>
+   *   readonly phase: Query.WriteCellForDescriptor<typeof Phase>
+   * }
+   * // ---cut---
    * const jumped = data.contact.transition({ from: "ground", to: "air", data: { vy: 12, coyote: 0 } })
    * if (!jumped.ok) {
    *   // jumped.error.actual is the state some earlier write left
@@ -717,6 +732,9 @@ export interface EntityStateWriteCell<States extends StateDefinitions, Transitio
    *
    * @example
    * ```ts
+   * declare const data: { readonly contact: Query.WriteCellForDescriptor<typeof Contact> }
+   * declare const gravity: number
+   * // ---cut---
    * data.contact.update({ state: "air", data: (air) => ({ ...air, vy: air.vy - gravity }) })
    * ```
    */
@@ -800,8 +818,9 @@ export type OptionalReadCell<T> = PresentOptionalReadCell<T> | AbsentOptionalRea
  * const leftmost = (players: ReadonlyArray<QueryMatch<typeof Game.schema, typeof PlayerRead>>) =>
  *   players.reduce((min, player) => Math.min(min, player.data.position.get().x), Infinity)
  *
- * // In a system declaring `queries: { players: PlayerRead }`:
- * leftmost(queries.players.each())
+ * Game.System("Game/Leftmost", { queries: { players: PlayerRead } }, ({ queries }) => {
+ *   console.log(leftmost(queries.players.each()))
+ * })
  * ```
  */
 export type QueryMatch<S extends Schema.Any, Q extends Query.Any> =
@@ -895,7 +914,7 @@ export type ExclusionsPossible<Selection, With extends ReadonlyArray<unknown>, W
  *     velocity: Game.Query.read(Velocity)
  *   },
  *   with: [Position, Velocity],
- *   without: [Sleeping]
+ *   without: [Frozen]
  * })
  * ```
  */

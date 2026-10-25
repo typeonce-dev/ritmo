@@ -270,6 +270,9 @@ type Consecutive<Steps, Count extends Array<0> = []> =
  *
  * @example
  * ```ts
+ * declare const renameGold: (save: Snapshot.WorldSnapshot) => Snapshot.WorldSnapshot
+ * declare const raw: unknown
+ * // ---cut---
  * const runtime = Game.Runtime.make({
  *   services,
  *   saves: Snapshot.migrations(

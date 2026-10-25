@@ -406,16 +406,31 @@ export interface ThisTick {
  *
  * @example
  * ```ts
+ * const DealDamage = Game.System("Game/DealDamage", { events: { damage: Game.System.writeEvent(Damage) } }, ({ events }) => {
+ *   events.damage.emit({ amount: 1 })
+ * })
  * const ApplyDamage = Game.System("Game/ApplyDamage", {
  *   events: { damage: Game.System.thisTick(Game.System.readEvent(Damage)) }
- * }, ({ events }) => { ... })
+ * }, ({ events }) => {
+ *   for (const { amount } of events.damage.all()) console.log(amount)
+ * })
  *
- * runtime.tick(Game.Schedule(DealDamage, ApplyDamage)) // compiles
- * runtime.tick(Game.Schedule(ApplyDamage, DealDamage)) // "Game/ApplyDamage needs Game/Damage from this tick, but its writer Game/DealDamage runs after it"
+ * runtime.tick(Game.Schedule(DealDamage, ApplyDamage))
+ * // @ts-expect-error Game/ApplyDamage needs Game/Damage from this tick, but its writer Game/DealDamage runs after it
+ * runtime.tick(Game.Schedule(ApplyDamage, DealDamage))
  *
- * const AimAtNewest = Game.System("Game/AimAtNewest", { queries: { enemies: Game.System.thisTick(Enemies) } }, ...)
- * runtime.tick(Game.Schedule(SpawnWave, Game.Schedule.applyDeferred(), AimAtNewest)) // compiles
- * runtime.tick(Game.Schedule(SpawnWave, AimAtNewest)) // "Game/AimAtNewest needs this tick's commands for queries.enemies, but Game/SpawnWave queues them with no applyDeferred() in between"
+ * const Enemies = Game.Query({ selection: { health: Game.Query.read(Health) }, with: [Enemy] })
+ * const SpawnWave = Game.System("Game/SpawnWave", {
+ *   commands: Game.System.commands(Game.System.spawns(Enemy, Health))
+ * }, ({ commands }) => {
+ *   commands.spawn(Game.Command.spawn([Enemy, {}], [Health, 3]))
+ * })
+ * const AimAtNewest = Game.System("Game/AimAtNewest", { queries: { enemies: Game.System.thisTick(Enemies) } }, ({ queries }) => {
+ *   console.log(queries.enemies.each().length)
+ * })
+ * runtime.tick(Game.Schedule(SpawnWave, Game.Schedule.applyDeferred(), AimAtNewest))
+ * // @ts-expect-error Game/AimAtNewest needs this tick's commands for queries.enemies, but Game/SpawnWave queues them with no applyDeferred() in between
+ * runtime.tick(Game.Schedule(SpawnWave, AimAtNewest))
  * ```
  */
 export const thisTick = <
@@ -576,7 +591,11 @@ export interface MachineUpdateView<M extends Machine.StateMachine.Any = Machine.
    *
    * @example
    * ```ts
-   * machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, typed: talking.typed + 1 }) })
+   * const Mode = Game.StateMachine("Town/Mode", { Exploring: {}, Talking: z.object({ line: z.string(), typed: z.int() }) })
+   * // ---cut---
+   * Game.System("Town/Typewriter", { machines: { mode: Game.System.updateMachine(Mode) } }, ({ machines }) => {
+   *   machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, typed: talking.typed + 1 }) })
+   * })
    * ```
    */
   update<const State extends Machine.StateMachine.State<M>, Next extends StateUpdateResult<M["states"], State>>(
@@ -893,12 +912,16 @@ export interface QueryIteration<S extends Schema.Any, Q extends Query.Any> {
    *
    * @example
    * ```ts
-   * const player = queries.player.singleOptional()
-   * if (!player.ok || !player.value) {
-   *   return
-   * }
+   * Game.System("Game/Respawn", {
+   *   queries: { player: Game.Query({ selection: { position: Game.Query.write(Position) }, with: [Player] }) }
+   * }, ({ queries }) => {
+   *   const player = queries.player.singleOptional()
+   *   if (!player.ok || !player.value) {
+   *     return
+   *   }
    *
-   * player.value.data.position.set({ x: 0, y: 0 })
+   *   player.value.data.position.set({ x: 0, y: 0 })
+   * })
    * ```
    */
   singleOptional(): Result.Result<QueryMatch<S, Q> | undefined, Query.MultipleEntitiesError>
