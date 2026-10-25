@@ -49,6 +49,7 @@
 import type { Clock, HostClock } from "@typeonce/ritmo"
 import type * as Debug from "@typeonce/ritmo/Debug"
 import type { Descriptor } from "@typeonce/ritmo/Descriptor"
+import type * as Inspector from "@typeonce/ritmo/Inspector"
 import type * as Requirement from "@typeonce/ritmo/Requirement"
 import * as Result from "@typeonce/ritmo/Result"
 import type { AnyScheduleOrder, ExecutableScheduleDefinition, IsPlain, Source } from "@typeonce/ritmo/Schedule"
@@ -429,14 +430,19 @@ export interface Target<
   readonly schedules: Schedules
 }
 
-/** How `session` checks the replayed ticks. */
-export interface SessionOptions<Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>>> {
+/** How `session` checks the replayed ticks and names what they touch. */
+export interface SessionOptions<
+  Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>> = readonly [],
+  Labels extends Session.LabelsInspector = never
+> {
   /**
    * Checked after every replayed tick, as in `Session.make`: `play` stops at
    * the first violation. Pass the invariants a `Fuzz.run` found broken, so
    * the replay stops where the bug shows.
    */
   readonly invariants?: Invariants
+  /** Names entities in the session's text, as `Session.make`'s `labels` does. */
+  readonly labels?: Labels
 }
 
 /** What one `ReplaySession.play` did: the session run, and the checkpoints that differ. */
@@ -460,11 +466,14 @@ export interface ReplaySession<S extends Schema.Any, Names extends string> {
   readonly snapshot: () => Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError>
 }
 
+
 /**
  * Opens a replay: builds the game with `make(playback)`, checks the schema,
  * restores the start, and returns a session ready to `play`, checking
- * `options.invariants` after every tick. An invariant that reads something
- * the runtime does not provide does not compile.
+ * `options.invariants` after every tick and naming entities with
+ * `options.labels`, as `Session.make` does. An invariant or a labels
+ * inspector that reads something the runtime does not provide does not
+ * compile.
  */
 export const session = <
   S extends Schema.Any,
@@ -473,11 +482,14 @@ export const session = <
   Services extends Record<string, unknown>,
   Resources extends object,
   Machines extends Record<string, unknown>,
-  const Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>> = readonly []
+  const Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>> = readonly [],
+  const Labels extends Session.LabelsInspector<Root> = never
 >(
   make: (playback: Playback) => Target<S, Root, Schedules, Services, Resources, Machines>,
   file: ReplayFile,
-  options?: SessionOptions<Invariants> & Session.ValidateInvariants<Invariants, Services, Resources, Machines>
+  options?: SessionOptions<Invariants, Labels> &
+    Session.ValidateInvariants<Invariants, Services, Resources, Machines> &
+    Session.ValidateLabels<Labels, Services, Resources, Machines>
 ): Result.Result<ReplaySession<S, string>, ReplayError> => {
   /** The last tick replayed (the start's tick before any). */
   let ran = file.start.tick
@@ -507,9 +519,15 @@ export const session = <
   const restored = target.runtime.restore(file.start.snapshot)
   if (!restored.ok) return Result.failure({ _tag: "RestoreFailed", error: restored.error })
   const runtime: Session.Target<S, Root> = target.runtime
-  // The signature checked the invariants against this runtime's provisions.
+  // The signature checked the invariants and the labels against this runtime's provisions.
   const invariants = (options?.invariants ?? []) as readonly []
-  const replay = Session.make(runtime, { schedules: { [file.schedule]: schedule }, hostClock: target.hostClock, invariants })
+  const labels = options?.labels as Inspector.InspectorDefinition<any, ReadonlyMap<number, string>, Root, any, never> | undefined
+  const replay = Session.make(runtime, {
+    schedules: { [file.schedule]: schedule },
+    hostClock: target.hostClock,
+    invariants,
+    ...(labels === undefined ? {} : { labels })
+  })
   const send = target.runtime.send as (descriptor: { readonly kind: "event"; readonly name: string; readonly key: symbol }, value: unknown) => void
   const events = new Map(target.runtime.debug.describe().events.map(({ name }) => [name, { kind: "event" as const, name, key: Symbol.for(`ritmo/event/${name}`) }]))
   const hashes = new Map<number, string>([[ran, worldHash(target.runtime.checksum())]])

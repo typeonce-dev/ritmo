@@ -10,6 +10,10 @@
  * fails the check. This checks repeatability on the current JS engine, not
  * equality between platforms or every possible input sequence.
  *
+ * A difference inside an entity names it (`entity`), and with `labels` (the
+ * session's labels inspector) also its label, read on the first world at the
+ * differing frame.
+ *
  * @example
  * ```ts
  * const result = Determinism.check(({ hostClock }) => makeSimulation(hostClock), {
@@ -21,13 +25,21 @@
  * @docGroup devtools
  */
 import type { Debug, HostClock } from "@typeonce/ritmo"
+import type * as Inspector from "@typeonce/ritmo/Inspector"
 import type { Schema } from "@typeonce/ritmo/Schema"
 import type { AnyScheduleOrder, ExecutableScheduleDefinition } from "@typeonce/ritmo/Schedule"
-import type { Target as SessionTarget } from "./Session.ts"
+import type { LabelsInspector, Target as SessionTarget, ValidateLabels } from "./Session.ts"
 
 /** A fresh debug runtime, already set up, and its runnable schedules. */
-export interface Target<S extends Schema.Any, Root, Names extends string> {
-  readonly runtime: Pick<SessionTarget<S, Root>, "debug" | "tryTick">
+export interface Target<
+  S extends Schema.Any,
+  Root,
+  Names extends string,
+  Services extends Record<string, unknown> = Record<string, unknown>,
+  Resources extends object = object,
+  Machines extends Record<string, unknown> = Record<string, unknown>
+> {
+  readonly runtime: SessionTarget<S, Root, Services, Resources, Machines>
   readonly schedules: Readonly<Record<Names, ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>>
 }
 
@@ -37,9 +49,11 @@ export interface Context {
 }
 
 /** Selects one schedule and a finite, whole number of frames to compare. */
-export interface Options<Names extends string> extends Context {
+export interface Options<Names extends string, Labels extends LabelsInspector = never> extends Context {
   readonly schedule: Names
   readonly frames: number
+  /** Names the differing entity (`label`): the `labels` inspector a `Session` takes. */
+  readonly labels?: Labels
 }
 
 /** A mismatch names the first value; execution errors remain explicit failures. */
@@ -54,6 +68,10 @@ export type CheckResult =
       readonly first: unknown
       readonly second: unknown
       readonly after: string | undefined
+      /** The id of the entity the difference is in, when it is in one. */
+      readonly entity: number | undefined
+      /** That entity's label from `labels`, when it has one. */
+      readonly label: string | undefined
     }
   | {
       readonly ok: false
@@ -111,9 +129,17 @@ const difference = (first: Captured, second: Captured, path = "world"): Differen
  * equals NaN). Maps and sets include iteration order. Functions compare by
  * identity; weak collections and promises fail explicitly as uninspectable.
  */
-export const check = <S extends Schema.Any, Root, const Names extends string>(
-  make: (context: Context) => Target<S, Root, Names>,
-  options: Options<NoInfer<Names>>
+export const check = <
+  S extends Schema.Any,
+  Root,
+  const Names extends string,
+  Services extends Record<string, unknown>,
+  Resources extends object,
+  Machines extends Record<string, unknown>,
+  const Labels extends LabelsInspector<Root> = never
+>(
+  make: (context: Context) => Target<S, Root, Names, Services, Resources, Machines>,
+  options: Options<NoInfer<Names>, Labels> & ValidateLabels<Labels, Services, Resources, Machines>
 ): CheckResult => {
   if (!Number.isSafeInteger(options.frames) || options.frames < 0) {
     return { ok: false, frame: 0, reason: "invalid-options", run: "first", error: "frames must be a finite whole number, 0 or more" }
@@ -138,17 +164,25 @@ export const check = <S extends Schema.Any, Root, const Names extends string>(
         if (!result.ok) return { ok: false, frame, reason: "failure", run, error: result.error }
       }
       run = "first"
-      const left = capture(first.runtime.debug.dump())
+      const leftDump = first.runtime.debug.dump()
+      const left = capture(leftDump)
       if (frame > 0) {
         run = "second"
         const result = second.runtime.tryTick(b)
         if (!result.ok) return { ok: false, frame, reason: "failure", run, error: result.error }
       }
       run = "second"
-      const found = difference(left, capture(second.runtime.debug.dump()))
+      const rightDump = second.runtime.debug.dump()
+      const found = difference(left, capture(rightDump))
       if (found !== undefined) {
+        const index = /^world\["entities"\]\["(\d+)"\]/.exec(found.path)?.[1]
+        const entity = index === undefined ? undefined : (leftDump.entities[Number(index)] ?? rightDump.entities[Number(index)])?.id
+        const labels = options.labels as LabelsInspector | undefined
+        const label = entity === undefined || labels === undefined
+          ? undefined
+          : (first.runtime.inspect as (inspector: Inspector.Inspector.Any) => ReadonlyMap<number, string>)(labels).get(entity)
         const after = frame === 0 ? undefined : locate(make, context, options.schedule, frame)
-        return { ok: false, frame, reason: "difference", difference: found.path, first: found.first, second: found.second, after }
+        return { ok: false, frame, reason: "difference", difference: found.path, first: found.first, second: found.second, after, entity, label }
       }
     }
     return { ok: true, frames: options.frames }

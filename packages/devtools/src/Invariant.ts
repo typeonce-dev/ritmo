@@ -8,6 +8,10 @@
  * invariant that reads a resource, service, or machine the runtime does not
  * provide. The invariant is named after its inspector.
  *
+ * Write entities in the message as `e${id}`: a session with `labels` prints
+ * each one with its label (`player e12`) in the run summary; the run's
+ * `stop.message` keeps the text the inspector returned.
+ *
  * Use `Invariant.fromInspector` for checks over the world during a session.
  * Use `Game.Inspector` with `runtime.inspect(...)` directly for one-off reads
  * in tests and scripts.
@@ -20,9 +24,9 @@
  * const PlayerInsideWorld = Invariant.fromInspector(Game.Inspector("player inside world", {
  *   queries: { players: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] }) }
  * }, ({ queries }) => {
- *   for (const { data } of queries.players.each()) {
+ *   for (const { entity, data } of queries.players.each()) {
  *     const { x } = data.position.get()
- *     if (x < 0 || x > WORLD_WIDTH) return `player at x=${x}`
+ *     if (x < 0 || x > WORLD_WIDTH) return `e${entity.id} at x=${x}`
  *   }
  *   return undefined
  * }))

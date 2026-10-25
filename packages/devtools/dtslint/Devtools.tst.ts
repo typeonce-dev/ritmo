@@ -2,7 +2,7 @@ import { Clock, Descriptor, HostClock, Schema } from "@typeonce/ritmo"
 import * as Codecs from "../../core/test/codecs.ts"
 import type * as Schedule from "@typeonce/ritmo/Schedule"
 import type * as Snapshot from "@typeonce/ritmo/Snapshot"
-import { Desync, Invariant, Lint, Replay, Rendered, Session } from "@typeonce/ritmo-devtools"
+import { Desync, Format, Invariant, Lint, Replay, Rendered, Session } from "@typeonce/ritmo-devtools"
 import { describe, expect, it } from "tstyche"
 
 const hostClock = HostClock.test()
@@ -105,6 +105,51 @@ describe("Invariant.fromInspector", () => {
   })
 })
 
+describe("Session labels", () => {
+  const Positions = Game.Query({ selection: { position: Game.Query.read(Position) } })
+  const Labels = Game.Inspector("DevtoolsTypes/Labels", { queries: { positions: Positions } }, ({ queries }) =>
+    new Map(queries.positions.each().map((match) => [match.entity.id, "mover"] as const)))
+
+  it("takes an inspector of entity id to label", () => {
+    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
+    const session = Session.make(debugged, { hostClock, schedules: { update }, labels: Labels })
+    expect(session.run).type.toBeCallableWith("update")
+    expect(session.why(1, Position).data).type.toBe<ReadonlyArray<Format.Line>>()
+  })
+
+  it("rejects an inspector that returns anything else", () => {
+    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
+    const Names = Game.Inspector("DevtoolsTypes/Names", { queries: { positions: Positions } }, ({ queries }) =>
+      new Map(queries.positions.each().map((match) => [String(match.entity.id), "mover"] as const)))
+    // @ts-expect-error labels must return a ReadonlyMap<number, string> from entity id to label
+    Session.make(debugged, { hostClock, schedules: { update }, labels: Names })
+    const Text = Game.Inspector("DevtoolsTypes/Text", {}, () => "player")
+    // @ts-expect-error labels must return a ReadonlyMap<number, string> from entity id to label
+    Session.make(debugged, { hostClock, schedules: { update }, labels: Text })
+  })
+
+  it("is checked against the runtime's provisions", () => {
+    const Limited = Game.Inspector("DevtoolsTypes/LimitedLabels", { resources: { limit: Game.System.readResource(Limit) } }, ({ resources }) =>
+      new Map([[1, `limit ${resources.limit.get()}`]]))
+    const provided = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Limit: 10 }, debug: { hostClock } }).value
+    expect(Session.make).type.toBeCallableWith(provided, { hostClock, schedules: { update }, labels: Limited })
+    const missing = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
+    // @ts-expect-error __fixLabelsRequirements__: { readonly __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "DevtoolsTypes/Limit"
+    Session.make(missing, { hostClock, schedules: { update }, labels: Limited })
+  })
+
+  it("rejects labels of another game", () => {
+    const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
+    const ForeignLabels = OtherGame.Inspector("DevtoolsTypes/ForeignLabels", {}, () => new Map<number, string>())
+    expect(Session.make).type.not.toBeCallableWith(debugged, { hostClock, schedules: { update }, labels: ForeignLabels })
+  })
+
+  it("is data in Desync.compare", () => {
+    expect(Desync.compare).type.toBeCallableWith({} as Snapshot.WorldSnapshot, {} as Snapshot.WorldSnapshot, { labels: new Map([[1, "player"]]) })
+    expect(Desync.compare).type.not.toBeCallableWith({} as Snapshot.WorldSnapshot, {} as Snapshot.WorldSnapshot, { labels: Labels })
+  })
+})
+
 describe("Lint.run", () => {
   it("returns a report and takes host events of the runtime's schema only", () => {
     const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Limit: 1 }, debug: { hostClock } }).value
@@ -177,6 +222,29 @@ describe("Replay.recorder", () => {
   })
 })
 
+describe("Replay.session", () => {
+  const Place = Descriptor.ConstructedComponent(Codecs.struct({ x: Codecs.number }))("DevtoolsTypes/ReplayPlace")
+  const Cap = Descriptor.ConstructedResource(Codecs.number)("DevtoolsTypes/ReplayCap")
+  const Saved = Schema.bind(Schema.fragment({ components: { Place }, resources: { Cap } }))
+  const make = () => ({
+    runtime: Saved.Runtime.make({ services: Saved.Runtime.services(), debug: { hostClock } }).value,
+    schedules: { update: Saved.Schedule() },
+    hostClock
+  })
+  const file = {} as Replay.ReplayFile
+
+  it("takes the session's labels inspector, checked like Session.make's", () => {
+    const Labels = Saved.Inspector("DevtoolsTypes/ReplayLabels", {}, () => new Map<number, string>())
+    expect(Replay.session).type.toBeCallableWith(make, file, { labels: Labels })
+    const Text = Saved.Inspector("DevtoolsTypes/ReplayText", {}, () => "player")
+    // @ts-expect-error labels must return a ReadonlyMap<number, string> from entity id to label
+    Replay.session(make, file, { labels: Text })
+    const Limited = Saved.Inspector("DevtoolsTypes/ReplayLimited", { resources: { cap: Saved.System.readResource(Cap) } }, () => new Map<number, string>())
+    // @ts-expect-error __fixLabelsRequirements__
+    Replay.session(make, file, { labels: Limited })
+  })
+})
+
 describe("Session stops", () => {
   it("include a failed tick result nobody read", () => {
     expect<Extract<Session.Stop, { readonly reason: "ignored-failure" }>["skipped"]>().type.toBe<ReadonlyArray<string>>()
@@ -185,7 +253,7 @@ describe("Session stops", () => {
 
 describe("Desync.compare", () => {
   it("compares two saves into rendered differences", () => {
-    expect(Desync.compare).type.toBe<(mine: Snapshot.WorldSnapshot, theirs: Snapshot.WorldSnapshot) => Rendered.Rendered<ReadonlyArray<Desync.Difference>>>()
+    expect(Desync.compare).type.toBe<(mine: Snapshot.WorldSnapshot, theirs: Snapshot.WorldSnapshot, options?: Desync.CompareOptions) => Rendered.Rendered<ReadonlyArray<Desync.Difference>>>()
     expect(Desync.compare).type.not.toBeCallableWith({ entities: [] }, { entities: [] })
   })
 })
