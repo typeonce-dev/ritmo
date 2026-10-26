@@ -55,7 +55,7 @@ describe("runtime.checkpoint", () => {
   })
 
   it("rejects a schedule whose systems are not statically known", () => {
-    const widened: Schedule.ExecutableScheduleDefinition<typeof Game.schema, any, typeof Root, any, any, Schedule.AnyScheduleOrder> = simulate
+    const widened: Schedule.ExecutableScheduleDefinition<typeof Game.schema, any, typeof Root, any, any> = simulate
     // @ts-expect-error the systems of this schedule are not statically known
     runtime.checkpoint(widened)
   })

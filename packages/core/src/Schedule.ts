@@ -532,7 +532,7 @@ export namespace Schedule {
  */
 export type ScheduleEntry =
   | ScheduleStep
-  | ScheduleDefinition<any, any, any, any, any, AnyScheduleOrder>
+  | ScheduleDefinition<any, any, any, any, any>
 
 type EntrySchema<Entry> =
   Entry extends { readonly schema: infer S extends Schema.Any } ? S
@@ -829,7 +829,7 @@ const gate = (system: AnySystem, when: ReadonlyArray<Condition>, pauseWhen: Read
 export const isSystemStep = (step: ScheduleStep | ScheduleEntry): step is AnySystem =>
   typeof step === "object" && step !== null && "spec" in step
 
-const isScheduleEntry = (entry: ScheduleEntry): entry is ScheduleDefinition<any, any, any, any, any, AnyScheduleOrder> =>
+const isScheduleEntry = (entry: ScheduleEntry): entry is ScheduleDefinition<any, any, any, any, any> =>
   typeof entry === "object" && entry !== null && "kind" in entry && entry.kind === "schedule"
 
 const describeValue = (value: unknown): string =>

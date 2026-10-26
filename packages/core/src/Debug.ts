@@ -54,7 +54,7 @@ import type { HostClock } from "./HostClock.ts"
 import type * as Machine from "./Machine.ts"
 import type * as Result from "./Result.ts"
 import type { MissingRuntimeRequirements, TickOrderViolation } from "./Runtime.ts"
-import type { AnyScheduleOrder, ExecutableScheduleDefinition, FailureOf } from "./Schedule.ts"
+import type { ExecutableScheduleDefinition, FailureOf } from "./Schedule.ts"
 import type { Schema } from "./Schema.ts"
 
 /** Version of the description, dump, and trace formats. */
@@ -72,7 +72,7 @@ export interface Handle<S extends Schema.Any = Schema.Any, Root = unknown> {
    * `onEnter(Game/Flow=Playing)`. Naming again replaces earlier names.
    */
   readonly nameSchedules: (
-    schedules: Readonly<Record<string, ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>>
+    schedules: Readonly<Record<string, ExecutableScheduleDefinition<S, any, Root, any, any>>>
   ) => void
   /**
    * Declares the events the host publishes with `runtime.send`, so
@@ -138,7 +138,7 @@ export interface Handle<S extends Schema.Any = Schema.Any, Root = unknown> {
    * }
    * ```
    */
-  readonly beginFrame: <const Selected extends ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>(
+  readonly beginFrame: <const Selected extends ExecutableScheduleDefinition<S, any, Root, any, any>>(
     schedule: Selected
   ) => Result.Result<FrameCursor<FailureOf<Selected>>, MissingRuntimeRequirements | TickOrderViolation>
 }
@@ -780,12 +780,12 @@ export type HostEvent<S extends Schema.Any = Schema.Any, Root = unknown> =
   | {
       readonly type: "tick.start"
       /** The schedule values passed to this `tick(...)` (or `tryTick`) call, in order. */
-      readonly schedules: ReadonlyArray<ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>
+      readonly schedules: ReadonlyArray<ExecutableScheduleDefinition<S, any, Root, any, any>>
       readonly frame: number
     }
   | {
       readonly type: "tick.end"
-      readonly schedules: ReadonlyArray<ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>
+      readonly schedules: ReadonlyArray<ExecutableScheduleDefinition<S, any, Root, any, any>>
       readonly frame: number
       /** `failed`: a system returned `Result.failure`; `defect`: one threw (rethrown after this event). */
       readonly outcome: "ok" | "failed" | "defect"

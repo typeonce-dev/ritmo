@@ -31,7 +31,7 @@
 import type { Debug, HostClock } from "@typeonce/ritmo"
 import type * as Inspector from "@typeonce/ritmo/Inspector"
 import type { Schema } from "@typeonce/ritmo/Schema"
-import type { AnyScheduleOrder, ExecutableScheduleDefinition } from "@typeonce/ritmo/Schedule"
+import type { ExecutableScheduleDefinition } from "@typeonce/ritmo/Schedule"
 import type { LabelsInspector, Target as SessionTarget, ValidateLabels } from "./Session.ts"
 
 /** A fresh debug runtime, already set up, and its runnable schedules. */
@@ -44,7 +44,7 @@ export interface Target<
   Machines extends Record<string, unknown> = Record<string, unknown>
 > {
   readonly runtime: SessionTarget<S, Root, Services, Resources, Machines>
-  readonly schedules: Readonly<Record<Names, ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>>
+  readonly schedules: Readonly<Record<Names, ExecutableScheduleDefinition<S, any, Root, any, any>>>
 }
 
 /** Inputs supplied to each build, including diagnostic reruns. */

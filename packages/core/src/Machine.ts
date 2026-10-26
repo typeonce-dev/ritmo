@@ -216,9 +216,9 @@ export interface TransitionEventRead<M extends StateMachineDefinition = StateMac
 export type Condition<Root = unknown> =
   | InStateCondition<StateMachineDefinition<string, StateDefinitions, Root>>
   | StateChangedCondition<StateMachineDefinition<string, StateDefinitions, Root>>
-  | NotCondition<Condition<Root>, Requirement.Requirement>
-  | AndCondition<ReadonlyArray<Condition<Root>>, Requirement.Requirement>
-  | OrCondition<ReadonlyArray<Condition<Root>>, Requirement.Requirement>
+  | NotCondition<Condition<Root>>
+  | AndCondition<ReadonlyArray<Condition<Root>>>
+  | OrCondition<ReadonlyArray<Condition<Root>>>
   | CheckCondition<Root>
 
 /** Made by `inState(machine, state)`. */
@@ -343,7 +343,7 @@ export interface TransitionScheduleDefinition<
  */
 export namespace StateMachine {
   /** Any state machine, whatever its states and game; a bound for generic code. */
-  export type Any = StateMachineDefinition<string, StateDefinitions, unknown, unknown>
+  export type Any = StateMachineDefinition
   /** The names of `M`'s states. */
   export type State<M extends Any> = keyof M["states"] & string
   /** The game root a machine belongs to (the `Game` whose `Game.StateMachine` made it). */
@@ -422,7 +422,7 @@ export const StateMachine = <
   key: Symbol.for(`ritmo/stateMachine/${name}`),
   states,
   ...(within === undefined ? {} : { within })
-}) as StateMachineDefinition<Name, States, Root>
+})
 
 /**
  * Declares that a system wants to read the current committed state.

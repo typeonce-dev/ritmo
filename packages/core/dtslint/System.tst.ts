@@ -101,7 +101,7 @@ describe("System", () => {
         }
     )
 
-    expect(system).type.toBeAssignableTo<System.SystemDefinition<any, never>>()
+    expect(system).type.toBeAssignableTo<System.SystemDefinition<any>>()
   })
 
   it("carries only the failure type, not a success value", () => {

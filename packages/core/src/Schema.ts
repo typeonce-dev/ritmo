@@ -336,7 +336,7 @@ export const defineRoot = <const Name extends string>(name: Name): RootToken<Nam
   [schemaRootTypeId]: {
     _Name: (_: never) => undefined as unknown as Name
   }
-}) as RootToken<Name>
+})
 
 /**
  * Creates a schema fragment.
@@ -479,7 +479,7 @@ type BoundScheduleEntry<S extends Schema.Any, Root> =
   | Schema.BoundSystem<S, Root, any, any>
   | Schedule.ApplyDeferredStep
   | Schedule.ApplyStateTransitionsStep<any, Root>
-  | Schedule.ScheduleDefinition<S, any, Root, any, any, Schedule.AnyScheduleOrder>
+  | Schedule.ScheduleDefinition<S, any, Root, any, any>
 
 type BoundTransitionEntry<S extends Schema.Any, Root> =
   Exclude<BoundScheduleEntry<S, Root>, Schedule.ApplyStateTransitionsStep<any, Root>>
@@ -1081,7 +1081,7 @@ export namespace Schema {
       make: <
         const ProvidedServices extends Runtime.RuntimeServices<any>,
         const Resources extends Runtime.RuntimeResources<S> = {},
-        const ProvidedMachines extends Runtime.RuntimeMachines<any> = Runtime.RuntimeMachines<{}>,
+        const ProvidedMachines extends Runtime.RuntimeMachines<any> = Runtime.RuntimeMachines,
         const Enabled extends Debug.Option | undefined = undefined
       >(options: {
         readonly services: ProvidedServices

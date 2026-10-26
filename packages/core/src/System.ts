@@ -1064,9 +1064,9 @@ export interface SystemAccessInput {
   readonly resources?: Record<string, ResourceAccess>
   readonly events?: Record<string, EventAccess>
   readonly services?: Record<string, ServiceRead<Descriptor<"service", string, any>>>
-  readonly machines?: Record<string, Machine.MachineRead<Machine.StateMachine.Any> | Machine.MachineUpdate<Machine.StateMachine.Any>>
-  readonly nextMachines?: Record<string, Machine.NextMachineWrite<Machine.StateMachine.Any>>
-  readonly transitionEvents?: Record<string, Machine.TransitionEventRead<Machine.StateMachine.Any>>
+  readonly machines?: Record<string, Machine.MachineRead | Machine.MachineUpdate>
+  readonly nextMachines?: Record<string, Machine.NextMachineWrite>
+  readonly transitionEvents?: Record<string, Machine.TransitionEventRead>
   readonly removed?: Record<string, RemovedRead<Descriptor<"component", string, any>>>
   readonly despawned?: Record<string, DespawnedRead>
   readonly relationFailures?: Record<string, RelationFailureRead<Relation.Relation.Any>>
@@ -1102,7 +1102,7 @@ export interface SystemAccessInput {
    * `when`. `Schedule.pauseWhen(...)` adds them to a whole group.
    */
   readonly pauseWhen?: ReadonlyArray<Machine.Condition>
-  readonly transitions?: Record<string, Machine.TransitionRead<Machine.StateMachine.Any>>
+  readonly transitions?: Record<string, Machine.TransitionRead>
   /**
    * Scratch state owned by the system: a broad-phase grid, a path cache, a
    * reused buffer. The factory runs on first encounter in each runtime,
@@ -1556,7 +1556,7 @@ export function System(
   spec: { readonly schema: Schema.Any } & SystemAccessInput,
   run: (context: any) => Result.Result<any, any> | void
 ): SystemDefinition<any, any, any, any, any> {
-  type Spec = SystemSpec<Schema.Any, SystemAccessInput, unknown>
+  type Spec = SystemSpec<Schema.Any>
 
   const normalizedSpec = {
     schema: spec.schema,

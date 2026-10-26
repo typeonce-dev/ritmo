@@ -356,7 +356,7 @@ export const draft = <S extends Schema.Any, P extends ComponentProof, Root = unk
 ): EntityDraft<S, P, Root> => ({
   kind: "EntityDraft",
   id,
-  __schemaRoot: undefined as unknown as Root,
+  __schemaRoot: undefined,
   proof,
   components,
   relations
@@ -371,7 +371,7 @@ export const ref = <S extends Schema.Any, P extends ComponentProof, Root = unkno
 ): EntityRef<S, P, Root> => ({
   kind: "EntityRef",
   id,
-  __schemaRoot: undefined as unknown as Root,
+  __schemaRoot: undefined,
   proof
 })
 
@@ -385,7 +385,7 @@ export const mut = <S extends Schema.Any, P extends ComponentProof, W extends Co
 ): EntityMut<S, P, W, Root> => ({
   kind: "EntityMut",
   id,
-  __schemaRoot: undefined as unknown as Root,
+  __schemaRoot: undefined,
   proof,
   writable
 })

@@ -42,12 +42,12 @@
  * ```
  */
 import type * as Debug from "@typeonce/ritmo/Debug"
-import type { AnyScheduleOrder, ExecutableScheduleDefinition } from "@typeonce/ritmo/Schedule"
+import type { ExecutableScheduleDefinition } from "@typeonce/ritmo/Schedule"
 import type { Schema } from "@typeonce/ritmo/Schema"
 
 import * as Rendered from "./Rendered.ts"
 
-type AnySchedule<S extends Schema.Any, Root> = ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>
+type AnySchedule<S extends Schema.Any, Root> = ExecutableScheduleDefinition<S, any, Root, any, any>
 
 /** What `lintTarget` returns. */
 export interface Target<S extends Schema.Any, Root> {

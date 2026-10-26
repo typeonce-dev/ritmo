@@ -109,8 +109,8 @@ export const parse = (text: string, seats: number): Parsed => {
   if (value["v"] !== version) return { _tag: "OtherVersion", version: value["v"] }
   const from = value["from"]
   const epoch = value["epoch"]
-  if (!Number.isSafeInteger(from) || (from as number) < 0 || (from as number) >= seats || !isTick(epoch) || (epoch as number) < 0) return malformed
-  const base = { from: from as number, epoch: epoch as number }
+  if (!Number.isSafeInteger(from) || (from as number) < 0 || (from as number) >= seats || !isTick(epoch) || epoch < 0) return malformed
+  const base = { from: from as number, epoch }
   switch (value["k"]) {
     case "hello":
       return { _tag: "Message", message: { k: "hello", ...base } }
@@ -118,31 +118,31 @@ export const parse = (text: string, seats: number): Parsed => {
       return { _tag: "Message", message: { k: "resync", ...base } }
     case "sync": {
       const returned = value["returned"]
-      if (!isTick(value["tick"]) || (value["tick"] as number) < 0 || !("save" in value)) return malformed
+      if (!isTick(value["tick"]) || value["tick"] < 0 || !("save" in value)) return malformed
       if (!Array.isArray(returned) || returned.length !== seats || !returned.every(isCount)) return malformed
-      return { _tag: "Message", message: { k: "sync", ...base, tick: value["tick"] as number, save: value["save"], returned } }
+      return { _tag: "Message", message: { k: "sync", ...base, tick: value["tick"], save: value["save"], returned } }
     }
     case "inputs": {
       const acks = value["acks"]
       const inputs = value["inputs"]
-      if (!isTick(value["next"]) || !isTick(value["start"]) || (value["start"] as number) < 0) return malformed
+      if (!isTick(value["next"]) || !isTick(value["start"]) || value["start"] < 0) return malformed
       if (!Array.isArray(acks) || acks.length !== seats || !acks.every(isTick) || !Array.isArray(inputs)) return malformed
-      return { _tag: "Message", message: { k: "inputs", ...base, next: value["next"] as number, acks, start: value["start"] as number, inputs } }
+      return { _tag: "Message", message: { k: "inputs", ...base, next: value["next"], acks, start: value["start"], inputs } }
     }
     case "sum":
       if (!isTick(value["tick"]) || typeof value["sum"] !== "string") return malformed
-      return { _tag: "Message", message: { k: "sum", ...base, tick: value["tick"] as number, sum: value["sum"] } }
+      return { _tag: "Message", message: { k: "sum", ...base, tick: value["tick"], sum: value["sum"] } }
     case "ping":
       if (!isTime(value["at"]) || !isCount(value["shown"])) return malformed
-      return { _tag: "Message", message: { k: "ping", ...base, at: value["at"] as number, shown: value["shown"] as number } }
+      return { _tag: "Message", message: { k: "ping", ...base, at: value["at"], shown: value["shown"] } }
     case "pong": {
       const to = value["to"]
       if (!isTime(value["at"]) || !Number.isSafeInteger(to) || (to as number) < 0 || (to as number) >= seats) return malformed
-      return { _tag: "Message", message: { k: "pong", ...base, to: to as number, at: value["at"] as number } }
+      return { _tag: "Message", message: { k: "pong", ...base, to: to as number, at: value["at"] } }
     }
     case "hidden":
-      if (!isCount(value["n"]) || (value["n"] as number) < 1 || !isTick(value["last"]) || typeof value["away"] !== "boolean") return malformed
-      return { _tag: "Message", message: { k: "hidden", ...base, n: value["n"] as number, last: value["last"] as number, away: value["away"] } }
+      if (!isCount(value["n"]) || value["n"] < 1 || !isTick(value["last"]) || typeof value["away"] !== "boolean") return malformed
+      return { _tag: "Message", message: { k: "hidden", ...base, n: value["n"], last: value["last"], away: value["away"] } }
     default:
       return malformed
   }

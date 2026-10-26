@@ -46,7 +46,7 @@ type AnyQuery = Query.Query.Any<any>
 export interface CheckAccessInput {
   readonly queries?: Record<string, AnyQuery>
   readonly resources?: Record<string, CheckResourceAccess>
-  readonly machines?: Record<string, Machine.MachineRead<Machine.StateMachine.Any>>
+  readonly machines?: Record<string, Machine.MachineRead>
 }
 
 /** Accepted at the constraint so `ExactCheckAccess` can reject the last two with a message naming the fix. */

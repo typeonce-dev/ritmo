@@ -46,7 +46,7 @@ const fromWords = (high: number, low: number): number => {
 const clearLow = (x: number): number => {
   scratch[0] = x
   words[LO] = 0
-  return scratch[0]!
+  return scratch[0]
 }
 
 const TWO_1023 = fromWords(0x7fe00000, 0)

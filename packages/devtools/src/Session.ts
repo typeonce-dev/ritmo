@@ -87,7 +87,7 @@ export interface Target<
   Machines extends Record<string, unknown> = Record<string, unknown>
 > {
   readonly debug: Debug.Handle<S, Root>
-  readonly tryTick: (schedule: ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>) => Result.Result<void, unknown>
+  readonly tryTick: (schedule: ExecutableScheduleDefinition<S, any, any, any, any>) => Result.Result<void, unknown>
   readonly inspect: (inspector: never) => unknown
   readonly services: Services
   readonly resourceValues: Resources
@@ -95,7 +95,7 @@ export interface Target<
 }
 
 type InvariantRequirementErrors<
-  Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>>,
+  Invariants extends ReadonlyArray<Invariant>,
   Services extends Record<string, unknown>,
   Resources extends object,
   Machines extends Record<string, unknown>
@@ -110,7 +110,7 @@ type InvariantRequirementErrors<
  * the runtime does not provide, naming each one.
  */
 export type ValidateInvariants<
-  Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>>,
+  Invariants extends ReadonlyArray<Invariant>,
   Services extends Record<string, unknown>,
   Resources extends object,
   Machines extends Record<string, unknown>
@@ -169,11 +169,11 @@ export interface Options<
   S extends Schema.Any,
   Root,
   Names extends string,
-  Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>> = readonly [],
+  Invariants extends ReadonlyArray<Invariant> = readonly [],
   Labels extends LabelsInspector<Root> = never
 > {
   /** The schedules `run` can drive, by name. Also names them in traces. */
-  readonly schedules: Readonly<Record<Names, ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>>
+  readonly schedules: Readonly<Record<Names, ExecutableScheduleDefinition<S, any, Root, any, any>>>
   /**
    * More schedules to include in `describe()`, its lints, and the access
    * maps, without making them runnable: typically a render schedule that
@@ -182,7 +182,7 @@ export interface Options<
    * Their services show as not provided, which is not a lint. A name
    * already in `schedules` does not compile.
    */
-  readonly describe?: Readonly<Record<string, ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>> & {
+  readonly describe?: Readonly<Record<string, ExecutableScheduleDefinition<S, any, Root, any, any>>> & {
     readonly [Name in NoInfer<Names>]?: "already a runnable schedule in schedules: give the described-only schedule another name"
   }
   /** Events the host publishes with `runtime.send`: written, for the lints (see `Debug.Handle.declareHostEvents`). */
@@ -502,7 +502,7 @@ export interface SteppedFrame<System> {
 export interface Session<
   S extends Schema.Any,
   Names extends string,
-  Schedules extends Readonly<Record<Names, unknown>> = Readonly<Record<Names, ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>>>
+  Schedules extends Readonly<Record<Names, unknown>> = Readonly<Record<Names, ExecutableScheduleDefinition<S, any, any, any, any>>>
 > {
   /** Ticks the named schedule frame by frame; stops at the first failure, defect, or violated invariant. */
   readonly run: (name: Names, options?: RunOptions) => Rendered.Rendered<RunResult>
@@ -600,7 +600,7 @@ export const make = <
   Resources extends object,
   Machines extends Record<string, unknown>,
   const Names extends string,
-  const Schedules extends Readonly<Record<Names, ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>>,
+  const Schedules extends Readonly<Record<Names, ExecutableScheduleDefinition<S, any, Root, any, any>>>,
   const Invariants extends ReadonlyArray<Invariant<Inspector.InspectorDefinition<any, string | undefined, Root, any, any>>> = readonly [],
   const Labels extends LabelsInspector<Root> = never
 >(
@@ -615,7 +615,7 @@ export const make = <
   const debug = runtime.debug
   const capacity = options.history ?? 600
   const format = options.format ?? {}
-  const schedules = options.schedules as Readonly<Record<string, ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>>
+  const schedules = options.schedules as Readonly<Record<string, ExecutableScheduleDefinition<S, any, Root, any, any>>>
   const described = options.describe ?? {}
   debug.nameSchedules({ ...described, ...schedules })
   debug.declareHostEvents(options.hostEvents ?? [])
@@ -1042,7 +1042,7 @@ export const make = <
       if (!result.ok) {
         ended = { result: Result.failure(result.error) }
         stepping = undefined
-        return Result.failure(failureStop(result.error, frame) as StepStop)
+        return Result.failure(failureStop(result.error, frame))
       }
       if (result.value.ended) stepping = undefined
       return Result.success(result.value)
