@@ -76,7 +76,7 @@ for (let index = 0; index < SYSTEMS; index++) {
   if (index % 8 === 0) emit("  nextMachines: { flow: Game.System.nextState(Flow) },")
   emit(`}, ({ queries, resources, events${index % 4 === 0 ? ", services" : ""}${index % 8 === 0 ? ", nextMachines" : ""} }) => {`)
   emit("  for (const { data } of queries.main.each()) {")
-  emit(`    data.b.set({ ${writeKey}: data.a.get().${readKey} + (data.c.present ? 1 : 0) })`)
+  emit(`    data.b.set({ ${writeKey}: data.a.get().${readKey} + (data.c !== undefined ? 1 : 0) })`)
   emit("  }")
   emit(`  resources.value.update((value) => value + events.in.all().length)`)
   emit(`  events.out.emit({ e${index % EVENTS}: resources.value.get() })`)

@@ -197,15 +197,15 @@ describe("Schema", () => {
       ({ queries }) =>
         {
           for (const match of queries.moving.each()) {
-            expect(match.data.velocity).type.toBe<QueryTypes.OptionalReadCell<{ dx: number; dy: number }>>()
+            expect(match.data.velocity).type.toBe<QueryTypes.ReadCell<{ dx: number; dy: number }> | undefined>()
             expect(match.entity.proof).type.toBe<{
               readonly position: QueryTypes.ReadonlyValue<{ x: number; y: number }>
             }>()
 
-            // @ts-expect-error Property 'get' does not exist on type 'AbsentOptionalReadCell'.
+            // @ts-expect-error 'match.data.velocity' is possibly 'undefined'
             match.data.velocity.get()
 
-            if (match.data.velocity.present) {
+            if (match.data.velocity !== undefined) {
               expect(match.data.velocity.get()).type.toBe<QueryTypes.ReadonlyValue<{ dx: number; dy: number }>>()
             }
           }
@@ -338,7 +338,7 @@ describe("Schema", () => {
       ({ queries, removed, despawned }) =>
         {
           for (const match of queries.moved.each()) {
-            expect(match.data.velocity).type.toBe<QueryTypes.OptionalReadCell<{ dx: number; dy: number }>>()
+            expect(match.data.velocity).type.toBe<QueryTypes.ReadCell<{ dx: number; dy: number }> | undefined>()
           }
 
           expect(removed.positions.all()).type.toBe<ReadonlyArray<EntityId<typeof schema, typeof schema>>>()

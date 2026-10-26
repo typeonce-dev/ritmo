@@ -112,7 +112,7 @@ const RenderActors = RenderSync.system(Game, {
   create: ({ services }) => new ActorNode(services.art),
   apply: (node, { renderable, transform, data, services }) => {
     node.position.set(transform.x, transform.y)
-    node.body.texture = services.art.walk(renderable.character, data.facing.get(), frameOf(data.stride.value()))
+    node.body.texture = services.art.walk(renderable.character, data.facing.get(), frameOf(data.stride?.get()))
     node.body.tint = renderable.tint ?? 0xffffff
   }
 })

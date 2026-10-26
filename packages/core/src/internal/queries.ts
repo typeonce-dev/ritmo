@@ -40,8 +40,15 @@ export interface Reverts {
   readonly changed: Map<number, Set<number>>
 }
 
+/** How an optional slot is read: its hidden key on a match's `data`, and the getter every match shares. */
+interface OptionalSlot {
+  readonly key: symbol
+  readonly getter: (this: object) => unknown
+}
+
 type SlotPlan =
-  | { readonly slot: string; readonly mode: "read" | "optional"; readonly ordinal: number }
+  | { readonly slot: string; readonly mode: "read"; readonly ordinal: number }
+  | { readonly slot: string; readonly mode: "optional"; readonly ordinal: number; readonly optional: OptionalSlot }
   | {
       readonly slot: string
       readonly mode: "write"
@@ -51,8 +58,14 @@ type SlotPlan =
     }
   | {
       readonly slot: string
-      readonly mode: "readRelation" | "optionalRelation" | "readRelated" | "optionalRelated"
+      readonly mode: "readRelation" | "readRelated"
       readonly relation: Relation.Relation.Any
+    }
+  | {
+      readonly slot: string
+      readonly mode: "optionalRelation" | "optionalRelated"
+      readonly relation: Relation.Relation.Any
+      readonly optional: OptionalSlot
     }
 
 interface LifecycleFilterPlan {
@@ -180,6 +193,7 @@ export const makeQueryEngine = (world: World) => {
     const slots: Array<SlotPlan> = []
     const proofSlots: Array<readonly [string, number]> = []
     const writeSlots: Array<readonly [string, number]> = []
+    const handout: Cells.Stamp = { live: false }
 
     for (const [slot, access] of Object.entries(query.selection)) {
       switch (access.mode) {
@@ -202,9 +216,11 @@ export const makeQueryEngine = (world: World) => {
           }
           break
         }
-        case "optional":
-          slots.push({ slot, mode: "optional", ordinal: registeredOrdinal(access.descriptor) })
+        case "optional": {
+          const key = Symbol(slot)
+          slots.push({ slot, mode: "optional", ordinal: registeredOrdinal(access.descriptor), optional: { key, getter: Cells.optionalComponentGetter(handout, key) } })
           break
+        }
         case "readRelation":
           withRelations.push(access.descriptor)
           slots.push({ slot, mode: access.mode, relation: access.descriptor })
@@ -214,9 +230,12 @@ export const makeQueryEngine = (world: World) => {
           slots.push({ slot, mode: access.mode, relation: access.descriptor })
           break
         case "optionalRelation":
-        case "optionalRelated":
-          slots.push({ slot, mode: access.mode, relation: access.descriptor })
+        case "optionalRelated": {
+          const key = Symbol(slot)
+          const name = access.mode === "optionalRelation" ? access.descriptor.name : access.descriptor.relatedName
+          slots.push({ slot, mode: access.mode, relation: access.descriptor, optional: { key, getter: Cells.optionalHeldGetter(handout, key, name) } })
           break
+        }
       }
     }
 
@@ -252,7 +271,7 @@ export const makeQueryEngine = (world: World) => {
       componentSeen: componentDeps.map(() => -1),
       relationSeen: relationDeps.map(() => -1),
       entitiesSeen: -1,
-      handout: { live: false },
+      handout,
       matches: undefined,
       records: []
     }
@@ -329,34 +348,35 @@ export const makeQueryEngine = (world: World) => {
   const relatedIds = (relation: Relation.Relation.Any, id: number): ReadonlyArray<Entity.EntityId<any, any>> =>
     world.relatedSourceIds(relation, id).map(world.entityIdOf)
 
+  /** The cell of a slot: for an optional slot, the one it holds while filled. */
   const makeCell = (plan: SlotPlan, record: EntityRecord, stamp: Cells.Stamp): unknown => {
     switch (plan.mode) {
       case "read":
+      case "optional":
         return Cells.componentRead(world, record, plan.ordinal, stamp)
       case "write":
         return Cells.componentWrite(world, record, plan.ordinal, stamp, plan.constructor, plan.entityState)
-      case "optional":
-        return Cells.componentOptional(world, record, plan.ordinal, stamp)
       case "readRelation":
-        return Cells.derivedRead(world, stamp, plan.relation.name, () => world.entityIdOf(world.relationTarget(plan.relation, record.id)!))
       case "optionalRelation":
-        return Cells.derivedOptional(
-          world,
-          stamp,
-          plan.relation.name,
-          () => world.relationTarget(plan.relation, record.id) !== undefined,
-          () => world.entityIdOf(world.relationTarget(plan.relation, record.id)!)
-        )
+        return Cells.derivedRead(world, stamp, plan.relation.name, () => world.entityIdOf(world.relationTarget(plan.relation, record.id)!))
       case "readRelated":
-        return Cells.derivedRead(world, stamp, plan.relation.relatedName, () => relatedIds(plan.relation, record.id))
       case "optionalRelated":
-        return Cells.derivedOptional(
-          world,
-          stamp,
-          plan.relation.relatedName,
-          () => world.relatedSourceIds(plan.relation, record.id).length > 0,
-          () => relatedIds(plan.relation, record.id)
-        )
+        return Cells.derivedRead(world, stamp, plan.relation.relatedName, () => relatedIds(plan.relation, record.id))
+    }
+  }
+
+  /** Puts a slot's cell on a match's `data`; an optional slot holds it only while filled. */
+  const defineSlot = (data: Record<string, unknown>, plan: SlotPlan, record: EntityRecord, stamp: Cells.Stamp): void => {
+    const cell = makeCell(plan, record, stamp)
+    switch (plan.mode) {
+      case "optional":
+        return Cells.defineOptional(data, plan.slot, plan.optional.key, cell, plan.optional.getter)
+      case "optionalRelation":
+        return Cells.defineOptional(data, plan.slot, plan.optional.key, { cell, held: () => world.relationTarget(plan.relation, record.id) !== undefined }, plan.optional.getter)
+      case "optionalRelated":
+        return Cells.defineOptional(data, plan.slot, plan.optional.key, { cell, held: () => world.relatedSourceIds(plan.relation, record.id).length > 0 }, plan.optional.getter)
+      default:
+        data[plan.slot] = cell
     }
   }
 
@@ -369,7 +389,7 @@ export const makeQueryEngine = (world: World) => {
     }
     const data: Record<string, unknown> = {}
     for (const plan of state.slots) {
-      data[plan.slot] = makeCell(plan, record, state.handout)
+      defineSlot(data, plan, record, state.handout)
     }
     const match = { entity: makeEntityView(state, record), data } as unknown as AnyMatch
     record.matches[state.ordinal] = match

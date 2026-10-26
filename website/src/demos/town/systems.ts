@@ -135,7 +135,7 @@ export const JoinPlayers = Game.System(
       }
       if (input[seat].event !== "joined") continue
       const free = (cell: Cell) => isOpenGround(cell) &&
-        !queries.solids.each().some(({ data }) => occupies({ tile: data.tile.get(), stride: data.stride.value() }, cell))
+        !queries.solids.each().some(({ data }) => occupies({ tile: data.tile.get(), stride: data.stride?.get() }, cell))
       const other = queries.players.each().find(({ data }) => data.seat.get() !== seat)
       const near = other === undefined ? playerStart.cell : other.data.tile.get()
       const cell = [near, ...directions.map((direction) => cellInFront(near, direction))].find(free)
@@ -290,7 +290,7 @@ export const WalkPlayer = Game.System(
 
       const target = cellInFront(mover.tile.get(), direction)
       const others = players.filter((other) => other.entity.id !== player.entity.id)
-      const taken = queries.blockers.each().some(({ data }) => occupies({ tile: data.tile.get(), stride: data.stride.value() }, target)) ||
+      const taken = queries.blockers.each().some(({ data }) => occupies({ tile: data.tile.get(), stride: data.stride?.get() }, target)) ||
         others.some(({ data }) => occupies({ tile: data.tile.get(), stride: data.stride.get() }, target))
       const leashed = others.some(({ data }) =>
         Math.abs(data.tile.get().col - target.col) > LEASH.cols || Math.abs(data.tile.get().row - target.row) > LEASH.rows)
@@ -353,7 +353,7 @@ export const PaceVillagers = Game.System(
       }
       mover.facing.set(towards(tile, end))
       const target = cellInFront(tile, mover.facing.get())
-      const taken = queries.blockers.each().some((blocker) => occupies({ tile: blocker.data.tile.get(), stride: blocker.data.stride.value() }, target))
+      const taken = queries.blockers.each().some((blocker) => occupies({ tile: blocker.data.tile.get(), stride: blocker.data.stride?.get() }, target))
       if (!isOpenGround(target) || taken) {
         data.patrol.set({ ...patrol, rest: random.integer(rest / 2, rest) })
         continue
@@ -436,7 +436,7 @@ export const StartTalk = Game.System(
       }
       const found = queries.talkables.each().find((match) => sameCell(match.data.tile.get(), target))
       // Someone mid-step is not there yet: wait until they stand on the tile.
-      if (found === undefined || (found.data.stride.value()?.kind ?? "still") !== "still") continue
+      if (found === undefined || (found.data.stride?.get()?.kind ?? "still") !== "still") continue
 
       const { speaker, pages } = found.data.talkable.get()
       nextMachines.mode.set({ _tag: "Talking", speaker, pages, page: 0, typed: 0 })

@@ -98,7 +98,7 @@ const NobodyOverlaps = Invariant.fromInspector(Game.Inspector("solid tiles are n
   for (const { data } of queries.solids.each()) {
     const tile = data.tile.get()
     if (!isOpenGround(tile)) return `something solid inside the map's walls at (${tile.col}, ${tile.row})`
-    const stride = data.stride.value()
+    const stride = data.stride?.get()
     const cells = stride?.kind === "walk" ? [tile, stride.from] : [tile]
     for (const cell of cells) {
       if (claimed.some((other) => sameCell(other, cell))) return `two solid things on (${cell.col}, ${cell.row})`

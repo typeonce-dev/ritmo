@@ -82,7 +82,7 @@ const S00 = Game.System("Stress/S00", {
   nextMachines: { flow: Game.System.nextState(Flow) },
 }, ({ queries, resources, events, services, nextMachines }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v7: data.a.get().v0 + (data.c.present ? 1 : 0) })
+    data.b.set({ v7: data.a.get().v0 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
@@ -100,7 +100,7 @@ const S01 = Game.System("Stress/S01", {
   events: { out: Game.System.writeEvent(E01), in: Game.System.readEvent(E04) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v8: data.a.get().v1 + (data.c.present ? 1 : 0) })
+    data.b.set({ v8: data.a.get().v1 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e1: resources.value.get() })
@@ -116,7 +116,7 @@ const S02 = Game.System("Stress/S02", {
   events: { out: Game.System.writeEvent(E02), in: Game.System.readEvent(E05) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v9: data.a.get().v2 + (data.c.present ? 1 : 0) })
+    data.b.set({ v9: data.a.get().v2 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e2: resources.value.get() })
@@ -132,7 +132,7 @@ const S03 = Game.System("Stress/S03", {
   events: { out: Game.System.writeEvent(E03), in: Game.System.readEvent(E06) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v10: data.a.get().v3 + (data.c.present ? 1 : 0) })
+    data.b.set({ v10: data.a.get().v3 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e3: resources.value.get() })
@@ -149,7 +149,7 @@ const S04 = Game.System("Stress/S04", {
   services: { clock: Game.System.service(Clock) },
 }, ({ queries, resources, events, services }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v11: data.a.get().v4 + (data.c.present ? 1 : 0) })
+    data.b.set({ v11: data.a.get().v4 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e4: resources.value.get() })
@@ -167,7 +167,7 @@ const S05 = Game.System("Stress/S05", {
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v12: data.a.get().v5 + (data.c.present ? 1 : 0) })
+    data.b.set({ v12: data.a.get().v5 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e5: resources.value.get() })
@@ -183,7 +183,7 @@ const S06 = Game.System("Stress/S06", {
   events: { out: Game.System.writeEvent(E06), in: Game.System.readEvent(E01) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v13: data.a.get().v6 + (data.c.present ? 1 : 0) })
+    data.b.set({ v13: data.a.get().v6 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e6: resources.value.get() })
@@ -199,7 +199,7 @@ const S07 = Game.System("Stress/S07", {
   events: { out: Game.System.writeEvent(E07), in: Game.System.readEvent(E02) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v14: data.a.get().v7 + (data.c.present ? 1 : 0) })
+    data.b.set({ v14: data.a.get().v7 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e7: resources.value.get() })
@@ -217,7 +217,7 @@ const S08 = Game.System("Stress/S08", {
   nextMachines: { flow: Game.System.nextState(Flow) },
 }, ({ queries, resources, events, services, nextMachines }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v15: data.a.get().v8 + (data.c.present ? 1 : 0) })
+    data.b.set({ v15: data.a.get().v8 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
@@ -235,7 +235,7 @@ const S09 = Game.System("Stress/S09", {
   events: { out: Game.System.writeEvent(E01), in: Game.System.readEvent(E04) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v16: data.a.get().v9 + (data.c.present ? 1 : 0) })
+    data.b.set({ v16: data.a.get().v9 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e1: resources.value.get() })
@@ -252,7 +252,7 @@ const S10 = Game.System("Stress/S10", {
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v17: data.a.get().v10 + (data.c.present ? 1 : 0) })
+    data.b.set({ v17: data.a.get().v10 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e2: resources.value.get() })
@@ -268,7 +268,7 @@ const S11 = Game.System("Stress/S11", {
   events: { out: Game.System.writeEvent(E03), in: Game.System.readEvent(E06) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v18: data.a.get().v11 + (data.c.present ? 1 : 0) })
+    data.b.set({ v18: data.a.get().v11 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e3: resources.value.get() })
@@ -285,7 +285,7 @@ const S12 = Game.System("Stress/S12", {
   services: { clock: Game.System.service(Clock) },
 }, ({ queries, resources, events, services }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v19: data.a.get().v12 + (data.c.present ? 1 : 0) })
+    data.b.set({ v19: data.a.get().v12 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e4: resources.value.get() })
@@ -302,7 +302,7 @@ const S13 = Game.System("Stress/S13", {
   events: { out: Game.System.writeEvent(E05), in: Game.System.readEvent(E00) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v20: data.a.get().v13 + (data.c.present ? 1 : 0) })
+    data.b.set({ v20: data.a.get().v13 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e5: resources.value.get() })
@@ -318,7 +318,7 @@ const S14 = Game.System("Stress/S14", {
   events: { out: Game.System.writeEvent(E06), in: Game.System.readEvent(E01) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v21: data.a.get().v14 + (data.c.present ? 1 : 0) })
+    data.b.set({ v21: data.a.get().v14 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e6: resources.value.get() })
@@ -335,7 +335,7 @@ const S15 = Game.System("Stress/S15", {
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v22: data.a.get().v15 + (data.c.present ? 1 : 0) })
+    data.b.set({ v22: data.a.get().v15 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e7: resources.value.get() })
@@ -353,7 +353,7 @@ const S16 = Game.System("Stress/S16", {
   nextMachines: { flow: Game.System.nextState(Flow) },
 }, ({ queries, resources, events, services, nextMachines }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v23: data.a.get().v16 + (data.c.present ? 1 : 0) })
+    data.b.set({ v23: data.a.get().v16 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
@@ -371,7 +371,7 @@ const S17 = Game.System("Stress/S17", {
   events: { out: Game.System.writeEvent(E01), in: Game.System.readEvent(E04) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v24: data.a.get().v17 + (data.c.present ? 1 : 0) })
+    data.b.set({ v24: data.a.get().v17 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e1: resources.value.get() })
@@ -387,7 +387,7 @@ const S18 = Game.System("Stress/S18", {
   events: { out: Game.System.writeEvent(E02), in: Game.System.readEvent(E05) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v25: data.a.get().v18 + (data.c.present ? 1 : 0) })
+    data.b.set({ v25: data.a.get().v18 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e2: resources.value.get() })
@@ -403,7 +403,7 @@ const S19 = Game.System("Stress/S19", {
   events: { out: Game.System.writeEvent(E03), in: Game.System.readEvent(E06) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v26: data.a.get().v19 + (data.c.present ? 1 : 0) })
+    data.b.set({ v26: data.a.get().v19 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e3: resources.value.get() })
@@ -421,7 +421,7 @@ const S20 = Game.System("Stress/S20", {
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events, services }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v27: data.a.get().v20 + (data.c.present ? 1 : 0) })
+    data.b.set({ v27: data.a.get().v20 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e4: resources.value.get() })
@@ -438,7 +438,7 @@ const S21 = Game.System("Stress/S21", {
   events: { out: Game.System.writeEvent(E05), in: Game.System.readEvent(E00) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v28: data.a.get().v21 + (data.c.present ? 1 : 0) })
+    data.b.set({ v28: data.a.get().v21 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e5: resources.value.get() })
@@ -454,7 +454,7 @@ const S22 = Game.System("Stress/S22", {
   events: { out: Game.System.writeEvent(E06), in: Game.System.readEvent(E01) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v29: data.a.get().v22 + (data.c.present ? 1 : 0) })
+    data.b.set({ v29: data.a.get().v22 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e6: resources.value.get() })
@@ -470,7 +470,7 @@ const S23 = Game.System("Stress/S23", {
   events: { out: Game.System.writeEvent(E07), in: Game.System.readEvent(E02) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v30: data.a.get().v23 + (data.c.present ? 1 : 0) })
+    data.b.set({ v30: data.a.get().v23 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e7: resources.value.get() })
@@ -488,7 +488,7 @@ const S24 = Game.System("Stress/S24", {
   nextMachines: { flow: Game.System.nextState(Flow) },
 }, ({ queries, resources, events, services, nextMachines }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v31: data.a.get().v24 + (data.c.present ? 1 : 0) })
+    data.b.set({ v31: data.a.get().v24 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
@@ -507,7 +507,7 @@ const S25 = Game.System("Stress/S25", {
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v0: data.a.get().v25 + (data.c.present ? 1 : 0) })
+    data.b.set({ v0: data.a.get().v25 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e1: resources.value.get() })
@@ -523,7 +523,7 @@ const S26 = Game.System("Stress/S26", {
   events: { out: Game.System.writeEvent(E02), in: Game.System.readEvent(E05) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v1: data.a.get().v26 + (data.c.present ? 1 : 0) })
+    data.b.set({ v1: data.a.get().v26 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e2: resources.value.get() })
@@ -539,7 +539,7 @@ const S27 = Game.System("Stress/S27", {
   events: { out: Game.System.writeEvent(E03), in: Game.System.readEvent(E06) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v2: data.a.get().v27 + (data.c.present ? 1 : 0) })
+    data.b.set({ v2: data.a.get().v27 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e3: resources.value.get() })
@@ -556,7 +556,7 @@ const S28 = Game.System("Stress/S28", {
   services: { clock: Game.System.service(Clock) },
 }, ({ queries, resources, events, services }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v3: data.a.get().v28 + (data.c.present ? 1 : 0) })
+    data.b.set({ v3: data.a.get().v28 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e4: resources.value.get() })
@@ -573,7 +573,7 @@ const S29 = Game.System("Stress/S29", {
   events: { out: Game.System.writeEvent(E05), in: Game.System.readEvent(E00) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v4: data.a.get().v29 + (data.c.present ? 1 : 0) })
+    data.b.set({ v4: data.a.get().v29 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e5: resources.value.get() })
@@ -590,7 +590,7 @@ const S30 = Game.System("Stress/S30", {
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v5: data.a.get().v30 + (data.c.present ? 1 : 0) })
+    data.b.set({ v5: data.a.get().v30 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e6: resources.value.get() })
@@ -606,7 +606,7 @@ const S31 = Game.System("Stress/S31", {
   events: { out: Game.System.writeEvent(E07), in: Game.System.readEvent(E02) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v6: data.a.get().v31 + (data.c.present ? 1 : 0) })
+    data.b.set({ v6: data.a.get().v31 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e7: resources.value.get() })
@@ -624,7 +624,7 @@ const S32 = Game.System("Stress/S32", {
   nextMachines: { flow: Game.System.nextState(Flow) },
 }, ({ queries, resources, events, services, nextMachines }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v7: data.a.get().v0 + (data.c.present ? 1 : 0) })
+    data.b.set({ v7: data.a.get().v0 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
@@ -642,7 +642,7 @@ const S33 = Game.System("Stress/S33", {
   events: { out: Game.System.writeEvent(E01), in: Game.System.readEvent(E04) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v8: data.a.get().v1 + (data.c.present ? 1 : 0) })
+    data.b.set({ v8: data.a.get().v1 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e1: resources.value.get() })
@@ -658,7 +658,7 @@ const S34 = Game.System("Stress/S34", {
   events: { out: Game.System.writeEvent(E02), in: Game.System.readEvent(E05) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v9: data.a.get().v2 + (data.c.present ? 1 : 0) })
+    data.b.set({ v9: data.a.get().v2 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e2: resources.value.get() })
@@ -675,7 +675,7 @@ const S35 = Game.System("Stress/S35", {
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v10: data.a.get().v3 + (data.c.present ? 1 : 0) })
+    data.b.set({ v10: data.a.get().v3 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e3: resources.value.get() })
@@ -692,7 +692,7 @@ const S36 = Game.System("Stress/S36", {
   services: { clock: Game.System.service(Clock) },
 }, ({ queries, resources, events, services }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v11: data.a.get().v4 + (data.c.present ? 1 : 0) })
+    data.b.set({ v11: data.a.get().v4 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e4: resources.value.get() })
@@ -709,7 +709,7 @@ const S37 = Game.System("Stress/S37", {
   events: { out: Game.System.writeEvent(E05), in: Game.System.readEvent(E00) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v12: data.a.get().v5 + (data.c.present ? 1 : 0) })
+    data.b.set({ v12: data.a.get().v5 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e5: resources.value.get() })
@@ -725,7 +725,7 @@ const S38 = Game.System("Stress/S38", {
   events: { out: Game.System.writeEvent(E06), in: Game.System.readEvent(E01) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v13: data.a.get().v6 + (data.c.present ? 1 : 0) })
+    data.b.set({ v13: data.a.get().v6 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e6: resources.value.get() })
@@ -741,7 +741,7 @@ const S39 = Game.System("Stress/S39", {
   events: { out: Game.System.writeEvent(E07), in: Game.System.readEvent(E02) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v14: data.a.get().v7 + (data.c.present ? 1 : 0) })
+    data.b.set({ v14: data.a.get().v7 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e7: resources.value.get() })
@@ -760,7 +760,7 @@ const S40 = Game.System("Stress/S40", {
   nextMachines: { flow: Game.System.nextState(Flow) },
 }, ({ queries, resources, events, services, nextMachines }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v15: data.a.get().v8 + (data.c.present ? 1 : 0) })
+    data.b.set({ v15: data.a.get().v8 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
@@ -778,7 +778,7 @@ const S41 = Game.System("Stress/S41", {
   events: { out: Game.System.writeEvent(E01), in: Game.System.readEvent(E04) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v16: data.a.get().v9 + (data.c.present ? 1 : 0) })
+    data.b.set({ v16: data.a.get().v9 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e1: resources.value.get() })
@@ -794,7 +794,7 @@ const S42 = Game.System("Stress/S42", {
   events: { out: Game.System.writeEvent(E02), in: Game.System.readEvent(E05) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v17: data.a.get().v10 + (data.c.present ? 1 : 0) })
+    data.b.set({ v17: data.a.get().v10 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e2: resources.value.get() })
@@ -810,7 +810,7 @@ const S43 = Game.System("Stress/S43", {
   events: { out: Game.System.writeEvent(E03), in: Game.System.readEvent(E06) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v18: data.a.get().v11 + (data.c.present ? 1 : 0) })
+    data.b.set({ v18: data.a.get().v11 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e3: resources.value.get() })
@@ -827,7 +827,7 @@ const S44 = Game.System("Stress/S44", {
   services: { clock: Game.System.service(Clock) },
 }, ({ queries, resources, events, services }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v19: data.a.get().v12 + (data.c.present ? 1 : 0) })
+    data.b.set({ v19: data.a.get().v12 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e4: resources.value.get() })
@@ -845,7 +845,7 @@ const S45 = Game.System("Stress/S45", {
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v20: data.a.get().v13 + (data.c.present ? 1 : 0) })
+    data.b.set({ v20: data.a.get().v13 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e5: resources.value.get() })
@@ -861,7 +861,7 @@ const S46 = Game.System("Stress/S46", {
   events: { out: Game.System.writeEvent(E06), in: Game.System.readEvent(E01) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v21: data.a.get().v14 + (data.c.present ? 1 : 0) })
+    data.b.set({ v21: data.a.get().v14 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e6: resources.value.get() })
@@ -877,7 +877,7 @@ const S47 = Game.System("Stress/S47", {
   events: { out: Game.System.writeEvent(E07), in: Game.System.readEvent(E02) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v22: data.a.get().v15 + (data.c.present ? 1 : 0) })
+    data.b.set({ v22: data.a.get().v15 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e7: resources.value.get() })
@@ -895,7 +895,7 @@ const S48 = Game.System("Stress/S48", {
   nextMachines: { flow: Game.System.nextState(Flow) },
 }, ({ queries, resources, events, services, nextMachines }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v23: data.a.get().v16 + (data.c.present ? 1 : 0) })
+    data.b.set({ v23: data.a.get().v16 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
@@ -913,7 +913,7 @@ const S49 = Game.System("Stress/S49", {
   events: { out: Game.System.writeEvent(E01), in: Game.System.readEvent(E04) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v24: data.a.get().v17 + (data.c.present ? 1 : 0) })
+    data.b.set({ v24: data.a.get().v17 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e1: resources.value.get() })
@@ -930,7 +930,7 @@ const S50 = Game.System("Stress/S50", {
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v25: data.a.get().v18 + (data.c.present ? 1 : 0) })
+    data.b.set({ v25: data.a.get().v18 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e2: resources.value.get() })
@@ -946,7 +946,7 @@ const S51 = Game.System("Stress/S51", {
   events: { out: Game.System.writeEvent(E03), in: Game.System.readEvent(E06) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v26: data.a.get().v19 + (data.c.present ? 1 : 0) })
+    data.b.set({ v26: data.a.get().v19 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e3: resources.value.get() })
@@ -963,7 +963,7 @@ const S52 = Game.System("Stress/S52", {
   services: { clock: Game.System.service(Clock) },
 }, ({ queries, resources, events, services }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v27: data.a.get().v20 + (data.c.present ? 1 : 0) })
+    data.b.set({ v27: data.a.get().v20 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e4: resources.value.get() })
@@ -980,7 +980,7 @@ const S53 = Game.System("Stress/S53", {
   events: { out: Game.System.writeEvent(E05), in: Game.System.readEvent(E00) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v28: data.a.get().v21 + (data.c.present ? 1 : 0) })
+    data.b.set({ v28: data.a.get().v21 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e5: resources.value.get() })
@@ -996,7 +996,7 @@ const S54 = Game.System("Stress/S54", {
   events: { out: Game.System.writeEvent(E06), in: Game.System.readEvent(E01) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v29: data.a.get().v22 + (data.c.present ? 1 : 0) })
+    data.b.set({ v29: data.a.get().v22 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e6: resources.value.get() })
@@ -1013,7 +1013,7 @@ const S55 = Game.System("Stress/S55", {
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v30: data.a.get().v23 + (data.c.present ? 1 : 0) })
+    data.b.set({ v30: data.a.get().v23 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e7: resources.value.get() })
@@ -1031,7 +1031,7 @@ const S56 = Game.System("Stress/S56", {
   nextMachines: { flow: Game.System.nextState(Flow) },
 }, ({ queries, resources, events, services, nextMachines }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v31: data.a.get().v24 + (data.c.present ? 1 : 0) })
+    data.b.set({ v31: data.a.get().v24 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
@@ -1049,7 +1049,7 @@ const S57 = Game.System("Stress/S57", {
   events: { out: Game.System.writeEvent(E01), in: Game.System.readEvent(E04) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v0: data.a.get().v25 + (data.c.present ? 1 : 0) })
+    data.b.set({ v0: data.a.get().v25 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e1: resources.value.get() })
@@ -1065,7 +1065,7 @@ const S58 = Game.System("Stress/S58", {
   events: { out: Game.System.writeEvent(E02), in: Game.System.readEvent(E05) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v1: data.a.get().v26 + (data.c.present ? 1 : 0) })
+    data.b.set({ v1: data.a.get().v26 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e2: resources.value.get() })
@@ -1081,7 +1081,7 @@ const S59 = Game.System("Stress/S59", {
   events: { out: Game.System.writeEvent(E03), in: Game.System.readEvent(E06) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v2: data.a.get().v27 + (data.c.present ? 1 : 0) })
+    data.b.set({ v2: data.a.get().v27 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e3: resources.value.get() })
@@ -1099,7 +1099,7 @@ const S60 = Game.System("Stress/S60", {
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events, services }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v3: data.a.get().v28 + (data.c.present ? 1 : 0) })
+    data.b.set({ v3: data.a.get().v28 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e4: resources.value.get() })
@@ -1116,7 +1116,7 @@ const S61 = Game.System("Stress/S61", {
   events: { out: Game.System.writeEvent(E05), in: Game.System.readEvent(E00) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v4: data.a.get().v29 + (data.c.present ? 1 : 0) })
+    data.b.set({ v4: data.a.get().v29 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e5: resources.value.get() })
@@ -1132,7 +1132,7 @@ const S62 = Game.System("Stress/S62", {
   events: { out: Game.System.writeEvent(E06), in: Game.System.readEvent(E01) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v5: data.a.get().v30 + (data.c.present ? 1 : 0) })
+    data.b.set({ v5: data.a.get().v30 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e6: resources.value.get() })
@@ -1148,7 +1148,7 @@ const S63 = Game.System("Stress/S63", {
   events: { out: Game.System.writeEvent(E07), in: Game.System.readEvent(E02) },
 }, ({ queries, resources, events }) => {
   for (const { data } of queries.main.each()) {
-    data.b.set({ v6: data.a.get().v31 + (data.c.present ? 1 : 0) })
+    data.b.set({ v6: data.a.get().v31 + (data.c !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e7: resources.value.get() })

@@ -2,7 +2,7 @@ import { Descriptor, Result, Schema } from "@typeonce/ritmo"
 import * as Codecs from "../test/codecs.ts"
 import type { SpawnedId } from "@typeonce/ritmo/Command"
 import type { EntityId } from "@typeonce/ritmo/Entity"
-import type { Query } from "@typeonce/ritmo/Query"
+import type { Query, ReadCell } from "@typeonce/ritmo/Query"
 import { describe, expect, it } from "tstyche"
 
 const Position = Descriptor.Component<{ x: number; y: number }>()("Cells/Position")
@@ -52,17 +52,38 @@ describe("query cells", () => {
     })
   })
 
-  it("optional cells must be narrowed before reading", () => {
+  it("optional slots are a read cell or undefined, and must be narrowed before reading", () => {
     Game.System("Cells/Optional", {
       queries: { items: Game.Query({ selection: { health: Game.Query.optional(Health) } }) }
     }, ({ queries }) => {
       for (const { data } of queries.items.each()) {
-        expect(data.health.present).type.toBe<boolean>()
-        // @ts-expect-error Property 'get' does not exist on type 'AbsentOptionalReadCell'
+        expect(data.health).type.toBe<ReadCell<number> | undefined>()
+        // @ts-expect-error 'data.health' is possibly 'undefined'
         data.health.get()
-        if (data.health.present) expect(data.health.get()).type.toBe<number>()
-        expect(data.health.value()).type.toBe<number | undefined>()
-        if (data.health.present) expect(data.health.value()).type.toBe<number>()
+        expect(data.health?.get()).type.toBe<number | undefined>()
+        if (data.health !== undefined) expect(data.health.get()).type.toBe<number>()
+        if (data.health !== undefined) {
+          expect(data.health).type.not.toHaveProperty("present")
+          expect(data.health).type.not.toHaveProperty("value")
+        }
+      }
+    })
+  })
+
+  it("optional relation slots are a read cell or undefined, and must be narrowed before reading", () => {
+    const { relation: ChildOf } = Descriptor.Hierarchy("Cells/ChildOf", "Cells/Children")
+    const Linked = Schema.bind(Schema.fragment({ components: { Health }, relations: { ChildOf } }))
+    Linked.System("Cells/OptionalRelation", {
+      queries: { items: Linked.Query({ selection: { parent: Linked.Query.optionalRelation(ChildOf), children: Linked.Query.optionalRelated(ChildOf) } }) }
+    }, ({ queries }) => {
+      for (const { data } of queries.items.each()) {
+        expect(data.parent).type.toBe<ReadCell<EntityId<typeof Linked.schema, typeof Linked.schema>> | undefined>()
+        expect(data.children).type.toBe<ReadCell<ReadonlyArray<EntityId<typeof Linked.schema, typeof Linked.schema>>> | undefined>()
+        // @ts-expect-error 'data.parent' is possibly 'undefined'
+        data.parent.get()
+        // @ts-expect-error 'data.children' is possibly 'undefined'
+        data.children.get()
+        expect(data.parent?.get()).type.toBe<EntityId<typeof Linked.schema, typeof Linked.schema> | undefined>()
       }
     })
   })

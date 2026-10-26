@@ -145,7 +145,7 @@ describe("@typeonce/ritmo-render", () => {
       select: { sprite: Zoomed.Query.optional(Sprite) },
       resources: { zoom: Zoom },
       services: { prefix: Prefix },
-      create: ({ data, services }) => new FakeNode(`${services.prefix}${data.sprite.present ? data.sprite.get().label : "none"}`),
+      create: ({ data, services }) => new FakeNode(`${services.prefix}${data.sprite?.get().label ?? "none"}`),
       apply: (node, { transform, resources }) => {
         node.x = transform.x * resources.zoom.get()
       }

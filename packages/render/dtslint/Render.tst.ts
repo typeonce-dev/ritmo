@@ -55,7 +55,9 @@ describe("@typeonce/ritmo-render", () => {
       services: { scale: Scale },
       create: ({ data, services }) => {
         expect(services.scale.factor).type.toBe<number>()
-        if (data.sprite.present) expect(data.sprite.get()).type.toBe<{ readonly label: string }>()
+        // @ts-expect-error 'data.sprite' is possibly 'undefined'
+        data.sprite.get()
+        if (data.sprite !== undefined) expect(data.sprite.get()).type.toBe<{ readonly label: string }>()
         return { destroy() {}, x: 0 }
       },
       apply: (node, { transform, services }) => {

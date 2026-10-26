@@ -63,7 +63,7 @@ import type { Descriptor } from "@typeonce/ritmo/Descriptor"
 import type { Condition, ConditionNeedsFromConditions } from "@typeonce/ritmo/Machine"
 import type * as Entity from "@typeonce/ritmo/Entity"
 import type { Relation } from "@typeonce/ritmo/Relation"
-import type { OptionalReadAccess, OptionalReadCell, ReadAccess, ReadCell, ReadonlyValue } from "@typeonce/ritmo/Query"
+import type { OptionalReadAccess, ReadAccess, ReadCell, ReadonlyValue } from "@typeonce/ritmo/Query"
 import type { Schema } from "@typeonce/ritmo/Schema"
 import type { NodeRegistry } from "./NodeRegistry.ts"
 
@@ -100,7 +100,7 @@ export type Selection<S extends Schema.Any> = Readonly<Record<
 type SelectionCells<Select> = {
   readonly [K in keyof Select]:
     Select[K] extends ReadAccess<infer D> ? ReadCell<Descriptor.Value<D>>
-    : Select[K] extends OptionalReadAccess<infer D> ? OptionalReadCell<Descriptor.Value<D>>
+    : Select[K] extends OptionalReadAccess<infer D> ? ReadCell<Descriptor.Value<D>> | undefined
     : never
 }
 
@@ -337,7 +337,7 @@ export const system = <
       const context = contextOf(entity, data, services, resources)
       // A child met before its parent's node exists starts at the root; the
       // pass below moves it under the parent in this same run.
-      const parent: number | undefined = hierarchy === undefined || !data["__parent"].present ? undefined : data["__parent"].get()
+      const parent: number | undefined = hierarchy === undefined ? undefined : data["__parent"]?.get()
       options.apply(registry.ensure(entity.id, () => options.create(context), parent), context)
     }
 
