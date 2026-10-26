@@ -76,7 +76,11 @@ const noSegments: ReadonlyArray<Segment2> = []
  */
 export interface MoveResult {
   readonly position: Vec2
-  /** Whether any wall was touched. */
+  /**
+   * Whether the move touched a wall on the way, not counting the push out of
+   * a wall it started in. It does not say which wall, or whether the circle
+   * rests on one now: probe for that with `sweepCircle` (see `moveCircle`).
+   */
   readonly blocked: boolean
 }
 
@@ -384,6 +388,24 @@ export const pushOut = (center: Vec2, radius: number, walls: Walls, skin: number
  * tunnel through a wall. A circle that starts inside a wall is pushed out
  * first. A circle meeting a box's corner or a segment's end dead-on goes
  * around it rather than stopping against it.
+ *
+ * `blocked` says the move touched a wall, not which one, nor whether the
+ * circle stands on one now (a circle resting on a floor and not moving into
+ * it touches nothing). For a grounded or wall check, probe from the returned
+ * position with `sweepCircle` a little farther than `skin`, and read the
+ * hit's normal.
+ *
+ * @example
+ * ```ts
+ * declare const position: Vec2.Vec2, velocity: Vec2.Vec2
+ * declare const radius: number, dt: number
+ * declare const ledges: ReadonlyArray<Box2.Box2>
+ * // ---cut---
+ * // Fall, then look for a floor just under the moved circle (y points down).
+ * const moved = Collide2.moveCircle(position, Vec2.scale(velocity, dt), radius, { boxes: ledges })
+ * const below = Collide2.sweepCircle(moved.position, { x: 0, y: 2 * Collide2.defaultSkin }, radius, { boxes: ledges })
+ * const grounded = below !== undefined && below.ny < -0.5
+ * ```
  *
  * @example
  * ```ts

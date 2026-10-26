@@ -45,6 +45,20 @@ describe("hot-path helpers", () => {
     Scalar.moveToward({ x: 0, y: 0 }, 10, 1)
   })
 
+  it("Scalar.spring carries its state as a record and returns the next one", () => {
+    const spec = { frequencyHz: 3, dampingRatio: 0.3 }
+    expect(Scalar.spring({ value: 0, velocity: 0 }, 1, spec, 1 / 60)).type.toBe<Scalar.Spring>()
+    expect(Scalar.spring(Scalar.spring({ value: 0, velocity: 0 }, 1, spec, 1 / 60), 1, spec, 1 / 60)).type.toBe<Scalar.Spring>()
+    // @ts-expect-error Argument of type 'number' is not assignable to parameter of type 'Spring'
+    Scalar.spring(0, 1, spec, 1 / 60)
+    // @ts-expect-error Property 'velocity' is missing
+    Scalar.spring({ value: 0 }, 1, spec, 1 / 60)
+    // @ts-expect-error 'frequency' does not exist in type 'SpringSpec'
+    Scalar.spring({ value: 0, velocity: 0 }, 1, { frequency: 3, damping: 0.3 }, 1 / 60)
+    // @ts-expect-error Expected 4 arguments, but got 3
+    Scalar.spring({ value: 0, velocity: 0 }, 1, spec)
+  })
+
 
   it("Box2 and Collide2 report contacts as optional values", () => {
     const box = Box2.around(0, 0, 1, 1)

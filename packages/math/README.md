@@ -4,7 +4,7 @@ ritmo-math holds the 2D helpers most games would otherwise rewrite, as plain dat
 
 - `Vec2`: vector arithmetic on `{ x, y }`, lengths, `perpendicular`, `fromAngle` and `angle`, `moveToward`, `clampLength`, and `decayToward`, an ease that is the same at any step rate.
 - `Angle`: `wrap` into [-π, π) and `turnToward` the short way at a capped rate, for headings stored as one number.
-- `Scalar`: `moveToward`, `lerp`, and `decayToward` on plain numbers.
+- `Scalar`: `moveToward`, `lerp`, `decayToward`, and `spring`, a value with momentum that overshoots and wobbles back (squash, a pop), on plain numbers; both eases are the same at any step rate.
 - `Box2` edge boxes and `Segment2` walls at any angle, with circle overlap tests and `Box2.closestPoint`.
 - `Collide2`: swept circle collision against boxes and segments that slides along walls and never tunnels through them, circle against circle, and `pushOut`.
 - `FlowField`: one search toward a goal that leads every body around the walls.
