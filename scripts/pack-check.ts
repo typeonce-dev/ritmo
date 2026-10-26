@@ -56,6 +56,7 @@ for (const directory of packages) {
     for (const required of ["package/skills/ritmo/SKILL.md", "package/skills/ritmo/playbooks/mechanic.md", "package/skills/ritmo/references/spatial-grid.ts", "package/skills/ritmo-prototype/SKILL.md", "package/SETUP.md"]) {
       if (!listing.includes(required)) throw new Error(`${manifest.name} tarball is missing ${required}`)
     }
+    if (listing.includes("package/PROTOTYPE.md")) throw new Error(`${manifest.name} tarball contains the repo-only PROTOTYPE.md`)
   }
   if (directory === "pixi" && listing.some((file) => /\/(NodeRegistry|RenderSync)\.(ts|js|d\.ts)$/.test(file))) {
     throw new Error("Pixi tarball contains removed compatibility modules")

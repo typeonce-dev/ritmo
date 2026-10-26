@@ -6,7 +6,7 @@
 # Prototype: <working title>
 
 ## Card
-- **Question:** the one thing this prototype decides ("is dodging fun when the dash is the only attack?").
+- **Question:** the one thing this prototype decides, as what the player will do ("with the dash as the only attack, do players dash through attacks rather than away from them?"). "Is it fun?" is not a question a prototype can answer.
 - **Stop when:** what answers the question, or a round budget ("no keep in five rounds: kill").
 - **Fantasy:** what the player should feel, in plain words ("untouchable", "clever", "cozy").
 - **Verb:** the one action the toy is about.
@@ -28,12 +28,12 @@ The human answers by playing, so the question points at one moment they will mee
 
 - **One moment, by what is on screen:** "when the tiles turn solid red", not "the dodge".
 - **Compare the round's variants:** "which one", not "is it good".
-- **Answers are behaviour, not opinion:** what the player did ("got hit", "was already out"), which they remember after one play. Never "is it fun", "how does it feel", or a rating.
+- **Answers are behaviour, not opinion:** what the player did ("got hit", "was already out"), a concrete act they can report after one play. Never "is it fun", "how does it feel", or a rating: none of them says what to change.
 - **Each answer names the next change,** so the verdict needs no follow-up.
 
 ## Guidance
 
-- **One question per prototype.** A prototype that tries to answer two answers neither; start a second one instead.
-- **The fantasy comes first.** Pick the verb and the feedback for the feeling, not the other way round. Theme and art do not fix a loop that is not fun.
-- **The loop is repeated, and varied later.** If the 30 seconds are not fun, more content will not make the game fun.
+- **One question per prototype.** A question too big for a few rounds is split into several prototypes, one after another.
+- **The fantasy comes first.** Start from the feeling and find the verb that delivers it, not the other way round. Theme and art do not fix a loop that is not fun.
+- **The loop is repeated in changing situations.** If the 30 seconds are not fun, more content will not make the game fun.
 - **Cut early.** A verdict of kill is a result: record why, so the next prototype does not ask it again.
