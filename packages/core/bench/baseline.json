@@ -104,6 +104,11 @@
         "medianMs": 1.2369,
         "score": 0.3665
       },
+      "math/scalar-spring-10k": {
+        "minMs": 0.536,
+        "medianMs": 0.5613,
+        "score": 0.1823
+      },
       "math/flow-field-search": {
         "minMs": 0.1548,
         "medianMs": 0.1875,
