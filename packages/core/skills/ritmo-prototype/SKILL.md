@@ -28,7 +28,7 @@ To build, read the `@typeonce/ritmo-browser` README and the module headers of `S
 - Build the toy first: the verb and the feedback that shows its effect, with no goal yet. Start from the feeling the user wants, and draw shapes; art waits.
 - Change little per round, but far enough to feel: double or halve a number, not 5%.
 - Grow the verb you have through new situations before adding verbs.
-- A fix the human proposes points at what is wrong; build it, and try another cause alongside.
+- What the human reports is a symptom. A case they name is often one instance of a broader problem, and a fix they propose points at what is wrong: find the cause and fix that, building their fix too.
 - Cut early: a dead end is a result. Say when the rounds stop converging, and let the human decide.
 
 ## Each round

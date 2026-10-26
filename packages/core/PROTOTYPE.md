@@ -110,10 +110,11 @@ Ritmo convention (the `ritmo` skill). It is what makes graduation a refactor.
 - Hayashida (Super Mario 3D Land), via Game Developer, 2012 ([link][hayashida]): "First, you have to learn how to use that gameplay mechanic, and then the stage will offer you a slightly more complicated scenario in which you have to use it."
 - Cook, "SpaceCrack: Verbs", 2005 ([link][cook-verbs]): "it is better to go with a small number of expressive verbs than to overwhelm the player with a truckload of shallow verbs."
 
-### A fix the human proposes points at what is wrong; build it, and try another cause alongside
+### What the human reports is a symptom: find the cause behind a named case or a proposed fix
 
 - Pozzi & Zimmerman, rule T ([pdf][primer]): "you can take their suggestions as symptoms of what is and isnʼt working in the project, rather than as directions for the next steps in your design. If someone tells you to tear down a room and make it bigger, they are really telling you that it feels small."
 - Gaiman, "Ten rules for writing fiction", 2010 ([link][gaiman]): "when people tell you something's wrong or doesn't work for them, they are almost always right. When they tell you exactly what they think is wrong and how to fix it, they are almost always wrong."
+- Gaiman's second sentence covers both halves: people are often wrong about "exactly what they think is wrong", not only about the fix, so a case the human names is a lead to the cause, not the cause itself. Found in the Grid Tactics test: told "healing loops", the agent limited healing, when the stall came from any two options cancelling out.
 - The human directs the game (Ritmo), so their fix is always built.
 
 ### Cut early; say when the rounds stop converging, and let the human decide
