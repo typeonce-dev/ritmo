@@ -279,7 +279,7 @@ export const read = <R extends Relation.Any, S extends Schema.Any, Root = unknow
   descriptor
 })
 
-/** Like {@link read}, as an optional cell: entities without a target still match. */
+/** Like {@link read}, but entities without a target still match: their slot is `undefined`. */
 export const optional = <R extends Relation.Any, S extends Schema.Any, Root = unknown>(
   descriptor: R
 ): OptionalRelationReadAccess<R, S, Root> => ({
@@ -300,7 +300,7 @@ export const readRelated = <R extends Relation.Any, S extends Schema.Any, Root =
   descriptor
 })
 
-/** Like {@link readRelated}, as an optional cell: entities with no sources still match. */
+/** Like {@link readRelated}, but entities with no sources still match: their slot is `undefined`. */
 export const optionalRelated = <R extends Relation.Any, S extends Schema.Any, Root = unknown>(
   descriptor: R
 ): OptionalRelatedReadAccess<R, S, Root> => ({

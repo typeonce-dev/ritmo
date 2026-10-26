@@ -187,8 +187,8 @@ export const ReadVillage = Game.Inspector(
     villagers: queries.villagers.each().map(({ data }) => ({
       id: data.villager.get().id,
       ...data.position.get(),
-      burning: data.burning.present,
-      wet: data.wet.present
+      burning: data.burning !== undefined,
+      wet: data.wet !== undefined
     })),
     fired: resources.fired.get(),
     heard: resources.heard.get().count

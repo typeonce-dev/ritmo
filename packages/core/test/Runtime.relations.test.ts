@@ -255,12 +255,8 @@ describe("Runtime relationships", () => {
 
           const optionalSummary = queries.optionalTargets.each()
             .map((match) => {
-              const target = match.data.target.present
-                ? match.data.target.get().toString()
-                : "none"
-              const sources = match.data.sources.present
-                ? match.data.sources.get().length.toString()
-                : "none"
+              const target = match.data.target?.get().toString() ?? "none"
+              const sources = match.data.sources?.get().length.toString() ?? "none"
               return `${match.data.name.get().value}:${target}:${sources}`
             })
             .sort()

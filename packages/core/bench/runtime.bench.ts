@@ -153,6 +153,27 @@ const iterateRead: BenchCase = {
   }
 }
 
+const iterateOptional: BenchCase = {
+  name: "query/optional-read-20k",
+  description: "Read a required and an optional component on 20k entities, half of which hold the optional one",
+  setup: () => {
+    const runtime = makeRuntime()
+    populate(runtime, N, N)
+    const SumOptional = Game.System("Bench/SumOptional", {
+      queries: { all: Game.Query({ selection: { position: Game.Query.read(Position), velocity: Game.Query.optional(Velocity) } }) },
+      resources: { sum: Game.System.writeResource(Sum) }
+    }, ({ queries, resources }) => {
+      let total = 0
+      for (const { data } of queries.all.each()) {
+        total += data.position.get().x + (data.velocity?.get().x ?? 0)
+      }
+      resources.sum.set(total)
+    })
+    const schedule = Game.Schedule(SumOptional)
+    return { run: () => runtime.tick(schedule) }
+  }
+}
+
 const iterateWrite: BenchCase = {
   name: "query/iterate-write-10k",
   description: "Integrate velocity into position on 10k entities",
@@ -705,6 +726,7 @@ export const cases: ReadonlyArray<BenchCase> = [
   spawn,
   despawn,
   iterateRead,
+  iterateOptional,
   iterateWrite,
   numberWrite,
   setRaw,

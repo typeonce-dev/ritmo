@@ -24,6 +24,11 @@
         "medianMs": 0.1488,
         "score": 0.0498
       },
+      "query/optional-read-20k": {
+        "minMs": 0.3871,
+        "medianMs": 0.4,
+        "score": 0.1308
+      },
       "query/iterate-write-10k": {
         "minMs": 0.3474,
         "medianMs": 0.3633,

@@ -437,9 +437,7 @@ describe("Runtime query and lookup", () => {
         {
           let totalX = 0
           for (const match of queries.moving.each()) {
-            if (match.data.velocity.present) {
-              totalX += match.data.velocity.get().x
-            }
+            totalX += match.data.velocity?.get().x ?? 0
           }
 
           resources.count.set(queries.moving.each().length)
@@ -505,7 +503,7 @@ describe("Runtime query and lookup", () => {
             return
           }
 
-          resources.lastError.set(result.value.data.velocity.present ? "Present" : "Missing")
+          resources.lastError.set(result.value.data.velocity !== undefined ? "Present" : "Missing")
           resources.lastX.set(result.value.data.position.get().x)
         }
     )
@@ -833,10 +831,73 @@ describe("optional slots", () => {
     })
     const Read = Local.Inspector("Optional/Read", {
       queries: { named: Local.Query({ selection: { name: Local.Query.read(Name), hp: Local.Query.optional(Hp) } }) }
-    }, ({ queries }) => queries.named.each().map(({ data }) => [data.name.get(), data.hp.value()] as const).sort())
+    }, ({ queries }) => queries.named.each().map(({ data }) => [data.name.get(), data.hp?.get()] as const).sort())
     const runtime = Local.Runtime.make({ services: Local.Runtime.services() }).value
     runtime.tick(Local.Schedule(spawn, Local.Schedule.applyDeferred()))
     expect(runtime.inspect(Read)).toEqual([["empty", undefined], ["full", 3]])
+  })
+
+  it("tell an absent component from a held component whose value is undefined", () => {
+    const Note = Descriptor.Component<string | undefined>()("Optional/Note")
+    const Name = Descriptor.Component<string>()("Optional/Name")
+    const Local = Schema.bind(Schema.fragment({ components: { Note, Name } }))
+    const spawn = Local.System("Optional/Spawn", { commands: Local.System.commands(Local.System.spawns(Note, Name)) }, ({ commands }) => {
+      commands.spawn(Local.Command.spawn([Name, "blank"], [Note, undefined]))
+      commands.spawn(Local.Command.spawn([Name, "none"]))
+    })
+    const Read = Local.Inspector("Optional/Read", {
+      queries: { named: Local.Query({ selection: { name: Local.Query.read(Name), note: Local.Query.optional(Note) } }) }
+    }, ({ queries }) => queries.named.each().map(({ data }) => [data.name.get(), data.note !== undefined, data.note?.get()] as const).sort())
+    const runtime = Local.Runtime.make({ services: Local.Runtime.services() }).value
+    runtime.tick(Local.Schedule(spawn, Local.Schedule.applyDeferred()))
+    expect(runtime.inspect(Read)).toEqual([["blank", true, undefined], ["none", false, undefined]])
+  })
+
+  it("follow the entity gaining and losing the component while it keeps matching", () => {
+    const Hp = Descriptor.Component<number>()("Optional/Hp")
+    const Name = Descriptor.Component<string>()("Optional/Name")
+    const Local = Schema.bind(Schema.fragment({ components: { Hp, Name } }))
+    const Named = Local.Query({ selection: { name: Local.Query.read(Name), hp: Local.Query.optional(Hp) } })
+    const spawn = Local.System("Optional/Spawn", { commands: Local.System.commands(Local.System.spawns(Name)) }, ({ commands }) => {
+      commands.spawn(Local.Command.spawn([Name, "hero"]))
+    })
+    const toggle = Local.System("Optional/Toggle", {
+      queries: { named: Named },
+      commands: Local.System.commands(Local.System.inserts(Hp), Local.System.removes(Hp))
+    }, ({ queries, commands }) => {
+      for (const { entity, data } of queries.named.each()) {
+        if (data.hp === undefined) commands.insert(entity, Local.Command.entry(Hp, 5))
+        else commands.remove(entity, Hp)
+      }
+    })
+    const Read = Local.Inspector("Optional/Read", { queries: { named: Named } }, ({ queries }) => queries.named.each().map(({ data }) => data.hp?.get()))
+    const runtime = Local.Runtime.make({ services: Local.Runtime.services() }).value
+    runtime.tick(Local.Schedule(spawn, Local.Schedule.applyDeferred()))
+    const step = Local.Schedule(toggle, Local.Schedule.applyDeferred())
+    expect(runtime.inspect(Read)).toEqual([undefined])
+    runtime.tick(step)
+    expect(runtime.inspect(Read)).toEqual([5])
+    runtime.tick(step)
+    expect(runtime.inspect(Read)).toEqual([undefined])
+  })
+
+  it("fail when read through a match kept from an earlier run, held or not", () => {
+    const Hp = Descriptor.Component<number>()("Optional/Hp")
+    const Name = Descriptor.Component<string>()("Optional/Name")
+    const Local = Schema.bind(Schema.fragment({ components: { Hp, Name } }))
+    const spawn = Local.System("Optional/Spawn", { commands: Local.System.commands(Local.System.spawns(Hp, Name)) }, ({ commands }) => {
+      commands.spawn(Local.Command.spawn([Name, "none"]))
+    })
+    const kept: Array<{ readonly hp: unknown }> = []
+    const Keep = Local.Inspector("Optional/Keep", {
+      queries: { named: Local.Query({ selection: { name: Local.Query.read(Name), hp: Local.Query.optional(Hp) } }) }
+    }, ({ queries }) => {
+      for (const { data } of queries.named.each()) kept.push(data)
+    })
+    const runtime = Local.Runtime.make({ services: Local.Runtime.services() }).value
+    runtime.tick(Local.Schedule(spawn, Local.Schedule.applyDeferred()))
+    runtime.inspect(Keep)
+    expect(() => kept[0]!.hp).toThrow("Optional/Hp was used through a query match from an earlier run")
   })
 })
 

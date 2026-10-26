@@ -55,7 +55,7 @@ describe("number values", () => {
     const Read = Game.System("Numbers/ReadShield", {
       queries: { all: Game.Query({ selection: { speed: Game.Query.read(Speed), shield: Game.Query.optional(Shield) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.all.each()) seen.push(data.shield.value())
+      for (const { data } of queries.all.each()) seen.push(data.shield?.get())
     })
     runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred(), Read))
     expect(seen).toEqual([3, undefined])

@@ -19,8 +19,7 @@
  *   `ritmo/keep-simulation-headless`, `ritmo/no-infinity-in-simulation-data`,
  *   `ritmo/no-float-timers`, `ritmo/no-brand-cast`.
  * - Every file: `ritmo/handle-runtime-result`,
- *   `ritmo/prefix-descriptor-and-system-names`, `ritmo/use-cell-value`,
- *   `ritmo/no-state-spread`.
+ *   `ritmo/prefix-descriptor-and-system-names`, `ritmo/no-state-spread`.
  *
  * @module oxlint-plugin-ritmo
  */
@@ -33,7 +32,6 @@ import noFloatTimers from "./rules/no-float-timers.ts"
 import noInfinityInSimulationData from "./rules/no-infinity-in-simulation-data.ts"
 import noStateSpread from "./rules/no-state-spread.ts"
 import prefixDescriptorAndSystemNames from "./rules/prefix-descriptor-and-system-names.ts"
-import useCellValue from "./rules/use-cell-value.ts"
 import useClockForTime from "./rules/use-clock-for-time.ts"
 import useOpsForMath from "./rules/use-ops-for-math.ts"
 import useRandomForRandomness from "./rules/use-random-for-randomness.ts"
@@ -50,7 +48,6 @@ export default definePlugin({
     "no-brand-cast": noBrandCast,
     "handle-runtime-result": handleRuntimeResult,
     "prefix-descriptor-and-system-names": prefixDescriptorAndSystemNames,
-    "use-cell-value": useCellValue,
     "no-state-spread": noStateSpread
   }
 })

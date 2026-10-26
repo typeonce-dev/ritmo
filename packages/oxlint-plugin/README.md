@@ -29,7 +29,6 @@ Register the plugin and turn the rules on in `.oxlintrc.json`. The simulation ru
   "rules": {
     "ritmo/handle-runtime-result": "error",
     "ritmo/prefix-descriptor-and-system-names": "error",
-    "ritmo/use-cell-value": "error",
     "ritmo/no-state-spread": "error"
   },
   "overrides": [
@@ -50,7 +49,7 @@ Register the plugin and turn the rules on in `.oxlintrc.json`. The simulation ru
 }
 ```
 
-Rules are named `ritmo/<rule>`. `ritmo/use-ops-for-math` and `ritmo/use-cell-value` fix themselves with `oxlint --fix`.
+Rules are named `ritmo/<rule>`. `ritmo/use-ops-for-math` fixes itself with `oxlint --fix`.
 
 A deliberate exception, such as a host-time module inside a simulation folder, takes a disable comment with the reason:
 
@@ -70,7 +69,6 @@ const started = performance.now()
 | [`no-brand-cast`](#ritmono-brand-cast) | simulation | `raw as UserId`, `1 as Random.State` | the schema or constructor that brands it |
 | [`handle-runtime-result`](#ritmohandle-runtime-result) | everywhere | a dropped or unchecked `runtime.tick(...)` / `restore(...)` / `rewind(...)` / `snapshot()` / `checksum()` result | check `.ok` |
 | [`prefix-descriptor-and-system-names`](#ritmoprefix-descriptor-and-system-names) | everywhere | `"Position"`, `Game.System("Move", ...)` | `"Game/Position"` |
-| [`use-cell-value`](#ritmouse-cell-value) | everywhere | `cell.present ? cell.get() : undefined` | `cell.value()` |
 | [`no-state-spread`](#ritmono-state-spread) | everywhere | `{ ...ground, _tag: "air", vy }` | `cell.transition({ from, to, data })`, `nextMachines.x.set({ _tag, ...fields })`, or the new state's fields written out |
 
 ## Simulation rules
@@ -257,17 +255,6 @@ const Move = Game.System("Town/Move", ...)
 ```
 
 Checks the names given to `Descriptor.*`, `*.System`, `*.StateMachine`, `*.EntityScope`, `Clock.resource`, and the `name` of `Clock.system`, `InputCapture.system`, and `RenderSync.system` / `interpolate`.
-
-### `ritmo/use-cell-value`
-
-An optional query cell has one way to read its value or `undefined`: `cell.value()`.
-
-```ts
-const dash = target.data.dash.present ? target.data.dash.get() : undefined   // reported, fixed to:
-const dash = target.data.dash.value()
-```
-
-Check `cell.present` alone to branch without reading.
 
 ### `ritmo/no-state-spread`
 

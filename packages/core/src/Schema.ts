@@ -735,7 +735,7 @@ export namespace Schema {
       read: <D extends ComponentDescriptor<S>>(descriptor: D) => QueryModule.ReadAccess<D>
       /** A required writable slot; immutable components cannot be written (replace them with `commands.insert`). */
       write: <D extends ComponentDescriptor<S>>(descriptor: D & QueryModule.Writable<D>) => QueryModule.WriteAccess<D>
-      /** A read-only slot that does not constrain matching: check `present` before reading. */
+      /** A read-only slot that does not constrain matching: the read cell, or `undefined` when the entity lacks the component. To match only holders, use `with: [X]`. */
       optional: <D extends ComponentDescriptor<S>>(descriptor: D) => QueryModule.OptionalReadAccess<D>
       /** A `filters` entry: entities whose component was added since this system's previous run. */
       added: <D extends ComponentDescriptor<S>>(descriptor: D) => QueryModule.AddedFilter<D>
@@ -751,11 +751,11 @@ export namespace Schema {
       >(...filters: Filters) => QueryModule.AnyOfFilter<Filters[number]["descriptor"]>
       /** The entity's target in the relation; matches only entities that have one. See `Relation.read`. */
       readRelation: <R extends RelationDescriptor<S>>(descriptor: R) => Relation.RelationReadAccess<R, S, Root>
-      /** Like `readRelation`, as an optional cell: entities without a target still match. */
+      /** Like `readRelation`, but entities without a target still match: their slot is `undefined`. */
       optionalRelation: <R extends RelationDescriptor<S>>(descriptor: R) => Relation.OptionalRelationReadAccess<R, S, Root>
       /** The ids of the entities related to this one (`ChildOf` gives the children); matches only entities with at least one. */
       readRelated: <R extends RelationDescriptor<S>>(descriptor: R) => Relation.RelatedReadAccess<R, S, Root>
-      /** Like `readRelated`, as an optional cell: entities with none still match. */
+      /** Like `readRelated`, but entities with none still match: their slot is `undefined`. */
       optionalRelated: <R extends RelationDescriptor<S>>(descriptor: R) => Relation.OptionalRelatedReadAccess<R, S, Root>
     }
     readonly Command: {

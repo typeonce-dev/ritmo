@@ -24,7 +24,7 @@
  *     position: Game.Query.write(Position),
  *     // Read-only slots prove presence without granting mutation.
  *     velocity: Game.Query.read(Velocity),
- *     // Optional slots do not affect matching and must be narrowed explicitly.
+ *     // Optional slots do not affect matching: `undefined` when the entity lacks the component.
  *     sprite: Game.Query.optional(Sprite)
  *   },
  *   // Structural filters describe who participates in the system at all.
@@ -45,10 +45,8 @@
  *       y: position.y + velocity.y * dt
  *     }))
  *
- *     // Optional reads stay explicit at the use site.
- *     if (data.sprite.present) {
- *       void data.sprite.get()
- *     }
+ *     // An optional slot is the read cell, or `undefined` when the entity lacks the component.
+ *     void data.sprite?.get()
  *   }
  * })
  * ```
@@ -248,10 +246,17 @@ export type Writable<D> = D extends DescriptorModule.Immutable
  * Declares maybe-present read-only access to a component in a query
  * specification.
  *
- * `optional(...)` is for enrichment, not matching. It keeps the entity set
- * broad while letting one system opportunistically read extra data when
- * present. The returned cell forces an explicit `present` check before use, so
- * the possibility of absence remains visible in the type surface.
+ * `optional(...)` is for reading extra data when the entity holds it, not for
+ * matching: the query matches entities with or without the component. The
+ * slot is the component's read cell when the entity holds it and `undefined`
+ * when it does not, so check it (`data.sprite?.get()`, or
+ * `data.sprite !== undefined`) before reading. For a component whose own
+ * value can be `undefined`, an `undefined` slot means absent and `get()`
+ * returning `undefined` means present.
+ *
+ * To match only entities that hold a component (such as "is this the
+ * player?"), list it in the query's `with: [Player]` filter, or read it with
+ * `Game.Query.read(...)`, instead of an optional slot.
  *
  * @example
  * ```ts
@@ -260,6 +265,13 @@ export type Writable<D> = D extends DescriptorModule.Immutable
  *   selection: {
  *     position: Game.Query.read(Position),
  *     sprite: Game.Query.optional(Sprite)
+ *   }
+ * })
+ *
+ * const DrawMovers = Game.System("Game/DrawMovers", { queries: { movers: query } }, ({ queries }) => {
+ *   for (const { data } of queries.movers.each()) {
+ *     const frame = data.sprite?.get().frame ?? 0
+ *     void frame
  *   }
  * })
  * ```
@@ -490,12 +502,12 @@ export namespace Query {
   export type Cells<T extends Any> = {
     readonly [K in keyof T["selection"]]:
       T["selection"][K] extends ReadAccess<infer D> ? ReadCell<Descriptor.Value<D>>
-      : T["selection"][K] extends OptionalReadAccess<infer D> ? OptionalReadCell<Descriptor.Value<D>>
+      : T["selection"][K] extends OptionalReadAccess<infer D> ? ReadCell<Descriptor.Value<D>> | undefined
       : T["selection"][K] extends WriteAccess<infer D> ? WriteCellForDescriptor<D>
       : T["selection"][K] extends Relation.RelationReadAccess<any, infer S extends Schema.Any, infer Root> ? ReadCell<EntityId<S, Root>>
-      : T["selection"][K] extends Relation.OptionalRelationReadAccess<any, infer S extends Schema.Any, infer Root> ? OptionalReadCell<EntityId<S, Root>>
+      : T["selection"][K] extends Relation.OptionalRelationReadAccess<any, infer S extends Schema.Any, infer Root> ? ReadCell<EntityId<S, Root>> | undefined
       : T["selection"][K] extends Relation.RelatedReadAccess<any, infer S extends Schema.Any, infer Root> ? ReadCell<ReadonlyArray<EntityId<S, Root>>>
-      : T["selection"][K] extends Relation.OptionalRelatedReadAccess<any, infer S extends Schema.Any, infer Root> ? OptionalReadCell<ReadonlyArray<EntityId<S, Root>>>
+      : T["selection"][K] extends Relation.OptionalRelatedReadAccess<any, infer S extends Schema.Any, infer Root> ? ReadCell<ReadonlyArray<EntityId<S, Root>>> | undefined
       : never
   }
 
@@ -764,34 +776,6 @@ export type WriteCellForDescriptor<D extends ComponentDescriptor> =
     : D extends import("./Descriptor.ts").ConstructedDescriptor<"component", string, infer Value, infer Raw, infer Error>
     ? ConstructedWriteCell<Value, Raw, Error>
     : WriteCell<Descriptor.Value<D>>
-
-/**
- * Present branch for a maybe-present query slot.
- */
-export interface PresentOptionalReadCell<T> extends ReadCell<T> {
-  readonly present: true
-  /** The value, which is present. */
-  value(): T
-}
-
-/**
- * Absent branch for a maybe-present query slot.
- */
-export interface AbsentOptionalReadCell {
-  readonly present: false
-  /** `undefined`: the entity does not hold the component. */
-  value(): undefined
-}
-
-/**
- * A query slot that may or may not be present on the matched entity.
- *
- * Read it with `value()`: the value, or `undefined` when the entity does not
- * hold the component. Narrow on `present` (then `get()`) only when the
- * component's own value can be `undefined`, where `value()` cannot tell the
- * two apart.
- */
-export type OptionalReadCell<T> = PresentOptionalReadCell<T> | AbsentOptionalReadCell
 
 /**
  * The typed item returned by iterating a query handle.

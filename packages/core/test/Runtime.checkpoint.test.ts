@@ -80,11 +80,11 @@ const Damager = Game.System("Checkpoint/Damager", {
   const input = resources.input.get()
   for (const { entity, data } of queries.hurt.each()) {
     if ((entity.id + input) % 4 === 0) {
-      if (data.shield.present) commands.remove(entity, Shield)
+      if (data.shield !== undefined) commands.remove(entity, Shield)
       else commands.insert(entity, Game.Command.entry(Shield, {}))
       continue
     }
-    if (data.shield.present) continue
+    if (data.shield !== undefined) continue
     const left = data.health.get() - 1
     data.health.set(left)
     events.hit.emit({ id: entity.id, left })
@@ -165,10 +165,10 @@ const ReadWorld = Game.Inspector("Checkpoint/ReadWorld", {
   }
 }, ({ queries }) => queries.all.each().map(({ entity, data }) => ({
   id: entity.id,
-  pos: data.pos.value(),
-  health: data.health.value(),
-  shield: data.shield.present,
-  children: data.children.value()
+  pos: data.pos?.get(),
+  health: data.health?.get(),
+  shield: data.shield !== undefined,
+  children: data.children?.get()
 })))
 
 const makeGame = () => {

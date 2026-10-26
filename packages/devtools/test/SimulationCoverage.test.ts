@@ -136,7 +136,7 @@ describe("ritmo-devtools lint: simulation coverage", () => {
 
   it("prints that coverage was not checked when no override turns the simulation rules on", () => {
     const { status, output } = lintProject({
-      ".oxlintrc.json": config([{ files: ["src/**"], rules: { "ritmo/use-cell-value": "error" } }]),
+      ".oxlintrc.json": config([{ files: ["src/**"], rules: { "ritmo/no-state-spread": "error" } }]),
       "src/ui.ts": "export const label = 1\n"
     }, "import \"./src/ui.ts\"\n")
     expect(output).toContain("simulation coverage not checked: no rules in .oxlintrc.json turn on ritmo/keep-simulation-headless")

@@ -328,52 +328,6 @@ class EntityStateWriteCell {
   }
 }
 
-class OptionalComponentCell {
-  readonly page: Page
-  readonly slot: number
-  readonly name: string
-  readonly stamp: Stamp
-
-  constructor(world: World, record: EntityRecord, ordinal: number, stamp: Stamp) {
-    this.page = pageOf(world, record, ordinal)
-    this.slot = record.id & PAGE_MASK
-    this.name = record.nameAt(ordinal)
-    this.stamp = stamp
-  }
-
-  get present(): boolean {
-    if (!this.stamp.live) staleRun(this.name)
-    return this.page.values[this.slot] !== ABSENT
-  }
-
-  get(): unknown {
-    if (!this.stamp.live) staleRun(this.name)
-    const value = this.page.values[this.slot]
-    return value === PRESENT ? this.page.numbers[this.slot] : value
-  }
-
-  value(): unknown {
-    if (!this.stamp.live) staleRun(this.name)
-    const value = this.page.values[this.slot]
-    return value === ABSENT ? undefined : value === PRESENT ? this.page.numbers[this.slot] : value
-  }
-}
-
-/** {@link OptionalComponentCell} over a number: the same reads, with their own type feedback. */
-class OptionalNumberCell extends OptionalComponentCell {
-  override get(): unknown {
-    if (!this.stamp.live) staleRun(this.name)
-    const value = this.page.values[this.slot]
-    return value === PRESENT ? this.page.numbers[this.slot] : value
-  }
-
-  override value(): unknown {
-    if (!this.stamp.live) staleRun(this.name)
-    const value = this.page.values[this.slot]
-    return value === PRESENT ? this.page.numbers[this.slot] : value === ABSENT ? undefined : value
-  }
-}
-
 class StoreReadCell {
   readonly store: Map<symbol, unknown>
   readonly key: symbol
@@ -429,11 +383,6 @@ export const componentWrite = (
   return constructor === undefined ? cell : withConstructor(cell, constructor)
 }
 
-export const componentOptional = (world: World, record: EntityRecord, ordinal: number, stamp: Stamp): { readonly present: boolean; get(): unknown; value(): unknown } =>
-  holdsNumber(pageOf(world, record, ordinal), record.id & PAGE_MASK)
-    ? new OptionalNumberCell(world, record, ordinal, stamp)
-    : new OptionalComponentCell(world, record, ordinal, stamp)
-
 export const storeRead = (store: Map<symbol, unknown>, key: symbol): { get(): unknown } =>
   new StoreReadCell(store, key)
 
@@ -463,31 +412,39 @@ export const derivedRead = <T>(world: World, stamp: Stamp, name: string, read: (
   }
 }
 
-/**
- * A maybe-present cell over a derived value, used for optional relation slots.
+/*
+ * An optional slot is an accessor on a match's `data`: the slot's cell while
+ * it is filled, and `undefined` otherwise. Presence is read on every access,
+ * so a match reused across runs follows the entity gaining or losing the
+ * component, and reading the slot of a match from an earlier run fails like
+ * reading its cell. The cell is kept under a hidden key, and one getter per
+ * query slot serves every match, so all of a query's matches share one shape.
  */
-export const derivedOptional = <T>(
-  world: World,
-  stamp: Stamp,
-  name: string,
-  isPresent: () => boolean,
-  read: () => T
-): { readonly present: boolean; get(): T; value(): T | undefined } => {
-  const check = (): void => {
+
+/** What an optional relation slot keeps under its hidden key: the cell, and whether it is filled. */
+export interface HeldCell {
+  readonly cell: unknown
+  readonly held: () => boolean
+}
+
+/** The getter of an optional component slot whose cell (from {@link componentRead}) is kept under `key`. */
+export const optionalComponentGetter = (stamp: Stamp, key: symbol): (this: object) => unknown =>
+  function (this: object) {
+    const cell = (this as Record<symbol, ComponentReadCell>)[key]!
+    if (!stamp.live) staleRun(cell.record.nameAt(cell.ordinal))
+    return cell.page.values[cell.slot] === ABSENT ? undefined : cell
+  }
+
+/** The getter of an optional relation slot whose {@link HeldCell} is kept under `key`. */
+export const optionalHeldGetter = (stamp: Stamp, key: symbol, name: string): (this: object) => unknown =>
+  function (this: object) {
     if (!stamp.live) staleRun(name)
+    const held = (this as Record<symbol, HeldCell>)[key]!
+    return held.held() ? held.cell : undefined
   }
-  return {
-    get present() {
-      check()
-      return isPresent()
-    },
-    get: () => {
-      check()
-      return read()
-    },
-    value: () => {
-      check()
-      return isPresent() ? read() : undefined
-    }
-  }
+
+/** Puts an optional slot on `data`: `hidden` under `key`, read through `getter`. */
+export const defineOptional = (data: object, slot: string, key: symbol, hidden: unknown, getter: (this: object) => unknown): void => {
+  Object.defineProperty(data, key, { value: hidden })
+  Object.defineProperty(data, slot, { enumerable: true, get: getter })
 }
