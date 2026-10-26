@@ -23,7 +23,14 @@ const makeTarget = (rect = { left: 10, top: 20, ...size }) => {
   const remove = (type: string, listener: (event?: any) => void) => {
     listeners.get(type)?.delete(listener)
   }
-  const style = { touchAction: "auto" }
+  const styles = new Map<string, string>([["touch-action", "auto"]])
+  const style = {
+    getPropertyValue: (property: string) => styles.get(property) ?? "",
+    setProperty: (property: string, value: string) => {
+      if (value === "") styles.delete(property)
+      else styles.set(property, value)
+    }
+  }
   const target: Touch.TouchTarget & Pointer.PointerTarget = {
     addEventListener: add,
     removeEventListener: remove,
@@ -40,7 +47,12 @@ const makeTarget = (rect = { left: 10, top: 20, ...size }) => {
   return {
     target,
     blurHost,
-    style,
+    styles,
+    contextMenu: () => {
+      let prevented = false
+      for (const listener of listeners.get("contextmenu") ?? []) listener({ preventDefault: () => (prevented = true) })
+      return prevented
+    },
     down: (id: number, x: number, y: number, type?: string) => dispatch("pointerdown", id, x, y, type),
     move: (id: number, x: number, y: number, type?: string) => dispatch("pointermove", id, x, y, type),
     up: (id: number, x: number, y: number, type?: string) => dispatch("pointerup", id, x, y, type),
@@ -150,16 +162,38 @@ describe("Touch.actions", () => {
   it("ignores other pointer types unless asked, and cleans up", () => {
     const fake = makeTarget()
     const touch = Touch.actions(fake.target, fake.blurHost, layout)
-    expect(fake.style.touchAction).toBe("none")
+    expect(Object.fromEntries(fake.styles)).toEqual({
+      "touch-action": "none",
+      "user-select": "none",
+      "-webkit-user-select": "none",
+      "-webkit-touch-callout": "none"
+    })
     fake.down(1, 700, 300, "mouse")
     expect(touch.snapshot().actions.attack.held).toBe(false)
     touch.dispose()
     expect(fake.listenerCount()).toBe(0)
-    expect(fake.style.touchAction).toBe("auto")
+    expect(Object.fromEntries(fake.styles)).toEqual({ "touch-action": "auto" })
 
     const withMouse = Touch.actions(fake.target, fake.blurHost, layout, { pointerTypes: ["touch", "mouse"] })
     fake.down(1, 700, 300, "mouse")
     expect(withMouse.snapshot().actions.attack.held).toBe(true)
+  })
+
+  it("cancels the long-press context menu only while a tracked finger is down", () => {
+    const fake = makeTarget()
+    Touch.actions(fake.target, fake.blurHost, layout)
+    expect(fake.contextMenu()).toBe(false)
+    fake.down(1, 100, 200)
+    expect(fake.contextMenu()).toBe(true)
+    fake.up(1, 100, 200)
+    expect(fake.contextMenu()).toBe(false)
+    // A finger off every control still selects nothing, and a mouse right-click keeps its menu.
+    fake.down(2, 500, 50)
+    expect(fake.contextMenu()).toBe(true)
+    fake.blur()
+    expect(fake.contextMenu()).toBe(false)
+    fake.down(3, 100, 200, "mouse")
+    expect(fake.contextMenu()).toBe(false)
   })
 
   it("leaves touches out of Pointer by default", () => {
