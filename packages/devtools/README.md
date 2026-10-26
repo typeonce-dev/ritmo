@@ -8,6 +8,12 @@ answer is text and data, and nothing draws in the page.
 pnpm add -D @typeonce/ritmo-devtools
 ```
 
+The main import (`Session`, `Fuzz`, `Invariant`, `Replay`, `Lint`, ...) and
+`ritmo-devtools lint` need no peer dependency. Each optional peer is for one
+feature: `playwright` and `vite` for runs in browser engines
+(`PlaywrightEngine`, `ritmo-devtools verify`), `vite` for `ReplayVitePlugin`,
+and `rolldown` and `oxlint` for `ritmo-devtools scan`.
+
 The package reads the core `Debug` handle, which exists only on runtimes made
 with `debug: { hostClock }`. Production runtimes carry no handle and pay
 nothing. The modules read no platform globals: give the runtime and the
@@ -268,7 +274,7 @@ skipped and does not fail. The check needs Node 22.15 or later.
 | Code | Meaning |
 |---|---|
 | `uncovered-simulation-module` | The simulation loads this file, but no simulation override in `.oxlintrc.json` covers it, so oxlint never checks it for platform, time, randomness, or math calls. Add it to the override's `files`, or stop importing values from it. Exits with 1. |
-| `skill-not-linked` | Neither `.agents/skills/ritmo` nor `.claude/skills/ritmo` links the skill in `node_modules/@typeonce/ritmo/skills/ritmo`, so the game's agent does not read the playbooks for this Ritmo version. Link it (`SETUP.md` step 2). A note: the exit code is unchanged. |
+| `skill-not-linked` | For each skill `@typeonce/ritmo` ships (`ritmo`, `ritmo-prototype`): neither `.agents/skills/<skill>` nor `.claude/skills/<skill>` links it from `node_modules/@typeonce/ritmo/skills/<skill>`, so the game's agent does not read it for this Ritmo version. Link it (`SETUP.md` step 2). A note: the exit code is unchanged. |
 | `skill-copied` | The folder holds a copy of the skill (or links somewhere else), which goes stale on the next upgrade. Replace it with the link. A note: the exit code is unchanged. |
 
 The trace shows what systems wrote, not what they read. When a system writes

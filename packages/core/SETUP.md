@@ -2,17 +2,18 @@
 
 Follow these steps once in a new project, and for any step an existing project is missing. Use the project's package manager.
 
-1. Install the runtime and the checks every Ritmo game uses:
+1. Install the runtime and the debug sessions:
    ```sh
    pnpm add @typeonce/ritmo
-   pnpm add -D @typeonce/ritmo-devtools @typeonce/oxlint-plugin-ritmo oxlint
+   pnpm add -D @typeonce/ritmo-devtools
    ```
-2. Link the Ritmo skill from the installed package into the folder your agent reads skills from (`.agents/skills`, `.claude/skills`, ...), so it updates with every Ritmo upgrade:
+2. Link the Ritmo skills from the installed package into the folder your agent reads skills from (`.agents/skills`, `.claude/skills`, ...), so they update with every Ritmo upgrade:
    ```sh
    mkdir -p .agents/skills
    ln -s ../../node_modules/@typeonce/ritmo/skills/ritmo .agents/skills/ritmo
+   ln -s ../../node_modules/@typeonce/ritmo/skills/ritmo-prototype .agents/skills/ritmo-prototype
    ```
-3. Set up `.oxlintrc.json` from the `@typeonce/oxlint-plugin-ritmo` README and a `ritmo-devtools lint` entry from the `@typeonce/ritmo-devtools` README. One check script runs the type check, `oxlint`, `ritmo-devtools lint`, and the tests.
+3. Install the lint, `pnpm add -D @typeonce/oxlint-plugin-ritmo oxlint`, then set up `.oxlintrc.json` from the `@typeonce/oxlint-plugin-ritmo` README and a `ritmo-devtools lint` entry from the `@typeonce/ritmo-devtools` README. One check script runs the type check, `oxlint`, `ritmo-devtools lint`, and the tests.
    After every Ritmo upgrade, compare `.oxlintrc.json` with that README's config: a new rule is not on until the config lists it, so an existing project does not get it by upgrading.
 
 Add-ons, installed only when the game needs them:
@@ -22,4 +23,4 @@ Add-ons, installed only when the game needs them:
 - `@typeonce/ritmo-pixi`: the Pixi adapter for `@typeonce/ritmo-render`.
 - `@typeonce/ritmo-netcode`: online multiplayer (rollback or lockstep sessions over WebSocket, WebRTC, or any transport).
 
-Then use the skill for every change: it says where the docs are and how to structure the game.
+Then use the `ritmo` skill for every change: it says where the docs are and how to structure the game. To try a mechanic before building the game around it, ask for a prototype: the `ritmo-prototype` skill iterates fast with a lighter check until the prototype graduates.

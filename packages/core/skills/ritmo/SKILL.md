@@ -13,6 +13,10 @@ Follow the game's existing structure; the game decides its folders, UI framework
 - Each package's `README.md` covers its setup and workflow; on upgrade, its `CHANGELOG.md` from the installed version up.
 - Compiler errors and lint messages name the fix. Apply it; never cast around it.
 
+## Prototypes
+
+When the game has a `PROTOTYPE.md` at its root, follow the [`ritmo-prototype`](../ritmo-prototype/SKILL.md) skill: its check replaces the playbooks' checks here, and these principles still hold. Start one only when the user asks to prototype a mechanic or find the fun.
+
 ## Pick the playbook
 
 Read it before writing code; a change of several kinds reads each.

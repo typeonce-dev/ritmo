@@ -21,10 +21,10 @@
  * A missing or unreadable config, one with `extends`, or one that never turns
  * the rule on prints why the check was skipped and does not fail.
  *
- * Last, it notes when the project does not link the Ritmo skill from the
- * installed package (`.agents/skills/ritmo` or `.claude/skills/ritmo`, see
- * `SETUP.md`), or holds a copy that goes stale on upgrade. The note never
- * fails the lint.
+ * Last, it notes each Ritmo skill (`ritmo`, `ritmo-prototype`) the project
+ * does not link from the installed package (`.agents/skills/<skill>` or
+ * `.claude/skills/<skill>`, see `SETUP.md`), or holds a copy of it that goes
+ * stale on upgrade. The note never fails the lint.
  *
  * `verify` imports `<entry>` (a module exporting `replayTarget`, the
  * `make(playback)` factory `Replay.session` takes), plays the replay file in
