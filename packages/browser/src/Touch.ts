@@ -35,8 +35,13 @@
  *
  * Only `touch` pointers are tracked by default, so a mouse keeps working
  * through `Pointer`; pass `pointerTypes` to also drive the controls with a
- * mouse while developing. The module sets `touch-action: none` on the element
- * so the browser does not scroll or zoom under the controls.
+ * mouse while developing. While attached, the module turns off what the
+ * browser does with a finger on the element: `touch-action: none` stops
+ * scrolling and zooming, `user-select: none` and `-webkit-touch-callout: none`
+ * stop a held thumb from selecting the page (iOS Safari ignores
+ * `preventDefault()` on `pointerdown` for this), and the context menu a long
+ * press opens is cancelled while a tracked finger is down. `dispose()`
+ * restores the styles.
  *
  * @module Touch
  * @docGroup browser
@@ -268,7 +273,13 @@ export interface TouchTarget {
   removeEventListener(type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel", listener: (event: TouchEventLike) => void): void
   getBoundingClientRect(): { readonly left: number; readonly top: number; readonly width: number; readonly height: number }
   setPointerCapture?(pointerId: number): void
-  readonly style?: { touchAction: string }
+  addEventListener(type: "contextmenu", listener: (event: { preventDefault(): void }) => void): void
+  removeEventListener(type: "contextmenu", listener: (event: { preventDefault(): void }) => void): void
+  /** Set while attached so the browser does not scroll, zoom, or select under a finger; restored by `dispose()`. */
+  readonly style?: {
+    getPropertyValue(property: string): string
+    setProperty(property: string, value: string): void
+  }
 }
 
 /** Where window blur is observed, usually `window`. Held controls are cancelled on blur. */
@@ -284,6 +295,9 @@ export interface ActionsOptions {
 }
 
 const zero: Vector = { x: 0, y: 0 }
+
+/** CSS properties set to `none` while attached: no scrolling, zooming, selection, or iOS callout under a finger. */
+const noBrowserGestures = ["touch-action", "user-select", "-webkit-user-select", "-webkit-touch-callout"] as const
 
 const resting: StickState = { x: 0, y: 0, active: false }
 
@@ -417,6 +431,8 @@ export const actions = <const B extends string, const V extends string = never, 
   let swipe: { readonly pointerId: number; last: Position } | undefined
   /** Swipe movement since the previous snapshot, including fingers already lifted. */
   let swiped: Vector = zero
+  /** Tracked pointers that are down, on a control or not: a long press of any of them opens no context menu. */
+  const down = new Set<number>()
 
   const locate = (event: TouchEventLike): Position => {
     const rect = target.getBoundingClientRect()
@@ -452,6 +468,7 @@ export const actions = <const B extends string, const V extends string = never, 
     // A pointer id that comes down again without an up in between (the up
     // was lost) releases what it held first, as a cancel.
     end(event, true)
+    down.add(event.pointerId)
     relayout()
     const at = locate(event)
     for (const name of names) {
@@ -499,6 +516,7 @@ export const actions = <const B extends string, const V extends string = never, 
 
   const end = (event: TouchEventLike, cancelled: boolean): void => {
     if (!tracked(event)) return
+    down.delete(event.pointerId)
     const stick = stickOf(event.pointerId)
     if (stick !== undefined) {
       sticks.delete(stick)
@@ -519,19 +537,25 @@ export const actions = <const B extends string, const V extends string = never, 
 
   const onUp = (event: TouchEventLike): void => end(event, false)
   const onCancel = (event: TouchEventLike): void => end(event, true)
+  const onContextMenu = (event: { preventDefault(): void }): void => {
+    if (down.size > 0) event.preventDefault()
+  }
   const onBlur = (): void => {
+    down.clear()
     sticks.clear()
     swipe = undefined
     fingers.clear()
     for (const button of buttons.values()) lift(button, true)
   }
 
-  const previousTouchAction = target.style?.touchAction
-  if (target.style !== undefined) target.style.touchAction = "none"
+  const style = target.style
+  const previousStyles = style === undefined ? [] : noBrowserGestures.map((property) => [property, style.getPropertyValue(property)] as const)
+  for (const property of noBrowserGestures) style?.setProperty(property, "none")
   target.addEventListener("pointerdown", onDown)
   target.addEventListener("pointermove", onMove)
   target.addEventListener("pointerup", onUp)
   target.addEventListener("pointercancel", onCancel)
+  target.addEventListener("contextmenu", onContextMenu)
   blurHost.addEventListener("blur", onBlur)
 
   const stickState = (name: V): StickState => {
@@ -582,8 +606,10 @@ export const actions = <const B extends string, const V extends string = never, 
       target.removeEventListener("pointermove", onMove)
       target.removeEventListener("pointerup", onUp)
       target.removeEventListener("pointercancel", onCancel)
+      target.removeEventListener("contextmenu", onContextMenu)
       blurHost.removeEventListener("blur", onBlur)
-      if (target.style !== undefined && previousTouchAction !== undefined) target.style.touchAction = previousTouchAction
+      // An empty value removes the property, so a style the element did not have is not left behind.
+      for (const [property, value] of previousStyles) style?.setProperty(property, value)
     }
   }
 }
