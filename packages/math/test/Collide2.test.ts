@@ -159,6 +159,22 @@ describe("Collide2", () => {
     }
   })
 
+  it("finds the floor with a sweepCircle probe past the skin, which blocked does not tell", () => {
+    const floor = Box2.around(0, 100, 200, 10)
+    const walls = { boxes: [floor] }
+    const probe = (center: { x: number; y: number }) => Collide2.sweepCircle(center, { x: 0, y: 2 * Collide2.defaultSkin }, 10, walls)
+    // Landing: the move is blocked, and the probe finds a floor facing up
+    const landed = Collide2.moveCircle({ x: 0, y: 0 }, { x: 0, y: 200 }, 10, walls)
+    expect(landed.blocked).toBe(true)
+    expect(probe(landed.position)?.ny).toBe(-1)
+    // Sliding along the floor touches nothing, yet the circle stands on it
+    const slid = Collide2.moveCircle(landed.position, { x: 50, y: 0 }, 10, walls)
+    expect(slid.blocked).toBe(false)
+    expect(probe(slid.position)?.ny).toBe(-1)
+    // Off the edge, the probe finds nothing
+    expect(probe({ x: 400, y: landed.position.y })).toBeUndefined()
+  })
+
   describe("segments", () => {
     // A wall at 30°, from (0, 0) to (200, 115.47).
     const slanted = Segment2.between({ x: 0, y: 0 }, { x: 200, y: 200 * Math.tan(Math.PI / 6) })

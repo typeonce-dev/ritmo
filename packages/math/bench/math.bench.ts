@@ -8,7 +8,7 @@
  */
 import type { BenchCase } from "../../core/bench/harness.ts"
 import { Random } from "@typeonce/ritmo"
-import { Angle, Box2, Collide2, FlowField, Segment2, Vec2 } from "@typeonce/ritmo-math"
+import { Angle, Box2, Collide2, FlowField, Scalar, Segment2, Vec2 } from "@typeonce/ritmo-math"
 
 const N = 10_000
 
@@ -45,6 +45,31 @@ const vectorOps: BenchCase = {
 
 
 
+const springs: BenchCase = {
+  name: "math/scalar-spring-10k",
+  description: "Spring 10k values toward moving targets, one underdamped, one critical, and one overdamped spec in turn, as a squash or wobble in a render step",
+  setup: () => {
+    const specs: ReadonlyArray<Scalar.SpringSpec> = [
+      { frequencyHz: 3, dampingRatio: 0.3 },
+      { frequencyHz: 2, dampingRatio: 1 },
+      { frequencyHz: 4, dampingRatio: 1.8 }
+    ]
+    let states: Array<Scalar.Spring> = Array.from({ length: N }, (_, index) => ({ value: index % 7, velocity: 0 }))
+    let frame = 0
+    return {
+      run: () => {
+        frame++
+        let total = 0
+        states = states.map((state, index) => {
+          const next = Scalar.spring(state, (index + frame) % 11, specs[index % 3]!, 1 / 60)
+          total += next.value
+          return next
+        })
+        check(total)
+      }
+    }
+  }
+}
 
 const field = (cellSize: number): FlowField.FlowField => {
   const made = FlowField.make(cellSize)
@@ -142,6 +167,7 @@ const moveCircleSegments: BenchCase = {
 
 export const cases: ReadonlyArray<BenchCase> = [
   vectorOps,
+  springs,
   flowFieldSearch,
   flowFieldWay,
   moveCircle,
