@@ -36,10 +36,12 @@
  *   resources: { time: Game.System.readResource(Time), input: Game.System.readResource(Input) }
  * }, ({ queries, resources }) => {
  *   const { dt } = resources.time.get()
- *   const move = resources.input.get().vectors.move
+ *   const input = resources.input.get()
  *   for (const { data } of queries.player.each()) {
  *     const { x, y } = data.position.get()
- *     data.position.set({ x: x + move.x * 200 * dt, y: y + move.y * 200 * dt })
+ *     // A button reads as `held` / `pressed` / `released`; `act` sends the square home.
+ *     if (input.actions.act.pressed) data.position.set({ x: 100, y: 100 })
+ *     else data.position.set({ x: x + input.vectors.move.x * 200 * dt, y: y + input.vectors.move.y * 200 * dt })
  *   }
  * })
  * const setup = Game.Schedule(Spawn, Game.Schedule.applyDeferred())

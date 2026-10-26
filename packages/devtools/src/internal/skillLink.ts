@@ -24,9 +24,16 @@ export type SkillLink =
   | { readonly _tag: "Copied"; readonly skill: Skill; readonly path: string }
   | { readonly _tag: "Missing"; readonly skill: Skill }
 
-// A link into an installed `@typeonce/ritmo` package's skill: `node_modules/@typeonce/ritmo/skills/<skill>`, or pnpm's store path to it.
-const isInstalledSkill = (path: string, skill: Skill): boolean =>
-  path.includes(`${sep}node_modules${sep}`) && path.endsWith(join("@typeonce", "ritmo", "skills", skill))
+// A link into an installed `@typeonce/ritmo` package's skill: `node_modules/@typeonce/ritmo/skills/<skill>`,
+// pnpm's store path to it, or wherever the project's own `node_modules/@typeonce/ritmo` resolves (a `link:` checkout).
+const isInstalledSkill = (cwd: string, path: string, skill: Skill): boolean => {
+  if (path.includes(`${sep}node_modules${sep}`) && path.endsWith(join("@typeonce", "ritmo", "skills", skill))) return true
+  try {
+    return path === realpathSync(join(cwd, "node_modules", "@typeonce", "ritmo", "skills", skill))
+  } catch {
+    return false
+  }
+}
 
 const checkSkill = (cwd: string, skill: Skill): SkillLink => {
   let copied: string | undefined
@@ -34,7 +41,7 @@ const checkSkill = (cwd: string, skill: Skill): SkillLink => {
     const path = join(cwd, folder)
     try {
       const stat = lstatSync(path)
-      if (stat.isSymbolicLink() && isInstalledSkill(realpathSync(path), skill)) return { _tag: "Linked", skill, path: folder }
+      if (stat.isSymbolicLink() && isInstalledSkill(cwd, realpathSync(path), skill)) return { _tag: "Linked", skill, path: folder }
       copied ??= folder
     } catch {
       // Not there (or a dangling link): look at the next folder.

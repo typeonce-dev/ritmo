@@ -76,6 +76,21 @@ describe("ritmo-devtools lint: the skill link", () => {
     }
   })
 
+  it("says nothing when the package itself is linked from a checkout (`link:`)", () => {
+    const { status, output } = lintProject((dir) => {
+      const checkout = join(dir, "checkout")
+      for (const name of ["ritmo", "ritmo-prototype"]) {
+        mkdirSync(join(checkout, "skills", name), { recursive: true })
+        writeFileSync(join(checkout, "skills", name, "SKILL.md"), `# ${name}\n`)
+      }
+      mkdirSync(join(dir, "node_modules", "@typeonce"), { recursive: true })
+      symlinkSync(checkout, join(dir, "node_modules", "@typeonce", "ritmo"))
+      link(dir, ".agents/skills", ["ritmo", "ritmo-prototype"])
+    })
+    expect(status).toBe(0)
+    expect(output).not.toContain("note  skill")
+  })
+
   it("notes a copy, which goes stale on upgrade", () => {
     const { status, output } = lintProject((dir) => {
       mkdirSync(join(dir, ".agents", "skills", "ritmo"), { recursive: true })

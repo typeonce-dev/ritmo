@@ -331,6 +331,17 @@ export type EventWrite<D extends Descriptor<"event", string, any>> = {
  * This is the usual second half of a cross-system flow: one system emits an
  * event, and a later system reads it and re-validates any handles or lookups
  * it needs.
+ *
+ * @example
+ * ```ts
+ * const ApplyHits = Game.System("Game/ApplyHits", {
+ *   events: { hit: Game.System.readEvent(Hit) },
+ *   resources: { score: Game.System.writeResource(Score) }
+ * }, ({ events, resources }) => {
+ *   // `all()`: every event since this system's previous run, in emission order.
+ *   for (const { amount } of events.hit.all()) resources.score.update((score) => score + amount)
+ * })
+ * ```
  */
 export const readEvent = <D extends Descriptor<"event", string, any>>(
   descriptor: D

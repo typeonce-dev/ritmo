@@ -15,7 +15,6 @@ Quotes were checked against the text of the linked page on 2026-10-26. A quote m
 
 - **Graduation keeps the prototype's code.** EGP calls prototype code "quick throwaway code", and Brooks wrote "plan to throw one away". Both agent skills we learned from rewrite the prototype ([pstack][ps-proto] L3, [CCGS][cg-rule] L40). We follow evolutionary prototyping instead: Brooks retracted the rule, and McConnell sets it out as a deliberate alternative. The skill keeps the one shape that makes this safe (the simulation is the game), so graduation is a refactor. See [Graduation](#graduation).
 - **The human who plays is the director, not a stranger.** Hecker and Gingold warn about "prototypes that are only played by their creators". In Ritmo the human directs the game and does not write the code, so they are the nearest playtester there is.
-- **No ratings.** Valve uses rating scales in playtests. We drop them because a round's answer must decide the next change (Andreasen, Hopson), which a rating does not.
 - **Feel is prototyped in the browser.** CCGS says browsers distort feel and sends action prototypes to a native engine; its figure has no source. Ritmo is a browser library, so this is a Ritmo convention.
 
 ## The intro: find the fun fast; the question and the path can change; the human judges the fun
@@ -72,26 +71,30 @@ Ritmo convention (the `ritmo` skill). It is what makes graduation a refactor.
 - EGP, "How to Prototype a Game in Under 7 Days", 2005 ([link][egp]): "Nobody Cares About Your Great Engineering … "Correct" or "reusable" solutions are often not what we look for in quick throwaway code."
 - Hecker & Gingold ([slides][hecker]): "violate SE norms intentionally" and "robustness – needs to last long enough to get answer".
 - pstack ([prototype.md][ps-proto] L9): "No production framework, no tests, no abstractions." CCGS ([prototyper.md][cg-agent] L150): "Test coverage: manual testing only".
-- Which setup steps run now is a Ritmo convention.
+- Which setup steps run now is a Ritmo convention, and so is "plain components, and a resource for the game's phase, are fine": two test agents were unsure whether the `ritmo` skill's `EntityState` and state machines, which need schemas, apply before graduation.
 
 ## The check
 
 - The sources under "Everything else waits", and the maintainer's direction (Ritmo): a fast build with a small bug beats a slow, verified one while the question is whether it is fun.
 - Not driving the page or taking screenshots goes against pstack, which has the agent drive and screenshot each variant ([prototype.md][ps-proto] L11). It follows CCGS, which does not "infer one from how the build looks" ([6-debrief.md][cg-debrief] L28-31): the human is about to play it.
+- "Opened once" and the one screenshot in a round about looks are Ritmo conventions from the tests: every agent was unsure how to read the console without driving the page, and in the Web Platformer art rounds nothing but a look could compare the build with the human's references.
 - Reproducing a reported bug headless is the `ritmo` skill's `playbooks/bug-fix.md`, made smaller (Ritmo).
 - Starting from one compiled whole-game example (the `BrowserTickSource` module header, checked by `pnpm check-examples`) is a Ritmo convention. In every test the agent lost time stitching the factories together from module headers, and the Mystery Map agent only got fast once it found a website demo, which npm does not ship.
 
 ## Finding the fun
 
-### Start from the feeling and the smallest thing that can be fun; draw shapes
+### Start from the feeling and the smallest thing that can be fun; draw shapes until the human brings a look
 
 - EGP ([link][egp]): "Build the Toy First. Start with the core mechanic. … This "toy" should be the core mechanic of the game minus any goals or decisions. There is no win or lose state, just a fun thing to play with." And on goals: "The best goals, we found, were an innate part of the gameplay". Hence "the smallest goal when the game is about goals": in the Grid Tactics and Mystery Map tests, giving and combining meant nothing without something to want.
 - Metzen, Wowhead interview, 2023 ([via Wayback][metzen]): "whatever it is, you know you start with a fantasy. We try to build a structure that enables the player to feel their accomplishments, to feel the fantasy through the gameplay." EGP: "an initial emotional target basically wrote the entire game."
 - Crawford, "The Two Faces of Reality", 2013 ([link][crawford]): "If you examine a game and write down all the verbs available to the player, then give that list of verbs to me, I can tell you exactly what that game is about".
 - Cook, "Loops and Arcs", 2012 ([link][cook-loops]): "Functional feedback that helps players understand causation."
-- EGP ([link][egp]): "It's entirely possible to have fun with basic primitives … Prove to yourself that your core mechanic is worthwhile with a simple prototype. Once you're convinced, then you can make it pretty."
+- EGP ([link][egp]): "It's entirely possible to have fun with basic primitives … Prove to yourself that your core mechanic is worthwhile with a simple prototype. Once you're convinced, then you can make it pretty." A look the human brings (a mockup, reference images) is that moment: the maintainer's direction (Ritmo), from the Web Platformer test, where two agents read "art waits" against the human's own references.
 
-### Explore broadly: read all the verdicts together and change course when they point the same way
+### Explore broadly: read all the verdicts together; offer a change of course as options named by the choice they give
+
+- Sid Meier, GDC 2012, via Game Developer ([link][meier-decisions]): "Games are a series of interesting decisions" … "One common characteristic of interesting decisions is that they involve some kind of tradeoff". Naming an option by the choice it gives the player ("when do I cross?") is how the human judged every mechanic kept in the Web Platformer test.
+- CCGS ([brainstorm][cg-brainstorm] L48): "propose **2 or 3 one-line concepts** … Ask the user to pick or combine them". pstack ([prototype.md][ps-proto] L8): "let the user pick directions before building." In the Web Platformer test, the two rounds where the human asked for options first produced the biggest steps.
 
 - Sid Meier, via Soren Johnson ([link][sids-rules]): "The point is not that the new values are likely to be correct - the goal is to stake out more design territory with each successive iteration."
 - Hecker & Gingold ([slides][hecker]): "You're going to be wrong a lot, so your failures should cost little, and you can have more of them." … "You can prove bad ideas are bad, and good ideas are good."
@@ -119,23 +122,9 @@ Ritmo convention (the `ritmo` skill). It is what makes graduation a refactor.
 
 ## Each round
 
-The reply is the link, the direction being tried, and any open question, with the keys and the variant's name on screen in the game: a Ritmo convention, from the maintainer, who plays first and only skims the reply afterwards. The question is optional: in the Grid Tactics test the human answered none of the six and gave every verdict in their own words, so a required question only added text. When there is one, the sources below shape it.
+The reply is the link, the direction being tried, what the check did not run, and any open question, with the keys and the variant's name on screen in the game: a Ritmo convention, from the maintainer, who plays first and only skims the reply. Saying what the check did not run (a knockout, a lever) tells the human what to watch for. A question is optional: in the Grid Tactics test the human answered none of the six and gave every verdict in their own words.
 
-### A question, when asked, is about one moment of play
-
-- Pozzi & Zimmerman, rule S ([pdf][primer]): "Begin with very specific questions … The more concrete your questions, the more useful answers you will get."
-- CCGS ([6-debrief.md][cg-debrief] L41): "What was the moment — if any — where it felt like it was working? Be specific."
-
-### The answer is something the player did, not an opinion
-
-- Nielsen, "First Rule of Usability? Don't Listen to Users", NN/g, 2001 ([link][nielsen]): "pay attention to what users do, not what they say. Self-reported claims are unreliable". He also warns that "people are really telling you what they remember doing", which is why the question is about one moment, asked right after the play.
-- Ambinder, "Valve's Approach to Playtesting", GDC 2009 ([slides][valve]): "Importance of what people do—not what they say" and "Difficulty in converting ratings to meaningful decisions".
-- Hecker & Gingold ([slides][hecker]): "Observations, not suggestions."
-- Fitzpatrick, *The Mom Test*, 2013 (book, via [Goodreads][momtest]): "Ask about specifics in the past instead of generics or opinions about the future".
-- Hopson, "Why I hate fun", 2019 ([link][hopson]): "When players say a game isn't fun, there isn't a clear next step based on that statement alone." and "People always tell you to your face that the game is fun unless it's absolutely awful."
-- Player Research ([link][player-research]): "Less "was it fun?", more "could players get to the fun?""
-
-### The answer decides the next change
+### Ask only when one answer would decide the next change
 
 - Andreasen, "'Backward' Market Research", HBR, 1985 ([link][andreasen]): "research should be designed to lead to a decision." … "Only by first thinking through the decisions to be made with the research results will the project be started with high likelihood of actionability."
 
@@ -152,10 +141,12 @@ The reply is the link, the direction being tried, and any open question, with th
 - Brooks, Computerworld interview, 2010 ([link][brooks-grill]): "You ought to plan to continually iterate on it, not just build it, throw it away and start over."
 - McConnell, *Rapid Development*, ch. 21, 1996 (book, via the [O'Reilly preview][mcconnell]): "Evolutionary Prototyping is not the same as Throwaway Prototyping, and making the right choice about whether to develop an evolutionary prototype or a throwaway prototype is one key to success."
 - Hecker & Gingold ([slides][hecker]) list "wholesale incorporation into the product" among a prototype's payoffs.
+- From the Web Platformer graduation (Ritmo): picking the entry module the tests import comes first, because the schema step reshapes the whole simulation (float timers become `Clock` deadlines, mode flags an `EntityState` or a state machine) and the restructure tends to happen with it; a test starts from a given situation by editing a snapshot and restoring it.
 - The steps (schemas, tests and fuzzing, SETUP step 3, tuned values with `meta`, the refactor playbook) are Ritmo conventions: the `ritmo` skill's checks, applied once.
 
 [egp]: https://www.gamedeveloper.com/game-platforms/how-to-prototype-a-game-in-under-7-days
 [hecker]: https://web.archive.org/web/2023id_/https://www.chrishecker.com/images/9/93/Gdc2006-AdvancedPrototyping.ppt
+[meier-decisions]: https://www.gamedeveloper.com/design/gdc-2012-sid-meier-on-how-to-see-games-as-sets-of-interesting-decisions
 [sids-rules]: https://www.designer-notes.com/?p=119
 [kartones]: https://blog.kartones.net/post/book-review-sid-meiers-memoir/
 [griesemer-sniper]: https://files.bungie.org/Griesemer_Jaime_DesignInDetail_Sniper.pdf
@@ -168,12 +159,7 @@ The reply is the link, the direction being tried, and any open question, with th
 [swink]: https://www.gamedeveloper.com/design/game-feel-the-secret-ingredient
 [primer]: http://mycours.es/gamedesign2018/files/2018/11/playtesting-primer.pdf
 [fullerton]: https://api.pageplace.de/preview/DT0400.9781351597708_A35121472/preview-9781351597708_A35121472.pdf
-[nielsen]: https://www.nngroup.com/articles/first-rule-of-usability-dont-listen-to-users/
 [nng-false]: https://www.nngroup.com/articles/false-consensus/
-[valve]: https://cdn.fastly.steamstatic.com/apps/valve/2009/GDC2009_ValvesApproachToPlaytesting.pdf
-[hopson]: https://www.gamesindustry.biz/articles/2019-10-29-why-i-hate-fun
-[player-research]: https://www.playerresearch.com/learn/getting-more-from-usability-testing-your-game/
-[momtest]: https://www.goodreads.com/author/quotes/243396.Rob_Fitzpatrick
 [aqa]: https://filestore.aqa.org.uk/content/research/CERP_RP_CW_20062012_2.pdf
 [andreasen]: https://hbr.org/1985/05/backward-market-research
 [gaiman]: https://www.theguardian.com/books/2010/feb/20/ten-rules-for-writing-fiction-part-one
@@ -188,3 +174,4 @@ The reply is the link, the direction being tried, and any open question, with th
 [cg-debrief]: https://github.com/Donchitos/Claude-Code-Game-Studios/blob/05ad7c8a5b8aa2aa86bbd3439ae7cf7295cac418/.claude/skills/prototype/references/6-debrief.md
 [cg-agent]: https://github.com/Donchitos/Claude-Code-Game-Studios/blob/05ad7c8a5b8aa2aa86bbd3439ae7cf7295cac418/.claude/agents/prototyper.md
 [cg-rule]: https://github.com/Donchitos/Claude-Code-Game-Studios/blob/05ad7c8a5b8aa2aa86bbd3439ae7cf7295cac418/.claude/rules/prototype-code.md
+[cg-brainstorm]: https://github.com/Donchitos/Claude-Code-Game-Studios/blob/05ad7c8a5b8aa2aa86bbd3439ae7cf7295cac418/.claude/skills/brainstorm/SKILL.md
