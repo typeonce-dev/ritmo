@@ -79,7 +79,7 @@ import { makeQueryEngine } from "./internal/queries.ts"
 import type { Reverts as QueryReverts } from "./internal/queries.ts"
 import { requirementIndex } from "./internal/requirements.ts"
 import * as Streams from "./internal/streams.ts"
-import { ABSENT, makeWorld } from "./internal/world.ts"
+import { makeWorld } from "./internal/world.ts"
 import type { WorldHooks, WorldMark, WorldRewind } from "./internal/world.ts"
 import type * as Machine from "./Machine.ts"
 import * as Query from "./Query.ts"
@@ -92,7 +92,7 @@ import * as Schedule from "./Schedule.ts"
 import * as OrderInternal from "./internal/order.ts"
 import * as EntityScopeModule from "./EntityScope.ts"
 import * as Snapshot from "./Snapshot.ts"
-import type { AnyScheduleOrder, ExecutableScheduleDefinition } from "./Schedule.ts"
+import type { ExecutableScheduleDefinition } from "./Schedule.ts"
 import type { Registry, Schema } from "./Schema.ts"
 import type {
   DespawnedReadView,
@@ -463,17 +463,6 @@ type ValidateScheduleArgs<
       }
   : Schedules & {
       readonly __fixRuntimeRequirements__: RequirementErrorsOfSchedule<NoInfer<Schedules[number]>, Services, Resources, Machines>
-    }
-
-type ValidateSchedule<
-  Schedule extends ExecutableScheduleDefinition<any, any, any, any, any>,
-  Services extends Record<string, unknown>,
-  Resources extends object,
-  Machines extends object
-> = [RequirementErrorsOfSchedule<Schedule, Services, Resources, Machines>] extends [never]
-  ? unknown
-  : {
-      readonly __fixRuntimeRequirements__: RequirementErrorsOfSchedule<Schedule, Services, Resources, Machines>
     }
 
 type RequirementErrorsOfInspector<
@@ -1269,7 +1258,7 @@ const makeValidatedRuntime = <
     return Result.success(entityId(targetId))
   }
 
-  const makeLookup = (reader: ReaderState): LookupApi<S, Root> => {
+  const makeLookup = (): LookupApi<S, Root> => {
     const lookup: LookupApi<S, Root> = {
     related: relatedTarget,
     relatedSources(target, relation) {
@@ -1794,7 +1783,7 @@ const makeValidatedRuntime = <
    */
   const makeContext = (system: SystemDefinition<any, any, any>, reader: ReaderState, queue: Command.CommandQueue<S, Root>): SystemContext<any> => {
     const spec = system.spec
-    const lookup = makeLookup(reader)
+    const lookup = makeLookup()
     const paused = (spec.pauseWhen as ReadonlyArray<unknown>).length > 0
     /** On a debug runtime, records reads after a loss and calls of `lagged()`, for the `stream-loss-unread` lint. */
     const watch = <V extends { all(): unknown; lagged(): boolean }>(view: V, stream: string): V =>

@@ -81,7 +81,7 @@ import * as Result from "@typeonce/ritmo/Result"
 import { boundKeys } from "./internal/introspect.ts"
 import type { ReportsBoundKeys } from "./internal/introspect.ts"
 import { anyUsed } from "./internal/used.ts"
-import { digital, directionName, directions, isVectorBinding, zero } from "./internal/vectors.ts"
+import { digital, directionName, directions, isVectorBinding } from "./internal/vectors.ts"
 import type { ActionState } from "./internal/state.ts"
 import type { Direction, Vector } from "./internal/vectors.ts"
 

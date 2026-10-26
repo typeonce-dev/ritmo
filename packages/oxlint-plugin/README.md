@@ -271,4 +271,32 @@ const popped = { _tag: "air", vy: 2, coyote: 0 }   // in a pure function
 
 Spreading the previous value to change fields of the same state (`{ ...air, vy: air.vy - 1 }`) is not reported, nor is a `_tag` written before the spread (`{ _tag: to, ...data }`).
 
+## Built-in rules that pair well
+
+Some of oxlint's own rules catch Ritmo mistakes too. They are optional; turn on the ones the game wants.
+
+| Rule | Catches in a Ritmo game |
+|---|---|
+| `typescript/no-unnecessary-condition` | a `Result` checked as a boolean instead of with `.ok` (`if (!runtime.restore(save))` never fires), an object compared to `undefined` |
+| `typescript/switch-exhaustiveness-check` | a switch over a closed set (a role, a kind, a state's `_tag`) that misses a member added later |
+| `typescript/no-floating-promises`, `typescript/no-misused-promises` | host code that never awaits an asset load or a replay upload, or passes an async callback where a plain one is called |
+| `typescript/restrict-template-expressions`, `typescript/no-base-to-string` | `[object Object]` in HUD or log text |
+| the default `correctness` category (with `no-unused-vars`) | dead code and likely bugs; oxlint runs it unless the config turns it off |
+
+The `typescript/*` rules above read types: install `oxlint-tsgolint` and turn them on with `"options": { "typeAware": true }` in `.oxlintrc.json` (or `oxlint --type-aware`).
+
+```jsonc
+{
+  "options": { "typeAware": true },
+  "rules": {
+    "typescript/no-unnecessary-condition": "error",
+    "typescript/switch-exhaustiveness-check": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/restrict-template-expressions": "error",
+    "typescript/no-base-to-string": "error"
+  }
+}
+```
+
 Source: https://github.com/typeonce-dev/ritmo

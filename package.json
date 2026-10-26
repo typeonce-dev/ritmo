@@ -39,6 +39,7 @@
     "arktype": "^2.2.9",
     "effect": "4.0.2",
     "oxlint": "1.88.0",
+    "oxlint-tsgolint": "7.0.2005",
     "pixi.js": "^8.17.1",
     "tstyche": "7.2.3",
     "tsx": "^4.21.0",

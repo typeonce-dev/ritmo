@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { Descriptor, Entity, Result, Schema, Snapshot } from "@typeonce/ritmo"
+import { Descriptor, Entity, Schema, Snapshot } from "@typeonce/ritmo"
 import * as Codecs from "./codecs.ts"
 import { worldOf } from "./saved.ts"
 

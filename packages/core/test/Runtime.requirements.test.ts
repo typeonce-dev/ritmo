@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest"
 import { Descriptor, Schema } from "@typeonce/ritmo"
-import * as Runtime from "@typeonce/ritmo/Runtime"
 
 describe("Runtime dynamic requirements", () => {
   it("reports missing nominal requirements before executing an erased schedule", () => {

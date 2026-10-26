@@ -61,6 +61,7 @@ const checksOf = (conditions: ReadonlyArray<Machine.Condition>): Array<Machine.C
       case "or":
         return checksOf(condition.conditions)
       default:
+        // `inState` and `stateChanged` hold no checks.
         return []
     }
   })

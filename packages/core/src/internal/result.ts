@@ -22,8 +22,8 @@ type SuccessValue<Input> = Input extends Success<infer Value> ? Value : never
 type FailureError<Input> = Input extends Failure<infer Error> ? Error : never
 
 export type MatchReturn<
-  Value,
-  Error,
+  _Value,
+  _Error,
   SuccessReturn,
   FailureReturn
 > = SuccessReturn | FailureReturn

@@ -6,6 +6,18 @@
   "categories": {
     "correctness": "off"
   },
+  // Type-aware rules run through oxlint-tsgolint, with each file's nearest tsconfig.
+  "options": {
+    "typeAware": true
+  },
+  "rules": {
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-unnecessary-type-arguments": "error",
+    "typescript/switch-exhaustiveness-check": ["error", { "considerDefaultExhaustiveForUnions": true }],
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "ignoreRestSiblings": true }]
+  },
   "overrides": [
     {
       "files": [
@@ -41,6 +53,25 @@
       ],
       "rules": {
         "ritmo/no-brand-cast": "error"
+      }
+    },
+    {
+      // Package sources check untrusted input defensively, so only game code gets this one.
+      "files": [
+        "integration/**"
+      ],
+      "rules": {
+        "typescript/no-unnecessary-condition": "error"
+      }
+    },
+    {
+      // Type tests cast to build values and bind values only to check that they compile.
+      "files": [
+        "packages/*/dtslint/**"
+      ],
+      "rules": {
+        "typescript/no-unnecessary-type-assertion": "off",
+        "eslint/no-unused-vars": "off"
       }
     }
   ],

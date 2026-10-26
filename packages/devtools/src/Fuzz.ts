@@ -54,7 +54,7 @@
 import { Clock } from "@typeonce/ritmo"
 import type { Descriptor } from "@typeonce/ritmo/Descriptor"
 import * as Result from "@typeonce/ritmo/Result"
-import type { AnyScheduleOrder, ExecutableScheduleDefinition, Source } from "@typeonce/ritmo/Schedule"
+import type { ExecutableScheduleDefinition, Source } from "@typeonce/ritmo/Schedule"
 import type { Schema } from "@typeonce/ritmo/Schema"
 import type * as Snapshot from "@typeonce/ritmo/Snapshot"
 import type * as Checkpoint from "@typeonce/ritmo/Checkpoint"
@@ -284,6 +284,8 @@ const violationOf = (stop: Session.Stop): Violation | InvalidOptions | undefined
   switch (stop.reason) {
     case "completed":
     case "until":
+    // Fuzz sessions take no labels, so a labels inspector never throws here.
+    case "labels-threw":
       return undefined
     case "invariant":
       return { _tag: "InvariantViolated", invariant: stop.invariant, message: stop.message }

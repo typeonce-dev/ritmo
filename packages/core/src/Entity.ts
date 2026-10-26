@@ -40,7 +40,6 @@ import type { Brand } from "./internal/brand.ts"
 import type { Descriptor } from "./Descriptor.ts"
 import type { StagedRelation } from "./Relation.ts"
 import type { Schema } from "./Schema.ts"
-import * as Result from "./Result.ts"
 
 /**
  * Entity identities, proofs, and long-lived handles.

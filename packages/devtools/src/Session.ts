@@ -812,6 +812,16 @@ export const make = <
               case "overwrite":
                 checkComponent(command.system, effect.component, effect.after, event.frame, effect.entity)
                 break
+              // No component value written: nothing to check.
+              case "remove":
+              case "despawn":
+              case "relate":
+              case "unrelate":
+              case "relationDropped":
+              case "relationFailure":
+              case "requirementViolated":
+              case "staleTarget":
+                break
             }
           }
         }
@@ -825,6 +835,12 @@ export const make = <
         if (event.outcome === "failed" || event.outcome === "enterFailed") {
           warn("transition-failed", `transition:${event.machine}:${String(event.from)}:${String(event.to)}`, `transition ${Format.transition(event)} ${event.outcome}`, event.frame)
         }
+        break
+      // A frame starts above; schedule bounds and restores carry nothing to check.
+      case "frame":
+      case "schedule.start":
+      case "schedule.end":
+      case "restore":
         break
     }
   }

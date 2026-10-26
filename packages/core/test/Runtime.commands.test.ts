@@ -30,8 +30,6 @@ const ConstructedGame = Schema.bind(Schema.fragment({
     SafePosition
   }
 }))
-const constructedSchema = ConstructedGame.schema
-
 const makeRuntime = () =>
   Game.Runtime.make({
     services: Game.Runtime.services(),

@@ -74,9 +74,12 @@ export const value = (input: unknown, options: ValueOptions = {}): string => {
         return current.toString()
       case "function":
         return "[fn]"
+      case "object":
+        // `null`, arrays, and objects: below.
+        break
     }
     if (current === null) return "null"
-    const object = current as object
+    const object = current
     if (seen.has(object)) return "[cycle]"
     const prototype = Object.getPrototypeOf(object) as object | null
     const className = prototype === null || prototype === Object.prototype || Array.isArray(object)
