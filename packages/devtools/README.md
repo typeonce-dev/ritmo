@@ -8,6 +8,12 @@ answer is text and data, and nothing draws in the page.
 pnpm add -D @typeonce/ritmo-devtools
 ```
 
+The main import (`Session`, `Fuzz`, `Invariant`, `Replay`, `Lint`, ...) and
+`ritmo-devtools lint` need no peer dependency. Each optional peer is for one
+feature: `playwright` and `vite` for runs in browser engines
+(`PlaywrightEngine`, `ritmo-devtools verify`), `vite` for `ReplayVitePlugin`,
+and `rolldown` and `oxlint` for `ritmo-devtools scan`.
+
 The package reads the core `Debug` handle, which exists only on runtimes made
 with `debug: { hostClock }`. Production runtimes carry no handle and pay
 nothing. The modules read no platform globals: give the runtime and the

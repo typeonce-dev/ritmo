@@ -34,6 +34,11 @@ A rule that is neither does not go in the skill. When you change the skill, chan
 - Swink, "Game Feel: The Secret Ingredient", 2007 ([link][swink]): feel is "one of those 'know it when you feel it' kinds of things." No source says "never judge feel from a description" in those words; the rule is our consequence of this.
 - Prior art: CCGS reports a build nobody played as "**NOT ASSESSED — built, not played**" and does not "infer one from how the build looks" ([6-debrief.md][cg-debrief] L28-31).
 
+### A round the human did not play gets `not played`, never an inferred verdict
+
+- CCGS ([6-debrief.md][cg-debrief] L28-31): "do not ask for a verdict and do not infer one from how the build looks: the recommendation is **NOT ASSESSED — built, not played**." and ([9-summary.md][cg-summary] L77) "There is no fun evidence yet, so PROCEED, PIVOT and KILL are all unreachable".
+- The sources under "never say it is fun" above: only play decides.
+
 ### The mode: `PROTOTYPE.md` switches it on, deleting it is graduation, start only when asked
 
 Ritmo convention. It keeps one way to tell which skill applies and stops prototype mode from becoming a way to skip the `ritmo` skill's checks.
@@ -116,6 +121,13 @@ Ritmo convention (see "What waits for graduation").
 - CCGS ([6-debrief.md][cg-debrief] L52): "PROCEED, PIVOT, or KILL — and one sentence why."
 - Cook, "Game Design Logs" ([link][cook-logs]): "Game design is a process of informed iteration, not a fixed engineering plan that you implement."
 
+### On kill, keep the card in `prototypes/`; a new prototype reads those first
+
+- CCGS ([9-summary.md][cg-summary] L59-70): "**Document the kill in `prototypes/GRAVEYARD.md`**" … "This file exists so the same mistake doesn't get made twice on the next concept."
+- Hecker, "Advanced Prototyping" page ([via Wayback][hecker-page]), on measuring a prototyping practice: "how often is your prototype referred back to in the archive?"
+- Cook, "Game Design Logs" ([link][cook-logs]): the log tells "the story of how the game has evolved".
+- One file per killed card in `prototypes/`, rather than one graveyard file, is a Ritmo convention: the card is already the record.
+
 ### At the stop condition, or after three pivots, ask whether to kill
 
 - EGP ([link][egp]): "It's important to quickly recognize dead-end game ideas, cut your losses and move on." and "there was no correlation between time spent in development and how successful the game ultimately turned out."
@@ -133,6 +145,12 @@ Ritmo convention (see "What waits for graduation").
 - Sid Meier, via Soren Johnson ([link][sids-rules]): "If a unit seems too weak, don't lower its cost by 5%; instead, double its strength." In his memoir (book, via [Kartones][kartones]): "double it, or cut it in half".
 - Griesemer ([slides][griesemer-sniper], slide 122): "Don't make changes less than 10% / It's very easy to convince yourself you can feel tiny changes / But even if you can, nobody else will be able to".
 - Comparing both in the same play is ours, built on the variants above (pstack, Pozzi & Zimmerman).
+
+### A fix the human proposes is one variant; the other tries a different cause
+
+- Pozzi & Zimmerman, rule T ([pdf][primer]): "you can take their suggestions as symptoms of what is and isnʼt working in the project, rather than as directions for the next steps in your design. If someone tells you to tear down a room and make it bigger, they are really telling you that it feels small."
+- Gaiman, "Ten rules for writing fiction", 2010 ([link][gaiman]): "when people tell you something's wrong or doesn't work for them, they are almost always right. When they tell you exactly what they think is wrong and how to fix it, they are almost always wrong."
+- The human directs the game (Ritmo), so their fix is always built; only the second variant is ours.
 
 ### A goal only once the toy is fun, grown out of the verb
 
@@ -250,10 +268,12 @@ Ritmo convention (see "What waits for graduation").
 
 - EGP ([link][egp]): "failure is ok! That's what prototyping is for … If you fail, there will be dozens more, and chances are, you'll learn something anyway."
 - Hecker & Gingold ([slides][hecker]): "You can prove bad ideas are bad, and good ideas are good."
-- CCGS ([9-summary.md][cg-summary] L64-70): "not "it was boring" but "players never understood the core action"" … "This file exists so the same mistake doesn't get made twice on the next concept."
+- CCGS ([9-summary.md][cg-summary] L64-70): "not "it was boring" but "players never understood the core action"" … "This file exists so the same mistake doesn't get made twice on the next concept." Where the card is kept: [On kill](#on-kill-keep-the-card-in-prototypes-a-new-prototype-reads-those-first).
 
 [egp]: https://www.gamedeveloper.com/game-platforms/how-to-prototype-a-game-in-under-7-days
 [hecker]: https://web.archive.org/web/2023id_/https://www.chrishecker.com/images/9/93/Gdc2006-AdvancedPrototyping.ppt
+[hecker-page]: https://web.archive.org/web/2023id_/https://www.chrishecker.com/Advanced_Prototyping
+[gaiman]: https://www.theguardian.com/books/2010/feb/20/ten-rules-for-writing-fiction-part-one
 [sids-rules]: https://www.designer-notes.com/?p=119
 [kartones]: https://blog.kartones.net/post/book-review-sid-meiers-memoir/
 [griesemer-30]: https://www.engadget.com/2011-07-14-half-minute-halo-an-interview-with-jaime-griesemer.html

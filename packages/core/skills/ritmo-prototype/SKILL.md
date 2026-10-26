@@ -48,7 +48,7 @@ After each playable build, the reply gives:
 - what changed this round, in what the human will see;
 - one question, built as [`references/card.md`](references/card.md) says: one moment of play, the variants it compares, and answers that each name the next change.
 
-Never say it is fun or feels good: you have not played it. Add the round's line to `PROTOTYPE.md`, and record the verdict in the human's words once they give it.
+Never say it is fun or feels good: you have not played it. Add the round's line to `PROTOTYPE.md`, and record the verdict in the human's words once they give it. A round the human did not play gets `not played`, never a verdict you infer; the last verdict still decides the next round.
 
 ## Self-check
 

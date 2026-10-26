@@ -2,10 +2,10 @@
 
 Follow these steps once in a new project, and for any step an existing project is missing. Use the project's package manager.
 
-1. Install the runtime and the checks every Ritmo game uses:
+1. Install the runtime and the debug sessions:
    ```sh
    pnpm add @typeonce/ritmo
-   pnpm add -D @typeonce/ritmo-devtools @typeonce/oxlint-plugin-ritmo oxlint
+   pnpm add -D @typeonce/ritmo-devtools
    ```
 2. Link the Ritmo skills from the installed package into the folder your agent reads skills from (`.agents/skills`, `.claude/skills`, ...), so they update with every Ritmo upgrade:
    ```sh
@@ -13,7 +13,7 @@ Follow these steps once in a new project, and for any step an existing project i
    ln -s ../../node_modules/@typeonce/ritmo/skills/ritmo .agents/skills/ritmo
    ln -s ../../node_modules/@typeonce/ritmo/skills/ritmo-prototype .agents/skills/ritmo-prototype
    ```
-3. Set up `.oxlintrc.json` from the `@typeonce/oxlint-plugin-ritmo` README and a `ritmo-devtools lint` entry from the `@typeonce/ritmo-devtools` README. One check script runs the type check, `oxlint`, `ritmo-devtools lint`, and the tests.
+3. Install the lint, `pnpm add -D @typeonce/oxlint-plugin-ritmo oxlint`, then set up `.oxlintrc.json` from the `@typeonce/oxlint-plugin-ritmo` README and a `ritmo-devtools lint` entry from the `@typeonce/ritmo-devtools` README. One check script runs the type check, `oxlint`, `ritmo-devtools lint`, and the tests.
    After every Ritmo upgrade, compare `.oxlintrc.json` with that README's config: a new rule is not on until the config lists it, so an existing project does not get it by upgrading.
 
 Add-ons, installed only when the game needs them:

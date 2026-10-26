@@ -14,3 +14,5 @@ ln -s ../../node_modules/@typeonce/ritmo/skills/ritmo-prototype .agents/skills/r
 ```
 
 `ritmo-devtools lint` notes each shipped skill the project does not link, so a project set up before this release sees `note  skill-not-linked  ritmo-prototype` until it adds the link. The note names its skill (`note  skill-not-linked  ritmo`), and never changes the exit code.
+
+`SETUP.md` step 1 installs only `@typeonce/ritmo` and `@typeonce/ritmo-devtools`; step 3 installs `@typeonce/oxlint-plugin-ritmo` and `oxlint` with the lint setup, so a prototype installs the lint when it graduates. Nothing changes for a project that already has them. The `@typeonce/ritmo-devtools` README now says which optional peer each feature needs: none for `Session`, `Fuzz`, `Replay` and `ritmo-devtools lint`.

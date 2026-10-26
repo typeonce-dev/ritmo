@@ -36,4 +36,4 @@ The human answers by playing, so the question points at one moment they will mee
 - **One question per prototype.** A question too big for a few rounds is split into several prototypes, one after another.
 - **The fantasy comes first.** Start from the feeling and find the verb that delivers it, not the other way round. Theme and art do not fix a loop that is not fun.
 - **The loop is repeated in changing situations.** If the 30 seconds are not fun, more content will not make the game fun.
-- **Cut early.** A verdict of kill is a result: record why, so the next prototype does not ask it again.
+- **Cut early.** A verdict of kill is a result: record why, and keep the card in `prototypes/`, so the next prototype does not ask it again.
