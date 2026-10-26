@@ -1,0 +1,14 @@
+{
+  "name": "@typeonce/pixel-fixer",
+  "private": true,
+  "type": "module",
+  "description": "Fixes AI-made or blurry pixel art: finds its pixel grid, snaps each cell to a palette, and exports crisp PNG, SVG, and palette files.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^8.0.3"
+  }
+}
