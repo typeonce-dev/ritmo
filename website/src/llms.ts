@@ -20,7 +20,7 @@ const manifests = import.meta.glob<Manifest>("../../packages/*/package.json", {
 })
 
 const markdown = import.meta.glob<string>(
-  ["../../packages/*/README.md", "../../packages/core/SETUP.md", "../../packages/core/skills/ritmo/**/*.md"],
+  ["../../packages/*/README.md", "../../packages/core/SETUP.md", "../../packages/core/skills/*/**/*.md"],
   { eager: true, query: "?raw", import: "default" }
 )
 
@@ -53,18 +53,21 @@ const shipped = (pkg: (typeof packages)[number], file: string, title: string, no
 
 const skillFiles = Object.keys(markdown)
   .filter((path) => path.startsWith(`${core.dir}/skills/`))
-  .sort((a, b) => (a.endsWith("/SKILL.md") ? -1 : b.endsWith("/SKILL.md") ? 1 : a.localeCompare(b)))
+  // Skill by skill (`ritmo` first), each SKILL.md before its playbooks and references.
+  .map((path) => ({ path, skill: path.split("/skills/")[1]?.split("/")[0] ?? "" }))
+  .sort((a, b) => a.skill.localeCompare(b.skill) || (a.path.endsWith("/SKILL.md") ? -1 : b.path.endsWith("/SKILL.md") ? 1 : a.path.localeCompare(b.path)))
+  .map(({ path }) => path)
   .map((path) => {
     const file = path.slice(core.dir.length + 1)
     const heading = /^# (.+)$/m.exec(markdown[path] ?? "")?.[1]
     if (heading === undefined) throw new Error(`llms.txt: ${path} has no heading`)
-    return file.endsWith("/SKILL.md")
-      ? shipped(core, file, "Ritmo skill", "routes each change to its playbook and holds the principles; use it for every change")
-      : shipped(core, file, `${file.includes("/references/") ? "Reference" : "Playbook"}: ${heading}`, "")
+    if (file === "skills/ritmo/SKILL.md") return shipped(core, file, "Ritmo skill", "routes each change to its playbook and holds the principles; use it for every change")
+    if (file === "skills/ritmo-prototype/SKILL.md") return shipped(core, file, "Ritmo prototype skill", "replaces the checks while a game is a prototype: a playable build every round, the human as playtester, and graduation")
+    return shipped(core, file, `${file.includes("/references/") ? "Reference" : "Playbook"}: ${heading}`, "")
   })
 
 const agentFiles: ReadonlyArray<ShippedFile> = [
-  shipped(core, "SETUP.md", "Setup", "one-time steps: packages, checks, and linking the skill"),
+  shipped(core, "SETUP.md", "Setup", "one-time steps: packages, checks, and linking the skills"),
   ...skillFiles
 ]
 
@@ -104,7 +107,7 @@ export const llmsTxt = `${intro}
 
 ## Agent docs
 
-- [Every agent doc in one file](${site}/llms-full.txt): Setup, the skill, its playbooks and references, and each package README
+- [Every agent doc in one file](${site}/llms-full.txt): Setup, the skills, their playbooks and references, and each package README
 ${agentFiles.map(link).join("\n")}
 
 ## Packages
@@ -129,7 +132,7 @@ ${games.join("\n")}
 /** Every shipped agent doc in one file, for agents that read a single URL. */
 export const llmsFullTxt = `${intro}
 
-Below is every agent doc that ships on npm, in order: Setup, the skill, its playbooks and references, then each package README. Relative links resolve against each file's source URL.
+Below is every agent doc that ships on npm, in order: Setup, the skills, their playbooks and references, then each package README. Relative links resolve against each file's source URL.
 
 ${[...agentFiles, ...packageFiles]
   .map((file) => `---\n\nSource: ${file.url}\n\n${(markdown[file.path] ?? "").replace(/^---\n[\s\S]*?\n---\n+/, "").trim()}`)

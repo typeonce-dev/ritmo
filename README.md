@@ -127,6 +127,12 @@ Ritmo game uses and links the [Ritmo skill](./packages/core/skills/ritmo/SKILL.m
 into the agent's skills folder. From then on, the agent follows the skill on
 every change: where the docs are and how to structure the game.
 
+To try a mechanic first, ask your agent for a prototype. The
+[prototype skill](./packages/core/skills/ritmo-prototype/SKILL.md) gets a
+playable toy in front of you every round, checks only that it compiles and
+loads, and asks you one question you answer by playing; when you keep it, it
+graduates to the full checks.
+
 ## Games built with Ritmo
 
 - [Inkline Town](https://github.com/SandroMaglione/inkline-town): a town
