@@ -125,7 +125,9 @@ Ritmo convention (the `ritmo` skill). It is what makes graduation a refactor.
 
 ## Each round
 
-### One question about one moment of play
+The question is optional: in the Grid Tactics test the human answered none of the six and gave every verdict in their own words, so a required question only added text. When there is one, the sources below shape it.
+
+### A question, when asked, is about one moment of play
 
 - Pozzi & Zimmerman, rule S ([pdf][primer]): "Begin with very specific questions … The more concrete your questions, the more useful answers you will get."
 - CCGS ([6-debrief.md][cg-debrief] L41): "What was the moment — if any — where it felt like it was working? Be specific."

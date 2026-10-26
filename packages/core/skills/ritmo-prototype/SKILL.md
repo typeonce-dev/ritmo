@@ -33,4 +33,4 @@ To build, read the `@typeonce/ritmo-browser` README and the module headers of `S
 
 ## Each round
 
-Reply with the link, the keys, the variants, and what changed in what the human will see. End with one question about one moment of play, whose answer is something the player did, not an opinion, and decides the next change. Never say it is fun: you have not played it. Log the round; a round the human did not play has no verdict.
+Reply briefly: the link, the keys, the variants, what changed in what the human will see, and what to look for when playing. The human gives the verdict in their own words. Ask a question only when one answer would decide the next change: about one moment of play, answered by what the player did, not an opinion. Never say it is fun: you have not played it. Log the round; a round the human did not play has no verdict.
