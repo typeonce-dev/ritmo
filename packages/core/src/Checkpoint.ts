@@ -136,7 +136,7 @@ export interface RestoreFailed<out Name extends string = string, out E = unknown
  * a runtime without rewindable services never returns `RestoreFailed`. The
  * default covers every runtime, for code that takes any rewind error.
  */
-export type RewindError<Failure extends RestoreFailed<string, unknown> = RestoreFailed> = OtherRuntime | Released | Failure
+export type RewindError<Failure extends RestoreFailed = RestoreFailed> = OtherRuntime | Released | Failure
 
 /**
  * The {@link RestoreFailed} each {@link rewindable} service in `Services`

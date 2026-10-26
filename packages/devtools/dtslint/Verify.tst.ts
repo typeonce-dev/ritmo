@@ -40,14 +40,14 @@ describe("Verify.acrossEngines", () => {
       hostClock
     })
     // @ts-expect-error Property 'debug' is missing
-    Verify.acrossEngines(bare, file)
+    void Verify.acrossEngines(bare, file)
     // @ts-expect-error Property 'hostClock' is missing
-    Verify.acrossEngines((playback: Replay.Playback) => ({ runtime: make(playback).runtime, schedules: make(playback).schedules }), file)
+    void Verify.acrossEngines((playback: Replay.Playback) => ({ runtime: make(playback).runtime, schedules: make(playback).schedules }), file)
   })
 
   it("takes engines, not engine names", () => {
     // @ts-expect-error Type 'string' is not assignable to type 'Engine'
-    Verify.acrossEngines(make, file, { engines: ["webkit"] })
+    void Verify.acrossEngines(make, file, { engines: ["webkit"] })
   })
 })
 

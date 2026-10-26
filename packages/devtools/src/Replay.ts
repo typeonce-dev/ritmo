@@ -58,7 +58,7 @@ import type { Descriptor } from "@typeonce/ritmo/Descriptor"
 import type * as Inspector from "@typeonce/ritmo/Inspector"
 import type * as Requirement from "@typeonce/ritmo/Requirement"
 import * as Result from "@typeonce/ritmo/Result"
-import type { AnyScheduleOrder, ExecutableScheduleDefinition, IsPlain, Source } from "@typeonce/ritmo/Schedule"
+import type { ExecutableScheduleDefinition, IsPlain, Source } from "@typeonce/ritmo/Schedule"
 import type { Schema } from "@typeonce/ritmo/Schema"
 import type * as Snapshot from "@typeonce/ritmo/Snapshot"
 
@@ -68,7 +68,7 @@ import { libraryVersion } from "./internal/version.ts"
 import * as Rendered from "./Rendered.ts"
 import * as Session from "./Session.ts"
 
-type AnySchedule<S extends Schema.Any, Root> = ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>
+type AnySchedule<S extends Schema.Any, Root> = ExecutableScheduleDefinition<S, any, Root, any, any>
 
 /** The `@typeonce/ritmo-devtools` version written into replay files. */
 export const version = libraryVersion
@@ -174,7 +174,7 @@ export interface RecorderOptions<S extends Schema.Any, Root, Recorded extends An
   /** Saves by itself: when a tick fails or throws, and when an invariant breaks (once until it holds again). */
   readonly saveOn?: {
     readonly failure?: boolean
-    readonly invariants?: ReadonlyArray<Invariant<Invariant.CheckInspector>>
+    readonly invariants?: ReadonlyArray<Invariant>
   }
 }
 
@@ -458,7 +458,7 @@ export interface Target<
 
 /** How `session` checks the replayed ticks and names what they touch. */
 export interface SessionOptions<
-  Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>> = readonly [],
+  Invariants extends ReadonlyArray<Invariant> = readonly [],
   Labels extends Session.LabelsInspector = never
 > {
   /**
@@ -508,7 +508,7 @@ export const session = <
   Services extends Record<string, unknown>,
   Resources extends object,
   Machines extends Record<string, unknown>,
-  const Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>> = readonly [],
+  const Invariants extends ReadonlyArray<Invariant> = readonly [],
   const Labels extends Session.LabelsInspector<Root> = never
 >(
   make: (playback: Playback) => Target<S, Root, Schedules, Services, Resources, Machines>,

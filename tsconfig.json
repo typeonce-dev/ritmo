@@ -9,6 +9,7 @@
     "packages/*/test/**/*.ts",
     "packages/*/dtslint/**/*.ts",
     "packages/*/bench/**/*.ts",
+    "packages/*/skills/**/*.ts",
     "**/vitest.config.ts"
   ],
   "compilerOptions": {

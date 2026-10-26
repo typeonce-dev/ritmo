@@ -488,7 +488,7 @@ export const pads = <const B extends Bindings, const N extends number>(host: Gam
         : { ...analogOf(entry.reading, deadZone), connected: true, id: entry.id }))
     },
     rebind(next) {
-      for (const entry of seen) entry.state.rebind(next as Rebinding<B>)
+      for (const entry of seen) entry.state.rebind(next)
       // Pads that appear later start with the new bindings too.
       bindings = next as unknown as B
     },

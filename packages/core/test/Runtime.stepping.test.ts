@@ -34,7 +34,7 @@ const makeRuntime = () => Game.Runtime.make({
   debug: { hostClock }
 }).value
 
-const stepAll = (cursor: Debug.FrameCursor<unknown>): void => {
+const stepAll = (cursor: Debug.FrameCursor): void => {
   while (cursor.remaining().length > 0) {
     const result = cursor.next()
     if (!result.ok) return

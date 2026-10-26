@@ -798,7 +798,7 @@ export const players = <
           const units: Array<{ readonly key: string; readonly device: string; readonly id: string | null; readonly connected: boolean; readonly snapshot: Snap }> = []
           for (const { name, unit } of entries) {
             if (isPads(unit)) unit.snapshot().forEach((snapshot, index) => units.push({ key: `${name}#${index}`, device: name, id: snapshot.id, connected: snapshot.connected, snapshot }))
-            else units.push({ key: name, device: name, id: null, connected: true, snapshot: (unit as Device).snapshot() })
+            else units.push({ key: name, device: name, id: null, connected: true, snapshot: unit.snapshot() })
           }
           const byKey = new Map(units.map((unit) => [unit.key, unit]))
           // A pad seated before it was plugged in is known by its id from the first snapshot it shows up in.

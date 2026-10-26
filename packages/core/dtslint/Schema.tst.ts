@@ -624,7 +624,7 @@ describe("Schema", () => {
         }
     )
 
-    expect(ObserveSystem).type.toBeAssignableTo<SchemaTypes.Schema.BoundSystem<typeof schema, typeof Root, any, never>>()
+    expect(ObserveSystem).type.toBeAssignableTo<SchemaTypes.Schema.BoundSystem<typeof schema, typeof Root, any>>()
   })
 
   it("supports durable handles with explicit roots, resolved through declared queries", () => {
@@ -697,7 +697,7 @@ describe("Schema", () => {
         }
     )
 
-    expect(ObserveSystem).type.toBeAssignableTo<SchemaTypes.Schema.BoundSystem<typeof schema, typeof Root, any, never>>()
+    expect(ObserveSystem).type.toBeAssignableTo<SchemaTypes.Schema.BoundSystem<typeof schema, typeof Root, any>>()
   })
 
   it("cannot write through a query the system did not declare", () => {

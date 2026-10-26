@@ -931,5 +931,5 @@ export const Query = <
   withoutRelations: (spec.withoutRelations ?? []) as unknown as Uninferred<WithoutRelations, ReadonlyArray<Relation.Relation.Any>>,
   withRelated: (spec.withRelated ?? []) as unknown as Uninferred<WithRelated, ReadonlyArray<Relation.Relation.Any>>,
   withoutRelated: (spec.withoutRelated ?? []) as unknown as Uninferred<WithoutRelated, ReadonlyArray<Relation.Relation.Any>>,
-  __schemaRoot: undefined as unknown as Root
+  __schemaRoot: undefined
 })

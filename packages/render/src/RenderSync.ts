@@ -253,7 +253,7 @@ export const system = <
   }
   const resources: Record<string, unknown> = {}
   for (const [key, descriptor] of Object.entries(options.resources ?? {})) {
-    resources[key] = Game.System.readResource(descriptor as Schema.ResourceDescriptor<S>)
+    resources[key] = Game.System.readResource(descriptor)
   }
 
   const contextOf = (
@@ -341,7 +341,7 @@ export const system = <
       options.apply(registry.ensure(entity.id, () => options.create(context), parent), context)
     }
 
-    if (hierarchy !== undefined) reattach(registry as NodeRegistry<unknown>, queries["parented"], lookup, hierarchy)
+    if (hierarchy !== undefined) reattach(registry, queries["parented"], lookup, hierarchy)
   }) as RenderSystem<S, Root, Registry | Services[keyof Services] | Resources[keyof Resources] | ConditionNeedsFromConditions<When>>
 }
 
@@ -558,8 +558,8 @@ export const interpolate = <
   const Query = Game.Query as unknown as (spec: object) => object
   const entities = Query({
     selection: {
-      previous: Game.Query.read(options.previous as Previous),
-      current: Game.Query.read(options.current as Current)
+      previous: Game.Query.read(options.previous),
+      current: Game.Query.read(options.current)
     }
   })
   return System(options.name, {

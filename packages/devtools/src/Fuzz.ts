@@ -54,7 +54,7 @@
 import { Clock } from "@typeonce/ritmo"
 import type { Descriptor } from "@typeonce/ritmo/Descriptor"
 import * as Result from "@typeonce/ritmo/Result"
-import type { AnyScheduleOrder, ExecutableScheduleDefinition, Source } from "@typeonce/ritmo/Schedule"
+import type { ExecutableScheduleDefinition, Source } from "@typeonce/ritmo/Schedule"
 import type { Schema } from "@typeonce/ritmo/Schema"
 import type * as Snapshot from "@typeonce/ritmo/Snapshot"
 import type * as Checkpoint from "@typeonce/ritmo/Checkpoint"
@@ -69,7 +69,7 @@ import * as Rendered from "./Rendered.ts"
 import * as Replay from "./Replay.ts"
 import * as Session from "./Session.ts"
 
-type AnySchedule<S extends Schema.Any, Root> = ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>
+type AnySchedule<S extends Schema.Any, Root> = ExecutableScheduleDefinition<S, any, Root, any, any>
 
 /** One fuzzed source, made with {@link input}: what `run` feeds a `snapshot()` service every frame. */
 export interface Input<Name extends string = string, Data = unknown> {
@@ -166,7 +166,7 @@ export interface Network {
 export interface Options<
   Name extends string,
   Names extends string,
-  Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>>
+  Invariants extends ReadonlyArray<Invariant>
 > {
   /** The schedule to fuzz: the one ticked once per simulation step. Its name in the replay. */
   readonly schedule: Name
@@ -284,6 +284,8 @@ const violationOf = (stop: Session.Stop): Violation | InvalidOptions | undefined
   switch (stop.reason) {
     case "completed":
     case "until":
+    // Fuzz sessions take no labels, so a labels inspector never throws here.
+    case "labels-threw":
       return undefined
     case "invariant":
       return { _tag: "InvariantViolated", invariant: stop.invariant, message: stop.message }
@@ -361,7 +363,7 @@ export const run = <
   Resources extends object,
   Machines extends Record<string, unknown>,
   const Name extends keyof Schedules & string,
-  const Invariants extends ReadonlyArray<Invariant<Invariant.CheckInspector>> = readonly [],
+  const Invariants extends ReadonlyArray<Invariant> = readonly [],
   const Net extends Network | undefined = undefined
 >(
   make: (playback: Replay.Playback) => Replay.Target<S, Root, Schedules, Services, Resources, Machines>,

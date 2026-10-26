@@ -20,7 +20,7 @@ const Positions = Game.Query({ selection: { position: Game.Query.read(Position) 
 describe("declared commands", () => {
   it("infers the permissions a system declares", () => {
     expect(Game.System.commands(Game.System.spawns(Position, Enemy), Game.System.despawns(Enemy))).type.toBe<
-      Command.CommandAccess<typeof Position | typeof Enemy, never, never, typeof Enemy, never, never>
+      Command.CommandAccess<typeof Position | typeof Enemy, never, never, typeof Enemy>
     >()
   })
 

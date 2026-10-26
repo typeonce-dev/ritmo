@@ -3,8 +3,6 @@ import { letters, type Library } from "./cases.ts"
 
 // Koota's schema traits are stored SoA; `useStores` is its fastest iteration path.
 const value = () => trait({ value: 1 })
-type Store = { value: Array<number> }
-
 export const koota: Library = {
   packed_5: () => {
     const world = createWorld()
@@ -14,7 +12,7 @@ export const koota: Library = {
       run: () => {
         for (const component of traits) {
           world.query(component).useStores(([store], entities) => {
-            const values = (store as Store).value
+            const values = store.value
             for (const entity of entities) values[entity.id()]! *= 2
           })
         }
@@ -32,8 +30,8 @@ export const koota: Library = {
     }
     const swap = (left: typeof A, right: typeof A) =>
       world.query(left, right).useStores(([l, r], entities) => {
-        const lv = (l as Store).value
-        const rv = (r as Store).value
+        const lv = l.value
+        const rv = r.value
         for (const entity of entities) {
           const id = entity.id()
           const v = lv[id]!
@@ -52,7 +50,7 @@ export const koota: Library = {
     }
     return {
       run: () => world.query(Data).useStores(([store], entities) => {
-        const values = (store as Store).value
+        const values = store.value
         for (const entity of entities) values[entity.id()]! *= 2
       })
     }

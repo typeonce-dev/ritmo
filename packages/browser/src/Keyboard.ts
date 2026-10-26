@@ -81,7 +81,7 @@ import * as Result from "@typeonce/ritmo/Result"
 import { boundKeys } from "./internal/introspect.ts"
 import type { ReportsBoundKeys } from "./internal/introspect.ts"
 import { anyUsed } from "./internal/used.ts"
-import { digital, directionName, directions, isVectorBinding, zero } from "./internal/vectors.ts"
+import { digital, directionName, directions, isVectorBinding } from "./internal/vectors.ts"
 import type { ActionState } from "./internal/state.ts"
 import type { Direction, Vector } from "./internal/vectors.ts"
 
@@ -283,8 +283,8 @@ const flatten = (bindings: Bindings): Readonly<Record<string, Keys>> => {
   const flat: Record<string, Keys> = {}
   for (const [name, entry] of Object.entries(bindings)) {
     if (isVectorBinding(entry)) {
-      for (const direction of directions) flat[directionName(name, direction)] = (entry as VectorBinding)[direction]
-    } else flat[name] = entry as Keys
+      for (const direction of directions) flat[directionName(name, direction)] = entry[direction]
+    } else flat[name] = entry
   }
   return flat
 }
@@ -299,7 +299,7 @@ const assemble = (bindings: Bindings, state: (name: string) => ActionState, used
       vectors[name] = digital(held("up"), held("down"), held("left"), held("right"))
     } else actions[name] = state(name)
   }
-  return { actions, vectors, used } as Snapshot<Bindings>
+  return { actions, vectors, used }
 }
 
 /**
@@ -452,7 +452,7 @@ export const actions = <const B extends Bindings>(
     [flatStates]: () => last,
     rebind(next) {
       const before = names.filter(isHeld)
-      bindings = flatten(next as Bindings)
+      bindings = flatten(next)
       index()
       // A held key keeps only the actions still bound to it; new ones wait for a fresh press.
       for (const [token, holding] of heldTokens) {
@@ -638,7 +638,7 @@ export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B>
     snapshot() {
       const snapshot = actions.snapshot()
       // Each direction of a vector action, from the keyboard this wraps.
-      const states = (actions as WithFlatStates)[flatStates]?.() ?? (snapshot.actions as Readonly<Record<string, ActionState>>)
+      const states = (actions as WithFlatStates)[flatStates]?.() ?? snapshot.actions
       const press: Array<TimelineName<B>> = []
       const release: Array<TimelineName<B>> = []
       const held = new Set<TimelineName<B>>()

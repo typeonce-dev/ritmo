@@ -2,7 +2,7 @@
 // for the renderer: tile coordinates in the Ninja Adventure sheets (16 px
 // tiles), and the autotiling that picks path and water edges.
 import { buildings, groundAt, MAP_COLUMNS, MAP_ROWS, trees } from "./map.ts"
-import type { BuildingKind, Cell, Character, Direction, Ground } from "./map.ts"
+import type { BuildingKind, Cell, Direction, Ground } from "./map.ts"
 
 /** The tileset images the town uses. */
 export type Sheet = "floor" | "floorDetail" | "water" | "nature" | "house" | "element"

@@ -47,8 +47,8 @@ export interface InspectorAccessInput {
   readonly resources?: Record<string, System.ResourceRead<Descriptor<"resource", string, any>>>
   readonly events?: Record<string, System.EventRead<Descriptor<"event", string, any>>>
   readonly services?: Record<string, System.ServiceRead<Descriptor<"service", string, any>>>
-  readonly machines?: Record<string, Machine.MachineRead<Machine.StateMachine.Any>>
-  readonly transitionEvents?: Record<string, Machine.TransitionEventRead<Machine.StateMachine.Any>>
+  readonly machines?: Record<string, Machine.MachineRead>
+  readonly transitionEvents?: Record<string, Machine.TransitionEventRead>
   readonly removed?: Record<string, System.RemovedRead<Descriptor<"component", string, any>>>
   readonly despawned?: Record<string, System.DespawnedRead>
   readonly relationFailures?: Record<string, System.RelationFailureRead<Relation.Relation.Any>>

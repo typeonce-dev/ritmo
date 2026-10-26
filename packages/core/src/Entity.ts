@@ -40,7 +40,6 @@ import type { Brand } from "./internal/brand.ts"
 import type { Descriptor } from "./Descriptor.ts"
 import type { StagedRelation } from "./Relation.ts"
 import type { Schema } from "./Schema.ts"
-import * as Result from "./Result.ts"
 
 /**
  * Entity identities, proofs, and long-lived handles.
@@ -356,7 +355,7 @@ export const draft = <S extends Schema.Any, P extends ComponentProof, Root = unk
 ): EntityDraft<S, P, Root> => ({
   kind: "EntityDraft",
   id,
-  __schemaRoot: undefined as unknown as Root,
+  __schemaRoot: undefined,
   proof,
   components,
   relations
@@ -371,7 +370,7 @@ export const ref = <S extends Schema.Any, P extends ComponentProof, Root = unkno
 ): EntityRef<S, P, Root> => ({
   kind: "EntityRef",
   id,
-  __schemaRoot: undefined as unknown as Root,
+  __schemaRoot: undefined,
   proof
 })
 
@@ -385,7 +384,7 @@ export const mut = <S extends Schema.Any, P extends ComponentProof, W extends Co
 ): EntityMut<S, P, W, Root> => ({
   kind: "EntityMut",
   id,
-  __schemaRoot: undefined as unknown as Root,
+  __schemaRoot: undefined,
   proof,
   writable
 })

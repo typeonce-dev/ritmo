@@ -79,7 +79,7 @@ import { makeQueryEngine } from "./internal/queries.ts"
 import type { Reverts as QueryReverts } from "./internal/queries.ts"
 import { requirementIndex } from "./internal/requirements.ts"
 import * as Streams from "./internal/streams.ts"
-import { ABSENT, makeWorld } from "./internal/world.ts"
+import { makeWorld } from "./internal/world.ts"
 import type { WorldHooks, WorldMark, WorldRewind } from "./internal/world.ts"
 import type * as Machine from "./Machine.ts"
 import * as Query from "./Query.ts"
@@ -92,7 +92,7 @@ import * as Schedule from "./Schedule.ts"
 import * as OrderInternal from "./internal/order.ts"
 import * as EntityScopeModule from "./EntityScope.ts"
 import * as Snapshot from "./Snapshot.ts"
-import type { AnyScheduleOrder, ExecutableScheduleDefinition } from "./Schedule.ts"
+import type { ExecutableScheduleDefinition } from "./Schedule.ts"
 import type { Registry, Schema } from "./Schema.ts"
 import type {
   DespawnedReadView,
@@ -423,11 +423,11 @@ type RequirementErrorsFor<
   : never
 
 type RequirementErrorsOfSchedule<
-  Selected extends ExecutableScheduleDefinition<any, any, any, any, any, AnyScheduleOrder>,
+  Selected extends ExecutableScheduleDefinition<any, any, any, any, any>,
   Services extends Record<string, unknown>,
   Resources extends object,
   Machines extends object
-> = Selected extends ExecutableScheduleDefinition<infer S, any, any, any, any, AnyScheduleOrder>
+> = Selected extends ExecutableScheduleDefinition<infer S, any, any, any, any>
   ? RequirementErrorsFor<Requirement.Of<Selected>, S, Services, Resources, Machines>
   : never
 
@@ -439,7 +439,7 @@ type RequirementErrorsOfSchedule<
  * each missing one, so the call does not compile.
  */
 export type ValidateScheduleArray<
-  Schedules extends ReadonlyArray<ExecutableScheduleDefinition<any, any, any, any, any, AnyScheduleOrder>>,
+  Schedules extends ReadonlyArray<ExecutableScheduleDefinition<any, any, any, any, any>>,
   Services extends Record<string, unknown>,
   Resources extends object,
   Machines extends object
@@ -450,7 +450,7 @@ export type ValidateScheduleArray<
     }
 
 type ValidateScheduleArgs<
-  Schedules extends ReadonlyArray<ExecutableScheduleDefinition<any, any, any, any, any, AnyScheduleOrder>>,
+  Schedules extends ReadonlyArray<ExecutableScheduleDefinition<any, any, any, any, any>>,
   Services extends Record<string, unknown>,
   Resources extends object,
   Machines extends object
@@ -463,17 +463,6 @@ type ValidateScheduleArgs<
       }
   : Schedules & {
       readonly __fixRuntimeRequirements__: RequirementErrorsOfSchedule<NoInfer<Schedules[number]>, Services, Resources, Machines>
-    }
-
-type ValidateSchedule<
-  Schedule extends ExecutableScheduleDefinition<any, any, any, any, any, AnyScheduleOrder>,
-  Services extends Record<string, unknown>,
-  Resources extends object,
-  Machines extends object
-> = [RequirementErrorsOfSchedule<Schedule, Services, Resources, Machines>] extends [never]
-  ? unknown
-  : {
-      readonly __fixRuntimeRequirements__: RequirementErrorsOfSchedule<Schedule, Services, Resources, Machines>
     }
 
 type RequirementErrorsOfInspector<
@@ -591,7 +580,7 @@ const collectConstructedRegistryValues = <R extends Registry>(
   }
 
   if (Object.keys(errors).length > 0) {
-    return Result.failure(errors as Partial<{ readonly [K in keyof R]: unknown }>)
+    return Result.failure(errors)
   }
 
   return Result.success(validated as InitialRegistryValues<R>)
@@ -650,7 +639,7 @@ export interface Runtime<
    * system's ECS writes are rolled back and earlier systems stay committed.
    */
   readonly tick: {
-    <const Schedules extends ReadonlyArray<ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>>(
+    <const Schedules extends ReadonlyArray<ExecutableScheduleDefinition<S, any, Root, any, any>>>(
       ...schedules: ValidateScheduleArgs<Schedules, Services, Resources, Machines>
     ): Result.Result<void, Schedule.FailureOf<Schedules[number]>>
   }
@@ -663,7 +652,7 @@ export interface Runtime<
    * ones are returned as data, then `Game.System.thisTick` reads are checked
    * against the schedule's order (`TickOrderViolation`).
    */
-  readonly tryTick: <const Selected extends ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>>(
+  readonly tryTick: <const Selected extends ExecutableScheduleDefinition<S, any, any, any, any>>(
     schedule: Selected
   ) => Result.Result<void, MissingRuntimeRequirements | TickOrderViolation | Schedule.FailureOf<Selected>>
   /**
@@ -713,7 +702,7 @@ export interface Runtime<
    *
    * Calling it while a schedule is running throws.
    */
-  readonly checkpoint: <const Selected extends ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>>(
+  readonly checkpoint: <const Selected extends ExecutableScheduleDefinition<S, any, Root, any, any>>(
     schedule: Selected & Checkpoint.ValidateRewindable<Selected>
   ) => Checkpoint.Checkpoint<Root>
   /**
@@ -813,7 +802,7 @@ const makeValidatedRuntime = <
   /** Queued next values; with `debug`, `by` is the system that queued it, for the `next-state-replaced` lint. */
   const pendingMachines = new Map<symbol, { value: unknown; skipIfSame: boolean; by?: string }>()
   /** Requests dropped because their sub-state stopped existing: skipped by the marker that queued them. */
-  const discardedPending = new WeakSet<object>()
+  const discardedPending = new WeakSet()
   const previousMachines = new Map<symbol, unknown>()
   /** The shared value of each state without fields, by machine key. */
   const emptyMachineStates = new Map<symbol, ReadonlyMap<string, { readonly _tag: string }>>()
@@ -965,8 +954,8 @@ const makeValidatedRuntime = <
       RelationErrors.mutationFailure(
         relation,
         operation,
-        world.entityIdOf(sourceId) as Entity.EntityId<S, Root>,
-        world.entityIdOf(targetId) as Entity.EntityId<S, Root>,
+        world.entityIdOf(sourceId),
+        world.entityIdOf(targetId),
         error
       )
     ])
@@ -978,8 +967,8 @@ const makeValidatedRuntime = <
     if (tracing) recordEffect({ kind: "relationDropped", entity: sourceId, relation: relation.name, target: targetId })
     droppedRelations.append(relation.key, world.currentTick(), [{
       relation,
-      source: world.entityIdOf(sourceId) as Entity.EntityId<S, Root>,
-      target: world.entityIdOf(targetId) as Entity.EntityId<S, Root>
+      source: world.entityIdOf(sourceId),
+      target: world.entityIdOf(targetId)
     }])
   })
 
@@ -1080,7 +1069,7 @@ const makeValidatedRuntime = <
         found = { system, stream, lostRuns: 0, checksLagged: false, paused }
         streamLosses.set(key, found)
       }
-      return found as { -readonly [K in keyof Debug.StreamLoss]: Debug.StreamLoss[K] }
+      return found
     }
     return {
       ...view,
@@ -1220,7 +1209,7 @@ const makeValidatedRuntime = <
     }
   }
 
-  const entityId = (id: number): Entity.EntityId<S, Root> => world.entityIdOf(id) as Entity.EntityId<S, Root>
+  const entityId = (id: number): Entity.EntityId<S, Root> => world.entityIdOf(id)
 
   /**
    * Change-detection state of one system (or inspector): `since` is the tick
@@ -1269,7 +1258,7 @@ const makeValidatedRuntime = <
     return Result.success(entityId(targetId))
   }
 
-  const makeLookup = (reader: ReaderState): LookupApi<S, Root> => {
+  const makeLookup = (): LookupApi<S, Root> => {
     const lookup: LookupApi<S, Root> = {
     related: relatedTarget,
     relatedSources(target, relation) {
@@ -1602,7 +1591,7 @@ const makeValidatedRuntime = <
     reader: ReaderState
   ): TransitionEventReadView<M> => ({
     all() {
-      return transitionEvents.since(stateMachine.key, reader.streamSince) as unknown as ReadonlyArray<Machine.TransitionSnapshot<M>>
+      return transitionEvents.since(stateMachine.key, reader.streamSince)
     },
     lagged() {
       return transitionEvents.lagged(stateMachine.key, reader.streamSince, reader.registeredAt)
@@ -1747,7 +1736,7 @@ const makeValidatedRuntime = <
   })
 
   const makeTransitionReadView = <M extends Machine.StateMachine.Any>(stateMachine: M): TransitionReadView<M> => ({
-    get: () => activeTransitions.get(stateMachine.key) as Machine.TransitionSnapshot<M> | undefined
+    get: () => activeTransitions.get(stateMachine.key)
   })
 
   const evaluateCondition = (condition: Machine.Condition): boolean => {
@@ -1794,7 +1783,7 @@ const makeValidatedRuntime = <
    */
   const makeContext = (system: SystemDefinition<any, any, any>, reader: ReaderState, queue: Command.CommandQueue<S, Root>): SystemContext<any> => {
     const spec = system.spec
-    const lookup = makeLookup(reader)
+    const lookup = makeLookup()
     const paused = (spec.pauseWhen as ReadonlyArray<unknown>).length > 0
     /** On a debug runtime, records reads after a loss and calls of `lagged()`, for the `stream-loss-unread` lint. */
     const watch = <V extends { all(): unknown; lagged(): boolean }>(view: V, stream: string): V =>
@@ -2002,7 +1991,7 @@ const makeValidatedRuntime = <
     let slot = slots.get(stateKey(system))
     if (!slot) {
       const reader: ReaderState = { since: 0, lastRun: 0, streamSince: 0, streamLastRun: 0, registeredAt: world.currentTick(), reverts: undefined }
-      const commands = Command.makeCommands<S, Root>(() => world.allocateEntity() as Entity.EntityId<S, Root>)
+      const commands = Command.makeCommands<S, Root>(() => world.allocateEntity())
       slot = { context: makeContext(system, reader, commands), commands, reader }
       slots.set(stateKey(system), slot)
       allReaders.add(reader)
@@ -2448,7 +2437,7 @@ const makeValidatedRuntime = <
    * Runs one schedule. A failing system stops the schedule; systems that
    * already succeeded stay committed, and their pending work stays pending.
    */
-  const runScheduleUnsafe = (schedule: ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>): Result.Result<void, SystemFailure> => {
+  const runScheduleUnsafe = (schedule: ExecutableScheduleDefinition<S, any, any, any, any>): Result.Result<void, SystemFailure> => {
     changedMachines = new Set()
     return tracing
       ? traceSchedule(scheduleName(schedule), () => runSteps(schedule))
@@ -2503,7 +2492,7 @@ const makeValidatedRuntime = <
   }
   const watchResult = <R extends Result.Result<void, unknown>>(
     result: R,
-    schedules: ReadonlyArray<ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>>
+    schedules: ReadonlyArray<ExecutableScheduleDefinition<S, any, any, any, any>>
   ): R => {
     if (!debugEnabled || result.ok) return result
     const error = result.error
@@ -2535,7 +2524,7 @@ const makeValidatedRuntime = <
     } as unknown as R
   }
 
-  const tickUnsafe = (schedules: ReadonlyArray<ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>>): Result.Result<void, SystemFailure> => {
+  const tickUnsafe = (schedules: ReadonlyArray<ExecutableScheduleDefinition<S, any, any, any, any>>): Result.Result<void, SystemFailure> => {
     if (frameOpen) throw openFrameDefect("runtime.tick")
     if (ticking) throw new Error("runtime.tick cannot run inside another tick")
     if (debugEnabled) reportUnread("next-tick")
@@ -2558,7 +2547,7 @@ const makeValidatedRuntime = <
 
   /** Runs one tick's schedules, telling `observeHost` listeners when it starts and how it ends. */
   const observedTick = (
-    schedules: ReadonlyArray<ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>>,
+    schedules: ReadonlyArray<ExecutableScheduleDefinition<S, any, any, any, any>>,
     run: () => Result.Result<void, SystemFailure>
   ): Result.Result<void, SystemFailure> => {
     if (hostListeners.size === 0) return run()
@@ -2590,7 +2579,7 @@ const makeValidatedRuntime = <
     }
   }
 
-  const tryRunSchedule = <const Selected extends ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>>(
+  const tryRunSchedule = <const Selected extends ExecutableScheduleDefinition<S, any, any, any, any>>(
     schedule: Selected
   ): Result.Result<void, MissingRuntimeRequirements | TickOrderViolation | Schedule.FailureOf<Selected>> => {
     if (frameOpen) throw openFrameDefect("runtime.tryTick")
@@ -2905,7 +2894,7 @@ const makeValidatedRuntime = <
   const runtimeMarks: Array<RuntimeMark> = []
   const checkpointWindow = options.checkpoints
   /** The provided `Checkpoint.rewindable` services, saved with every checkpoint. */
-  const rewindables = RewindableInternal.collect(providedServices as Readonly<Record<string, unknown>>)
+  const rewindables = RewindableInternal.collect(providedServices)
 
   /** Releases the marks from `from` on (newest last), for `reason`. */
   const releaseMarks = (from: number, reason: Checkpoint.Released["reason"]): void => {
@@ -2944,7 +2933,7 @@ const makeValidatedRuntime = <
     }
   }
 
-  const checkpoint = (schedule: ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>): Checkpoint.Checkpoint<Root> => {
+  const checkpoint = (schedule: ExecutableScheduleDefinition<S, any, any, any, any>): Checkpoint.Checkpoint<Root> => {
     if (frameOpen) throw openFrameDefect("runtime.checkpoint")
     if (inTick) throw new Error("runtime.checkpoint was called while a schedule is running: the running systems' writes are not committed yet; take it between ticks")
     const systems = new Set<SystemDefinition<any, any, any>>()
@@ -3187,10 +3176,10 @@ const makeValidatedRuntime = <
         })
       }
     }
-    inspectStore("event", events, debugNames!.events)
-    inspectStore("transitionEvent", transitionEvents as Streams.Streams<unknown>, debugNames!.machines)
-    inspectStore("relationFailure", relationFailures as Streams.Streams<unknown>, debugNames!.relations)
-    inspectStore("droppedRelation", droppedRelations as Streams.Streams<unknown>, debugNames!.relations)
+    inspectStore("event", events, debugNames.events)
+    inspectStore("transitionEvent", transitionEvents, debugNames.machines)
+    inspectStore("relationFailure", relationFailures as Streams.Streams<unknown>, debugNames.relations)
+    inspectStore("droppedRelation", droppedRelations as Streams.Streams<unknown>, debugNames.relations)
     return result
   }
 
@@ -3201,7 +3190,7 @@ const makeValidatedRuntime = <
    * failures), so a stepped frame and a ticked one are the same frame.
    */
   const beginFrame = (
-    schedule: ExecutableScheduleDefinition<S, any, any, any, any, AnyScheduleOrder>
+    schedule: ExecutableScheduleDefinition<S, any, any, any, any>
   ): Result.Result<Debug.FrameCursor<SystemFailure>, MissingRuntimeRequirements | TickOrderViolation> => {
     if (frameOpen) throw openFrameDefect("debug.beginFrame")
     if (inTick) throw new Error("debug.beginFrame was called while a schedule is running: begin a frame between ticks")
@@ -3277,7 +3266,7 @@ const makeValidatedRuntime = <
         }
         if (!result.ok) {
           end(result)
-          return watchResult(result, [schedule]) as unknown as Result.Result<Debug.StepOutcome, SystemFailure>
+          return watchResult(result, [schedule])
         }
         const last = index === steps.length
         if (last) end(result)
@@ -3387,7 +3376,7 @@ export const make = <
   const ProvidedServices extends RuntimeServices<any>,
   const Resources extends RuntimeResources<S> = {},
   Root = unknown,
-  const ProvidedMachines extends RuntimeMachines<any> = RuntimeMachines<{}>,
+  const ProvidedMachines extends RuntimeMachines<any> = RuntimeMachines,
   const Enabled extends Debug.Option | undefined = undefined
 >(options: {
   readonly schema: S

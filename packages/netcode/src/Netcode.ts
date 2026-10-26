@@ -92,7 +92,7 @@ import type * as Checkpoint from "@typeonce/ritmo/Checkpoint"
 import type * as Descriptor from "@typeonce/ritmo/Descriptor"
 import * as Result from "@typeonce/ritmo/Result"
 import type * as Runtime from "@typeonce/ritmo/Runtime"
-import type { AnyScheduleOrder, ExecutableScheduleDefinition, FailureOf } from "@typeonce/ritmo/Schedule"
+import type { ExecutableScheduleDefinition, FailureOf } from "@typeonce/ritmo/Schedule"
 import type { ReadonlyValue } from "@typeonce/ritmo/Query"
 import type { Schema } from "@typeonce/ritmo/Schema"
 import type * as Snapshot from "@typeonce/ritmo/Snapshot"
@@ -493,7 +493,7 @@ export interface RollbackOptions<Input> extends Options<Input> {
   readonly predict?: (previous: Input) => Input
 }
 
-type AnySchedule<S extends Schema.Any, Root> = ExecutableScheduleDefinition<S, any, Root, any, any, AnyScheduleOrder>
+type AnySchedule<S extends Schema.Any, Root> = ExecutableScheduleDefinition<S, any, Root, any, any>
 
 /** Resolves to `unknown` when the runtime can save and restore, otherwise to the fix (as `snapshot` does). */
 type ValidateSaveable<S extends Schema.Any> = Snapshot.Gate<S, unknown>
