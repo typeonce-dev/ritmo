@@ -18,7 +18,7 @@ Quotes were checked against the text of the linked page on 2026-10-26. A quote m
 - **No ratings.** Valve uses rating scales in playtests. We drop them because a round's answer must decide the next change (Andreasen, Hopson), which a rating does not.
 - **Feel is prototyped in the browser.** CCGS says browsers distort feel and sends action prototypes to a native engine; its figure has no source. Ritmo is a browser library, so this is a Ritmo convention.
 
-## The intro: one question, something playable, fast; the human judges the fun
+## The intro: find the fun fast; the question and the path can change; the human judges the fun
 
 - Hecker & Gingold, "Advanced Prototyping", GDC 2006, speaker notes ([slides][hecker]): "Behind every successful prototype stands a good question, a clearly articulated problem to solve." … "If it's not a focused experiment, it's hard to prove anything." … "You can't compile and execute design docs."
 - Cook, "Common Game Prototyping Pitfalls", 2005 ([link][cook-pitfalls]): "In mere hours, the prototype needs to be playable such that the feedback cycle can begin."
@@ -49,9 +49,10 @@ Ritmo convention: one way to tell which skill applies, and prototype mode never 
 - CCGS ([4-plan.md][cg-plan] L18): "Present this plan to the user before building. Get confirmation before proceeding."
 - pstack ([prototype.md][ps-proto] L8): "let the user pick directions before building."
 
-### A line per round, the verdict in the human's words
+### A line per round, the verdict in the human's words; a change of course rewrites the question
 
 - Cook, "Game Design Logs" ([link][cook-logs]): "Game design is a process of informed iteration" … "This contains daily play notes, prioritized next steps and ideas."
+- Rewriting the question and keeping the log is a Ritmo convention, from the Mystery Map test, where the question changed three times and the agent had to work out what to do with the file.
 
 ## Keep, and leave for graduation
 
@@ -59,10 +60,10 @@ Ritmo convention: one way to tell which skill applies, and prototype mode never 
 
 Ritmo convention (the `ritmo` skill). It is what makes graduation a refactor.
 
-### Tuned numbers as named variants, switched by a key, the name on screen
+### Variants: named settings (numbers or rules) switched by a key; one can switch off what the question is about
 
 - pstack ([prototype.md][ps-proto] L10): "When comparing alternatives, build them behind one switcher (buttons or a keypress), each variant labeled."
-- Pozzi & Zimmerman, rule D ([pdf][primer]): "Variations give you options if something breaks down, and they let you do comparisons to see which variation works best."
+- Pozzi & Zimmerman, rule D ([pdf][primer]): "Variations give you options if something breaks down, and they let you do comparisons to see which variation works best. One tip: change as little as possible each time (only one element) so that you can understand better the exact effects of your change." A variant that switches off the one thing the question is about is that tip taken to its end; in the Mystery Map test (*lean* vs *plenty*) it was the clearest comparison of both runs.
 - Laming, *Human Judgment*, 2011 (book, via [Whitehouse & Pollitt, AQA 2012][aqa]): "There is no absolute judgement. All judgements are comparisons of one thing with another."
 - CCGS says the opposite ("Hardcode values freely", [5-implement.md][cg-impl] L27). We keep the variants because a comparison in one play needs them.
 
@@ -78,37 +79,36 @@ Ritmo convention (the `ritmo` skill). It is what makes graduation a refactor.
 - The sources under "Everything else waits", and the maintainer's direction (Ritmo): a fast build with a small bug beats a slow, verified one while the question is whether it is fun.
 - Not driving the page or taking screenshots goes against pstack, which has the agent drive and screenshot each variant ([prototype.md][ps-proto] L11). It follows CCGS, which does not "infer one from how the build looks" ([6-debrief.md][cg-debrief] L28-31): the human is about to play it.
 - Reproducing a reported bug headless is the `ritmo` skill's `playbooks/bug-fix.md`, made smaller (Ritmo).
-- The reading list is a Ritmo convention, from the first test run: the agent spent its time looking for the factories a toy needs.
+- Starting from one compiled whole-game example (the `BrowserTickSource` module header, checked by `pnpm check-examples`) is a Ritmo convention. In every test the agent lost time stitching the factories together from module headers, and the Mystery Map agent only got fast once it found a website demo, which npm does not ship.
 
 ## Finding the fun
 
-### Build the toy first: the verb and its feedback, no goal yet
+### Start from the feeling and the smallest thing that can be fun; draw shapes
 
-- EGP ([link][egp]): "Build the Toy First. Start with the core mechanic. … This "toy" should be the core mechanic of the game minus any goals or decisions. There is no win or lose state, just a fun thing to play with." And on goals, later: "The best goals, we found, were an innate part of the gameplay".
+- EGP ([link][egp]): "Build the Toy First. Start with the core mechanic. … This "toy" should be the core mechanic of the game minus any goals or decisions. There is no win or lose state, just a fun thing to play with." And on goals: "The best goals, we found, were an innate part of the gameplay". Hence "the smallest goal when the game is about goals": in the Grid Tactics and Mystery Map tests, giving and combining meant nothing without something to want.
+- Metzen, Wowhead interview, 2023 ([via Wayback][metzen]): "whatever it is, you know you start with a fantasy. We try to build a structure that enables the player to feel their accomplishments, to feel the fantasy through the gameplay." EGP: "an initial emotional target basically wrote the entire game."
 - Crawford, "The Two Faces of Reality", 2013 ([link][crawford]): "If you examine a game and write down all the verbs available to the player, then give that list of verbs to me, I can tell you exactly what that game is about".
 - Cook, "Loops and Arcs", 2012 ([link][cook-loops]): "Functional feedback that helps players understand causation."
-- Stout, "Enemy Attacks and Telegraphing", 2015 ([link][stout]): "If the player needs to dodge, block, or otherwise avoid damage – the player must first know the damage is coming."
+- EGP ([link][egp]): "It's entirely possible to have fun with basic primitives … Prove to yourself that your core mechanic is worthwhile with a simple prototype. Once you're convinced, then you can make it pretty."
 
-### Start from the feeling
+### Explore broadly: read all the verdicts together and change course when they point the same way
 
-- Metzen, Wowhead interview, 2023 ([via Wayback][metzen]): "whatever it is, you know you start with a fantasy. We try to build a structure that enables the player to feel their accomplishments, to feel the fantasy through the gameplay."
-- EGP ([link][egp]): "an initial emotional target basically wrote the entire game."
+- Sid Meier, via Soren Johnson ([link][sids-rules]): "The point is not that the new values are likely to be correct - the goal is to stake out more design territory with each successive iteration."
+- Hecker & Gingold ([slides][hecker]): "You're going to be wrong a lot, so your failures should cost little, and you can have more of them." … "You can prove bad ideas are bad, and good ideas are good."
+- EGP ([link][egp]): "It's important to quickly recognize dead-end game ideas, cut your losses and move on." … "If you fail, there will be dozens more, and chances are, you'll learn something anyway."
+- CCGS ([prototype/SKILL.md][cg-proto] L87): "A new concept prototyped fresh will almost always beat a fourth iteration of a struggling one."
+- Reading the verdicts together is from both tests (Ritmo): each round fixed the latest complaint, and what the verdicts shared (no pressure to commit, no stakes) was never named until the agent looked across all of them. The maintainer's direction: the prototype explores broadly, so pivots are expected, and the human picks.
 
-### Draw shapes; art waits
+### Tune numbers, far enough to feel, only in a direction the human likes
 
-- EGP ([link][egp]): "It's entirely possible to have fun with basic primitives … Prove to yourself that your core mechanic is worthwhile with a simple prototype. Once you're convinced, then you can make it pretty." and "all the art, music, and product tie-ins in the world won't make it a great game."
-
-### Change little per round, but far enough to feel
-
-- Pozzi & Zimmerman, rule D ([pdf][primer]): "change as little as possible each time (only one element) so that you can understand better the exact effects of your change."
 - Sid Meier, via Soren Johnson ([link][sids-rules]): "If a unit seems too weak, don't lower its cost by 5%; instead, double its strength." In his memoir (book, via [Kartones][kartones]): "double it, or cut it in half".
 - Griesemer, "Design in Detail", GDC 2010 ([slides][griesemer-sniper], slide 122): "Don't make changes less than 10% / It's very easy to convince yourself you can feel tiny changes / But even if you can, nobody else will be able to".
+- "Only in a direction the human likes" is the maintainer's direction (Ritmo): in the Grid Tactics test, tuning a direction nobody liked took four rounds.
 
-### Grow the verb through new situations before adding verbs
+### Some fun lives in content: test it with a small hand-written slice
 
-- Griesemer, via Engadget, "Half-Minute Halo", 2011 ([link][griesemer-30]): "taking that 30 seconds of fun and playing it in different environments, with different weapons, different vehicles, against different enemies, against different combinations of enemies … No 30 second stretch of Halo is ever repeated". And: "if you don't nail that 30 seconds, you're not gonna have a great game."
-- Hayashida (Super Mario 3D Land), via Game Developer, 2012 ([link][hayashida]): "First, you have to learn how to use that gameplay mechanic, and then the stage will offer you a slightly more complicated scenario in which you have to use it."
-- Cook, "SpaceCrack: Verbs", 2005 ([link][cook-verbs]): "it is better to go with a small number of expressive verbs than to overwhelm the player with a truckload of shallow verbs."
+- Cook, "Loops and Arcs" ([link][cook-loops]): "For arcs, the feedback is 99% of the payload and the actions and systems are simply a means to an end." … "The simplest method of analysis is to ask "What repeats and what does not?""
+- From the Mystery Map test: six rounds of mechanics never produced what the human was missing, "how intriguing the game becomes".
 
 ### What the human reports is a symptom: find the cause behind a named case or a proposed fix
 
@@ -117,15 +117,9 @@ Ritmo convention (the `ritmo` skill). It is what makes graduation a refactor.
 - Gaiman's second sentence covers both halves: people are often wrong about "exactly what they think is wrong", not only about the fix, so a case the human names is a lead to the cause, not the cause itself. Found in the Grid Tactics test: told "healing loops", the agent limited healing, when the stall came from any two options cancelling out.
 - The human directs the game (Ritmo), so their fix is always built.
 
-### Cut early; say when the rounds stop converging, and let the human decide
-
-- EGP ([link][egp]): "It's important to quickly recognize dead-end game ideas, cut your losses and move on." … "If you fail, there will be dozens more, and chances are, you'll learn something anyway."
-- Hecker & Gingold ([slides][hecker]): "You're going to be wrong a lot, so your failures should cost little, and you can have more of them." … "You can prove bad ideas are bad, and good ideas are good."
-- CCGS ([prototype/SKILL.md][cg-proto] L87): "Ask: "Is this the right idea, or am I in the sunk cost trap?" A new concept prototyped fresh will almost always beat a fourth iteration of a struggling one." CCGS fixes the count at three pivots; the skill leaves the count to the agent and the decision to the human.
-
 ## Each round
 
-The question is optional: in the Grid Tactics test the human answered none of the six and gave every verdict in their own words, so a required question only added text. When there is one, the sources below shape it.
+The reply is the link, the direction being tried, and any open question, with the keys and the variant's name on screen in the game: a Ritmo convention, from the maintainer, who plays first and only skims the reply afterwards. The question is optional: in the Grid Tactics test the human answered none of the six and gave every verdict in their own words, so a required question only added text. When there is one, the sources below shape it.
 
 ### A question, when asked, is about one moment of play
 
@@ -164,18 +158,14 @@ The question is optional: in the Grid Tactics test the human answered none of th
 [hecker]: https://web.archive.org/web/2023id_/https://www.chrishecker.com/images/9/93/Gdc2006-AdvancedPrototyping.ppt
 [sids-rules]: https://www.designer-notes.com/?p=119
 [kartones]: https://blog.kartones.net/post/book-review-sid-meiers-memoir/
-[griesemer-30]: https://www.engadget.com/2011-07-14-half-minute-halo-an-interview-with-jaime-griesemer.html
 [griesemer-sniper]: https://files.bungie.org/Griesemer_Jaime_DesignInDetail_Sniper.pdf
-[hayashida]: https://www.gamedeveloper.com/design/the-structure-of-fun-learning-from-i-super-mario-3d-land-i-s-director
 [cook-chem]: https://www.gamedeveloper.com/design/the-chemistry-of-game-design
 [cook-loops]: https://lostgarden.com/2012/04/30/loops-and-arcs/
 [cook-pitfalls]: https://lostgarden.com/2005/08/21/common-game-prototyping-pitfalls/
 [cook-logs]: https://lostgarden.com/2011/05/03/game-design-logs/
-[cook-verbs]: https://lostgarden.com/2005/06/17/spacecrack-verbs/
 [metzen]: https://web.archive.org/web/20250901123724/https://www.wowhead.com/news/chris-metzen-interview-developing-auroboros-coils-of-the-serpent-331372
 [crawford]: https://idmaa.org/journalarticle-v1n3-the-two-faces-of-reality/
 [swink]: https://www.gamedeveloper.com/design/game-feel-the-secret-ingredient
-[stout]: https://www.gamedeveloper.com/design/enemy-attacks-and-telegraphing
 [primer]: http://mycours.es/gamedesign2018/files/2018/11/playtesting-primer.pdf
 [fullerton]: https://api.pageplace.de/preview/DT0400.9781351597708_A35121472/preview-9781351597708_A35121472.pdf
 [nielsen]: https://www.nngroup.com/articles/first-rule-of-usability-dont-listen-to-users/
