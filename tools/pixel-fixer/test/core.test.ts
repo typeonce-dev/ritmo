@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest"
 
 import { ciede2000, fromOklab, makeMatcher, parseHex, toCielab, toHex, toOklab } from "../src/core/color.ts"
+import { demoImage, demoSprite } from "../src/core/demo.ts"
 import { toJson, toRects, toRgba, toSvg } from "../src/core/export.ts"
-import { cellColors, quantize, removeStrays, sampleCells, TRANSPARENT, type PixelArt } from "../src/core/fix.ts"
-import { detectGrid, edgeProfiles, refineCuts, uniformCuts, uniformGrid } from "../src/core/grid.ts"
+import { cellColors, defaultSampleOptions, quantize, removeStrays, sampleCells, TRANSPARENT, type PixelArt } from "../src/core/fix.ts"
+import { detectGrid, edgeProfiles, refineCuts, refineGrid, uniformCuts, uniformGrid } from "../src/core/grid.ts"
 import { extractPalette, parsePalette, presets, toGpl, toHexFile } from "../src/core/palette.ts"
 import { boundaries, makeSprite, pad, upscale, type Upscale } from "./synthetic.ts"
 
@@ -122,6 +123,22 @@ describe("grid", () => {
 })
 
 describe("fixing", () => {
+  it("fixes the demo picture back into the mushroom, in Sweetie 16", () => {
+    const image = demoImage()
+    const detection = detectGrid(image)!
+    expect(detection.confidence).toBeGreaterThan(0.5)
+    const grid = refineGrid(image, uniformGrid(image.width, image.height, detection.spec))
+    const art = quantize(sampleCells(image, grid, defaultSampleOptions), {
+      palette: sweetie,
+      metric: "oklab",
+      dither: "none",
+      ditherStrength: 0
+    })
+    const sprite = demoSprite()
+    expect([art.width, art.height]).toEqual([16, 16])
+    for (let i = 0; i < art.indices.length; i++) expect(art.palette[art.indices[i]!]).toEqual(sprite.palette[sprite.indices[i]!])
+  })
+
   it("keeps transparency", () => {
     const sprite = makeSprite(20, 20, sweetie, 3, true)
     const { art } = fix(sprite, { scale: 6, offset: 0, blur: 1 })

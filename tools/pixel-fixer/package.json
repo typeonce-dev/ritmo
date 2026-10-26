@@ -5,7 +5,7 @@
   "description": "Fixes AI-made or blurry pixel art: finds its pixel grid, snaps each cell to a palette, and exports crisp PNG, SVG, and palette files.",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build --base ./",
     "preview": "vite preview"
   },
   "devDependencies": {
