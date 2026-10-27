@@ -3,9 +3,7 @@
  * fixed picture when anything changes, and panels that edit the state.
  */
 import {
-  applyEdits,
   backgroundColors,
-  clearMasked,
   defaultBackgroundOptions,
   findBackground,
   SPECK_SIZE,
@@ -15,13 +13,11 @@ import {
 import { metrics, parseHex, toHex, type Metric, type Rgb } from "../core/color.ts"
 import { demoImage } from "../core/demo.ts"
 import { toJson, toRgba, toSvg } from "../core/export.ts"
-import { cleanUp } from "../core/cleanup.ts"
-import { defaultLostThreshold, lostColors, type LostColor } from "../core/lost.ts"
+import { defaultLostThreshold, type LostColor } from "../core/lost.ts"
 import {
   defaultSampleOptions,
   medianColor,
   quantize,
-  sampleCells,
   TRANSPARENT,
   usedColors,
   type CellSamples,
@@ -32,8 +28,6 @@ import {
 import {
   detectGrid,
   gridSize,
-  refineGrid,
-  uniformGrid,
   type Axis,
   type Detection,
   type Grid,
@@ -51,7 +45,9 @@ import {
   type Proposal,
   type ProposeMethod
 } from "../core/palette.ts"
-import { reduce, reduceModes, type ReduceMode } from "../core/reduce.ts"
+import { describeDetection, gridKeyOf, runWithSpec, type PipelineCache } from "../core/pipeline.ts"
+import { type Recipe } from "../core/recipe.ts"
+import { reduceModes, type ReduceMode } from "../core/reduce.ts"
 import { h, replace } from "./dom.ts"
 import { baseName, canvasOf, download, loadImage, pngOf } from "./files.ts"
 import { makeHistory } from "./history.ts"
@@ -186,10 +182,10 @@ const history = makeHistory(
   () => renderToolbar()
 )
 
-// The pipeline, cached step by step: a slider for dithering must not re-detect the grid.
-let baseGrid: { key: string; grid: Grid } | undefined
+// The pipeline's cache: a slider for dithering must not re-detect the grid.
+let cache: PipelineCache = {}
 let grid: Grid | undefined
-let samples: { grid: Grid; key: string; samples: CellSamples } | undefined
+let samples: CellSamples | undefined
 let result: PixelArt | undefined
 /** The background colors found in the last result, for the Background panel. */
 let backgroundFound: Array<Rgb> = []
@@ -199,81 +195,52 @@ let highlight: ReadonlyArray<number> = []
 /** The specks cleaned in the last result, each as its cells. */
 let specks: ReadonlyArray<ReadonlyArray<number>> = []
 
-const computeGrid = (): Grid | undefined => {
-  const source = state.source
-  if (source === undefined) return undefined
-  const key = JSON.stringify([state.spec, state.follow])
-  if (baseGrid?.key !== key) {
-    let next = uniformGrid(source.image.width, source.image.height, state.spec)
-    if (state.follow) next = refineGrid(source.image, next)
-    baseGrid = { key, grid: next }
-  }
-  if (state.moved.size === 0) return baseGrid.grid
-  const xs = [...baseGrid.grid.xs]
-  const ys = [...baseGrid.grid.ys]
-  for (const [id, position] of state.moved) {
-    const [axis, index] = id.split(":")
-    const cuts = axis === "x" ? xs : ys
-    const i = Number(index)
-    if (i >= 0 && i < cuts.length) cuts[i] = position
-  }
-  return { xs, ys }
-}
+/** The page's settings as a recipe: what the shared pipeline runs, and what Save recipe writes. */
+const recipeOf = (): Recipe => ({
+  grid: { kind: "cells", spec: state.spec },
+  follow: state.follow,
+  moved: [...state.moved],
+  sample: state.sample,
+  palette:
+    state.paletteName === ORIGINAL
+      ? undefined
+      : {
+          name: state.paletteName,
+          colors: state.swatches.map((swatch) => swatch.color),
+          locked: state.swatches.flatMap((swatch, i) => (swatch.locked ? [i] : []))
+        },
+  metric: state.metric,
+  dither: state.dither,
+  ditherStrength: state.ditherStrength,
+  cleanup: { size: state.cleanup.size, strength: state.cleanup.strength },
+  cleanKeep: state.cleanKeep,
+  targetWidth: state.targetWidth,
+  reduceMode: state.reduceMode,
+  removeBackground: state.removeBackground,
+  background: state.background,
+  lostThreshold: state.lostThreshold,
+  edits: state.edits
+})
 
 const recompute = (): void => {
-  grid = computeGrid()
   const source = state.source
-  if (source === undefined || grid === undefined) {
+  if (source === undefined) {
+    grid = undefined
     result = undefined
     return
   }
-  const sampleKey = JSON.stringify(state.sample)
-  if (samples?.grid !== grid || samples.key !== sampleKey) {
-    samples = { grid, key: sampleKey, samples: sampleCells(source.image, grid, state.sample) }
-  }
-  const palette = state.paletteName === ORIGINAL ? [] : state.swatches.map((swatch) => swatch.color)
-  let art = quantize(samples.samples, {
-    palette,
-    metric: state.metric,
-    dither: state.dither,
-    ditherStrength: state.ditherStrength
-  })
-  lost = []
-  if (palette.length > 0) {
-    const skip = state.removeBackground ? findBackground(art, backgroundColors(art), state.background) : undefined
-    lost = lostColors(samples.samples, art, state.lostThreshold, skip)
-  }
-  specks = []
-  if (state.cleanup.size > 0) {
-    const gridKey = `${art.width}x${art.height}`
-    if (state.cleanKeep.size !== gridKey) state.cleanKeep = { size: gridKey, cells: [] }
-    const cleaned = cleanUp(art, samples.samples, {
-      size: state.cleanup.size,
-      strength: state.cleanup.strength,
-      metric: state.metric,
-      protect: palette.length === 0 ? [] : state.swatches.flatMap((swatch, i) => (swatch.locked ? [i] : [])),
-      keep: state.cleanKeep.cells
-    })
-    art = cleaned.art
-    specks = cleaned.specks
-  }
-  if (state.targetWidth !== undefined && state.targetWidth < art.width) {
-    art = reduce(art, state.targetWidth, Math.max(1, Math.round((art.height * state.targetWidth) / art.width)), state.reduceMode)
-  }
-  backgroundFound = []
-  const size = `${art.width}x${art.height}`
+  const outcome = runWithSpec(source.image, recipeOf(), state.spec, state.detection, cache)
+  grid = outcome.grid
+  samples = outcome.samples
+  lost = [...outcome.lost]
+  specks = outcome.specks
+  backgroundFound = [...outcome.backgroundFound]
+  result = outcome.art
+  // Hand edits belong to the size they were made at: a new size starts them over.
+  const gridKey = gridKeyOf(outcome.grid)
+  if (state.cleanKeep.size !== gridKey) state.cleanKeep = { size: gridKey, cells: [] }
+  const size = `${outcome.art.width}x${outcome.art.height}`
   if (state.edits.size !== size) state.edits = { size, strokes: [] }
-  let mask: Uint8Array | undefined
-  if (state.removeBackground) {
-    const colors = backgroundColors(art)
-    backgroundFound = colors.map((index) => art.palette[index]!)
-    mask = findBackground(art, colors, state.background)
-  }
-  if (state.edits.strokes.length > 0) {
-    mask = applyEdits(art, mask ?? new Uint8Array(art.width * art.height), state.edits.strokes.flat())
-  }
-  if (mask !== undefined) art = clearMasked(art, mask)
-  result = art
 }
 
 let scheduled = false
@@ -307,7 +274,7 @@ const setSource = (image: RgbaImage, canvas: HTMLCanvasElement, name: string): v
   state.targetWidth = undefined
   state.edits = { size: "", strokes: [] }
   state.proposals = []
-  baseGrid = undefined
+  cache = {}
   samples = undefined
   state.message = ""
   history.reset()
@@ -340,25 +307,14 @@ const autoDetect = (): void => {
   const detection = detectGrid(source.image)
   state.detection = detection
   state.moved.clear()
-  if (detection === undefined) {
-    state.detectionNote = "No grid found: the picture has no edges. Set the cell size by hand."
-  } else {
+  state.detectionNote = describeDetection(source.image, detection)
+  if (detection !== undefined) {
     state.spec = detection.spec
     state.linked = Math.abs(detection.spec.cellWidth - detection.spec.cellHeight) < 0.02 * detection.spec.cellWidth
-    const percent = Math.round(detection.confidence * 100)
-    const size = gridSize(uniformGrid(source.image.width, source.image.height, detection.spec))
-    const verdict =
-      detection.confidence >= 0.5
-        ? "Looks right."
-        : detection.confidence >= 0.3
-          ? "Probably right: check the grid on the picture."
-          : "Unsure: check the grid, and set the cell size by hand if it is off."
-    state.detectionNote = `Found ${fmt(detection.spec.cellWidth)} × ${fmt(detection.spec.cellHeight)} px cells, making ${size.width} × ${size.height} pixels. Confidence ${percent}%. ${verdict}`
   }
   update()
 }
 
-const fmt = (value: number): string => String(Math.round(value * 100) / 100)
 
 // ---------------------------------------------------------------------------
 // The page
@@ -372,7 +328,7 @@ const viewer = makeViewer(canvas, {
   },
   viewChanged: () => renderStatus(),
   pick: (x: number, y: number) => {
-    const cell = samples?.samples.cells[y * samples.samples.width + x]
+    const cell = samples?.cells[y * samples.width + x]
     if (cell !== undefined && cell.colors.length > 0) keepColor(medianColor(cell.colors))
   },
   paint: (x: number, y: number, start: boolean) => {
@@ -873,7 +829,7 @@ const lostPanel = (): HTMLElement | false => {
 /** Proposes colors from the picture's cells, leaving out the background when it is removed, and keeps the top ones. */
 const propose = (): void => {
   if (samples === undefined) return
-  const cells = quantize(samples.samples, { palette: [], metric: state.metric, dither: "none", ditherStrength: 0 })
+  const cells = quantize(samples, { palette: [], metric: state.metric, dither: "none", ditherStrength: 0 })
   const mask = state.removeBackground ? findBackground(cells, backgroundColors(cells), state.background) : undefined
   const colors: Array<Rgb> = []
   cells.indices.forEach((index, i) => {
