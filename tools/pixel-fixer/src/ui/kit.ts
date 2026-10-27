@@ -5,6 +5,7 @@
  * these, never from bare inputs, so spacing and sizes stay the same
  * everywhere.
  */
+import { evaluate } from "../core/math.ts"
 import { h } from "./dom.ts"
 
 type Child = Node | string | false | undefined | null
@@ -36,6 +37,8 @@ const paths = {
   check: '<path d="M20 6 9 17l-5-5"/>',
   alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/>',
   sparkle: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
+  lines: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
+  brush: '<path d="m14.6 3.4 6 6L10 20H4v-6z"/><path d="m12 6 6 6"/>',
   pixel: '<rect x="6" y="6" width="12" height="12" rx="1"/>',
   area: '<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4z"/>'
 } as const
@@ -132,7 +135,15 @@ export const segmented = <T extends string>(
 export const prop = (label: string, control: Child, title?: string): HTMLElement =>
   h("div", { class: "prop", title }, h("span", { class: "prop-label" }, label), h("div", { class: "prop-control" }, control))
 
-/** A number input; `prefix` is a short letter shown inside it ("W", "X"). */
+/** Typed values keep this many decimals, so `1015/51` does not show fifteen digits. */
+const DECIMALS = 1e4
+
+/**
+ * A number input; `prefix` is a short letter shown inside it ("W", "X").
+ * It takes math (`1015/51`, or `*2` to double the value there), clamped to
+ * `min` and `max`; ArrowUp and ArrowDown step by `step` (Shift: ten steps),
+ * and Escape puts the value back. Emptied, it reports 0.
+ */
 export const numberInput = (
   value: number | undefined,
   onChange: (value: number) => void,
@@ -146,28 +157,60 @@ export const numberInput = (
     /** Shown when there is no value. */
     readonly placeholder?: string
   } = {}
-): HTMLElement =>
-  h(
+): HTMLElement => {
+  const shown = value === undefined ? "" : String(value)
+  const clamp = (next: number): number =>
+    Math.min(options.max ?? Infinity, Math.max(options.min ?? -Infinity, Math.round(next * DECIMALS) / DECIMALS))
+  const commit = (target: HTMLInputElement, next: number): void => {
+    const clamped = clamp(next)
+    target.value = String(clamped)
+    if (clamped !== value) onChange(clamped)
+  }
+  return h(
     "label",
     { class: "input" },
     options.prefix !== undefined && h("span", { class: "affix" }, options.prefix),
     h("input", {
-      props: { type: "number", value: value === undefined ? "" : String(value), step: String(options.step ?? 0.01) },
-      attrs: { min: options.min, max: options.max, inputmode: "decimal", placeholder: options.placeholder, "aria-label": options.label ?? options.prefix },
+      props: { type: "text", value: shown },
+      attrs: {
+        inputmode: "decimal",
+        autocomplete: "off",
+        spellcheck: "false",
+        placeholder: options.placeholder,
+        "aria-label": options.label ?? options.prefix,
+        title: "Math works: 1015/51, or *2 to double the value"
+      },
       on: {
         change: (event) => {
           const target = event.currentTarget
           if (!(target instanceof HTMLInputElement)) return
-          const next = target.value.trim() === "" ? 0 : Number(target.value)
-          if (Number.isFinite(next)) onChange(next)
+          if (target.value.trim() === "") {
+            onChange(0)
+            return
+          }
+          const next = evaluate(target.value, value)
+          if (next === undefined) target.value = shown
+          else commit(target, next)
         },
         keydown: (event) => {
-          if (event.key === "Enter" && event.currentTarget instanceof HTMLInputElement) event.currentTarget.blur()
+          const target = event.currentTarget
+          if (!(target instanceof HTMLInputElement)) return
+          if (event.key === "Enter") target.blur()
+          else if (event.key === "Escape") {
+            target.value = shown
+            target.blur()
+          } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+            event.preventDefault()
+            const now = evaluate(target.value, value) ?? value ?? 0
+            const step = (options.step ?? 0.01) * (event.shiftKey ? 10 : 1)
+            commit(target, now + (event.key === "ArrowUp" ? step : -step))
+          }
         }
       }
     }),
     options.suffix !== undefined && h("span", { class: "affix" }, options.suffix)
   )
+}
 
 export const textInput = (
   value: string,

@@ -7,9 +7,9 @@ import {
   defaultBackgroundOptions,
   findBackground,
   SPECK_SIZE,
-  type BackgroundOptions,
-  type Edit
+  type BackgroundOptions
 } from "../core/background.ts"
+import type { Edit } from "../core/edits.ts"
 import { metrics, parseHex, toHex, type Metric, type Rgb } from "../core/color.ts"
 import { demoImage } from "../core/demo.ts"
 import { toJson, toRgba, toSvg } from "../core/export.ts"
@@ -114,11 +114,13 @@ interface State {
   reduceMode: ReduceMode
   removeBackground: boolean
   background: BackgroundOptions
-  /** What pressing on the fixed picture does: pan, or erase or restore pixels. */
-  tool: "move" | "erase" | "restore" | "pick"
+  /** What pressing on the picture does: pan, move grid lines, erase, restore, or paint pixels, or pick a color. */
+  tool: "move" | "lines" | "erase" | "restore" | "paint" | "pick"
+  /** The color Paint paints; it snaps to the nearest palette color. */
+  paintColor: Rgb | undefined
   /** How far (OKLab) a cell's own color may be from the palette color it got before it counts as lost. */
   lostThreshold: number
-  /** Whether erasing or restoring takes one pixel or its whole area of one color. */
+  /** Whether erasing, restoring, or painting takes one pixel or its whole area of one color. */
   brush: "pixel" | "area"
   /** Strokes painted by hand, for the size they were made at: a new size drops them. */
   edits: { size: string; strokes: Array<Array<Edit>> }
@@ -155,9 +157,10 @@ const state: State = {
   cleanKeep: { size: "", cells: [] },
   targetWidth: undefined,
   reduceMode: "outlines",
-  removeBackground: false,
+  removeBackground: true,
   background: defaultBackgroundOptions,
   tool: "move",
+  paintColor: undefined,
   lostThreshold: defaultLostThreshold,
   brush: "pixel",
   edits: { size: "", strokes: [] },
@@ -224,6 +227,8 @@ let lost: Array<LostColor> = []
 let highlight: ReadonlyArray<number> = []
 /** The specks cleaned in the last result, each as its cells. */
 let specks: ReadonlyArray<ReadonlyArray<number>> = []
+/** The pixels painted by hand in the last result. */
+let painted: ReadonlyArray<number> = []
 /** What `pixel check` would say about the last result. */
 let report: Report | undefined
 
@@ -279,6 +284,7 @@ const recompute = (): void => {
   samples = outcome.samples
   lost = [...outcome.lost]
   specks = outcome.specks
+  painted = outcome.painted
   backgroundFound = [...outcome.backgroundFound]
   result = outcome.art
   // Pixel art at its own size (a sprite source) has no grid to judge, only rules.
@@ -511,6 +517,12 @@ const viewer = makeViewer(canvas, {
     const cell = samples?.cells[y * samples.width + x]
     if (cell !== undefined && cell.colors.length > 0) keepColor(medianColor(cell.colors))
   },
+  sample: (x: number, y: number) => {
+    const index = result?.indices[y * result.width + x]
+    if (result === undefined || index === undefined || index === TRANSPARENT) return
+    state.paintColor = result.palette[index]!
+    update()
+  },
   paint: (x: number, y: number, start: boolean) => {
     // Restoring over a cleaned speck brings the speck back, when the picture has one pixel per cell.
     if (state.tool === "restore" && grid !== undefined && state.targetWidth === undefined) {
@@ -518,8 +530,16 @@ const viewer = makeViewer(canvas, {
       const speck = specks.find((cells) => cells.includes(cell))
       if (speck !== undefined) state.cleanKeep.cells.push(...speck)
     }
+    const area = state.brush === "area"
+    let edit: Edit
+    if (state.tool === "paint") {
+      if (state.paintColor === undefined) return
+      edit = { x, y, area, tool: "paint", color: state.paintColor }
+    } else {
+      edit = { x, y, area, tool: state.tool === "erase" ? "erase" : "restore" }
+    }
     if (start) state.edits.strokes.push([])
-    state.edits.strokes[state.edits.strokes.length - 1]!.push({ x, y, erase: state.tool === "erase", area: state.brush === "area" })
+    state.edits.strokes[state.edits.strokes.length - 1]!.push(edit)
     update()
   }
 })
@@ -635,7 +655,7 @@ const gridPanel = (): HTMLElement => {
     {
       action: button("Auto-detect", autoDetect, { variant: "ghost", small: true, icon: "wand", title: "Find the grid again" }),
       help:
-        "The grid marks the picture's fake pixels: each cell becomes one pixel. Cell sizes may be fractions (AI pictures are often scaled by 7.6 or 23.3). Drag a single line on the picture to move it by hand; moved lines turn yellow. Following drifting lines moves every line onto its nearest edge, for pictures whose cells grow or shrink."
+        "The grid marks the picture's fake pixels: each cell becomes one pixel. Cell sizes may be fractions (AI pictures are often scaled by 7.6 or 23.3). To move one line by hand, choose Lines in the toolbar and drag it; moved lines turn yellow. Following drifting lines moves every line onto its nearest edge, for pictures whose cells grow or shrink."
     },
     state.detectionNote !== "" && callout(state.noteGood ? "good" : "warn", state.detectionNote),
     prop(
@@ -1205,7 +1225,7 @@ const backgroundPanel = (): HTMLElement =>
     "background",
     "Background",
     {
-      help: "The colors covering most of the border are the background (one, or the two tones of a fake checkerboard). It is flooded in from the border and stops at the outline. To erase or bring back pixels by hand, choose Erase or Restore in the toolbar and paint on the fixed picture, one pixel or a whole area of one color at a time."
+      help: "The colors covering most of the border are the background (one, or the two tones of a fake checkerboard). It is flooded in from the border and stops at the outline. To erase or bring back pixels by hand, choose Erase or Restore in the toolbar and paint on the fixed picture, one pixel or a whole area of one color at a time. Paint recolors pixels the same way."
     },
     switchRow(
       "Remove the background",
@@ -1258,7 +1278,7 @@ const backgroundPanel = (): HTMLElement =>
     h(
       "div",
       { class: "inline-action" },
-      h("span", {}, state.edits.strokes.length === 0 ? "Paint with Erase or Restore to edit by hand" : `${state.edits.strokes.length} stroke${state.edits.strokes.length === 1 ? "" : "s"} painted by hand`),
+      h("span", {}, state.edits.strokes.length === 0 ? "Use Erase, Restore, or Paint to edit by hand" : `${state.edits.strokes.length} stroke${state.edits.strokes.length === 1 ? "" : "s"} by hand`),
       state.edits.strokes.length > 0 &&
         button("Clear", () => {
           state.edits.strokes = []
@@ -1438,15 +1458,22 @@ const introPanel = (): HTMLElement =>
 
 const TOOLS = [
   { id: "move", label: "Move", icon: "move", title: "Move: drag to pan (V)" },
+  { id: "lines", label: "Lines", icon: "lines", title: "Lines: drag a grid line onto an edge in the source (L)" },
   { id: "erase", label: "Erase", icon: "erase", title: "Erase: paint pixels transparent (E)" },
   { id: "restore", label: "Restore", icon: "restore", title: "Restore: paint erased pixels back (R)" },
+  { id: "paint", label: "Paint", icon: "brush", title: "Paint: paint pixels a palette color; Alt-click a pixel to take its color (B)" },
   { id: "pick", label: "Pick", icon: "pick", title: "Pick: click a pixel to keep its color (I)" }
 ] as const satisfies ReadonlyArray<{ id: State["tool"]; label: string; icon: IconName; title: string }>
 
 const setTool = (id: State["tool"]): void => {
   state.tool = id
-  // Painting happens on the fixed picture.
-  if ((id === "erase" || id === "restore") && state.mode === "source") state.mode = "result"
+  // Painting happens on the fixed picture; grid lines are moved on the source.
+  if ((id === "erase" || id === "restore" || id === "paint") && state.mode === "source") state.mode = "result"
+  if (id === "paint" && state.paintColor === undefined) state.paintColor = paintColors()[0]
+  if (id === "lines") {
+    state.showGrid = true
+    if (state.mode === "result") state.mode = "source"
+  }
   update()
 }
 
@@ -1513,7 +1540,7 @@ const renderTools = (): void => {
   tools.hidden = state.source === undefined
   zoomBox.hidden = state.source === undefined
   if (tools.hidden) return
-  const painting = state.tool === "erase" || state.tool === "restore"
+  const painting = isPainting()
   replace(
     tools,
     segmented(state.tool, TOOLS, setTool, { label: "Tool", class: "tool-strip" }),
@@ -1529,7 +1556,42 @@ const renderTools = (): void => {
           update()
         },
         { label: "Brush", class: "tool-strip" }
-      )
+      ),
+    state.tool === "paint" && paintStrip()
+  )
+}
+
+const isPainting = (): boolean => state.tool === "erase" || state.tool === "restore" || state.tool === "paint"
+
+/** The colors Paint offers: the palette's, or without one the colors the fixed picture uses. */
+const paintColors = (): Array<Rgb> => {
+  if (state.paletteName !== ORIGINAL) return state.swatches.map((swatch) => swatch.color)
+  if (result === undefined) return []
+  const used = new Set(Array.from(result.indices).filter((index) => index !== TRANSPARENT))
+  return used.size > 48 ? [] : [...used].map((index) => result!.palette[index]!)
+}
+
+/** The color Paint paints, and the palette to choose it from. */
+const paintStrip = (): HTMLElement => {
+  const current = state.paintColor === undefined ? undefined : toHex(state.paintColor)
+  return h(
+    "div",
+    { class: "paint-colors", attrs: { role: "group", "aria-label": "Paint color" } },
+    paintColors().map((color) => {
+      const hex = toHex(color)
+      return h("button", {
+        class: `paint-color${hex === current ? " on" : ""}`,
+        title: hex,
+        attrs: { type: "button", style: `--color:${hex}`, "aria-pressed": String(hex === current), "aria-label": hex },
+        on: {
+          click: () => {
+            state.paintColor = color
+            update()
+          }
+        }
+      })
+    }),
+    h("span", { class: "paint-hint" }, current === undefined ? "Alt-click a pixel to take its color" : "Alt-click takes a color")
   )
 }
 
@@ -1571,7 +1633,7 @@ const renderToast = (): void => {
 }
 
 // Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z or Ctrl+Y redoes; text fields keep their own undo.
-// Single keys pick a tool (V, E, R, I), toggle the grid (G), or fit the picture (Shift+1).
+// Single keys pick a tool (V, L, E, R, B, I), toggle the grid (G), or fit the picture (Shift+1).
 window.addEventListener("keydown", (event) => {
   const target = event.target
   if (target instanceof HTMLInputElement && target.type !== "range" && target.type !== "checkbox") return
@@ -1590,6 +1652,8 @@ window.addEventListener("keydown", (event) => {
   if (event.altKey || state.source === undefined) return
   const shortcuts: Record<string, () => void> = {
     v: () => setTool("move"),
+    l: () => setTool("lines"),
+    b: () => setTool("paint"),
     e: () => setTool("erase"),
     r: () => setTool("restore"),
     i: () => setTool("pick"),
@@ -1613,8 +1677,11 @@ const render = (rebuildPanels: boolean): void => {
   renderZoom()
   renderToast()
   if (rebuildPanels) {
-    // Panels are rebuilt whole; keep the scroll position where the user left it.
+    // Panels are rebuilt whole; keep the scroll position, and the field being typed in, where the user left them.
     const scroll = panels.scrollTop
+    const active = document.activeElement
+    const focused = active instanceof HTMLInputElement && panels.contains(active) && active.type === "text" ? active.getAttribute("aria-label") : null
+    const typed = active instanceof HTMLInputElement ? active.value : ""
     replace(
       panels,
       state.source === undefined
@@ -1622,6 +1689,14 @@ const render = (rebuildPanels: boolean): void => {
         : [gridPanel(), sizePanel(), palettePanel(), proposePanel(), matchingPanel(), lostPanel(), backgroundPanel(), checkPanel(), exportPanel(), aboutPanel()]
     )
     panels.scrollTop = scroll
+    if (focused !== null) {
+      const field = [...panels.querySelectorAll("input")].find((input) => input.getAttribute("aria-label") === focused)
+      if (field !== undefined) {
+        field.value = typed
+        field.focus({ preventScroll: true })
+        field.setSelectionRange(typed.length, typed.length)
+      }
+    }
   } else {
     drawPreview()
   }
@@ -1632,10 +1707,12 @@ const render = (rebuildPanels: boolean): void => {
     mode: state.mode,
     showGrid: state.showGrid,
     moved: new Set(state.moved.keys()),
-    painting: (state.tool === "erase" || state.tool === "restore") && result !== undefined,
+    painting: isPainting() && result !== undefined,
     picking: state.tool === "pick",
+    adjusting: state.tool === "lines",
     highlight,
-    marked: state.cleanup.size > 0 && state.cleanup.show ? specks.flat() : []
+    marked: state.cleanup.size > 0 && state.cleanup.show ? specks.flat() : [],
+    painted
   })
 }
 

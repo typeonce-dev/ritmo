@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest"
 
-import { applyEdits, backgroundColors, clearMasked, findBackground } from "../src/core/background.ts"
+import { backgroundColors, clearMasked, findBackground } from "../src/core/background.ts"
+import { applyEdits } from "../src/core/edits.ts"
 import { pack, toHex, type Rgb } from "../src/core/color.ts"
 import { quantize, sampleCells, TRANSPARENT, type CellSamples, type PixelArt } from "../src/core/fix.ts"
 import { defaultLostThreshold, lostColors } from "../src/core/lost.ts"
 import { detectGrid, uniformGrid } from "../src/core/grid.ts"
+import { runRecipe } from "../src/core/pipeline.ts"
+import { defaultRecipe } from "../src/core/recipe.ts"
 import { proposePalette } from "../src/core/palette.ts"
 import { reduce } from "../src/core/reduce.ts"
 import { upscale } from "./synthetic.ts"
@@ -78,11 +81,11 @@ describe("background", () => {
       clearMasked(
         scene,
         applyEdits(scene, mask, [
-          { x: 5, y: 4, erase: true, area: false },
-          { x: 3, y: 2, erase: true, area: true },
-          { x: 0, y: 0, erase: false, area: true },
-          { x: 9, y: 7, erase: false, area: false }
-        ])
+          { x: 5, y: 4, tool: "erase", area: false },
+          { x: 3, y: 2, tool: "erase", area: true },
+          { x: 0, y: 0, tool: "restore", area: true },
+          { x: 9, y: 7, tool: "restore", area: false }
+        ], "oklab").mask
       )
     )
     expect(edited[0]).toBe("WW........")
@@ -90,6 +93,25 @@ describe("background", () => {
     expect(edited[2]).toBe("..K..WBK..")
     expect(edited[4]).toBe("..K.K.KK..")
     expect(edited[7]).toBe("...KKKK..P")
+  })
+
+  it("paints one pixel or a whole area with the nearest palette color, in order with erasing", () => {
+    const mask = findBackground(scene, backgroundColors(scene), { tolerance: 0.02, enclosed: false, specks: false })
+    const edited = applyEdits(scene, mask, [
+      // A near-black off the palette snaps to K.
+      { x: 5, y: 2, tool: "paint", color: { r: 20, g: 18, b: 30 }, area: false },
+      { x: 3, y: 6, tool: "paint", color: colors.B!, area: true },
+      // Painting shows an erased pixel again; erasing it after takes it away.
+      { x: 0, y: 3, tool: "paint", color: colors.S!, area: false },
+      { x: 0, y: 4, tool: "paint", color: colors.S!, area: false },
+      { x: 0, y: 4, tool: "erase", area: false }
+    ], "oklab")
+    const cleared = letters(clearMasked(edited.art, edited.mask))
+    expect(cleared[2]).toBe("..KBBKBK..")
+    expect(cleared[3]).toBe("S.KBKKBK..")
+    expect(cleared[4]).toBe("..KBKWKK..")
+    expect(cleared[6]).toBe("..KBBBBK..")
+    expect(edited.painted).toEqual([25, 30, 63, 64, 65, 66])
   })
 
   it("removes specks left alone in the background, and only when asked", () => {
@@ -122,6 +144,25 @@ describe("background", () => {
     const mask = findBackground(fixed, backgroundColors(fixed), { tolerance: 0.08, enclosed: false, specks: false })
     const expected = findBackground(scene, backgroundColors(scene), { tolerance: 0.02, enclosed: false, specks: false })
     expect(Array.from(mask)).toEqual(Array.from(expected))
+  })
+
+  it("keeps the outline when the palette has no color for the background", () => {
+    // A grey background whose nearest palette color is the dark outline: found in the palette's colors, the outline would go with it.
+    const grey = { r: 60, g: 70, b: 68 }
+    const outline = { r: 18, g: 43, b: 52 }
+    const ice = { r: 162, g: 221, b: 249 }
+    const rows = ["GGGGGGGG", "GGGTTGGG", "GGTIITGG", "GTIIIITG", "GGTIITGG", "GGGTTGGG", "GGGGGGGG"]
+    const own = [grey, outline, ice]
+    const sprite: PixelArt = {
+      width: 8,
+      height: 7,
+      palette: own,
+      indices: Int32Array.from(rows.join(""), (letter) => "GTI".indexOf(letter))
+    }
+    const image = upscale(sprite, { scale: 9.4, offset: 3, blur: 1, noise: 3, seed: 2 })
+    const fixed = runRecipe(image, { ...defaultRecipe, palette: { name: "Dark", colors: [outline, ice], locked: [] }, removeBackground: true })!
+    const kept = Array.from(fixed.art.indices, (index) => (index === TRANSPARENT ? "." : "TI"[index]!)).join("")
+    expect(kept).toBe(rows.join("").replaceAll("G", "."))
   })
 })
 

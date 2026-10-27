@@ -36,9 +36,9 @@ picture open), and a `pixel.config.json` (its rules, palette, and settings).
 
 The page has three parts: the top bar (the file, the **Source**, **Compare**,
 and **Fixed** views, undo and redo, **Open**, and **Export**), the picture
-with its tools floating over it (**Move**, **Erase**, **Restore**, **Pick**,
+with its tools floating over it (**Move**, **Lines**, **Erase**, **Restore**, **Paint**, **Pick**,
 and zoom), and the settings on the right, in sections that fold away and
-stay folded. Each section's **ⓘ** button explains it. Keys: V, E, R, and I
+stay folded. Each section's **ⓘ** button explains it. Keys: V, L, E, R, B, and I
 pick a tool, G shows or hides the grid, and Shift+1 fits the picture. On a
 phone the settings sit under the picture.
 
@@ -53,7 +53,11 @@ node tools/pixel-fixer/bin/pixel.mjs check art.png   # the same, from any folder
    **Auto-detect** gives the cell size, the output size, and a confidence. Below
    about 50%, check the pink grid lines against the picture. Fix it by typing
    the cell size and offset (fractions are fine: AI pictures are often scaled
-   by 7.6 or 23.3), or drag a single line on the picture. Lines moved by hand
+   by 7.6 or 23.3), or choose **Lines** in the tools over the picture and drag a single
+   line (**Move** only looks around). Number fields take math: type
+   `1015/51` (51 pixels across 1015 source pixels), or `*2` or `/2` to
+   double or halve the value there; ArrowUp and ArrowDown step it (with
+   Shift, ten steps), and Escape puts it back. Lines moved by hand
    turn yellow. **Follow drifting lines** moves every line onto its nearest
    edge, for pictures whose cells grow or shrink across the picture.
    **Size** makes the picture smaller than one pixel per cell (a width, or
@@ -91,18 +95,26 @@ node tools/pixel-fixer/bin/pixel.mjs check art.png   # the same, from any folder
    100% merges every speck. Locked colors are never cleaned, cleaned pixels
    are outlined in yellow, and painting over one with **Restore** brings
    that speck back.
-4. **Background.** **Remove the background** makes it transparent. The
+4. **Background.** **Remove the background** (on by default) makes it transparent. The
    colors covering most of the border are the background (one, or the two
    tones of a fake checkerboard an image generator painted in); it is flooded
-   inward from the border and stops at the outline. **Tolerance** sets how
+   inward from the border and stops at the outline. It is found in each
+   pixel's own color, before the palette, so a palette with no color for the
+   background cannot merge it into a dark outline. **Tolerance** sets how
    close a color must be; **Also enclosed areas** removes background-colored
    gaps the border cannot reach (and same-colored highlights); **Remove
    specks** clears groups of up to 3 pixels left alone in the background.
    To edit by hand, pick **Erase** or **Restore** in the tools over the
    picture (instead of **Move**) and paint on the fixed picture, with a **Pixel** or **Area**
-   (the whole connected area of one color) brush. Hand edits work with or
-   without removing the background, and are dropped when the picture's size
-   changes.
+   (the whole connected area of one color) brush.
+   **Paint** colors pixels by hand, for the one pixel the matching got
+   wrong: choose a color beside the brush (or Alt-click a pixel to take its
+   color) and paint, with the same **Pixel** or **Area** brushes. A painted
+   color snaps to the nearest palette color, so it follows palette changes;
+   painted pixels are outlined in white, and show even where the background
+   was removed. Hand edits work with or without removing the background,
+   apply in the order made, are saved in the recipe, and are dropped when
+   the picture's size changes.
 5. **Compare.** **Source**, **Compare** (a split you can drag), and **Fixed**
    views. Zoom with the wheel, a pinch, or the buttons; drag to pan; double-click
    to fit.

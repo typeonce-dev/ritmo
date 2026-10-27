@@ -20,10 +20,14 @@ export interface Scene {
   readonly painting: boolean
   /** Whether pressing on the picture (source or fixed) picks the grid cell under it. */
   readonly picking: boolean
+  /** Whether grid lines can be dragged (the Lines tool); otherwise a press on a line pans like anywhere else. */
+  readonly adjusting: boolean
   /** Grid cells (row by row) to point out, drawn over everything. */
   readonly highlight: ReadonlyArray<number>
   /** Grid cells (row by row) to mark with an outline only, so their color stays visible. */
   readonly marked: ReadonlyArray<number>
+  /** Pixels of the fixed picture (row by row) painted by hand, outlined where the fixed picture shows. */
+  readonly painted: ReadonlyArray<number>
 }
 
 export interface ViewerEvents {
@@ -34,6 +38,8 @@ export interface ViewerEvents {
   readonly paint: (x: number, y: number, start: boolean) => void
   /** A press on the picture while picking: the grid cell under it. */
   readonly pick: (x: number, y: number) => void
+  /** An Alt-press on the fixed picture while painting: the pixel whose color to take. */
+  readonly sample: (x: number, y: number) => void
 }
 
 export interface Viewer {
@@ -56,10 +62,12 @@ interface Drag {
 const GRID_COLOR = "rgba(255, 64, 160, 0.85)"
 const MOVED_COLOR = "rgba(255, 200, 0, 0.95)"
 const HOVER_COLOR = "rgba(0, 220, 255, 1)"
+/** Pixels painted by hand: white, apart from the yellow of cleaned specks and moved lines. */
+const PAINTED_COLOR = "rgba(255, 255, 255, 0.95)"
 
 export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Viewer => {
   const context = canvas.getContext("2d")!
-  let scene: Scene = { source: undefined, grid: undefined, result: undefined, mode: "source", showGrid: true, moved: new Set(), painting: false, picking: false, highlight: [], marked: [] }
+  let scene: Scene = { source: undefined, grid: undefined, result: undefined, mode: "source", showGrid: true, moved: new Set(), painting: false, picking: false, adjusting: false, highlight: [], marked: [], painted: [] }
   let zoom = 1
   let panX = 0
   let panY = 0
@@ -210,19 +218,24 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
     grid.ys.forEach((value, index) => line("y", index, value))
   }
 
-  const drawCells = (cells: ReadonlyArray<number>, fill: string | undefined, stroke: string): void => {
-    const { grid } = scene
-    if (grid === undefined || cells.length === 0) return
-    const columns = grid.xs.length - 1
+  /** Draws `cells` (row by row) of the cuts given: the grid's, or the fixed picture's. */
+  const drawCells = (
+    cuts: { xs: ReadonlyArray<number>; ys: ReadonlyArray<number> } | undefined,
+    cells: ReadonlyArray<number>,
+    fill: string | undefined,
+    stroke: string
+  ): void => {
+    if (cuts === undefined || cells.length === 0) return
+    const columns = cuts.xs.length - 1
     context.strokeStyle = stroke
     context.lineWidth = 2
     for (const cell of cells) {
       const x = cell % columns
       const y = (cell - x) / columns
-      const left = toScreen(grid.xs[x]!, "x")
-      const top = toScreen(grid.ys[y]!, "y")
-      const width = toScreen(grid.xs[x + 1]!, "x") - left
-      const height = toScreen(grid.ys[y + 1]!, "y") - top
+      const left = toScreen(cuts.xs[x]!, "x")
+      const top = toScreen(cuts.ys[y]!, "y")
+      const width = toScreen(cuts.xs[x + 1]!, "x") - left
+      const height = toScreen(cuts.ys[y + 1]!, "y") - top
       if (fill !== undefined) {
         context.fillStyle = fill
         context.fillRect(left, top, width, height)
@@ -232,8 +245,8 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
   }
 
   const drawHighlight = (): void => {
-    drawCells(scene.marked, undefined, MOVED_COLOR)
-    drawCells(scene.highlight, "rgba(0, 220, 255, 0.35)", HOVER_COLOR)
+    drawCells(scene.grid, scene.marked, undefined, MOVED_COLOR)
+    drawCells(scene.grid, scene.highlight, "rgba(0, 220, 255, 0.35)", HOVER_COLOR)
   }
 
   const draw = (): void => {
@@ -258,7 +271,10 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
     context.fillRect(panX, panY, picture.width * zoom, picture.height * zoom)
 
     if (scene.mode === "source") drawSource()
-    else if (scene.mode === "result") drawResult()
+    else if (scene.mode === "result") {
+      drawResult()
+      drawCells(resultCuts(), scene.painted, undefined, PAINTED_COLOR)
+    }
     else {
       const split = Math.round(view.width * divider)
       context.save()
@@ -272,6 +288,7 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
       context.rect(split, 0, view.width - split, view.height)
       context.clip()
       drawResult()
+      drawCells(resultCuts(), scene.painted, undefined, PAINTED_COLOR)
       context.restore()
     }
     if (scene.mode !== "result") drawGrid()
@@ -318,7 +335,7 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
     const view = size()
     if (scene.mode === "compare" && Math.abs(x - view.width * divider) <= 12) return "divider"
     const { grid } = scene
-    if (grid === undefined || !scene.showGrid || scene.mode === "result") return undefined
+    if (grid === undefined || !scene.showGrid || !scene.adjusting || scene.mode === "result") return undefined
     let best: { axis: Axis; index: number; distance: number } | undefined
     const consider = (axis: Axis, cuts: ReadonlyArray<number>, at: number): void => {
       cuts.forEach((value, index) => {
@@ -366,6 +383,10 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
     if (scene.painting && pointers.size === 1) {
       const pixel = pixelAt(at.x, at.y)
       const onDivider = scene.mode === "compare" && Math.abs(at.x - size().width * divider) <= 12
+      if (pixel !== undefined && !onDivider && event.altKey) {
+        events.sample(pixel.x, pixel.y)
+        return
+      }
       if (pixel !== undefined && !onDivider) {
         drag = { kind: "paint", lastX: at.x, lastY: at.y, pixel }
         events.paint(pixel.x, pixel.y, true)

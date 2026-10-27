@@ -843,16 +843,6 @@ input + .affix {
   padding: 0 8px 0 0;
 }
 
-.input input[type="number"] {
-  -moz-appearance: textfield;
-}
-
-.input input[type="number"]::-webkit-inner-spin-button,
-.input input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
 .input.select select {
   appearance: none;
   padding-right: 28px;
@@ -1522,4 +1512,38 @@ input + .affix {
   .by {
     display: none;
   }
+}
+
+/* Paint's colors, beside its brush in the floating tools */
+
+.paint-colors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  max-width: min(360px, 60vw);
+  padding-left: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.paint-color {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: var(--color);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+}
+
+.paint-color.on {
+  box-shadow: 0 0 0 2px var(--floating), 0 0 0 4px var(--accent);
+}
+
+.paint-hint {
+  padding: 0 4px;
+  color: #a8a8b2;
+  font-size: 12px;
+  white-space: nowrap;
 }

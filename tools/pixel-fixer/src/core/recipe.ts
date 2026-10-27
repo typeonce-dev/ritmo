@@ -6,7 +6,8 @@
  * hand.
  */
 import { parseHex, toHex, type Metric, type Rgb } from "./color.ts"
-import { defaultBackgroundOptions, type BackgroundOptions, type Edit } from "./background.ts"
+import { defaultBackgroundOptions, type BackgroundOptions } from "./background.ts"
+import type { Edit } from "./edits.ts"
 import { defaultLostThreshold } from "./lost.ts"
 import { defaultSampleOptions, type Dither, type SampleOptions } from "./fix.ts"
 import type { GridSpec } from "./grid.ts"
@@ -54,7 +55,7 @@ export interface Recipe {
   readonly background: BackgroundOptions
   /** How far (OKLab) a cell's own color may be from its palette color before it counts as lost. */
   readonly lostThreshold: number
-  /** Erase and restore strokes painted by hand, for the size ("WxH") they were made at. */
+  /** Erase, restore, and paint strokes made by hand, for the size ("WxH") they were made at. */
   readonly edits: { readonly size: string; readonly strokes: ReadonlyArray<ReadonlyArray<Edit>> }
 }
 
@@ -94,7 +95,11 @@ export const encodeRecipe = (recipe: Recipe): string =>
         recipe.palette === undefined
           ? null
           : { name: recipe.palette.name, colors: recipe.palette.colors.map(toHex), locked: recipe.palette.locked },
-      targetWidth: recipe.targetWidth ?? null
+      targetWidth: recipe.targetWidth ?? null,
+      edits: {
+        size: recipe.edits.size,
+        strokes: recipe.edits.strokes.map((stroke) => stroke.map((edit) => (edit.tool === "paint" ? { ...edit, color: toHex(edit.color) } : edit)))
+      }
     },
     null,
     2
@@ -205,12 +210,14 @@ export const decodeRecipe = (text: string): Decoded<Recipe> => {
     raw.edits,
     (list) =>
       list.filter(Array.isArray).map((stroke) =>
-        stroke.filter(isRecord).map((edit) => ({
-          x: Number(edit.x),
-          y: Number(edit.y),
-          erase: edit.erase === true,
-          area: edit.area === true
-        }))
+        stroke.filter(isRecord).flatMap((edit): Array<Edit> => {
+          const at = { x: Number(edit.x), y: Number(edit.y), area: edit.area === true }
+          if (edit.tool === "erase" || edit.tool === "restore") return [{ ...at, tool: edit.tool }]
+          const color = edit.tool === "paint" && typeof edit.color === "string" ? parseHex(edit.color) : undefined
+          if (color !== undefined) return [{ ...at, tool: "paint", color }]
+          errors.push(`edit ${JSON.stringify(edit)} is not an erase, restore, or paint with a hex color`)
+          return []
+        })
       ),
     [] as Array<Array<Edit>>
   )

@@ -43,7 +43,7 @@ describe("recipes", () => {
       cleanKeep: { size: "16x16", cells: [3, 9] },
       targetWidth: 12,
       removeBackground: true,
-      edits: { size: "16x16", strokes: [[{ x: 1, y: 2, erase: true, area: false }]] }
+      edits: { size: "16x16", strokes: [[{ x: 1, y: 2, tool: "erase", area: false }], [{ x: 4, y: 5, tool: "paint", color: { r: 18, g: 52, b: 86 }, area: true }]] }
     }
     const decoded = decodeRecipe(encodeRecipe(recipe))
     expect(decoded).toEqual({ ok: true, value: recipe })

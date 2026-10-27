@@ -6,8 +6,7 @@
  * image generator painted in), with no blur to fight. The colors that cover
  * most of the picture's border are the background; it is flooded inward from
  * the border through pixels close to one of them, and stops at the outline.
- * Edits by hand (`applyEdits`) go on top: erasing or restoring one pixel or
- * one area at a time.
+ * Edits by hand (`edits.ts`) go on top.
  */
 import { toOklab, type Lab } from "./color.ts"
 import { TRANSPARENT, type PixelArt } from "./fix.ts"
@@ -25,14 +24,6 @@ export const defaultBackgroundOptions: BackgroundOptions = { tolerance: 0.08, en
 
 /** The largest group of pixels, alone in the background, that counts as a speck. */
 export const SPECK_SIZE = 3
-
-/** An edit by hand on the fixed picture: erases (makes transparent) or restores the pixel at (x, y), or its whole area of one color. */
-export interface Edit {
-  readonly x: number
-  readonly y: number
-  readonly erase: boolean
-  readonly area: boolean
-}
 
 const distance = (x: Lab, y: Lab): number => Math.hypot(x.l - y.l, x.a - y.a, x.b - y.b)
 
@@ -79,29 +70,6 @@ export const backgroundColors = (art: PixelArt): Array<number> => {
     .slice(0, 3)
     .filter((group) => group.n >= COMMON_ENOUGH * top.n)
     .map((group) => group.index)
-}
-
-/** The 4-connected pixels holding the same palette index as (x, y), in the picture before any is erased. */
-const region = (art: PixelArt, x: number, y: number): Array<number> => {
-  const { width, height, indices } = art
-  const start = y * width + x
-  const value = indices[start]
-  const seen = new Uint8Array(width * height)
-  const stack = [start]
-  const out: Array<number> = []
-  seen[start] = 1
-  while (stack.length > 0) {
-    const i = stack.pop()!
-    out.push(i)
-    const px = i % width
-    const neighbours = [px > 0 ? i - 1 : -1, px < width - 1 ? i + 1 : -1, i - width, i + width]
-    for (const n of neighbours) {
-      if (n < 0 || n >= indices.length || seen[n] === 1 || indices[n] !== value) continue
-      seen[n] = 1
-      stack.push(n)
-    }
-  }
-  return out
 }
 
 /**
@@ -177,18 +145,6 @@ const removeSpecks = (mask: Uint8Array, width: number, height: number): void => 
     }
     if (group.length <= SPECK_SIZE) for (const i of group) mask[i] = 1
   }
-}
-
-/** A copy of `mask` with the edits applied in order: each sets its pixel, or its area of one color, to erased or kept. */
-export const applyEdits = (art: PixelArt, mask: Uint8Array, edits: ReadonlyArray<Edit>): Uint8Array => {
-  const out = new Uint8Array(mask)
-  for (const edit of edits) {
-    if (edit.x < 0 || edit.y < 0 || edit.x >= art.width || edit.y >= art.height) continue
-    const value = edit.erase ? 1 : 0
-    if (edit.area) for (const i of region(art, edit.x, edit.y)) out[i] = value
-    else out[edit.y * art.width + edit.x] = value
-  }
-  return out
 }
 
 /** The picture with the masked pixels made transparent. */

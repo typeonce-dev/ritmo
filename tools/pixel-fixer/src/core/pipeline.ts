@@ -5,9 +5,15 @@
  * Grid, then reading cells, snapping to the palette, cleaning specks,
  * shrinking, and removing the background, in that order. A cache lets the
  * page rerun it on every slider move without detecting the grid again.
+ *
+ * The background is found in the cells' own colors, not the palette's: a
+ * palette with no color close to the background snaps it to the nearest one
+ * (often the outline), and a background found there would take the outline
+ * with it.
  */
-import { applyEdits, backgroundColors, clearMasked, findBackground } from "./background.ts"
+import { backgroundColors, clearMasked, findBackground } from "./background.ts"
 import { cleanUp } from "./cleanup.ts"
+import { applyEdits } from "./edits.ts"
 import type { Rgb } from "./color.ts"
 import { quantize, sampleCells, type CellSamples, type PixelArt } from "./fix.ts"
 import { detectGrid, gridSize, refineGrid, uniformGrid, type Detection, type Grid, type GridSpec, type RgbaImage } from "./grid.ts"
@@ -35,6 +41,8 @@ export interface Outcome {
   readonly specks: ReadonlyArray<ReadonlyArray<number>>
   /** The background colors found, when removing the background. */
   readonly backgroundFound: ReadonlyArray<Rgb>
+  /** The pixels painted by hand (row by row, in the fixed picture). */
+  readonly painted: ReadonlyArray<number>
   /** The hand edits and kept specks were made at another size, so they were left out. */
   readonly editsStale: boolean
   readonly cleanKeepStale: boolean
@@ -109,9 +117,12 @@ export const runWithSpec = (
     ditherStrength: recipe.ditherStrength
   })
 
+  // Each cell's own color, where the background is told apart from the subject.
+  const own = palette.length > 0 ? quantize(samples, { palette: [], metric: recipe.metric, dither: "none", ditherStrength: 0 }) : art
+
   let lost: ReadonlyArray<LostColor> = []
   if (palette.length > 0) {
-    const skip = recipe.removeBackground ? findBackground(art, backgroundColors(art), recipe.background) : undefined
+    const skip = recipe.removeBackground ? findBackground(own, backgroundColors(own), recipe.background) : undefined
     lost = lostColors(samples, art, recipe.lostThreshold, skip)
   }
 
@@ -130,9 +141,12 @@ export const runWithSpec = (
     specks = cleaned.specks
   }
 
+  let ownShrunk = own
   if (recipe.targetWidth !== undefined && recipe.targetWidth < art.width) {
     const width = Math.max(1, Math.round(recipe.targetWidth))
-    art = reduce(art, width, Math.max(1, Math.round((art.height * width) / art.width)), recipe.reduceMode)
+    const height = Math.max(1, Math.round((art.height * width) / art.width))
+    art = reduce(art, width, height, recipe.reduceMode)
+    if (recipe.removeBackground) ownShrunk = reduce(own, width, height, recipe.reduceMode)
   }
 
   let backgroundFound: ReadonlyArray<Rgb> = []
@@ -140,16 +154,21 @@ export const runWithSpec = (
   const editsStale = recipe.edits.size !== size && recipe.edits.strokes.length > 0
   let mask: Uint8Array | undefined
   if (recipe.removeBackground) {
-    const colors = backgroundColors(art)
-    const current = art
-    backgroundFound = colors.map((index) => current.palette[index]!)
-    mask = findBackground(art, colors, recipe.background)
+    const colors = backgroundColors(ownShrunk)
+    backgroundFound = colors.map((index) => ownShrunk.palette[index]!)
+    mask = findBackground(ownShrunk, colors, recipe.background)
   }
   const strokes = editsStale ? [] : recipe.edits.strokes
-  if (strokes.length > 0) mask = applyEdits(art, mask ?? new Uint8Array(art.width * art.height), strokes.flat())
+  let painted: ReadonlyArray<number> = []
+  if (strokes.length > 0) {
+    const edited = applyEdits(art, mask ?? new Uint8Array(art.width * art.height), strokes.flat(), recipe.metric)
+    art = edited.art
+    mask = edited.mask
+    painted = edited.painted
+  }
   if (mask !== undefined) art = clearMasked(art, mask)
 
-  return { spec, detection, grid, samples, art, lost, specks, backgroundFound, editsStale, cleanKeepStale }
+  return { spec, detection, grid, samples, art, lost, specks, backgroundFound, painted, editsStale, cleanKeepStale }
 }
 
 /** The size ("WxH") of the fixed picture before shrinking: what kept specks are recorded against. */
