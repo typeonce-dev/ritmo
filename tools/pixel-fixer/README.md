@@ -103,7 +103,12 @@ node tools/pixel-fixer/bin/pixel.mjs check art.png   # the same, from any folder
    background cannot merge it into a dark outline. **Tolerance** sets how
    close a color must be; **Also enclosed areas** removes background-colored
    gaps the border cannot reach (and same-colored highlights); **Remove
-   specks** clears groups of up to 3 pixels left alone in the background.
+   specks** clears groups of up to 3 pixels left alone in the background;
+   **Remove the shadow** (off by default) also takes a drop shadow under the
+   subject: the background's color made darker, against the background with
+   no outline, in the bottom half of the subject. It can take a grey part of
+   the subject that has no outline, so check the result; erasing the shadow
+   by hand with the **Area** brush is often one click.
    To edit by hand, pick **Erase** or **Restore** in the tools over the
    picture (instead of **Move**) and paint on the fixed picture, with a **Pixel** or **Area**
    (the whole connected area of one color) brush.
@@ -123,7 +128,9 @@ node tools/pixel-fixer/bin/pixel.mjs check art.png   # the same, from any folder
    transparent background) are the project's rules (a
    `pixel.config.json` opened on the page sets them); the palette chosen is
    one too.
-7. **Export.** PNG at 1x (the true pixel art) or any whole scale; SVG in pixel
+7. **Export.** **Crop to the subject** drops the transparent margins, so
+   the export is only the box around what is left (the editor keeps the
+   whole picture, lined up with the source). PNG at 1x (the true pixel art) or any whole scale; SVG in pixel
    units with crisp edges (it stays sharp at any size; same-colored areas are
    merged into rectangles); a JSON map (size, palette, one row of palette
    indices per pixel row, -1 for transparent); the palette as `.hex` or `.gpl`;
@@ -157,7 +164,7 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 
 `fix`, `check`, `pixelate`, and `preview` take the page's settings as flags
 (`--palette`, `--cell 8x8 --offset 2,3`, `--follow`, `--cleanup`,
-`--remove-background`, `--dither`, `--metric`, `--shrink-to`), over a
+`--remove-background`, `--crop`, `--dither`, `--metric`, `--shrink-to`), over a
 `--recipe` file, over the config. `pixel <command> --help` lists them.
 
 **`pixel.config.json`**, found from the working directory up (or

@@ -14,6 +14,7 @@
 import { backgroundColors, clearMasked, findBackground } from "./background.ts"
 import { cleanUp } from "./cleanup.ts"
 import { applyEdits } from "./edits.ts"
+import { cropToContent } from "./export.ts"
 import type { Rgb } from "./color.ts"
 import { quantize, sampleCells, type CellSamples, type PixelArt } from "./fix.ts"
 import { detectGrid, gridSize, refineGrid, uniformGrid, type Detection, type Grid, type GridSpec, type RgbaImage } from "./grid.ts"
@@ -35,6 +36,8 @@ export interface Outcome {
   readonly grid: Grid
   readonly samples: CellSamples
   readonly art: PixelArt
+  /** What is exported and checked: `art`, cropped to its subject when the recipe asks. */
+  readonly exported: PixelArt
   /** Colors the palette has no match for (empty without a palette). */
   readonly lost: ReadonlyArray<LostColor>
   /** The specks cleaned, each as its cells. */
@@ -168,7 +171,8 @@ export const runWithSpec = (
   }
   if (mask !== undefined) art = clearMasked(art, mask)
 
-  return { spec, detection, grid, samples, art, lost, specks, backgroundFound, painted, editsStale, cleanKeepStale }
+  const exported = recipe.crop ? cropToContent(art) : art
+  return { spec, detection, grid, samples, art, exported, lost, specks, backgroundFound, painted, editsStale, cleanKeepStale }
 }
 
 /** The size ("WxH") of the fixed picture before shrinking: what kept specks are recorded against. */

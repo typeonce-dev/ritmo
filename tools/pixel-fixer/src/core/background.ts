@@ -18,9 +18,11 @@ export interface BackgroundOptions {
   readonly enclosed: boolean
   /** Also removes specks: groups of at most `SPECK_SIZE` pixels left alone in the background. */
   readonly specks: boolean
+  /** Also removes a drop shadow under the subject (see `removeShadow`). */
+  readonly shadow: boolean
 }
 
-export const defaultBackgroundOptions: BackgroundOptions = { tolerance: 0.08, enclosed: false, specks: true }
+export const defaultBackgroundOptions: BackgroundOptions = { tolerance: 0.08, enclosed: false, specks: true, shadow: false }
 
 /** The largest group of pixels, alone in the background, that counts as a speck. */
 export const SPECK_SIZE = 3
@@ -116,8 +118,64 @@ export const findBackground = (art: PixelArt, colors: ReadonlyArray<number>, opt
       }
     }
   }
+  if (options.shadow && targets.length > 0 && mask.includes(1)) removeShadow(art, mask, targets)
   if (options.specks && mask.includes(1)) removeSpecks(mask, width, height)
   return mask
+}
+
+/** A shadow's color is a background color darkened: about its hue, and this much darker (OKLab lightness). */
+const SHADOW_HUE = 0.035
+const SHADOW_DARKER = { min: 0.03, max: 0.4 }
+
+/**
+ * Masks a drop shadow: an area of the background's color darkened, lying
+ * against the background (a shadow has no outline, unlike the subject's own
+ * grey parts) in the bottom half of the subject, at least as wide as it is
+ * tall.
+ */
+const removeShadow = (art: PixelArt, mask: Uint8Array, targets: ReadonlyArray<Lab>): void => {
+  const { width, height, indices, palette } = art
+  const shadowy = palette.map((color) => {
+    const lab = toOklab(color)
+    return targets.some((target) => {
+      const darker = target.l - lab.l
+      return Math.hypot(lab.a - target.a, lab.b - target.b) <= SHADOW_HUE && darker >= SHADOW_DARKER.min && darker <= SHADOW_DARKER.max
+    })
+  })
+  let top = height
+  let bottom = -1
+  for (let i = 0; i < mask.length; i++) {
+    if (mask[i] === 1 || indices[i] === TRANSPARENT) continue
+    const y = Math.floor(i / width)
+    top = Math.min(top, y)
+    bottom = Math.max(bottom, y)
+  }
+  if (bottom < top) return
+  const lowest = top + (bottom - top + 1) / 2
+  const seen = new Uint8Array(mask.length)
+  for (let start = 0; start < mask.length; start++) {
+    if (seen[start] === 1 || mask[start] === 1 || shadowy[indices[start]!] !== true) continue
+    const group = [start]
+    seen[start] = 1
+    let touches = false
+    for (let k = 0; k < group.length; k++) {
+      const i = group[k]!
+      const x = i % width
+      for (const n of [x > 0 ? i - 1 : -1, x < width - 1 ? i + 1 : -1, i - width, i + width]) {
+        if (n < 0 || n >= mask.length) continue
+        if (mask[n] === 1) touches = true
+        else if (seen[n] !== 1 && shadowy[indices[n]!] === true) {
+          seen[n] = 1
+          group.push(n)
+        }
+      }
+    }
+    const xs = group.map((i) => i % width)
+    const ys = group.map((i) => Math.floor(i / width))
+    const groupWidth = Math.max(...xs) - Math.min(...xs) + 1
+    const groupHeight = Math.max(...ys) - Math.min(...ys) + 1
+    if (touches && group.length >= 3 && Math.min(...ys) >= lowest && groupWidth >= groupHeight) for (const i of group) mask[i] = 1
+  }
 }
 
 /** Masks every 8-connected group of at most `SPECK_SIZE` unmasked pixels: everything around such a group is background. */

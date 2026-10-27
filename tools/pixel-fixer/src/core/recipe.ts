@@ -52,6 +52,8 @@ export interface Recipe {
   readonly targetWidth: number | undefined
   readonly reduceMode: ReduceMode
   readonly removeBackground: boolean
+  /** Exports without the transparent margins: only the box around the subject. */
+  readonly crop: boolean
   readonly background: BackgroundOptions
   /** How far (OKLab) a cell's own color may be from its palette color before it counts as lost. */
   readonly lostThreshold: number
@@ -73,6 +75,7 @@ export const defaultRecipe: Recipe = {
   targetWidth: undefined,
   reduceMode: "outlines",
   removeBackground: false,
+  crop: false,
   background: defaultBackgroundOptions,
   lostThreshold: defaultLostThreshold,
   edits: { size: "", strokes: [] }
@@ -248,10 +251,12 @@ export const decodeRecipe = (text: string): Decoded<Recipe> => {
     targetWidth,
     reduceMode: oneOf(raw.reduceMode, "reduceMode", ["common", "outlines"], defaultRecipe.reduceMode),
     removeBackground: boolean(raw.removeBackground, "removeBackground", defaultRecipe.removeBackground),
+    crop: boolean(raw.crop, "crop", defaultRecipe.crop),
     background: {
       tolerance: number(background.tolerance, "background.tolerance", defaultBackgroundOptions.tolerance),
       enclosed: boolean(background.enclosed, "background.enclosed", defaultBackgroundOptions.enclosed),
-      specks: boolean(background.specks, "background.specks", defaultBackgroundOptions.specks)
+      specks: boolean(background.specks, "background.specks", defaultBackgroundOptions.specks),
+      shadow: boolean(background.shadow, "background.shadow", defaultBackgroundOptions.shadow)
     },
     lostThreshold: number(raw.lostThreshold, "lostThreshold", defaultRecipe.lostThreshold),
     edits: { size: edits.size, strokes: edits.list }

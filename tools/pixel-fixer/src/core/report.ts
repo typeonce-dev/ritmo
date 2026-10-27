@@ -171,15 +171,15 @@ export const reportOfArt = (
 export const reportOfFix = (image: RgbaImage, recipe: Recipe, outcome: Outcome, rules: LintRules = {}): Report => {
   const fit = gridFit(outcome.samples)
   const confidence = outcome.detection?.confidence
-  const issues = lintArt(outcome.art, { ...rules, palette: rules.palette ?? recipe.palette?.colors })
+  const issues = lintArt(outcome.exported, { ...rules, palette: rules.palette ?? recipe.palette?.colors })
   const spec: GridSpec = outcome.spec
   // A grid given by hand or by size is trusted as given; only the fit can doubt it.
   const sure = (confidence === undefined || confidence >= CONFIDENT.confidence) && fit >= CONFIDENT.fit
   // Pixelating a picture that is not pixel art has no true grid to fit.
   const pixelating = recipe.grid.kind === "size"
   const verdict: Verdict = sure || pixelating ? (errors(issues) === 0 ? "fixable" : "needs-person") : "needs-person"
-  const colors = usedColors(outcome.art).length
-  const size = `${outcome.art.width}×${outcome.art.height}`
+  const colors = usedColors(outcome.exported).length
+  const size = `${outcome.exported.width}×${outcome.exported.height}`
   const summary = pixelating
     ? `Pixelated to ${size}, ${colors} colors.${errors(issues) > 0 ? " Some rules are still broken: see issues." : " Look at the preview: whether it reads well is a judgement call."}`
     : verdict === "fixable"
@@ -200,7 +200,7 @@ export const reportOfFix = (image: RgbaImage, recipe: Recipe, outcome: Outcome, 
       ...(confidence === undefined ? {} : { confidence: round(confidence) }),
       fit: round(fit)
     },
-    output: { width: outcome.art.width, height: outcome.art.height, colors },
+    output: { width: outcome.exported.width, height: outcome.exported.height, colors },
     ...(recipe.palette === undefined
       ? {}
       : {

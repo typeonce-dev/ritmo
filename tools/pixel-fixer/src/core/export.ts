@@ -8,6 +8,29 @@ import { TRANSPARENT, type PixelArt } from "./fix.ts"
 import type { RgbaImage } from "./grid.ts"
 
 /** The picture's pixels, each repeated `scale` times on both axes (nearest neighbour). */
+/** The picture without its transparent margins: the smallest box holding every opaque pixel (a fully transparent picture stays as it is). */
+export const cropToContent = (art: PixelArt): PixelArt => {
+  let left = art.width
+  let right = -1
+  let top = art.height
+  let bottom = -1
+  art.indices.forEach((index, i) => {
+    if (index === TRANSPARENT) return
+    const x = i % art.width
+    const y = (i - x) / art.width
+    left = Math.min(left, x)
+    right = Math.max(right, x)
+    top = Math.min(top, y)
+    bottom = Math.max(bottom, y)
+  })
+  if (right < left || (left === 0 && top === 0 && right === art.width - 1 && bottom === art.height - 1)) return art
+  const width = right - left + 1
+  const height = bottom - top + 1
+  const indices = new Int32Array(width * height)
+  for (let y = 0; y < height; y++) indices.set(art.indices.subarray((top + y) * art.width + left, (top + y) * art.width + left + width), y * width)
+  return { ...art, width, height, indices }
+}
+
 export const toRgba = (art: PixelArt, scale = 1): RgbaImage => {
   const factor = Math.max(1, Math.floor(scale))
   const width = art.width * factor

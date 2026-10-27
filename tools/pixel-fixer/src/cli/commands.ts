@@ -49,6 +49,7 @@ const colors = Flag.Int("colors").pipe(Flag.withDescription("Without a palette, 
 const out = Flag.String("out").pipe(Flag.withAlias("o"), Flag.withDescription("Where to write, without extension (default: next to the input)."), Flag.optional)
 const scale = Flag.Int("scale").pipe(Flag.withDescription("Also write a PNG enlarged this many times."), Flag.withDefault(1))
 const removeBackground = Flag.Boolean("remove-background").pipe(Flag.withDefault(false), Flag.withDescription("Make the background around the subject transparent."))
+const crop = Flag.Boolean("crop").pipe(Flag.withDefault(false), Flag.withDescription("Write the art without its transparent margins (with --remove-background: just the subject)."))
 const cleanup = Flag.Int("cleanup").pipe(Flag.withDescription("Merge specks up to this many pixels into their surroundings."), Flag.optional)
 const metric = Flag.Literals("metric", ["oklab", "ciede2000"]).pipe(Flag.withDescription("How color distance is measured."), Flag.optional)
 const dither = Flag.Boolean("dither").pipe(Flag.withDefault(false), Flag.withDescription("Ordered dithering where the palette has no close color."))
@@ -58,13 +59,14 @@ const shrink = Flag.Int("shrink-to").pipe(Flag.withDescription("Merge pixels dow
 interface Overrides {
   readonly palette: Option.Option<string>
   readonly removeBackground: boolean
+  readonly crop: boolean
   readonly cleanup: Option.Option<number>
   readonly metric: Option.Option<Metric>
   readonly dither: boolean
   readonly shrink: Option.Option<number>
 }
 
-const overrides = { palette, removeBackground, cleanup, metric, dither, shrink }
+const overrides = { palette, removeBackground, crop, cleanup, metric, dither, shrink }
 
 /** The recipe a command runs: the config's, then the recipe file, then the flags. */
 const recipeOf = Effect.fn("recipeOf")(function* (project: Config, file: Option.Option<string>, flags: Overrides) {
@@ -75,6 +77,7 @@ const recipeOf = Effect.fn("recipeOf")(function* (project: Config, file: Option.
   }
   if (Option.isSome(flags.palette)) recipe = { ...recipe, palette: yield* loadPalette(flags.palette.value, ".") }
   if (flags.removeBackground) recipe = { ...recipe, removeBackground: true }
+  if (flags.crop) recipe = { ...recipe, crop: true }
   if (Option.isSome(flags.cleanup)) recipe = { ...recipe, cleanup: { ...recipe.cleanup, size: flags.cleanup.value } }
   if (Option.isSome(flags.metric)) recipe = { ...recipe, metric: flags.metric.value }
   if (flags.dither) recipe = { ...recipe, dither: "ordered" }
@@ -194,7 +197,7 @@ const fix = Command.make(
     const fixed = fixImage(image, recipe, rulesOf(project, recipe), flags.colors, "dominant")
     const base = yield* outputBase(flags.input, Option.getOrUndefined(flags.out), "fixed")
     const extra = { recipe: fixed.recipe, ...(fixed.outcome === undefined ? {} : { preview: preview(image, fixed)! }) }
-    const files = fixed.outcome === undefined ? {} : yield* writeOutputs(base, fixed.outcome.art, flags.scale, extra)
+    const files = fixed.outcome === undefined ? {} : yield* writeOutputs(base, fixed.outcome.exported, flags.scale, extra)
     yield* printJson({ file: flags.input, ...fixed.report, files })
     yield* exitWith(fixed.report.verdict === "needs-person" ? 4 : fixed.report.issues.some((issue) => issue.severity === "error") ? 3 : 0)
   })
@@ -227,7 +230,7 @@ const pixelate = Command.make(
     const fixed = fixImage(image, recipe, rulesOf(project, recipe), Option.some(flags.colors), "balanced")
     const base = yield* outputBase(flags.input, Option.getOrUndefined(flags.out), "pixel")
     if (fixed.outcome === undefined) return yield* new CliFailure({ message: "the picture could not be cut into pixels" })
-    const files = yield* writeOutputs(base, fixed.outcome.art, flags.scale, { recipe: fixed.recipe, preview: previewFix(image, fixed.outcome.grid, fixed.outcome.art) })
+    const files = yield* writeOutputs(base, fixed.outcome.exported, flags.scale, { recipe: fixed.recipe, preview: previewFix(image, fixed.outcome.grid, fixed.outcome.art) })
     yield* printJson({ file: flags.input, ...fixed.report, files })
     yield* exitWith(fixed.report.verdict === "needs-person" ? 3 : 0)
   })
