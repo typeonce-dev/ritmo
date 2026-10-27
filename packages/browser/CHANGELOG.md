@@ -1,5 +1,56 @@
 # @typeonce/ritmo-browser
 
+## 0.17.0
+
+### Minor Changes
+
+- d322191: `Touch.actions` stops a held thumb from selecting the page on iOS. Holding a stick or button for a moment selected the canvas and the text around it, because iOS Safari does not treat `preventDefault()` on `pointerdown` as a reason to skip long-press selection. While attached, the module now sets `user-select: none`, `-webkit-user-select: none`, and `-webkit-touch-callout: none` on the element next to `touch-action: none`, and cancels the context menu a long press opens while a tracked finger is down (a mouse right-click keeps its menu). `dispose()` restores all four styles, and removes the ones the element did not have.
+
+  **Breaking: `Touch.TouchTarget` also listens for `contextmenu`, and its `style` is read and written through `getPropertyValue` and `setProperty` instead of `touchAction`.** A DOM element still fits unchanged. A hand-written target (a test fake) adds `contextmenu` to its listeners and replaces `style: { touchAction }` with:
+
+  ```ts
+  const styles = new Map<string, string>();
+  const style = {
+    getPropertyValue: (property: string) => styles.get(property) ?? "",
+    setProperty: (property: string, value: string) => {
+      if (value === "") styles.delete(property);
+      else styles.set(property, value);
+    },
+  };
+  ```
+
+### Patch Changes
+
+- 15c55ac: Less garbage every frame, with no API change. A system run that queues no commands and writes no resource or machine now allocates nothing; before, it allocated about 400 bytes, because V8 allocates a new table on every `Map`/`Set` `clear()`, even of an empty one. A schedule of 100 small systems runs about 2.5× faster, and the top-down example game makes about 27% less garbage per frame. A frame that requests no state transition skips sorting the empty queue. `Keyboard`, `Gamepad`, and `Pointer` snapshots share one idle state object for every action not in use, as `Controls` already did.
+- 9346953: The `@typeonce/oxlint-plugin-ritmo` README lists built-in oxlint rules that pair well with Ritmo, each with the Ritmo mistake it catches: a `Result` checked with `if` instead of `.ok`, a switch over a closed set that misses a new member, an asset load or upload that is never awaited, `[object Object]` in HUD text, and oxlint's default `correctness` rules. The type-aware ones need `oxlint-tsgolint` and `oxlint --type-aware`.
+
+  The packages' sources pass these rules: unnecessary type assertions and default type arguments are gone, unused imports are removed, and switches over closed sets name every member. The published types are the same types, written without their default arguments.
+
+- db0804a: **A second skill for prototypes: `skills/ritmo-prototype`.** Ask the game's agent to prototype a mechanic, and it puts a playable toy in front of you every round instead of building the full verification for a game that may not survive the first playtest. You are the playtester: the agent checks only that the build compiles and the page loads, and ends each round with what changed and what to look for; you give the verdict in your own words. The game keeps Ritmo's shape (systems that read intents, a simulation separate from drawing) and every tuned number as named variants you switch with a key, so two feels compare in one play and the prototype can graduate without a rewrite. A bug you report that the code does not explain is shrunk with `Fuzz.run`.
+
+  A `PROTOTYPE.md` at the game root turns the mode on. It holds the question the prototype answers and one line per round with your verdict. The skill gives principles for finding the fun rather than a script, so each prototype takes the shape its game needs. The `ritmo` skill routes to the prototype skill while that file exists, and `playbooks/graduate.md` turns the prototype into the game: schemas for saved state, tests, invariants and fuzzing, the setup's checks, and then the file is deleted.
+
+  Existing projects link the new skill next to the `ritmo` one, as `SETUP.md` step 2 now shows:
+
+  ```sh
+  ln -s ../../node_modules/@typeonce/ritmo/skills/ritmo-prototype .agents/skills/ritmo-prototype
+  ```
+
+  `ritmo-devtools lint` notes each shipped skill the project does not link, so a project set up before this release sees `note  skill-not-linked  ritmo-prototype` until it adds the link. The note names its skill (`note  skill-not-linked  ritmo`), and never changes the exit code.
+
+  `SETUP.md` step 1 installs only `@typeonce/ritmo` and `@typeonce/ritmo-devtools`; step 3 installs `@typeonce/oxlint-plugin-ritmo` and `oxlint` with the lint setup, so a prototype installs the lint when it graduates. Nothing changes for a project that already has them. The `@typeonce/ritmo-devtools` README now says which optional peer each feature needs: none for `Session`, `Fuzz`, `Replay` and `ritmo-devtools lint`.
+
+  The `BrowserTickSource` module header now shows the smallest whole game in one file (controls, a component, a system, schedules, an `Inspector`, `Runtime.make`, and the `FixedLoop` page), compiled with the other examples. The prototype skill starts from it instead of a list of modules to read.
+
+  `ritmo-devtools lint` no longer notes `skill-copied` for a skill link that resolves to the project's own `node_modules/@typeonce/ritmo`, so a project depending on a local checkout (`link:`) passes. `Game.System.readEvent` has an example of reading events with `all()`.
+
+- Updated dependencies [15c55ac]
+- Updated dependencies [39aeaf4]
+- Updated dependencies [9346953]
+- Updated dependencies [db0804a]
+- Updated dependencies [3d1f862]
+  - @typeonce/ritmo@0.17.0
+
 ## 0.16.1
 
 ### Patch Changes
