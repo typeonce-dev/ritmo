@@ -18,11 +18,15 @@ presets include Ritmo's own six colors.
 
 ## Run it
 
+The page is part of the website, at https://ritmo.typeonce.dev/tools/pixel/
+(`website/src/pages/tools/pixel/index.astro` mounts it). It is built and
+deployed with the site, so locally it runs with the site too:
+
 ```sh
 pnpm install
-pnpm --dir tools/pixel-fixer dev            # http://localhost:5173
-pnpm --dir tools/pixel-fixer dev --host     # also reachable from a phone on the same network
-pnpm --dir tools/pixel-fixer build          # static site in tools/pixel-fixer/dist
+pnpm --dir website dev            # http://localhost:4321/tools/pixel/
+pnpm --dir website dev --host     # also reachable from a phone on the same network
+pnpm --dir website build          # the site, with the page at dist/tools/pixel/
 ```
 
 Open a picture (**Open** in the top bar, drag and drop, or paste), or press
@@ -214,6 +218,7 @@ of the true size, which are as clean but have half their lines mid-cell.
   the CLI both run), `recipe.ts` (recipes as JSON), `sprite.ts` (sprite
   sources), `lint.ts` (the rules), `report.ts` (the check and its verdict),
   `preview.ts` (pictures to look at).
-- `src/ui/`: the page (plain DOM and a canvas, no framework).
+- `src/ui/`: the page (plain DOM and a canvas, no framework), exported as
+  `@typeonce/pixel-fixer/page` and `/page.css` for the website to mount on `#app`.
 - `src/cli/`: the `pixel` CLI (Effect), with PNG files through `pngjs`;
   `bin/pixel.mjs` runs it from its TypeScript source.

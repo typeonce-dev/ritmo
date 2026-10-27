@@ -244,12 +244,12 @@ importers:
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
-      vite:
-        specifier: ^8.0.3
-        version: 8.3.5(@types/node@25.5.0)(esbuild@0.28.2)(tsx@4.21.0)(yaml@2.9.1)
 
   website:
     dependencies:
+      '@typeonce/pixel-fixer':
+        specifier: workspace:*
+        version: link:../tools/pixel-fixer
       '@typeonce/ritmo':
         specifier: workspace:*
         version: link:../packages/core

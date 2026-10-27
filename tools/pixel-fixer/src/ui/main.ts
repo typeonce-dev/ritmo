@@ -1396,7 +1396,7 @@ const exportPanel = (): HTMLElement | false => {
   )
 }
 
-const RITMO_URL = "https://github.com/typeonce-dev/ritmo"
+const RITMO_URL = "https://ritmo.typeonce.dev/"
 
 /** Where the tool comes from, at the end of the settings. */
 const aboutPanel = (): HTMLElement =>
