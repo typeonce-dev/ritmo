@@ -1,5 +1,59 @@
 # @typeonce/ritmo
 
+## 0.17.0
+
+### Minor Changes
+
+- 39aeaf4: **Breaking: an optional query slot is the read cell, or `undefined` when the entity does not hold the component.** `Game.Query.optional(X)`, `Game.Query.optionalRelation(R)`, and `Game.Query.optionalRelated(R)` (and `select` slots of `RenderSync.system`) gave a slot that was always an object, so `if (data.hero !== undefined)` compiled and was always true, and there were two ways to read it (`present` then `get()`, or `value()`). The slot is now `ReadCell<T> | undefined`: reading it without a check does not compile (`'data.sprite' is possibly 'undefined'`). `present`, `value()`, and the `OptionalReadCell`, `PresentOptionalReadCell`, and `AbsentOptionalReadCell` types are removed. A component whose own value can be `undefined` stays unambiguous: an `undefined` slot means absent, and `get()` returning `undefined` means present.
+
+  ```diff
+  - burning: data.burning.present
+  + burning: data.burning !== undefined
+  - const parent = !data.parent.present ? undefined : data.parent.get()
+  + const parent = data.parent?.get()
+  - const stride = data.stride.value()
+  + const stride = data.stride?.get()
+  - if (data.sprite.present) draw(data.sprite.get())
+  + if (data.sprite !== undefined) draw(data.sprite.get())
+  - QueryTypes.OptionalReadCell<T>
+  + QueryTypes.ReadCell<T> | undefined
+  ```
+
+  To match only entities that hold a component ("is this the player?"), list it in the query's `with: [Player]` filter instead of an optional slot.
+
+  `@typeonce/oxlint-plugin-ritmo` removes `ritmo/use-cell-value`: with one way to read an optional slot there is nothing to steer between. Delete `"ritmo/use-cell-value"` from `.oxlintrc.json`: oxlint stops with `Rule 'use-cell-value' not found in plugin 'ritmo'` while the config names it.
+
+- db0804a: **A second skill for prototypes: `skills/ritmo-prototype`.** Ask the game's agent to prototype a mechanic, and it puts a playable toy in front of you every round instead of building the full verification for a game that may not survive the first playtest. You are the playtester: the agent checks only that the build compiles and the page loads, and ends each round with what changed and what to look for; you give the verdict in your own words. The game keeps Ritmo's shape (systems that read intents, a simulation separate from drawing) and every tuned number as named variants you switch with a key, so two feels compare in one play and the prototype can graduate without a rewrite. A bug you report that the code does not explain is shrunk with `Fuzz.run`.
+
+  A `PROTOTYPE.md` at the game root turns the mode on. It holds the question the prototype answers and one line per round with your verdict. The skill gives principles for finding the fun rather than a script, so each prototype takes the shape its game needs. The `ritmo` skill routes to the prototype skill while that file exists, and `playbooks/graduate.md` turns the prototype into the game: schemas for saved state, tests, invariants and fuzzing, the setup's checks, and then the file is deleted.
+
+  Existing projects link the new skill next to the `ritmo` one, as `SETUP.md` step 2 now shows:
+
+  ```sh
+  ln -s ../../node_modules/@typeonce/ritmo/skills/ritmo-prototype .agents/skills/ritmo-prototype
+  ```
+
+  `ritmo-devtools lint` notes each shipped skill the project does not link, so a project set up before this release sees `note  skill-not-linked  ritmo-prototype` until it adds the link. The note names its skill (`note  skill-not-linked  ritmo`), and never changes the exit code.
+
+  `SETUP.md` step 1 installs only `@typeonce/ritmo` and `@typeonce/ritmo-devtools`; step 3 installs `@typeonce/oxlint-plugin-ritmo` and `oxlint` with the lint setup, so a prototype installs the lint when it graduates. Nothing changes for a project that already has them. The `@typeonce/ritmo-devtools` README now says which optional peer each feature needs: none for `Session`, `Fuzz`, `Replay` and `ritmo-devtools lint`.
+
+  The `BrowserTickSource` module header now shows the smallest whole game in one file (controls, a component, a system, schedules, an `Inspector`, `Runtime.make`, and the `FixedLoop` page), compiled with the other examples. The prototype skill starts from it instead of a list of modules to read.
+
+  `ritmo-devtools lint` no longer notes `skill-copied` for a skill link that resolves to the project's own `node_modules/@typeonce/ritmo`, so a project depending on a local checkout (`link:`) passes. `Game.System.readEvent` has an example of reading events with `all()`.
+
+### Patch Changes
+
+- 15c55ac: Less garbage every frame, with no API change. A system run that queues no commands and writes no resource or machine now allocates nothing; before, it allocated about 400 bytes, because V8 allocates a new table on every `Map`/`Set` `clear()`, even of an empty one. A schedule of 100 small systems runs about 2.5× faster, and the top-down example game makes about 27% less garbage per frame. A frame that requests no state transition skips sorting the empty queue. `Keyboard`, `Gamepad`, and `Pointer` snapshots share one idle state object for every action not in use, as `Controls` already did.
+- 9346953: The `@typeonce/oxlint-plugin-ritmo` README lists built-in oxlint rules that pair well with Ritmo, each with the Ritmo mistake it catches: a `Result` checked with `if` instead of `.ok`, a switch over a closed set that misses a new member, an asset load or upload that is never awaited, `[object Object]` in HUD text, and oxlint's default `correctness` rules. The type-aware ones need `oxlint-tsgolint` and `oxlint --type-aware`.
+
+  The packages' sources pass these rules: unnecessary type assertions and default type arguments are gone, unused imports are removed, and switches over closed sets name every member. The published types are the same types, written without their default arguments.
+
+- 3d1f862: `Scalar.spring(current, target, { frequencyHz, dampingRatio }, dt)` moves a damped spring toward a target: a value with momentum that overshoots and wobbles back, for squash and stretch, a wobble, or a pop. Its state is a `Scalar.Spring` record (`{ value, velocity }`) that passes straight back in. The motion is computed exactly, so it is the same at any step rate and a long frame cannot make it blow up. A vector springs one axis at a time.
+
+  `Collide2.moveCircle` and `MoveResult.blocked` now say that `blocked` does not tell which wall was touched or whether the circle stands on one, with an example of a grounded check that probes with `sweepCircle`.
+
+  The `ritmo` skill's rendering playbook now says that a part that is not an entity (a procedural limb, a trail) is render state, and that cosmetic randomness uses its own `Random.make` stream, never the world's random resource.
+
 ## 0.16.1
 
 ## 0.16.0

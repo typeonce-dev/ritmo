@@ -1,5 +1,20 @@
 # @typeonce/ritmo-netcode
 
+## 0.17.0
+
+### Patch Changes
+
+- 9346953: The `@typeonce/oxlint-plugin-ritmo` README lists built-in oxlint rules that pair well with Ritmo, each with the Ritmo mistake it catches: a `Result` checked with `if` instead of `.ok`, a switch over a closed set that misses a new member, an asset load or upload that is never awaited, `[object Object]` in HUD text, and oxlint's default `correctness` rules. The type-aware ones need `oxlint-tsgolint` and `oxlint --type-aware`.
+
+  The packages' sources pass these rules: unnecessary type assertions and default type arguments are gone, unused imports are removed, and switches over closed sets name every member. The published types are the same types, written without their default arguments.
+
+- Updated dependencies [15c55ac]
+- Updated dependencies [39aeaf4]
+- Updated dependencies [9346953]
+- Updated dependencies [db0804a]
+- Updated dependencies [3d1f862]
+  - @typeonce/ritmo@0.17.0
+
 ## 0.16.1
 
 ### Patch Changes
