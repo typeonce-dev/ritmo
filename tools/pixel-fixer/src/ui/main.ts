@@ -113,6 +113,8 @@ interface State {
   targetWidth: number | undefined
   reduceMode: ReduceMode
   removeBackground: boolean
+  /** Exports without the transparent margins. */
+  crop: boolean
   background: BackgroundOptions
   /** What pressing on the picture does: pan, move grid lines, erase, restore, or paint pixels, or pick a color. */
   tool: "move" | "lines" | "erase" | "restore" | "paint" | "pick"
@@ -158,6 +160,7 @@ const state: State = {
   targetWidth: undefined,
   reduceMode: "outlines",
   removeBackground: true,
+  crop: false,
   background: defaultBackgroundOptions,
   tool: "move",
   paintColor: undefined,
@@ -195,6 +198,7 @@ const undoable = [
   "targetWidth",
   "reduceMode",
   "removeBackground",
+  "crop",
   "background",
   "lostThreshold",
   "edits"
@@ -220,6 +224,8 @@ let cache: PipelineCache = {}
 let grid: Grid | undefined
 let samples: CellSamples | undefined
 let result: PixelArt | undefined
+/** What Export writes: the result, cropped to its subject when asked. */
+let exported: PixelArt | undefined
 /** The background colors found in the last result, for the Background panel. */
 let backgroundFound: Array<Rgb> = []
 /** The colors the palette lost in the last result, and the cells of the one pointed at. */
@@ -254,6 +260,7 @@ const recipeOf = (): Recipe => ({
   targetWidth: state.targetWidth,
   reduceMode: state.reduceMode,
   removeBackground: state.removeBackground,
+  crop: state.crop,
   background: state.background,
   lostThreshold: state.lostThreshold,
   edits: state.edits
@@ -276,6 +283,7 @@ const recompute = (): void => {
   if (source === undefined) {
     grid = undefined
     result = undefined
+    exported = undefined
     report = undefined
     return
   }
@@ -287,6 +295,7 @@ const recompute = (): void => {
   painted = outcome.painted
   backgroundFound = [...outcome.backgroundFound]
   result = outcome.art
+  exported = outcome.exported
   // Pixel art at its own size (a sprite source) has no grid to judge, only rules.
   report =
     state.spec.cellWidth === 1 && state.spec.cellHeight === 1
@@ -441,6 +450,7 @@ const applyRecipe = (recipe: Recipe, name: string): void => {
   state.targetWidth = recipe.targetWidth
   state.reduceMode = recipe.reduceMode
   state.removeBackground = recipe.removeBackground
+  state.crop = recipe.crop
   state.background = recipe.background
   state.lostThreshold = recipe.lostThreshold
   state.edits = { size: recipe.edits.size, strokes: recipe.edits.strokes.map((stroke) => [...stroke]) }
@@ -1275,6 +1285,16 @@ const backgroundPanel = (): HTMLElement =>
         },
         `Also removes groups of up to ${SPECK_SIZE} pixels left alone in the background.`
       ),
+    state.removeBackground &&
+      switchRow(
+        "Remove the shadow",
+        state.background.shadow,
+        (checked) => {
+          state.background = { ...state.background, shadow: checked }
+          update()
+        },
+        "Also removes a drop shadow under the subject: the background's color made darker, with no outline, in the bottom half."
+      ),
     h(
       "div",
       { class: "inline-action" },
@@ -1347,7 +1367,7 @@ const preview = h("canvas", { class: "preview" })
 
 /** The fixed picture at a whole scale that fits the panel. */
 const drawPreview = (): void => {
-  const art = result
+  const art = exported
   if (art === undefined) return
   const scale = Math.max(1, Math.min(8, Math.floor(200 / Math.max(art.width, art.height))))
   const image = canvasOf(toRgba(art, scale))
@@ -1359,7 +1379,7 @@ const drawPreview = (): void => {
 }
 
 const exportPanel = (): HTMLElement | false => {
-  const art = result
+  const art = exported
   if (art === undefined) return false
   const name = state.source === undefined ? "pixel-art" : baseName(state.source.name)
   drawPreview()
@@ -1373,6 +1393,15 @@ const exportPanel = (): HTMLElement | false => {
       help: "PNG at 1× is the true pixel art. The SVG is drawn in pixel units with crisp edges, so it stays sharp at any size; the scale only sets the size it opens at. The JSON map holds the palette and one row of palette indices per pixel row (-1 for transparent). The recipe holds every setting, hand edits included: open it here again, or run it with pixel fix --recipe."
     },
     h("div", { class: "preview-box" }, preview),
+    switchRow(
+      "Crop to the subject",
+      state.crop,
+      (checked) => {
+        state.crop = checked
+        update()
+      },
+      "Exports without the transparent margins: only the box around what is left once the background is removed."
+    ),
     prop(
       "Scale",
       selectInput(

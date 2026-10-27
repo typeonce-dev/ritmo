@@ -190,6 +190,11 @@ const insideCells = (profile: Float64Array, from: number, to: number, cell: numb
 
 export type Axis = "x" | "y"
 
+/** Two cell sizes this close (a share of the larger) are one size. */
+const SAME_SIZE = 0.02
+/** How much less clean (share of cells with an edge in their middle) the other axis's size may be and still be chosen. */
+const SQUARE_SLACK = 0.12
+
 /**
  * How often the middle of a cell holds an edge, along one axis: for each line
  * of pixels across the picture (each row, for "x") and each cell, whether two
@@ -244,12 +249,16 @@ const edgeThreshold = (image: RgbaImage): number => {
  * strong peak is refined to a few thousandths of a pixel, with its offset
  * (upscales by a factor that is not a whole number are common), and judged
  * by how flat the middle of its cells is.
+ *
+ * `prefer` is a size to choose when it is nearly as clean as the cleanest:
+ * the other axis's cell, since pixel art's cells are square.
  */
 export const detectAxis = (
   image: RgbaImage,
   axis: Axis,
   profile: Float64Array,
-  maxCell = 128
+  maxCell = 128,
+  prefer?: number
 ): AxisFit | undefined => {
   const length = axis === "x" ? image.width : image.height
   const top = Math.min(maxCell, Math.floor(length / 2))
@@ -301,7 +310,7 @@ export const detectAxis = (
     .slice(0, 12)
   // The true size's own peak can be weaker than its fractions' (sharp edges repeat at
   // every fraction), so whole multiples of each peak are candidates too.
-  const sizes: Array<number> = []
+  const sizes: Array<number> = prefer !== undefined && prefer <= top ? [prefer] : []
   for (const peak of peaks) {
     for (let k = 1; k <= 4; k++) {
       const size = peak.cell * k
@@ -335,9 +344,12 @@ export const detectAxis = (
   })
   if (judged.length === 0) return undefined
   const flattest = Math.min(...judged.map((entry) => entry.residual))
-  const best = judged
-    .filter((entry) => entry.residual <= flattest + 0.04)
-    .reduce((chosen, entry) => (entry.candidate.score > chosen.candidate.score ? entry : chosen))
+  const square = judged.filter(
+    (entry) => prefer !== undefined && Math.abs(entry.candidate.cell - prefer) <= SAME_SIZE * prefer && entry.residual <= flattest + SQUARE_SLACK
+  )
+  const best = (square.length > 0 ? square : judged.filter((entry) => entry.residual <= flattest + 0.04)).reduce((chosen, entry) =>
+    entry.candidate.score > chosen.candidate.score ? entry : chosen
+  )
   const fine = best.candidate
   const cell = Math.round(fine.cell * 1000) / 1000
   const offset = Math.round(((((fine.offset % cell) + cell) % cell) * 100)) / 100
@@ -351,9 +363,20 @@ export const detectAxis = (
 /** Finds the grid of an upscaled pixel-art picture; undefined when it has no edges at all. */
 export const detectGrid = (image: RgbaImage): Detection | undefined => {
   const { columns, rows } = edgeProfiles(image)
-  const x = detectAxis(image, "x", columns)
-  const y = detectAxis(image, "y", rows)
+  let x = detectAxis(image, "x", columns)
+  let y = detectAxis(image, "y", rows)
   if (x === undefined || y === undefined) return undefined
+  // Cells are square: when the axes disagree, the less sure one looks again for the
+  // surer one's size (a fraction of the true size always looks at least as clean).
+  if (Math.abs(x.cell - y.cell) > SAME_SIZE * Math.max(x.cell, y.cell)) {
+    if (x.confidence >= y.confidence) {
+      const again = detectAxis(image, "y", rows, undefined, x.cell)
+      if (again !== undefined && Math.abs(again.cell - x.cell) <= SAME_SIZE * x.cell) y = again
+    } else {
+      const again = detectAxis(image, "x", columns, undefined, y.cell)
+      if (again !== undefined && Math.abs(again.cell - y.cell) <= SAME_SIZE * y.cell) x = again
+    }
+  }
   return {
     spec: { cellWidth: x.cell, cellHeight: y.cell, offsetX: x.offset, offsetY: y.offset },
     x,

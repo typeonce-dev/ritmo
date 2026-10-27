@@ -117,6 +117,32 @@ describe("grid", () => {
     expect(mismatches(sprite, art)).toBe(0)
   })
 
+  it("keeps cells square when blur along one axis makes a multiple or a fraction of the cell look cleaner", () => {
+    // Blurred again only up and down, as a resized screenshot can be.
+    const image = upscale(demoSprite(), { scale: 9.4, offset: 3, blur: 1, noise: 6, seed: 1 })
+    let data = image.data
+    for (let pass = 0; pass < 6; pass++) {
+      const out = new Uint8ClampedArray(data.length)
+      for (let y = 0; y < image.height; y++) {
+        for (let x = 0; x < image.width; x++) {
+          for (let c = 0; c < 4; c++) {
+            let sum = 0
+            let count = 0
+            for (let ny = Math.max(0, y - 1); ny <= Math.min(image.height - 1, y + 1); ny++) {
+              sum += data[(ny * image.width + x) * 4 + c]!
+              count++
+            }
+            out[(y * image.width + x) * 4 + c] = Math.round(sum / count)
+          }
+        }
+      }
+      data = out
+    }
+    const detection = detectGrid({ ...image, data })!
+    expect(detection.spec.cellWidth).toBeCloseTo(9.4, 1)
+    expect(detection.spec.cellHeight).toBeCloseTo(9.4, 1)
+  })
+
   it("does not invent a grid in a blank picture", () => {
     expect(detectGrid({ width: 40, height: 40, data: new Uint8ClampedArray(40 * 40 * 4) })).toBeUndefined()
   })

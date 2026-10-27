@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { backgroundColors, clearMasked, findBackground } from "../src/core/background.ts"
 import { applyEdits } from "../src/core/edits.ts"
+import { cropToContent } from "../src/core/export.ts"
 import { pack, toHex, type Rgb } from "../src/core/color.ts"
 import { quantize, sampleCells, TRANSPARENT, type CellSamples, type PixelArt } from "../src/core/fix.ts"
 import { defaultLostThreshold, lostColors } from "../src/core/lost.ts"
@@ -17,7 +18,8 @@ const colors: Record<string, Rgb> = {
   P: { r: 246, g: 214, b: 236 },
   K: { r: 10, g: 8, b: 20 },
   B: { r: 120, g: 150, b: 230 },
-  S: { r: 240, g: 200, b: 170 }
+  S: { r: 240, g: 200, b: 170 },
+  G: { r: 200, g: 200, b: 200 }
 }
 const keys = Object.keys(colors)
 const palette = keys.map((key) => colors[key]!)
@@ -55,7 +57,7 @@ describe("background", () => {
   })
 
   it("floods in from the border and stops at the outline", () => {
-    const mask = findBackground(scene, backgroundColors(scene), { tolerance: 0.02, enclosed: false, specks: false })
+    const mask = findBackground(scene, backgroundColors(scene), { tolerance: 0.02, enclosed: false, specks: false, shadow: false })
     expect(letters(clearMasked(scene, mask))).toEqual([
       "..........",
       "...KKKK...",
@@ -69,14 +71,14 @@ describe("background", () => {
   })
 
   it("removes enclosed background-colored areas only when asked", () => {
-    const mask = findBackground(scene, backgroundColors(scene), { tolerance: 0.02, enclosed: true, specks: false })
+    const mask = findBackground(scene, backgroundColors(scene), { tolerance: 0.02, enclosed: true, specks: false, shadow: false })
     const cleared = letters(clearMasked(scene, mask))
     expect(cleared[2]).toBe("..KBB.BK..")
     expect(cleared[4]).toBe("..KBK.KK..")
   })
 
   it("erases and restores by hand, a pixel or a whole area, in order", () => {
-    const mask = findBackground(scene, backgroundColors(scene), { tolerance: 0.02, enclosed: false, specks: false })
+    const mask = findBackground(scene, backgroundColors(scene), { tolerance: 0.02, enclosed: false, specks: false, shadow: false })
     const edited = letters(
       clearMasked(
         scene,
@@ -96,7 +98,7 @@ describe("background", () => {
   })
 
   it("paints one pixel or a whole area with the nearest palette color, in order with erasing", () => {
-    const mask = findBackground(scene, backgroundColors(scene), { tolerance: 0.02, enclosed: false, specks: false })
+    const mask = findBackground(scene, backgroundColors(scene), { tolerance: 0.02, enclosed: false, specks: false, shadow: false })
     const edited = applyEdits(scene, mask, [
       // A near-black off the palette snaps to K.
       { x: 5, y: 2, tool: "paint", color: { r: 20, g: 18, b: 30 }, area: false },
@@ -114,19 +116,56 @@ describe("background", () => {
     expect(edited.painted).toEqual([25, 30, 63, 64, 65, 66])
   })
 
+  it("removes a drop shadow under the subject, but not the subject's own grey, and only when asked", () => {
+    // G is the white background made darker: a shadow against the background below the feet, and a grey patch inside the outline.
+    const shadowed = art(
+      "WWWWWWWWWW",
+      "WWWKKKKWWW",
+      "WWKBGGBKWW",
+      "WWKBGGBKWW",
+      "WWKBBBBKWW",
+      "WWWKBBKWWW",
+      "WGGGKKGGGW",
+      "WWGGGGGGWW",
+      "WWWWWWWWWW"
+    )
+    const colors = backgroundColors(shadowed)
+    const options = { tolerance: 0.02, enclosed: false, specks: false, shadow: true }
+    expect(letters(clearMasked(shadowed, findBackground(shadowed, colors, options)))).toEqual([
+      "..........",
+      "...KKKK...",
+      "..KBGGBK..",
+      "..KBGGBK..",
+      "..KBBBBK..",
+      "...KBBK...",
+      "....KK....",
+      "..........",
+      ".........."
+    ])
+    const kept = letters(clearMasked(shadowed, findBackground(shadowed, colors, { ...options, shadow: false })))
+    expect(kept[6]).toBe(".GGGKKGGG.")
+  })
+
+  it("leaves a grey part of the subject that touches the background but sits high up", () => {
+    // A grey wing against the background at the top: not under the subject, so not a shadow.
+    const winged = art("WWWWWWWWWW", "WGGGKKKWWW", "WGGKBBBKWW", "WWWKBBBKWW", "WWWKBBBKWW", "WWWWKKKWWW", "WWWWWWWWWW")
+    const mask = findBackground(winged, backgroundColors(winged), { tolerance: 0.02, enclosed: false, specks: false, shadow: true })
+    expect(letters(clearMasked(winged, mask))[1]).toBe(".GGGKKK...")
+  })
+
   it("removes specks left alone in the background, and only when asked", () => {
     const specked = art("WWWWWWWW", "WPWWKKWW", "WWWKBBKW", "WWWKBBKW", "WWWWKKWW", "WWWWWWWW")
     const colors = backgroundColors(specked)
-    const kept = letters(clearMasked(specked, findBackground(specked, colors, { tolerance: 0.02, enclosed: false, specks: false })))
+    const kept = letters(clearMasked(specked, findBackground(specked, colors, { tolerance: 0.02, enclosed: false, specks: false, shadow: false })))
     expect(kept[1]).toBe(".P..KK..")
-    const cleaned = letters(clearMasked(specked, findBackground(specked, colors, { tolerance: 0.02, enclosed: false, specks: true })))
+    const cleaned = letters(clearMasked(specked, findBackground(specked, colors, { tolerance: 0.02, enclosed: false, specks: true, shadow: false })))
     expect(cleaned).toEqual(["........", "....KK..", "...KBBK.", "...KBBK.", "....KK..", "........"])
   })
 
   it("treats pixels that are already transparent as background", () => {
     const picture = art("....", ".KK.", ".KK.", "....")
     expect(backgroundColors(picture)).toEqual([])
-    const mask = findBackground(picture, [], { tolerance: 0.08, enclosed: false, specks: false })
+    const mask = findBackground(picture, [], { tolerance: 0.08, enclosed: false, specks: false, shadow: false })
     expect(Array.from(mask)).toEqual([1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1])
   })
 
@@ -141,8 +180,8 @@ describe("background", () => {
       ditherStrength: 0
     })
     expect(fixed.width).toBe(scene.width)
-    const mask = findBackground(fixed, backgroundColors(fixed), { tolerance: 0.08, enclosed: false, specks: false })
-    const expected = findBackground(scene, backgroundColors(scene), { tolerance: 0.02, enclosed: false, specks: false })
+    const mask = findBackground(fixed, backgroundColors(fixed), { tolerance: 0.08, enclosed: false, specks: false, shadow: false })
+    const expected = findBackground(scene, backgroundColors(scene), { tolerance: 0.02, enclosed: false, specks: false, shadow: false })
     expect(Array.from(mask)).toEqual(Array.from(expected))
   })
 
@@ -163,6 +202,21 @@ describe("background", () => {
     const fixed = runRecipe(image, { ...defaultRecipe, palette: { name: "Dark", colors: [outline, ice], locked: [] }, removeBackground: true })!
     const kept = Array.from(fixed.art.indices, (index) => (index === TRANSPARENT ? "." : "TI"[index]!)).join("")
     expect(kept).toBe(rows.join("").replaceAll("G", "."))
+  })
+})
+
+describe("crop", () => {
+  it("keeps only the box around the opaque pixels", () => {
+    const cropped = cropToContent(art("......", "..K...", ".KBK..", "..K...", "......"))
+    expect([cropped.width, cropped.height]).toEqual([3, 3])
+    expect(letters(cropped)).toEqual([".K.", "KBK", ".K."])
+  })
+
+  it("leaves a picture with nothing to crop, or nothing opaque, as it is", () => {
+    const full = art("KB", "BK")
+    expect(cropToContent(full)).toBe(full)
+    const empty = art("..", "..")
+    expect(cropToContent(empty)).toBe(empty)
   })
 })
 
