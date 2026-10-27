@@ -8,7 +8,15 @@
  * Timings of very short runs are dominated by timer resolution and scheduler
  * jitter, so cases without `prepare()` repeat `run()` inside one sample until
  * the sample lasts at least `minSampleMs`; the sample is the mean per run.
+ *
+ * `measureAllocations` counts the bytes one `run()` allocates instead. Run it
+ * in its own process with `--single-threaded --expose-gc`: whether V8's
+ * optimizing compiler removes short-lived objects depends on when its
+ * background compiles finish, so with them on the count changes from one
+ * process to the next.
  */
+import v8 from "node:v8"
+
 export interface BenchCase {
   readonly name: string
   readonly description: string
@@ -27,6 +35,18 @@ export interface BenchSample {
   readonly minMs: number
   readonly samples: number
   readonly runsPerSample: number
+}
+
+export interface AllocationSample {
+  readonly name: string
+  /** Bytes one `run()` allocates on the JS heap, garbage included: the fewest seen across samples. */
+  readonly bytesPerRun: number
+}
+
+export interface AllocationOptions {
+  /** Runs before measuring, counted rather than timed so every process compiles the case the same way. */
+  readonly warmupRuns: number
+  readonly samples: number
 }
 
 export interface MeasureOptions {
@@ -113,6 +133,51 @@ export const measure = (bench: BenchCase, options: MeasureOptions): BenchSample 
     samples: samples.length,
     runsPerSample
   }
+}
+
+const usedHeap = (): number => v8.getHeapStatistics().used_heap_size
+
+/**
+ * Bytes `run` allocates: the heap growth across it plus what every collection
+ * inside it freed, so runs that outgrow the young generation count in full.
+ */
+const allocatedBy = (run: () => void): number => {
+  const profiler = new v8.GCProfiler()
+  profiler.start()
+  const before = usedHeap()
+  run()
+  const after = usedHeap()
+  const profile = profiler.stop()
+  let freed = 0
+  for (const collection of profile?.statistics ?? []) {
+    freed += collection.beforeGC.heapStatistics.usedHeapSize - collection.afterGC.heapStatistics.usedHeapSize
+  }
+  return after - before + freed
+}
+
+const noop = (): void => {}
+
+/**
+ * The fewest bytes one `run()` allocated across `samples` runs, each after
+ * `prepare()` and a full collection, minus what measuring an empty run
+ * allocates. The minimum drops bytes V8 occasionally allocates for itself.
+ */
+export const measureAllocations = (bench: BenchCase, options: AllocationOptions): AllocationSample => {
+  const instance = bench.setup()
+  for (let index = 0; index < options.warmupRuns; index++) {
+    instance.prepare?.()
+    instance.run()
+  }
+  let overhead = Infinity
+  let fewest = Infinity
+  for (let index = 0; index < options.samples; index++) {
+    collectGarbage()
+    overhead = Math.min(overhead, allocatedBy(noop))
+    instance.prepare?.()
+    collectGarbage()
+    fewest = Math.min(fewest, allocatedBy(instance.run))
+  }
+  return { name: bench.name, bytesPerRun: Math.max(0, fewest - overhead) }
 }
 
 /**
