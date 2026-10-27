@@ -20,7 +20,7 @@
  * The JSON map written by `toJson` (width, height, palette, pixels) is read
  * back too.
  */
-import { pack, parseHex, toHex, type Rgb } from "./color.ts"
+import { pack, parseHex, toHex, toOklab, type Rgb } from "./color.ts"
 import { TRANSPARENT, type PixelArt } from "./fix.ts"
 import type { RgbaImage } from "./grid.ts"
 
@@ -101,8 +101,25 @@ export const parseSprite = (text: string): Parsed => {
   return { ok: true, art: { width, height: rows.length, palette, indices } }
 }
 
-/** Keys for writing a sprite: easy to tell apart, transparent always ".". */
+/** Keys for writing a sprite once the color's own letters are taken; transparent is always ".". */
 const KEYS = "KWRGBYOPCMDLSTNVXZEFHJQUAIabcdefghijkmnopqrstuvwxyz0123456789@$%&*+=?!<>^~"
+
+/** A letter that names the color, so the rows can be read: K black, W white, R red, and so on. */
+const mnemonic = (color: Rgb): string => {
+  const { l, a, b } = toOklab(color)
+  const chroma = Math.hypot(a, b)
+  if (chroma < 0.04) return l < 0.3 ? "K" : l > 0.9 ? "W" : l < 0.6 ? "D" : "L"
+  if (l < 0.25) return "K"
+  const hue = ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360
+  // OKLab hues: red near 20, orange 55, yellow 100, green 140, cyan 195, blue 260, purple 305, pink 350.
+  const names: ReadonlyArray<readonly [number, string]> = [[20, "R"], [55, "O"], [100, "Y"], [140, "G"], [195, "C"], [260, "B"], [305, "P"], [350, "M"]]
+  let best = names[0]!
+  for (const entry of names) {
+    const distance = Math.min(Math.abs(hue - entry[0]), 360 - Math.abs(hue - entry[0]))
+    if (distance < Math.min(Math.abs(hue - best[0]), 360 - Math.abs(hue - best[0]))) best = entry
+  }
+  return best[1]
+}
 
 /** Writes pixel art in the text format, for an agent to read and edit. */
 export const formatSprite = (art: PixelArt, comment?: string): string => {
@@ -110,7 +127,14 @@ export const formatSprite = (art: PixelArt, comment?: string): string => {
   for (const index of art.indices) used.add(index)
   const order = art.palette.map((_, i) => i).filter((i) => used.has(i))
   if (order.length > KEYS.length) throw new Error(`a sprite holds at most ${KEYS.length} colors; this one has ${order.length}`)
-  const keyOf = new Map(order.map((index, i) => [index, KEYS[i]!]))
+  const taken = new Set<string>()
+  const keyOf = new Map<number, string>()
+  for (const index of order) {
+    const letter = mnemonic(art.palette[index]!)
+    const key = [letter, letter.toLowerCase(), ...KEYS].find((candidate) => !taken.has(candidate))!
+    taken.add(key)
+    keyOf.set(index, key)
+  }
   const lines: Array<string> = []
   if (comment !== undefined) lines.push(...comment.split("\n").map((line) => `# ${line}`), "")
   lines.push("palette")

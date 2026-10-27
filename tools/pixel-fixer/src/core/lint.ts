@@ -13,7 +13,7 @@ export interface LintRules {
   /** The sizes allowed. */
   readonly sizes?: ReadonlyArray<{ readonly width: number; readonly height: number }> | undefined
   readonly maxColors?: number | undefined
-  /** The picture's border must be transparent: a sprite, not a scene. */
+  /** The picture's background must be transparent: a sprite, not a scene (judged by its corners and border). */
   readonly transparentBackground?: boolean | undefined
 }
 
@@ -99,7 +99,9 @@ export const lintArt = (art: PixelArt, rules: LintRules = {}, partial = 0): Arra
     for (let x = 0; x < width; x++) border.push(x, (height - 1) * width + x)
     for (let y = 1; y < height - 1; y++) border.push(y * width, y * width + width - 1)
     const opaque = border.filter((i) => indices[i] !== TRANSPARENT)
-    if (opaque.length > border.length / 2) {
+    // A sprite may touch its edges; a background left in fills the corners too.
+    const corners = [0, width - 1, (height - 1) * width, height * width - 1].filter((i) => indices[i] !== TRANSPARENT).length
+    if (corners >= 3 && opaque.length > border.length / 2) {
       issues.push({
         rule: "opaque-background",
         severity: "error",

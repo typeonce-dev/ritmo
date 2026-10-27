@@ -9,7 +9,7 @@
  * "needs-person", never a confident bad fix.
  */
 import { pack, toHex, toOklab, unpack, type Lab } from "./color.ts"
-import { medianColor, usedColors, type CellSamples } from "./fix.ts"
+import { medianColor, usedColors, type CellSamples, type PixelArt } from "./fix.ts"
 import type { GridSpec, RgbaImage } from "./grid.ts"
 import { lintArt, type Issue, type LintRules } from "./lint.ts"
 import { runRecipe, type Outcome } from "./pipeline.ts"
@@ -78,12 +78,21 @@ export const gridFit = (samples: CellSamples): number => {
 
 const round = (value: number, places = 3): number => Math.round(value * 10 ** places) / 10 ** places
 
-/** True when a picture is already pixel art at its own size: no grid of fake pixels found in it. */
-const isNative = (outcome: Outcome | undefined): boolean => {
+/** Pixel art at its own size has few colors; a blurry or upscaled-and-smoothed picture has many. */
+const FEW_COLORS = 256
+
+/**
+ * True when a picture is already pixel art at its own size: no grid of fake
+ * pixels found in it, or only an unsure one in a picture with few colors (a
+ * small sprite's own shapes can look like a grid).
+ */
+const isNative = (image: RgbaImage, outcome: Outcome | undefined): boolean => {
   if (outcome === undefined) return true
   const { spec, detection } = outcome
   if (Math.min(spec.cellWidth, spec.cellHeight) < 1.5) return true
-  return detection !== undefined && detection.confidence < 0.3
+  if (detection !== undefined && detection.confidence < 0.3) return true
+  const sure = (detection === undefined || detection.confidence >= CONFIDENT.confidence) && gridFit(outcome.samples) >= CONFIDENT.fit
+  return !sure && artOfImage(image).art.palette.length <= FEW_COLORS
 }
 
 const errors = (issues: ReadonlyArray<Issue>): number => issues.filter((issue) => issue.severity === "error").length
@@ -104,26 +113,14 @@ export interface Checked {
  */
 export const checkImage = (image: RgbaImage, recipe: Recipe, rules: LintRules = {}): Checked => {
   const found = runRecipe(image, recipe)
-  if (recipe.grid.kind === "auto" && isNative(found)) {
+  if (recipe.grid.kind === "auto" && isNative(image, found)) {
     // Fixing pixel art at its own size reads one pixel per cell.
     const resolved: Recipe = { ...recipe, grid: { kind: "cells", spec: { cellWidth: 1, cellHeight: 1, offsetX: 0, offsetY: 0 } }, sample: { ...recipe.sample, inset: 0 } }
     const { art, partial } = artOfImage(image, recipe.sample.alphaThreshold)
-    const issues = lintArt(art, { ...rules, palette: rules.palette ?? recipe.palette?.colors }, partial)
-    const count = errors(issues)
     return {
       recipe: resolved,
       outcome: runRecipe(image, resolved),
-      report: {
-        verdict: count === 0 ? "clean" : "fixable",
-        summary:
-          count === 0
-            ? `Clean pixel art, ${art.width}×${art.height}, ${usedColors(art).length} colors.`
-            : `Pixel art at its own size, ${art.width}×${art.height}, with ${count} rule${count === 1 ? "" : "s"} broken: see issues.`,
-        kind: "pixel-art",
-        source: { width: image.width, height: image.height },
-        output: { width: art.width, height: art.height, colors: usedColors(art).length },
-        issues
-      }
+      report: reportOfArt(art, { ...rules, palette: rules.palette ?? recipe.palette?.colors }, partial, image)
     }
   }
   if (found === undefined) {
@@ -142,6 +139,32 @@ export const checkImage = (image: RgbaImage, recipe: Recipe, rules: LintRules = 
   }
   const resolved: Recipe = { ...recipe, grid: { kind: "cells", spec: found.spec } }
   return { recipe: resolved, outcome: found, report: reportOfFix(image, recipe, found, rules) }
+}
+
+/**
+ * The report on pixel art at its own size (a picture, a sprite source, or a
+ * fix of either): clean, or fixable when it breaks rules.
+ */
+export const reportOfArt = (
+  art: PixelArt,
+  rules: LintRules = {},
+  partial = 0,
+  source: { readonly width: number; readonly height: number } = art
+): Report => {
+  const issues = lintArt(art, rules, partial)
+  const count = errors(issues)
+  const colors = usedColors(art).length
+  return {
+    verdict: count === 0 ? "clean" : "fixable",
+    summary:
+      count === 0
+        ? `Clean pixel art, ${art.width}×${art.height}, ${colors} colors.`
+        : `Pixel art at its own size, ${art.width}×${art.height}, with ${count} rule${count === 1 ? "" : "s"} broken: see issues.`,
+    kind: "pixel-art",
+    source: { width: source.width, height: source.height },
+    output: { width: art.width, height: art.height, colors },
+    issues
+  }
 }
 
 /** The report on a fix that has run. */
