@@ -22,10 +22,18 @@ pnpm --dir tools/pixel-fixer dev --host     # also reachable from a phone on the
 pnpm --dir tools/pixel-fixer build          # static site in tools/pixel-fixer/dist
 ```
 
-Open a picture (button, drag and drop, or paste), or press **Try the demo**
-for a fake AI picture of a mushroom. The same button opens a sprite source
+Open a picture (**Open** in the top bar, drag and drop, or paste), or press
+**Try the demo** for a fake AI picture of a mushroom. The same button opens a sprite source
 (`.txt`) or a JSON map as pixel art at its own size, a recipe (applied to the
 picture open), and a `pixel.config.json` (its rules, palette, and settings).
+
+The page has three parts: the top bar (the file, the **Source**, **Compare**,
+and **Fixed** views, undo and redo, **Open**, and **Export**), the picture
+with its tools floating over it (**Move**, **Erase**, **Restore**, **Pick**,
+and zoom), and the settings on the right, in sections that fold away and
+stay folded. Each section's **ⓘ** button explains it. Keys: V, E, R, and I
+pick a tool, G shows or hides the grid, and Shift+1 fits the picture. On a
+phone the settings sit under the picture.
 
 ```sh
 pnpm --dir tools/pixel-fixer pixel --help   # the CLI
@@ -61,7 +69,7 @@ node tools/pixel-fixer/bin/pixel.mjs check art.png   # the same, from any folder
    color with how many pixels each. Point at a row to see its pixels;
    **Keep** adds the color, locked, and every pixel nearest to it gets it
    back. **Lost when off by** sets how far counts as lost. To keep any other
-   color, choose **Pick** above the picture and click it, on either side.
+   color, choose **Pick** in the tools over the picture and click it, on either side.
 3. **Matching.** Each cell is read from its middle (**Read the middle**: less
    ignores blurred edges, more helps tiny cells). Every pixel read votes for
    its nearest palette color, and the most votes win, so no in-between color
@@ -83,8 +91,8 @@ node tools/pixel-fixer/bin/pixel.mjs check art.png   # the same, from any folder
    close a color must be; **Also enclosed areas** removes background-colored
    gaps the border cannot reach (and same-colored highlights); **Remove
    specks** clears groups of up to 3 pixels left alone in the background.
-   To edit by hand, pick **Erase** or **Restore** above the picture (instead
-   of **Move**) and paint on the fixed picture, with a **Pixel** or **Area**
+   To edit by hand, pick **Erase** or **Restore** in the tools over the
+   picture (instead of **Move**) and paint on the fixed picture, with a **Pixel** or **Area**
    (the whole connected area of one color) brush. Hand edits work with or
    without removing the background, and are dropped when the picture's size
    changes.
@@ -92,8 +100,8 @@ node tools/pixel-fixer/bin/pixel.mjs check art.png   # the same, from any folder
    views. Zoom with the wheel, a pinch, or the buttons; drag to pan; double-click
    to fit.
 6. **Check.** What `pixel check` says about the fixed picture: confident or
-   not, and every rule it breaks. **Allowed sizes**, **Max colors**, and
-   **Background must be transparent** are the project's rules (a
+   not, and every rule it breaks. Its **Rules** (sizes, max colors, and a
+   transparent background) are the project's rules (a
    `pixel.config.json` opened on the page sets them); the palette chosen is
    one too.
 7. **Export.** PNG at 1x (the true pixel art) or any whole scale; SVG in pixel
@@ -102,7 +110,7 @@ node tools/pixel-fixer/bin/pixel.mjs check art.png   # the same, from any folder
    indices per pixel row, -1 for transparent); the palette as `.hex` or `.gpl`;
    **Sprite text** (the sprite source format below); and the **Recipe**.
 
-**Undo** and **Redo** (above the picture, or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z
+**Undo** and **Redo** (in the top bar, or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z
 or Ctrl+Y) cover every setting: the grid, the palette, the background,
 strokes, and the size. A slider drag, a typed number, or a stroke is one
 step. Opening another picture starts the history over.

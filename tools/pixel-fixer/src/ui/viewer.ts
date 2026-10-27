@@ -84,11 +84,14 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
     if (picture === undefined) return
     const view = size()
     if (view.width === 0 || view.height === 0) return
-    zoom = Math.min((view.width - 32) / picture.width, (view.height - 32) / picture.height)
+    // Room for the labels along the top and the floating tools along the bottom.
+    const top = 44
+    const bottom = 68
+    zoom = Math.min((view.width - 48) / picture.width, (view.height - top - bottom) / picture.height)
     if (zoom > 1) zoom = Math.floor(zoom * 4) / 4
     zoom = Math.max(0.05, zoom)
     panX = (view.width - picture.width * zoom) / 2
-    panY = (view.height - picture.height * zoom) / 2
+    panY = top + (view.height - top - bottom - picture.height * zoom) / 2
     fitted = true
     draw()
     events.viewChanged()
@@ -289,22 +292,24 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
       context.fill()
       context.stroke()
       context.fillStyle = "#202020"
-      context.font = "12px system-ui, sans-serif"
+      context.font = '12px "Inter", system-ui, sans-serif'
       context.textAlign = "center"
       context.textBaseline = "middle"
       context.fillText("⇔", split, view.height / 2 + 1)
       context.textAlign = "left"
       context.textBaseline = "top"
-      context.font = "600 12px system-ui, sans-serif"
+      context.font = '500 11.5px "Inter", system-ui, sans-serif'
       const label = (text: string, x: number): void => {
-        const metrics = context.measureText(text)
-        context.fillStyle = "rgba(0,0,0,0.6)"
-        context.fillRect(x - 6, 8, metrics.width + 12, 22)
-        context.fillStyle = "#ffffff"
-        context.fillText(text, x, 13)
+        const width = context.measureText(text).width + 16
+        context.fillStyle = "rgba(20, 20, 24, 0.78)"
+        context.beginPath()
+        context.roundRect(x - 8, 10, width, 22, 6)
+        context.fill()
+        context.fillStyle = "#ececef"
+        context.fillText(text, x, 15.5)
       }
-      label("Source", Math.max(14, split - 70))
-      label("Fixed", split + 14)
+      label("Source", Math.max(18, split - 66))
+      label("Fixed", split + 18)
     }
   }
 

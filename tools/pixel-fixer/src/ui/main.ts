@@ -52,6 +52,25 @@ import { reportOfArt, reportOfFix, type Report } from "../core/report.ts"
 import { formatSprite, parseJsonMap, parseSprite } from "../core/sprite.ts"
 import { reduceModes, type ReduceMode } from "../core/reduce.ts"
 import { h, replace } from "./dom.ts"
+import {
+  badge,
+  button,
+  callout,
+  chip,
+  group,
+  hint,
+  icon,
+  numberInput,
+  prop,
+  reveal,
+  section,
+  segmented,
+  selectInput,
+  sliderRow,
+  switchRow,
+  textInput,
+  type IconName
+} from "./kit.ts"
 import { baseName, canvasOf, download, loadImage, pngOf } from "./files.ts"
 import { makeHistory } from "./history.ts"
 import { makeViewer, type ViewMode } from "./viewer.ts"
@@ -189,7 +208,7 @@ const history = makeHistory(
     state.message = ""
     update()
   },
-  () => renderToolbar()
+  () => renderTopbar()
 )
 
 // The pipeline's cache: a slider for dithering must not re-detect the grid.
@@ -477,7 +496,7 @@ const autoDetect = (): void => {
 
 
 // ---------------------------------------------------------------------------
-// The page
+// The page: a top bar, the picture with its floating tools, and the inspector
 
 const app = document.getElementById("app")!
 const canvas = h("canvas", { class: "view", attrs: { "aria-label": "Picture view" } })
@@ -486,7 +505,7 @@ const viewer = makeViewer(canvas, {
     state.moved.set(`${axis}:${index}`, position)
     update()
   },
-  viewChanged: () => renderStatus(),
+  viewChanged: () => renderZoom(),
   pick: (x: number, y: number) => {
     const cell = samples?.cells[y * samples.width + x]
     if (cell !== undefined && cell.colors.length > 0) keepColor(medianColor(cell.colors))
@@ -504,24 +523,6 @@ const viewer = makeViewer(canvas, {
   }
 })
 
-const status = h("div", { class: "status" })
-const toolbar = h("div", { class: "toolbar" })
-const panels = h("div", { class: "panels" })
-const empty = h(
-  "div",
-  { class: "empty" },
-  h("p", { class: "empty-title" }, "Drop a picture here"),
-  h("p", {}, "or paste one, or pick a file. Everything stays on this device."),
-  h("p", { class: "hint" }, "Sprite sources (.txt), JSON maps, recipes, and pixel.config.json open here too."),
-  h(
-    "div",
-    { class: "row center" },
-    h("button", { class: "primary", on: { click: () => fileInput.click() } }, "Open a picture"),
-    h("button", { on: { click: openDemo } }, "Try the demo")
-  )
-)
-const stage = h("div", { class: "stage" }, canvas, empty, status)
-
 const fileInput = h("input", {
   props: { type: "file", accept: "image/*,.txt,.json" },
   attrs: { hidden: true },
@@ -534,16 +535,32 @@ const fileInput = h("input", {
   }
 })
 
-app.append(
+const topbar = h("header", { class: "topbar" })
+const tools = h("div", { class: "floating tools" })
+const zoomBox = h("div", { class: "floating zoom" })
+const toast = h("div", { class: "toast", attrs: { role: "status", "aria-live": "polite" } })
+const panels = h("aside", { class: "inspector", attrs: { "aria-label": "Settings" } })
+const empty = h(
+  "div",
+  { class: "empty" },
   h(
-    "header",
-    { class: "top" },
-    h("h1", {}, "Pixel fixer"),
-    h("p", { class: "tagline" }, "Turns blurry or AI-made pixel art into true pixels, in your palette.")
-  ),
-  h("main", { class: "layout" }, h("section", { class: "viewer" }, toolbar, stage), panels),
-  fileInput
+    "div",
+    { class: "empty-card" },
+    h("div", { class: "empty-icon" }, icon("image")),
+    h("h2", {}, "Drop a picture to fix"),
+    h("p", {}, "Or paste one, or open a file. Pictures never leave this device."),
+    h(
+      "div",
+      { class: "empty-actions" },
+      button("Open a picture", () => fileInput.click(), { variant: "primary", icon: "open" }),
+      button("Try the demo", openDemo, { variant: "secondary" })
+    ),
+    h("p", { class: "empty-note" }, "Sprite sources (.txt), JSON maps, recipes, and pixel.config.json open here too.")
+  )
 )
+const stage = h("div", { class: "stage" }, canvas, empty, tools, zoomBox, toast)
+
+app.append(topbar, h("main", { class: "layout" }, h("section", { class: "workspace" }, stage), panels), fileInput)
 
 // Drop and paste anywhere on the page.
 window.addEventListener("dragover", (event) => {
@@ -566,47 +583,7 @@ window.addEventListener("paste", (event) => {
 })
 
 // ---------------------------------------------------------------------------
-// Small form pieces
-
-const numberField = (
-  label: string,
-  value: number,
-  onChange: (value: number) => void,
-  options: { min?: number; max?: number; step?: number; title?: string } = {}
-): HTMLElement =>
-  h(
-    "label",
-    { class: "field", title: options.title },
-    h("span", {}, label),
-    h("input", {
-      props: { type: "number", value: String(value), step: String(options.step ?? 0.01) },
-      attrs: { min: options.min, max: options.max, inputmode: "decimal" },
-      on: {
-        change: (event) => {
-          const target = event.currentTarget
-          if (!(target instanceof HTMLInputElement)) return
-          const next = Number(target.value)
-          if (Number.isFinite(next)) onChange(next)
-        }
-      }
-    })
-  )
-
-const checkbox = (label: string, checked: boolean, onChange: (checked: boolean) => void, title?: string): HTMLElement =>
-  h(
-    "label",
-    { class: "check", title },
-    h("input", {
-      props: { type: "checkbox", checked },
-      on: {
-        change: (event) => {
-          const target = event.currentTarget
-          if (target instanceof HTMLInputElement) onChange(target.checked)
-        }
-      }
-    }),
-    h("span", {}, label)
-  )
+// Controls wired to the page: sliders move the picture while dragged
 
 const slider = (
   label: string,
@@ -615,61 +592,29 @@ const slider = (
   show: (value: number) => string,
   onChange: (value: number) => void,
   title?: string
-): HTMLElement => {
-  // While dragging, the picture follows but the panels stay; they catch up on release.
-  const output = h("output", {}, show(value))
-  return h(
-    "label",
-    { class: "field slider", title },
-    h("span", {}, label, " ", output),
-    h("input", {
-      props: { type: "range", min: String(range.min), max: String(range.max), step: String(range.step), value: String(value) },
-      on: {
-        input: (event) => {
-          const target = event.currentTarget
-          if (!(target instanceof HTMLInputElement)) return
-          output.textContent = show(Number(target.value))
-          dragging = true
-          onChange(Number(target.value))
-          dragging = false
-        },
-        change: () => update()
-      }
-    })
-  )
-}
-
-const select = <T extends string>(
-  label: string,
-  value: T,
-  options: ReadonlyArray<{ readonly id: T; readonly label: string }>,
-  onChange: (value: T) => void
 ): HTMLElement =>
-  h(
-    "label",
-    { class: "field" },
-    h("span", {}, label),
-    h(
-      "select",
-      {
-        on: {
-          change: (event) => {
-            const target = event.currentTarget
-            if (!(target instanceof HTMLSelectElement)) return
-            const chosen = options.find((option) => option.id === target.value)
-            if (chosen !== undefined) onChange(chosen.id)
-          }
-        }
-      },
-      options.map((option) => h("option", { props: { value: option.id, selected: option.id === value } }, option.label))
-    )
+  sliderRow(
+    label,
+    value,
+    range,
+    show,
+    (next) => {
+      // While dragging, the picture follows but the panels stay; they catch up on release.
+      dragging = true
+      onChange(next)
+      dragging = false
+    },
+    () => update(),
+    title
   )
 
-const panel = (title: string, ...children: Array<Node | false | undefined>): HTMLElement =>
-  h("section", { class: "panel" }, h("h2", {}, title), children)
+const sectionOf = (id: string, title: string, extra: { readonly action?: Node | false; readonly help?: string } = {}, ...children: Array<Node | false | undefined | ReadonlyArray<Node | false | undefined>>): HTMLElement =>
+  section({ id, title, onToggle: () => update(), ...(extra.action === undefined ? {} : { action: extra.action }), ...(extra.help === undefined ? {} : { help: extra.help }) }, ...children)
+
+const pixels = (count: number): string => `${count} pixel${count === 1 ? "" : "s"}`
 
 // ---------------------------------------------------------------------------
-// Panels
+// Grid and size
 
 const setSpec = (next: Partial<GridSpec>): void => {
   state.spec = { ...state.spec, ...next }
@@ -678,64 +623,45 @@ const setSpec = (next: Partial<GridSpec>): void => {
 }
 
 const gridPanel = (): HTMLElement => {
-  const source = state.source
-  const size = grid === undefined ? undefined : gridSize(grid)
-  return panel(
+  const setSide = (side: "cellWidth" | "cellHeight") => (value: number) => {
+    const size = Math.max(1, value)
+    setSpec(state.linked ? { cellWidth: size, cellHeight: size } : { [side]: size })
+  }
+  return sectionOf(
+    "grid",
     "Grid",
-    h(
-      "div",
-      { class: "row" },
-      h("button", { class: "primary", on: { click: autoDetect }, attrs: { disabled: source === undefined } }, "Auto-detect"),
-      state.moved.size > 0 &&
-        h(
-          "button",
-          {
-            on: {
-              click: () => {
-                state.moved.clear()
-                update()
-              }
-            }
-          },
-          `Reset ${state.moved.size} moved line${state.moved.size === 1 ? "" : "s"}`
-        )
-    ),
-    state.detectionNote !== "" &&
+    {
+      action: button("Auto-detect", autoDetect, { variant: "ghost", small: true, icon: "wand", title: "Find the grid again" }),
+      help:
+        "The grid marks the picture's fake pixels: each cell becomes one pixel. Cell sizes may be fractions (AI pictures are often scaled by 7.6 or 23.3). Drag a single line on the picture to move it by hand; moved lines turn yellow. Following drifting lines moves every line onto its nearest edge, for pictures whose cells grow or shrink."
+    },
+    state.detectionNote !== "" && callout(state.noteGood ? "good" : "warn", state.detectionNote),
+    prop(
+      "Cell size",
       h(
-        "p",
-        { class: `note ${state.noteGood ? "good" : "warn"}` },
-        state.detectionNote
+        "div",
+        { class: "pair" },
+        numberInput(state.spec.cellWidth, setSide("cellWidth"), { min: 1, prefix: "W", label: "Cell width" }),
+        numberInput(state.spec.cellHeight, setSide("cellHeight"), { min: 1, prefix: "H", label: "Cell height" })
       ),
-    h(
-      "div",
-      { class: "grid2" },
-      numberField(
-        "Cell width",
-        state.spec.cellWidth,
-        (value) => setSpec(state.linked ? { cellWidth: Math.max(1, value), cellHeight: Math.max(1, value) } : { cellWidth: Math.max(1, value) }),
-        { min: 1, title: "Source pixels per pixel, across. Fractions are fine." }
-      ),
-      numberField(
-        "Cell height",
-        state.spec.cellHeight,
-        (value) => setSpec(state.linked ? { cellWidth: Math.max(1, value), cellHeight: Math.max(1, value) } : { cellHeight: Math.max(1, value) }),
-        { min: 1, title: "Source pixels per pixel, down." }
-      ),
-      numberField("Offset X", state.spec.offsetX, (value) => setSpec({ offsetX: value }), {
-        step: 0.25,
-        title: "Where the first full cell starts, from the left edge."
-      }),
-      numberField("Offset Y", state.spec.offsetY, (value) => setSpec({ offsetY: value }), {
-        step: 0.25,
-        title: "Where the first full cell starts, from the top edge."
-      })
+      "Source pixels per pixel. Fractions are fine."
     ),
-    checkbox("Square cells", state.linked, (checked) => {
+    prop(
+      "Offset",
+      h(
+        "div",
+        { class: "pair" },
+        numberInput(state.spec.offsetX, (value) => setSpec({ offsetX: value }), { step: 0.25, prefix: "X", label: "Offset X" }),
+        numberInput(state.spec.offsetY, (value) => setSpec({ offsetY: value }), { step: 0.25, prefix: "Y", label: "Offset Y" })
+      ),
+      "Where the first full cell starts, from the top left."
+    ),
+    switchRow("Square cells", state.linked, (checked) => {
       state.linked = checked
       if (checked) setSpec({ cellHeight: state.spec.cellWidth })
       else update()
     }),
-    checkbox(
+    switchRow(
       "Follow drifting lines",
       state.follow,
       (checked) => {
@@ -745,174 +671,188 @@ const gridPanel = (): HTMLElement => {
       },
       "Moves each line onto the nearest edge, for pictures whose cells grow or shrink across the picture."
     ),
-    checkbox("Show grid", state.showGrid, (checked) => {
+    switchRow("Show grid", state.showGrid, (checked) => {
       state.showGrid = checked
       update()
-    }),
-    h("p", { class: "hint" }, "Drag a single line on the picture to fix it by hand. Moved lines turn yellow."),
-    size !== undefined && h("p", { class: "stat" }, `One pixel per cell: ${size.width} × ${size.height} pixels`),
-    size !== undefined && sizeControls(size),
-    h("h3", {}, "Reading cells"),
-    slider(
-      "Read the middle",
-      Math.round((1 - 2 * state.sample.inset) * 100),
-      { min: 10, max: 100, step: 5 },
-      (value) => `${value}%`,
-      (value) => {
-        state.sample = { ...state.sample, inset: (1 - value / 100) / 2 }
-        update()
-      },
-      "How much of each cell is read. Less ignores blurred edges; more helps tiny cells."
-    ),
-    slider(
-      "Transparent below alpha",
-      state.sample.alphaThreshold,
-      { min: 1, max: 255, step: 1 },
-      (value) => String(value),
-      (value) => {
-        state.sample = { ...state.sample, alphaThreshold: value }
-        update()
-      }
+    }, "G"),
+    state.moved.size > 0 &&
+      h(
+        "div",
+        { class: "inline-action" },
+        h("span", {}, `${state.moved.size} line${state.moved.size === 1 ? "" : "s"} moved by hand`),
+        button("Reset", () => {
+          state.moved.clear()
+          update()
+        }, { variant: "ghost", small: true })
+      ),
+    group(
+      "Reading cells",
+      slider(
+        "Read middle",
+        Math.round((1 - 2 * state.sample.inset) * 100),
+        { min: 10, max: 100, step: 5 },
+        (value) => `${value}%`,
+        (value) => {
+          state.sample = { ...state.sample, inset: (1 - value / 100) / 2 }
+          update()
+        },
+        "How much of each cell is read. Less ignores blurred edges; more helps tiny cells."
+      ),
+      slider(
+        "Alpha cutoff",
+        state.sample.alphaThreshold,
+        { min: 1, max: 255, step: 1 },
+        (value) => String(value),
+        (value) => {
+          state.sample = { ...state.sample, alphaThreshold: value }
+          update()
+        },
+        "Pixels more transparent than this count as transparent."
+      )
     )
   )
 }
 
-const sizeControls = (size: { readonly width: number; readonly height: number }): HTMLElement => {
+const sizePanel = (): HTMLElement | false => {
+  if (grid === undefined) return false
+  const size = gridSize(grid)
   const width = state.targetWidth ?? size.width
+  const height = Math.max(1, Math.round((size.height * width) / size.width))
   const setWidth = (value: number | undefined): void => {
     state.targetWidth = value === undefined || value >= size.width ? undefined : Math.max(1, Math.round(value))
     update()
   }
-  const fraction = (label: string, divisor: number): HTMLElement =>
-    h(
-      "button",
-      {
-        class: width === Math.round(size.width / divisor) ? "toggle on" : "toggle",
-        on: { click: () => setWidth(divisor === 1 ? undefined : size.width / divisor) }
-      },
-      label
-    )
-  return h(
-    "div",
-    {},
-    h("h3", {}, "Size"),
-    h(
-      "div",
-      { class: "row" },
-      numberField("Width", width, (value) => setWidth(value), {
-        min: 1,
-        max: size.width,
-        step: 1,
-        title: "Fewer pixels than cells: each new pixel merges a block of them."
-      }),
-      fraction("Full", 1),
-      fraction("½", 2),
-      fraction("⅓", 3),
-      fraction("¼", 4)
+  const fractions = [
+    { id: "1", label: "Full" },
+    { id: "2", label: "½" },
+    { id: "3", label: "⅓" },
+    { id: "4", label: "¼" }
+  ] as const
+  const current = fractions.find((fraction) => width === Math.round(size.width / Number(fraction.id)))?.id ?? "custom"
+  return sectionOf(
+    "size",
+    "Size",
+    {
+      action: h("span", { class: "meta" }, `${width} × ${height}`),
+      help: "One pixel per cell is the picture's true size. A smaller width merges blocks of cells into one pixel each, at any ratio. Keeping outlines lets a dark line through a block win over its most common color, so one-pixel outlines survive; a lone dark pixel does not."
+    },
+    prop("Width", numberInput(width, (value) => setWidth(value), { min: 1, max: size.width, step: 1, suffix: "px", label: "Width" }), "Fewer pixels than cells: each new pixel merges a block of them."),
+    prop(
+      "Scale",
+      segmented(current, fractions, (id) => setWidth(id === "1" ? undefined : size.width / Number(id)), { label: "Scale", class: "fill" })
     ),
     state.targetWidth !== undefined &&
-      select("Merge by", state.reduceMode, reduceModes, (mode) => {
-        state.reduceMode = mode
-        update()
-      }),
-    state.targetWidth !== undefined &&
-      h(
-        "p",
-        { class: "hint" },
-        state.reduceMode === "outlines"
-          ? "Each pixel takes its block's most common color, but a dark line through the block wins, so one-pixel outlines survive."
-          : "Each pixel takes its block's most common color."
+      prop(
+        "Merge by",
+        selectInput(state.reduceMode, reduceModes, (mode) => {
+          state.reduceMode = mode
+          update()
+        }, "Merge by")
       )
   )
 }
 
+// ---------------------------------------------------------------------------
+// Palette
+
+/** The swatch whose details show under the palette, by index. */
+let selectedSwatch: number | undefined
+
 const setPalette = (name: string, colors: ReadonlyArray<Rgb>): void => {
   state.paletteName = name
   state.swatches = colors.map((color) => ({ color, locked: false }))
+  selectedSwatch = undefined
   update()
 }
 
 const editedName = (): string => (state.paletteName.endsWith("(edited)") ? state.paletteName : `${state.paletteName} (edited)`)
 
+const colorInput = (hex: string, label: string, onPick: (color: Rgb) => void): HTMLInputElement =>
+  h("input", {
+    class: "color-input",
+    props: { type: "color", value: hex },
+    attrs: { "aria-label": label },
+    on: {
+      change: (event) => {
+        const target = event.currentTarget
+        if (!(target instanceof HTMLInputElement)) return
+        const color = parseHex(target.value)
+        if (color !== undefined) onPick(color)
+      }
+    }
+  })
+
 const swatchEditor = (): HTMLElement => {
   const used = result === undefined ? new Map<string, number>() : new Map(usedColors(result).map((entry) => [toHex(entry.color), entry.count]))
+  if (selectedSwatch !== undefined && selectedSwatch >= state.swatches.length) selectedSwatch = undefined
+  const chosen = selectedSwatch === undefined ? undefined : state.swatches[selectedSwatch]
+  const add = h("label", { class: "swatch add", title: "Add a color" }, icon("plus"))
+  add.append(
+    colorInput("#808080", "Add a color", (color) => {
+      if (state.paletteName === ORIGINAL) state.paletteName = "Custom"
+      state.swatches.push({ color, locked: false })
+      state.paletteName = editedName()
+      selectedSwatch = state.swatches.length - 1
+      update()
+    })
+  )
   return h(
     "div",
-    { class: "swatches" },
-    state.swatches.map((swatch, index) => {
-      const hex = toHex(swatch.color)
-      const count = used.get(hex) ?? 0
-      const picker = h("input", {
-        props: { type: "color", value: hex },
-        attrs: { "aria-label": `Edit ${hex}` },
-        on: {
-          change: (event) => {
-            const target = event.currentTarget
-            if (!(target instanceof HTMLInputElement)) return
-            const color = parseHex(target.value)
-            if (color === undefined) return
+    {},
+    h(
+      "div",
+      { class: "swatches" },
+      state.swatches.map((swatch, index) => {
+        const hex = toHex(swatch.color)
+        const count = used.get(hex) ?? 0
+        return h(
+          "button",
+          {
+            class: `swatch${count === 0 ? " unused" : ""}${index === selectedSwatch ? " selected" : ""}`,
+            title: `${hex}${count > 0 ? `, ${pixels(count)}` : ", unused"}${swatch.locked ? ", locked" : ""}`,
+            attrs: { type: "button", style: `--color:${hex}`, "aria-pressed": String(index === selectedSwatch), "aria-label": `${hex}${swatch.locked ? " (locked)" : ""}` },
+            on: {
+              click: () => {
+                selectedSwatch = index === selectedSwatch ? undefined : index
+                update()
+              }
+            }
+          },
+          swatch.locked && h("span", { class: "swatch-lock" }, icon("lock"))
+        )
+      }),
+      add
+    ),
+    chosen !== undefined &&
+      selectedSwatch !== undefined &&
+      ((index: number, swatch: Swatch) => {
+        const hex = toHex(swatch.color)
+        const count = used.get(hex) ?? 0
+        const picker = h("label", { class: "swatch big", title: "Change this color", attrs: { style: `--color:${hex}` } })
+        picker.append(
+          colorInput(hex, `Change ${hex}`, (color) => {
             state.swatches[index] = { ...swatch, color }
             state.paletteName = editedName()
             update()
-          }
-        }
-      })
-      return h(
-        "div",
-        { class: `swatch${count === 0 ? " unused" : ""}`, title: `${hex}${count > 0 ? `, ${count} pixels` : ", unused"}` },
-        h("span", { class: "chip", attrs: { style: `background:${hex}` } }, picker),
-        h(
-          "button",
-          {
-            class: `icon${swatch.locked ? " on" : ""}`,
-            title: swatch.locked ? "Locked: kept when extracting" : "Lock: keep when extracting",
-            on: {
-              click: () => {
-                state.swatches[index] = { ...swatch, locked: !swatch.locked }
-                update()
-              }
-            }
-          },
-          swatch.locked ? "🔒" : "🔓"
-        ),
-        h(
-          "button",
-          {
-            class: "icon",
-            title: "Remove",
-            on: {
-              click: () => {
-                state.swatches.splice(index, 1)
-                state.paletteName = editedName()
-                update()
-              }
-            }
-          },
-          "×"
+          })
         )
-      )
-    }),
-    h(
-      "label",
-      { class: "swatch add", title: "Add a color" },
-      h("span", { class: "chip add-chip" }, "+"),
-      h("input", {
-        props: { type: "color", value: "#808080" },
-        attrs: { "aria-label": "Add a color" },
-        on: {
-          change: (event) => {
-            const target = event.currentTarget
-            if (!(target instanceof HTMLInputElement)) return
-            const color = parseHex(target.value)
-            if (color === undefined) return
-            if (state.paletteName === ORIGINAL) state.paletteName = "Custom"
-            state.swatches.push({ color, locked: false })
-            state.paletteName = editedName()
+        return h(
+          "div",
+          { class: "swatch-detail" },
+          picker,
+          h("div", { class: "swatch-info" }, h("strong", {}, hex), h("span", {}, count > 0 ? `${pixels(count)}` : "Unused")),
+          button(swatch.locked ? "Unlock" : "Lock", () => {
+            state.swatches[index] = { ...swatch, locked: !swatch.locked }
             update()
-          }
-        }
-      })
-    )
+          }, { variant: "ghost", small: true, iconOnly: true, icon: swatch.locked ? "lock" : "unlock", pressed: swatch.locked, title: swatch.locked ? "Locked: always kept. Click to unlock" : "Lock: always keep this color" }),
+          button("Remove", () => {
+            state.swatches.splice(index, 1)
+            state.paletteName = editedName()
+            selectedSwatch = undefined
+            update()
+          }, { variant: "ghost", small: true, iconOnly: true, icon: "trash" })
+        )
+      })(selectedSwatch, chosen)
   )
 }
 
@@ -930,136 +870,9 @@ const keepColor = (color: Rgb): void => {
   if (index >= 0) state.swatches[index] = { color, locked: true }
   else state.swatches.push({ color, locked: true })
   if (state.paletteName !== PICKED) state.paletteName = editedName()
-  state.message = `Kept ${hex} in the palette (locked).`
+  state.message = `Kept ${hex} in the palette, locked.`
   highlight = []
   update()
-}
-
-const lostPanel = (): HTMLElement | false => {
-  if (state.paletteName === ORIGINAL || result === undefined) return false
-  return panel(
-    "Lost colors",
-    lost.length === 0
-      ? h("p", { class: "hint" }, "None: every pixel is close to the palette color it got.")
-      : h(
-          "div",
-          { class: "lost" },
-          lost.map((entry) =>
-            h(
-              "div",
-              {
-                class: "lost-row",
-                on: {
-                  mouseenter: () => {
-                    highlight = entry.cells
-                    update({ panels: false })
-                  },
-                  mouseleave: () => {
-                    highlight = []
-                    update({ panels: false })
-                  }
-                }
-              },
-              h("span", { class: "chip mini", title: toHex(entry.color), attrs: { style: `background:${toHex(entry.color)}` } }),
-              h("span", { class: "hint" }, "→"),
-              h("span", { class: "chip mini", title: toHex(entry.became), attrs: { style: `background:${toHex(entry.became)}` } }),
-              h("span", { class: "lost-count" }, `${entry.cells.length} px`),
-              h("button", { title: `Add ${toHex(entry.color)} to the palette, locked`, on: { click: () => keepColor(entry.color) } }, "Keep")
-            )
-          )
-        ),
-    slider(
-      "Lost when off by",
-      Math.round(state.lostThreshold * 100),
-      { min: 4, max: 30, step: 1 },
-      (value) => String(value),
-      (value) => {
-        state.lostThreshold = value / 100
-        update()
-      },
-      "How far a pixel's own color may be from the color it got. Lower lists more."
-    ),
-    h(
-      "p",
-      { class: "hint" },
-      "Pixels whose own color is far from the palette color they got, grouped by color. Point at a row to see them; Keep adds the color, locked. To keep any other color, pick Pick above the picture and click it."
-    )
-  )
-}
-
-/** Proposes colors from the picture's cells, leaving out the background when it is removed, and keeps the top ones. */
-const propose = (): void => {
-  if (samples === undefined) return
-  const cells = quantize(samples, { palette: [], metric: state.metric, dither: "none", ditherStrength: 0 })
-  const mask = state.removeBackground ? findBackground(cells, backgroundColors(cells), state.background) : undefined
-  const colors: Array<Rgb> = []
-  cells.indices.forEach((index, i) => {
-    if (index !== TRANSPARENT && mask?.[i] !== 1) colors.push(cells.palette[index]!)
-  })
-  state.proposals = proposePalette(colors, state.proposeCount, state.proposeMethod)
-  keepTop(state.keepCount)
-}
-
-/** The palette becomes the locked colors and the most used proposals, `count` colors in all. */
-const keepTop = (count: number): void => {
-  const locked = state.swatches.filter((swatch) => swatch.locked)
-  const lockedHex = new Set(locked.map((swatch) => toHex(swatch.color)))
-  const picks = state.proposals
-    .filter((proposal) => !lockedHex.has(toHex(proposal.color)))
-    .slice(0, Math.max(0, count - locked.length))
-    .map((proposal) => ({ color: proposal.color, locked: false }))
-  state.paletteName = PICKED
-  state.swatches = [...locked, ...picks]
-  update()
-}
-
-const toggleProposal = (color: Rgb): void => {
-  const hex = toHex(color)
-  const index = state.swatches.findIndex((swatch) => toHex(swatch.color) === hex)
-  if (index >= 0) state.swatches.splice(index, 1)
-  else state.swatches.push({ color, locked: false })
-  state.paletteName = PICKED
-  update()
-}
-
-const proposalPicker = (): HTMLElement | false => {
-  if (state.proposals.length === 0) return false
-  const inPalette = new Set(state.swatches.map((swatch) => toHex(swatch.color)))
-  return h(
-    "div",
-    {},
-    slider(
-      "Colors kept",
-      Math.min(state.keepCount, state.proposals.length),
-      { min: 1, max: state.proposals.length, step: 1 },
-      (value) => String(value),
-      (value) => {
-        state.keepCount = value
-        keepTop(value)
-      },
-      "Keeps the most used proposed colors (locked colors count toward it)."
-    ),
-    h(
-      "div",
-      { class: "swatches" },
-      state.proposals.map((proposal) => {
-        const hex = toHex(proposal.color)
-        const on = inPalette.has(hex)
-        return h(
-          "button",
-          {
-            class: `swatch proposal${on ? " on" : ""}`,
-            title: `${hex}: ${on ? "in the palette, click to remove" : "click to add"}`,
-            attrs: { "aria-pressed": on },
-            on: { click: () => toggleProposal(proposal.color) }
-          },
-          h("span", { class: "chip", attrs: { style: `background:${hex}` } }),
-          h("span", { class: "share" }, `${proposal.share >= 0.01 ? Math.round(proposal.share * 100) : "<1"}%`)
-        )
-      })
-    ),
-    h("p", { class: "hint" }, "Most used first, with the share of the picture each covers. Click a color to add or remove it.")
-  )
 }
 
 const importText = (text: string, name: string): void => {
@@ -1093,7 +906,7 @@ const fetchLospec = async (slug: string): Promise<void> => {
 
 const palettePanel = (): HTMLElement => {
   const options = [
-    { id: ORIGINAL, label: "Keep the picture's colors (no palette)" },
+    { id: ORIGINAL, label: "None: keep the picture's colors" },
     ...presets.map((preset) => ({ id: preset.name, label: preset.name }))
   ]
   if (!options.some((option) => option.id === state.paletteName)) {
@@ -1110,12 +923,17 @@ const palettePanel = (): HTMLElement => {
       }
     }
   })
-  const pasted = h("textarea", { attrs: { rows: 2, placeholder: "Paste hex colors: #1a1c2c, 5d275d, …" } })
-  const slug = h("input", { props: { type: "text" }, attrs: { placeholder: "Lospec name, e.g. endesga-32" } })
+  const pasted = h("textarea", { class: "textarea", attrs: { rows: 2, placeholder: "#1a1c2c, #5d275d, …", "aria-label": "Hex colors", spellcheck: "false" } })
+  const slug = h("input", { props: { type: "text" }, attrs: { placeholder: "endesga-32", "aria-label": "Lospec palette name", spellcheck: "false" } })
   const used = result === undefined ? 0 : usedColors(result).length
-  return panel(
+  return sectionOf(
+    "palette",
     "Palette",
-    select("Palette", state.paletteName, options, (id) => {
+    {
+      action: state.paletteName !== ORIGINAL && h("span", { class: "meta" }, `${used} of ${state.swatches.length} used`),
+      help: "Every pixel gets the palette color nearest to its cell. Click a color to change, lock, or remove it; locked colors are always kept. Faded colors are not used by the picture."
+    },
+    selectInput(state.paletteName, options, (id) => {
       if (id === ORIGINAL) {
         state.paletteName = ORIGINAL
         update()
@@ -1123,99 +941,180 @@ const palettePanel = (): HTMLElement => {
       }
       const preset = presets.find((entry) => entry.name === id)
       if (preset !== undefined) setPalette(preset.name, preset.colors)
-    }),
-    state.paletteName === ORIGINAL
-      ? h("p", { class: "hint" }, `Each pixel keeps its cell's own color (the median). ${used} colors in use.`)
-      : h(
-          "div",
-          {},
-          h("p", { class: "stat" }, `${used} of ${state.swatches.length} colors in use. Click a color to edit it.`),
-          swatchEditor()
-        ),
-    h("h3", {}, "From the picture"),
-    select("Propose by", state.proposeMethod, proposeMethods, (method) => {
+    }, "Palette"),
+    state.paletteName === ORIGINAL ? hint(`Each pixel keeps its cell's own color. ${used} colors in use.`) : swatchEditor(),
+    group(
+      "Import",
+      h(
+        "div",
+        { class: "stack" },
+        button("Open .hex or .gpl file", () => paletteFile.click(), { variant: "secondary", icon: "open", class: "block" }),
+        paletteFile,
+        h("div", { class: "combo" }, h("label", { class: "input" }, pasted), button("Use", () => importText(pasted.value, "Pasted"), { variant: "secondary" })),
+        h("div", { class: "combo" }, h("label", { class: "input" }, h("span", { class: "affix" }, "Lospec"), slug), button("Fetch", () => void fetchLospec(slug.value), { variant: "secondary" }))
+      )
+    )
+  )
+}
+
+/** Proposes colors from the picture's cells, leaving out the background when it is removed, and keeps the top ones. */
+const propose = (): void => {
+  if (samples === undefined) return
+  const cells = quantize(samples, { palette: [], metric: state.metric, dither: "none", ditherStrength: 0 })
+  const mask = state.removeBackground ? findBackground(cells, backgroundColors(cells), state.background) : undefined
+  const colors: Array<Rgb> = []
+  cells.indices.forEach((index, i) => {
+    if (index !== TRANSPARENT && mask?.[i] !== 1) colors.push(cells.palette[index]!)
+  })
+  state.proposals = proposePalette(colors, state.proposeCount, state.proposeMethod)
+  keepTop(state.keepCount)
+}
+
+/** The palette becomes the locked colors and the most used proposals, `count` colors in all. */
+const keepTop = (count: number): void => {
+  const locked = state.swatches.filter((swatch) => swatch.locked)
+  const lockedHex = new Set(locked.map((swatch) => toHex(swatch.color)))
+  const picks = state.proposals
+    .filter((proposal) => !lockedHex.has(toHex(proposal.color)))
+    .slice(0, Math.max(0, count - locked.length))
+    .map((proposal) => ({ color: proposal.color, locked: false }))
+  state.paletteName = PICKED
+  state.swatches = [...locked, ...picks]
+  selectedSwatch = undefined
+  update()
+}
+
+const toggleProposal = (color: Rgb): void => {
+  const hex = toHex(color)
+  const index = state.swatches.findIndex((swatch) => toHex(swatch.color) === hex)
+  if (index >= 0) state.swatches.splice(index, 1)
+  else state.swatches.push({ color, locked: false })
+  state.paletteName = PICKED
+  selectedSwatch = undefined
+  update()
+}
+
+const proposalPicker = (): HTMLElement | false => {
+  if (state.proposals.length === 0) return false
+  const inPalette = new Set(state.swatches.map((swatch) => toHex(swatch.color)))
+  return h(
+    "div",
+    { class: "stack" },
+    slider(
+      "Colors kept",
+      Math.min(state.keepCount, state.proposals.length),
+      { min: 1, max: state.proposals.length, step: 1 },
+      (value) => String(value),
+      (value) => {
+        state.keepCount = value
+        keepTop(value)
+      },
+      "Keeps the most used proposed colors (locked colors count toward it)."
+    ),
+    h(
+      "div",
+      { class: "swatches proposals" },
+      state.proposals.map((proposal) => {
+        const hex = toHex(proposal.color)
+        const on = inPalette.has(hex)
+        return h(
+          "button",
+          {
+            class: `proposal${on ? " on" : ""}`,
+            title: `${hex}: ${on ? "in the palette, click to remove" : "click to add"}`,
+            attrs: { type: "button", "aria-pressed": String(on) },
+            on: { click: () => toggleProposal(proposal.color) }
+          },
+          h("span", { class: "swatch", attrs: { style: `--color:${hex}` } }),
+          h("span", { class: "share" }, `${proposal.share >= 0.01 ? Math.round(proposal.share * 100) : "<1"}%`)
+        )
+      })
+    ),
+    hint("Most used first. Click a color to add it to the palette or take it out.")
+  )
+}
+
+const proposePanel = (): HTMLElement =>
+  sectionOf(
+    "propose",
+    "Colors from the picture",
+    { help: proposeMethods.map((method) => `${method.label}: ${method.hint}`).join(" ") + " Locked colors always stay." },
+    prop("Method", selectInput(state.proposeMethod, proposeMethods, (method) => {
       state.proposeMethod = method
       if (state.proposals.length > 0) propose()
       else update()
-    }),
-    h("p", { class: "hint" }, proposeMethods.find((method) => method.id === state.proposeMethod)!.hint),
-    h(
-      "div",
-      { class: "row" },
-      numberField(
-        "Propose",
-        state.proposeCount,
-        (value) => {
-          state.proposeCount = Math.min(64, Math.max(1, Math.round(value)))
-          if (state.proposals.length > 0) propose()
-          else update()
-        },
-        { min: 1, max: 64, step: 1, title: "How many colors to propose." }
-      ),
-      h("button", { on: { click: propose }, attrs: { disabled: state.source === undefined } }, "Propose colors")
+    }, "Method"), proposeMethods.find((method) => method.id === state.proposeMethod)!.hint),
+    prop(
+      "Colors",
+      h(
+        "div",
+        { class: "combo" },
+        numberInput(
+          state.proposeCount,
+          (value) => {
+            state.proposeCount = Math.min(64, Math.max(1, Math.round(value)))
+            if (state.proposals.length > 0) propose()
+            else update()
+          },
+          { min: 1, max: 64, step: 1, label: "How many colors to propose" }
+        ),
+        button("Propose", propose, { variant: "secondary", icon: "sparkle", disabled: state.source === undefined })
+      )
     ),
-    proposalPicker(),
-    h("p", { class: "hint" }, "Locked colors always stay in the palette."),
-    h("h3", {}, "Import"),
-    h(
-      "div",
-      { class: "row" },
-      h("button", { on: { click: () => paletteFile.click() } }, "Open .hex or .gpl"),
-      paletteFile
-    ),
-    h(
-      "div",
-      { class: "row" },
-      pasted,
-      h("button", { on: { click: () => importText(pasted.value, "Pasted") } }, "Use")
-    ),
-    h(
-      "div",
-      { class: "row" },
-      slug,
-      h("button", { on: { click: () => void fetchLospec(slug.value) } }, "Fetch")
-    ),
-    h("h3", {}, "Matching"),
-    select("Nearest color by", state.metric, metrics, (metric) => {
+    proposalPicker()
+  )
+
+const matchingPanel = (): HTMLElement =>
+  sectionOf(
+    "matching",
+    "Matching",
+    {
+      help: "Each cell is read from its middle, every pixel read votes for its nearest palette color, and the most votes win, so no in-between color is ever made up. Cleaning up merges the small specks of one color an image generator's noise leaves, but only when there is doubt they are real; diagonal neighbours count, so one-pixel outlines are never specks. Locked colors are never cleaned, and painting over a cleaned speck with Restore brings it back."
+    },
+    prop("Nearest by", selectInput(state.metric, metrics, (metric) => {
       state.metric = metric
       update()
-    }),
-    select(
+    }, "Nearest color by")),
+    prop(
       "Dithering",
-      state.dither,
-      [
-        { id: "none", label: "Off (majority color per cell)" },
-        { id: "ordered", label: "Ordered (Bayer 4×4)" }
-      ],
-      (dither) => {
-        state.dither = dither
-        update()
-      }
+      selectInput(
+        state.dither,
+        [
+          { id: "none", label: "Off" },
+          { id: "ordered", label: "Ordered (Bayer 4×4)" }
+        ],
+        (dither) => {
+          state.dither = dither
+          update()
+        },
+        "Dithering"
+      )
     ),
     state.dither === "ordered" &&
-      slider("Strength", Math.round(state.ditherStrength * 100), { min: 0, max: 100, step: 5 }, (value) => `${value}%`, (value) => {
+      slider("Dither strength", Math.round(state.ditherStrength * 100), { min: 0, max: 100, step: 5 }, (value) => `${value}%`, (value) => {
         state.ditherStrength = value / 100
         update()
       }),
-    h("h3", {}, "Clean up specks"),
-    select(
-      "Specks up to",
-      String(state.cleanup.size),
-      [
-        { id: "0", label: "Off" },
-        { id: "1", label: "1 pixel" },
-        { id: "2", label: "2 pixels" },
-        { id: "3", label: "3 pixels" }
-      ],
-      (value) => {
-        state.cleanup = { ...state.cleanup, size: Number(value) }
-        update()
-      }
-    ),
-    state.cleanup.size > 0 &&
-      h(
-        "div",
-        {},
+    group(
+      "Clean up specks",
+      prop(
+        "Specks up to",
+        segmented(
+          String(state.cleanup.size),
+          [
+            { id: "0", label: "Off" },
+            { id: "1", label: "1 px" },
+            { id: "2", label: "2 px" },
+            { id: "3", label: "3 px" }
+          ],
+          (value) => {
+            state.cleanup = { ...state.cleanup, size: Number(value) }
+            update()
+          },
+          { label: "Specks up to", class: "fill" }
+        )
+      ),
+      state.cleanup.size > 0 &&
         slider(
           "Strength",
           Math.round(state.cleanup.strength * 100),
@@ -1227,41 +1126,86 @@ const palettePanel = (): HTMLElement => {
           },
           "Low merges only specks that were a coin flip, or nearly the color around them. High also merges specks drawn clearly in a different color."
         ),
-        checkbox("Show cleaned pixels", state.cleanup.show, (checked) => {
+      state.cleanup.size > 0 &&
+        switchRow("Outline cleaned pixels", state.cleanup.show, (checked) => {
           state.cleanup = { ...state.cleanup, show: checked }
           update()
         }),
+      state.cleanup.size > 0 &&
+        hint(`${specks.length} speck${specks.length === 1 ? "" : "s"} cleaned, ${pixels(specks.reduce((sum, cells) => sum + cells.length, 0))}.`),
+      state.cleanKeep.cells.length > 0 &&
         h(
-          "p",
-          { class: "stat" },
-          `${specks.length} speck${specks.length === 1 ? "" : "s"} cleaned (${specks.reduce((sum, cells) => sum + cells.length, 0)} pixels), outlined in yellow.`
-        ),
-        state.cleanKeep.cells.length > 0 &&
-          h(
-            "button",
-            {
-              on: {
-                click: () => {
-                  state.cleanKeep = { ...state.cleanKeep, cells: [] }
-                  update()
-                }
-              }
-            },
-            "Clean the brought-back specks again"
-          ),
-        h(
-          "p",
-          { class: "hint" },
-          "A speck is a group of one color this small (diagonal neighbours count, so thin outlines are never specks). It takes the color it touches most, unless it is clearly drawn and far from that color. Locked colors are never cleaned. Paint over a cleaned speck with Restore to bring it back."
+          "div",
+          { class: "inline-action" },
+          h("span", {}, "Some specks were brought back by hand"),
+          button("Clean again", () => {
+            state.cleanKeep = { ...state.cleanKeep, cells: [] }
+            update()
+          }, { variant: "ghost", small: true })
         )
-      )
+    )
+  )
+
+const lostPanel = (): HTMLElement | false => {
+  if (state.paletteName === ORIGINAL || result === undefined) return false
+  return sectionOf(
+    "lost",
+    "Lost colors",
+    {
+      action: lost.length > 0 && badge(String(lost.length), "warn"),
+      help: "Details the palette has no match for: pixels whose own color is far from the color they got (a small saturated accent turned dull, a dark grey turned black). Point at a row to see its pixels; Keep adds the color, locked. To keep any other color, choose Pick in the toolbar and click the picture."
+    },
+    lost.length === 0
+      ? hint("None: every pixel is close to the color it got.")
+      : h(
+          "div",
+          { class: "list" },
+          lost.map((entry) =>
+            h(
+              "div",
+              {
+                class: "list-row",
+                on: {
+                  mouseenter: () => {
+                    highlight = entry.cells
+                    update({ panels: false })
+                  },
+                  mouseleave: () => {
+                    highlight = []
+                    update({ panels: false })
+                  }
+                }
+              },
+              chip(toHex(entry.color)),
+              h("span", { class: "arrow" }, "→"),
+              chip(toHex(entry.became)),
+              h("span", { class: "list-text" }, pixels(entry.cells.length)),
+              button("Keep", () => keepColor(entry.color), { variant: "ghost", small: true, title: `Add ${toHex(entry.color)} to the palette, locked` })
+            )
+          )
+        ),
+    slider(
+      "Lost above",
+      Math.round(state.lostThreshold * 100),
+      { min: 4, max: 30, step: 1 },
+      (value) => String(value),
+      (value) => {
+        state.lostThreshold = value / 100
+        update()
+      },
+      "How far a pixel's own color may be from the color it got. Lower lists more."
+    )
   )
 }
 
 const backgroundPanel = (): HTMLElement =>
-  panel(
+  sectionOf(
+    "background",
     "Background",
-    checkbox(
+    {
+      help: "The colors covering most of the border are the background (one, or the two tones of a fake checkerboard). It is flooded in from the border and stops at the outline. To erase or bring back pixels by hand, choose Erase or Restore in the toolbar and paint on the fixed picture, one pixel or a whole area of one color at a time."
+    },
+    switchRow(
       "Remove the background",
       state.removeBackground,
       (checked) => {
@@ -1271,142 +1215,109 @@ const backgroundPanel = (): HTMLElement =>
       "Makes the background transparent, including a fake checkerboard painted into the picture."
     ),
     state.removeBackground &&
-      h(
-        "div",
-        {},
+      prop(
+        "Found",
         backgroundFound.length === 0
-          ? h("p", { class: "hint" }, "No background color found on the border.")
-          : h(
-              "div",
-              { class: "row" },
-              h("span", { class: "hint" }, "Found on the border:"),
-              backgroundFound.map((color) =>
-                h("span", { class: "chip mini", title: toHex(color), attrs: { style: `background:${toHex(color)}` } })
-              )
-            ),
-        slider(
-          "Tolerance",
-          Math.round(state.background.tolerance * 100),
-          { min: 0, max: 30, step: 1 },
-          (value) => String(value),
-          (value) => {
-            state.background = { ...state.background, tolerance: value / 100 }
-            update()
-          },
-          "How close a color must be to a background color to count as background."
-        ),
-        checkbox(
-          "Also enclosed areas",
-          state.background.enclosed,
-          (checked) => {
-            state.background = { ...state.background, enclosed: checked }
-            update()
-          },
-          "Removes background-colored areas the border cannot reach, like a gap between arm and body. Also removes highlights of the same color."
-        ),
-        checkbox(
-          "Remove specks",
-          state.background.specks,
-          (checked) => {
-            state.background = { ...state.background, specks: checked }
-            update()
-          },
-          `Also removes groups of up to ${SPECK_SIZE} pixels left alone in the background.`
-        )
+          ? h("span", { class: "meta" }, "No color on the border")
+          : h("div", { class: "chips" }, backgroundFound.map((color) => chip(toHex(color))))
+      ),
+    state.removeBackground &&
+      slider(
+        "Tolerance",
+        Math.round(state.background.tolerance * 100),
+        { min: 0, max: 30, step: 1 },
+        (value) => String(value),
+        (value) => {
+          state.background = { ...state.background, tolerance: value / 100 }
+          update()
+        },
+        "How close a color must be to a background color to count as background."
+      ),
+    state.removeBackground &&
+      switchRow(
+        "Enclosed areas too",
+        state.background.enclosed,
+        (checked) => {
+          state.background = { ...state.background, enclosed: checked }
+          update()
+        },
+        "Removes background-colored areas the border cannot reach, like a gap between arm and body. Also removes highlights of the same color."
+      ),
+    state.removeBackground &&
+      switchRow(
+        "Remove specks",
+        state.background.specks,
+        (checked) => {
+          state.background = { ...state.background, specks: checked }
+          update()
+        },
+        `Also removes groups of up to ${SPECK_SIZE} pixels left alone in the background.`
       ),
     h(
-      "p",
-      { class: "hint" },
-      "To erase or bring back pixels by hand, pick Erase or Restore above the picture, then paint on the fixed picture: one pixel at a time, or a whole area of one color."
-    ),
-    state.edits.strokes.length > 0 &&
-      h(
-        "div",
-        { class: "row" },
-        h(
-          "button",
-          {
-            on: {
-              click: () => {
-                state.edits.strokes = []
-                update()
-              }
-            }
-          },
-          `Clear ${state.edits.strokes.length} stroke${state.edits.strokes.length === 1 ? "" : "s"}`
-        )
-      )
+      "div",
+      { class: "inline-action" },
+      h("span", {}, state.edits.strokes.length === 0 ? "Paint with Erase or Restore to edit by hand" : `${state.edits.strokes.length} stroke${state.edits.strokes.length === 1 ? "" : "s"} painted by hand`),
+      state.edits.strokes.length > 0 &&
+        button("Clear", () => {
+          state.edits.strokes = []
+          update()
+        }, { variant: "ghost", small: true })
+    )
   )
 
-// Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z or Ctrl+Y redoes; text fields keep their own undo.
-window.addEventListener("keydown", (event) => {
-  const target = event.target
-  if (target instanceof HTMLInputElement && target.type !== "range" && target.type !== "checkbox") return
-  if (target instanceof HTMLTextAreaElement) return
-  if (!(event.metaKey || event.ctrlKey)) return
-  const key = event.key.toLowerCase()
-  if (key === "z" && !event.shiftKey) {
-    event.preventDefault()
-    history.undo()
-  } else if ((key === "z" && event.shiftKey) || key === "y") {
-    event.preventDefault()
-    history.redo()
-  }
-})
+// ---------------------------------------------------------------------------
+// Check and export
 
 /** What the CLI's `pixel check` says about the result, against the project's rules. */
 const checkPanel = (): HTMLElement => {
   const current = report
-  const broken = current !== undefined && (current.verdict === "needs-person" || current.issues.some((issue) => issue.severity === "error"))
-  return panel(
+  const errors = current === undefined ? 0 : current.issues.filter((issue) => issue.severity === "error").length
+  const status: { readonly text: string; readonly tone: "good" | "warn" | "bad" } | undefined =
+    current === undefined
+      ? undefined
+      : current.verdict === "needs-person"
+        ? { text: "Needs a look", tone: "bad" }
+        : errors > 0
+          ? { text: `${errors} broken`, tone: "warn" }
+          : { text: current.kind === "pixel-art" ? "Clean" : "Confident", tone: "good" }
+  return sectionOf(
+    "check",
     "Check",
-    current !== undefined &&
-      h(
-        "p",
-        { class: `note ${broken ? "warn" : "good"}` },
-        current.summary
-      ),
+    {
+      action: status !== undefined && badge(status.text, status.tone),
+      help: "The same check agents run with the pixel CLI: how sure the grid is, and the project's rules. Open a pixel.config.json to take a project's rules, palette, and settings."
+    },
+    current !== undefined && h("p", { class: "summary" }, current.summary),
     current !== undefined &&
       current.issues.length > 0 &&
       h(
         "ul",
         { class: "issues" },
-        current.issues.map((issue) => h("li", { class: issue.severity }, h("strong", {}, issue.severity === "error" ? "Error" : "Warning"), " ", issue.message))
+        current.issues.map((issue) => h("li", { class: issue.severity }, icon(issue.severity === "error" ? "alert" : "info"), h("span", {}, issue.message)))
       ),
-    h(
-      "div",
-      { class: "grid2" },
-      h(
-        "label",
-        { class: "field", title: 'Sizes the art may have, like "16x16, 32x32" (empty: any)' },
-        h("span", {}, "Allowed sizes"),
-        h("input", {
-          props: { type: "text", value: state.rules.sizes, placeholder: "any" },
-          on: {
-            change: (event) => {
-              const target = event.currentTarget
-              if (!(target instanceof HTMLInputElement)) return
-              state.rules = { ...state.rules, sizes: target.value }
-              update()
-            }
-          }
-        })
-      ),
-      numberField(
+    group(
+      "Rules",
+      prop("Sizes", textInput(state.rules.sizes, (value) => {
+        state.rules = { ...state.rules, sizes: value }
+        update()
+      }, { placeholder: "Any, or 16x16, 32x32", label: "Allowed sizes" }), "Sizes the art may have, like \"16x16, 32x32\""),
+      prop(
         "Max colors",
-        state.rules.maxColors ?? 0,
-        (value) => {
-          state.rules = { ...state.rules, maxColors: value >= 1 ? Math.round(value) : undefined }
-          update()
-        },
-        { min: 0, step: 1, title: "The most colors the art may use (0: any)" }
-      )
-    ),
-    checkbox("Background must be transparent", state.rules.transparentBackground, (checked) => {
-      state.rules = { ...state.rules, transparentBackground: checked }
-      update()
-    }),
-    h("p", { class: "hint" }, "The same check agents run with the pixel CLI. Open a pixel.config.json to take a project's rules.")
+        numberInput(
+          state.rules.maxColors,
+          (value) => {
+            state.rules = { ...state.rules, maxColors: value >= 1 ? Math.round(value) : undefined }
+            update()
+          },
+          { min: 0, step: 1, label: "Max colors", placeholder: "Any" }
+        ),
+        "The most colors the art may use (empty: any)"
+      ),
+      switchRow("Transparent background", state.rules.transparentBackground, (checked) => {
+        state.rules = { ...state.rules, transparentBackground: checked }
+        update()
+      }, "The art is a sprite: its background must be transparent.")
+    )
   )
 }
 
@@ -1416,222 +1327,269 @@ const preview = h("canvas", { class: "preview" })
 const drawPreview = (): void => {
   const art = result
   if (art === undefined) return
-  const scale = Math.max(1, Math.min(8, Math.floor(240 / Math.max(art.width, art.height))))
-  const pixels = canvasOf(toRgba(art, scale))
-  preview.width = pixels.width
-  preview.height = pixels.height
+  const scale = Math.max(1, Math.min(8, Math.floor(200 / Math.max(art.width, art.height))))
+  const image = canvasOf(toRgba(art, scale))
+  preview.width = image.width
+  preview.height = image.height
   const context = preview.getContext("2d")!
   context.clearRect(0, 0, preview.width, preview.height)
-  context.drawImage(pixels, 0, 0)
+  context.drawImage(image, 0, 0)
 }
 
-const exportPanel = (): HTMLElement => {
-  const name = state.source === undefined ? "pixel-art" : baseName(state.source.name)
+const exportPanel = (): HTMLElement | false => {
   const art = result
-  const disabled = art === undefined
+  if (art === undefined) return false
+  const name = state.source === undefined ? "pixel-art" : baseName(state.source.name)
   drawPreview()
-  const paletteOf = (): Palette =>
-    art === undefined
-      ? { name, colors: [] }
-      : { name: state.paletteName === ORIGINAL ? name : state.paletteName, colors: usedColors(art).map((entry) => entry.color) }
-  return panel(
+  const paletteOf = (): Palette => ({ name: state.paletteName === ORIGINAL ? name : state.paletteName, colors: usedColors(art).map((entry) => entry.color) })
+  const scale = state.exportScale
+  return sectionOf(
+    "export",
     "Export",
-    art !== undefined && h("div", { class: "preview-box" }, preview),
-    art !== undefined && h("p", { class: "stat" }, `${art.width} × ${art.height} pixels, ${usedColors(art).length} colors`),
-    select(
+    {
+      action: h("span", { class: "meta" }, `${art.width} × ${art.height} · ${usedColors(art).length} colors`),
+      help: "PNG at 1× is the true pixel art. The SVG is drawn in pixel units with crisp edges, so it stays sharp at any size; the scale only sets the size it opens at. The JSON map holds the palette and one row of palette indices per pixel row (-1 for transparent). The recipe holds every setting, hand edits included: open it here again, or run it with pixel fix --recipe."
+    },
+    h("div", { class: "preview-box" }, preview),
+    prop(
       "Scale",
-      String(state.exportScale),
-      [1, 2, 4, 8, 16, 32].map((scale) => ({
-        id: String(scale),
-        label: art === undefined ? `${scale}×` : `${scale}× (${art.width * scale} × ${art.height * scale})`
-      })),
-      (value) => {
-        state.exportScale = Number(value)
-        update()
-      }
-    ),
-    h(
-      "div",
-      { class: "buttons" },
-      h(
-        "button",
-        {
-          class: "primary",
-          attrs: { disabled },
-          on: { click: () => art && void pngOf(art, 1).then((blob) => download(`${name}-fixed.png`, blob)) }
+      selectInput(
+        String(scale),
+        [1, 2, 4, 8, 16, 32].map((option) => ({ id: String(option), label: `${option}×  ·  ${art.width * option} × ${art.height * option}` })),
+        (value) => {
+          state.exportScale = Number(value)
+          update()
         },
-        "PNG 1×"
-      ),
-      h(
-        "button",
-        {
-          attrs: { disabled },
-          on: {
-            click: () =>
-              art && void pngOf(art, state.exportScale).then((blob) => download(`${name}-fixed-${state.exportScale}x.png`, blob))
-          }
-        },
-        `PNG ${state.exportScale}×`
-      ),
-      h(
-        "button",
-        { attrs: { disabled }, on: { click: () => art && download(`${name}-fixed.svg`, toSvg(art, state.exportScale), "image/svg+xml") } },
-        "SVG"
-      ),
-      h(
-        "button",
-        { attrs: { disabled }, on: { click: () => art && download(`${name}-fixed.json`, toJson(art), "application/json") } },
-        "JSON map"
-      ),
-      h("button", { attrs: { disabled }, on: { click: () => download(`${name}-palette.hex`, toHexFile(paletteOf())) } }, "Palette .hex"),
-      h("button", { attrs: { disabled }, on: { click: () => download(`${name}-palette.gpl`, toGpl(paletteOf())) } }, "Palette .gpl"),
-      h(
-        "button",
-        {
-          attrs: { disabled: disabled || usedColors(art).length > 70 },
-          title: "The fixed picture as text: one letter per color, one row per pixel row",
-          on: { click: () => art && download(`${name}-fixed.sprite.txt`, formatSprite(art)) }
-        },
-        "Sprite text"
-      ),
-      h(
-        "button",
-        {
-          attrs: { disabled },
-          title: "Every setting, hand edits included: open it here again, or run it with `pixel fix --recipe`",
-          on: { click: () => download(`${name}.recipe.json`, encodeRecipe(recipeOf()), "application/json") }
-        },
-        "Recipe"
+        "Export scale"
       )
     ),
     h(
-      "p",
-      { class: "hint" },
-      "The SVG is drawn in pixel units with crisp edges: it stays sharp at any size. The scale only sets the size it opens at. The palette files hold the colors the picture uses."
-    )
-  )
-}
-
-const tool = (id: State["tool"], label: string, title: string): HTMLElement =>
-  h(
-    "button",
-    {
-      class: state.tool === id ? "tab on" : "tab",
-      title,
-      attrs: { "aria-pressed": state.tool === id },
-      on: {
-        click: () => {
-          state.tool = id
-          // Painting happens on the fixed picture.
-          if ((id === "erase" || id === "restore") && state.mode === "source") state.mode = "result"
-          update()
-        }
-      }
-    },
-    label
-  )
-
-const brush = (id: State["brush"], label: string, title: string): HTMLElement =>
-  h(
-    "button",
-    {
-      class: state.brush === id ? "tab on" : "tab",
-      title,
-      attrs: { "aria-pressed": state.brush === id },
-      on: {
-        click: () => {
-          state.brush = id
-          update()
-        }
-      }
-    },
-    label
-  )
-
-const renderToolbar = (): void => {
-  const mode = (id: ViewMode, label: string): HTMLElement =>
-    h(
-      "button",
-      {
-        class: state.mode === id ? "tab on" : "tab",
-        attrs: { "aria-pressed": state.mode === id },
-        on: {
-          click: () => {
-            state.mode = id
-            update()
-          }
-        }
-      },
-      label
-    )
-  replace(
-    toolbar,
-    h("div", { class: "tabs" }, mode("source", "Source"), mode("compare", "Compare"), mode("result", "Fixed")),
-    h(
       "div",
-      { class: "row" },
-      h("div", { class: "tabs" }, tool("move", "Move", "Drag to pan"), tool("erase", "Erase", "Paint to make pixels transparent"), tool("restore", "Restore", "Paint to bring erased pixels back"), tool("pick", "Pick", "Click a pixel to keep its color in the palette")),
-      (state.tool === "erase" || state.tool === "restore") &&
-        h(
-          "div",
-          { class: "tabs" },
-          brush("pixel", "Pixel", "One pixel at a time"),
-          brush("area", "Area", "The whole connected area of one color")
-        ),
+      { class: "export-main" },
+      button("PNG 1×", () => void pngOf(art, 1).then((blob) => download(`${name}-fixed.png`, blob)), { variant: "primary", icon: "download" }),
+      button(`PNG ${scale}×`, () => void pngOf(art, scale).then((blob) => download(`${name}-fixed-${scale}x.png`, blob)), { variant: "secondary", icon: "download", disabled: scale === 1 })
+    ),
+    group(
+      "Other formats",
       h(
         "div",
-        { class: "tabs" },
-        h("button", { class: "tab", title: "Undo (Ctrl/Cmd+Z)", attrs: { disabled: !history.canUndo() }, on: { click: () => history.undo() } }, "↶ Undo"),
-        h(
-          "button",
-          { class: "tab", title: "Redo (Ctrl/Cmd+Shift+Z)", attrs: { disabled: !history.canRedo() }, on: { click: () => history.redo() } },
-          "Redo ↷"
-        )
+        { class: "export-grid" },
+        button("SVG", () => download(`${name}-fixed.svg`, toSvg(art, scale), "image/svg+xml"), { variant: "secondary", small: true }),
+        button("JSON map", () => download(`${name}-fixed.json`, toJson(art), "application/json"), { variant: "secondary", small: true }),
+        button("Sprite text", () => download(`${name}-fixed.sprite.txt`, formatSprite(art)), {
+          variant: "secondary",
+          small: true,
+          disabled: usedColors(art).length > 70,
+          title: "The fixed picture as text: one letter per color, one row per pixel row"
+        }),
+        button("Recipe", () => download(`${name}.recipe.json`, encodeRecipe(recipeOf()), "application/json"), {
+          variant: "secondary",
+          small: true,
+          title: "Every setting, hand edits included: open it here again, or run it with pixel fix --recipe"
+        }),
+        button("Palette .hex", () => download(`${name}-palette.hex`, toHexFile(paletteOf())), { variant: "secondary", small: true }),
+        button("Palette .gpl", () => download(`${name}-palette.gpl`, toGpl(paletteOf())), { variant: "secondary", small: true })
       )
-    ),
-    h(
-      "div",
-      { class: "row" },
-      h("button", { class: "icon-button", title: "Zoom out", on: { click: () => viewer.zoomBy(1 / 1.5) } }, "−"),
-      h("button", { class: "icon-button", title: "Zoom in", on: { click: () => viewer.zoomBy(1.5) } }, "+"),
-      h("button", { title: "Fit the picture (or double-click it)", on: { click: () => viewer.fit() } }, "Fit"),
-      h("button", { on: { click: () => fileInput.click() } }, "Open…"),
-      h("button", { on: { click: openDemo } }, "Demo")
     )
   )
 }
 
-const renderStatus = (): void => {
+/** Before a picture is open: what the tool does, in three steps. */
+const introPanel = (): HTMLElement =>
+  h(
+    "div",
+    { class: "intro" },
+    h("h2", {}, "Fix AI-made pixel art"),
+    h(
+      "ol",
+      {},
+      h("li", {}, h("strong", {}, "Open a picture."), " The grid of fake pixels is found for you."),
+      h("li", {}, h("strong", {}, "Pick a palette."), " Every pixel snaps to its nearest color."),
+      h("li", {}, h("strong", {}, "Export"), " crisp pixel art at its true size, as PNG or SVG.")
+    )
+  )
+
+// ---------------------------------------------------------------------------
+// The top bar and the floating tools
+
+const TOOLS = [
+  { id: "move", label: "Move", icon: "move", title: "Move: drag to pan (V)" },
+  { id: "erase", label: "Erase", icon: "erase", title: "Erase: paint pixels transparent (E)" },
+  { id: "restore", label: "Restore", icon: "restore", title: "Restore: paint erased pixels back (R)" },
+  { id: "pick", label: "Pick", icon: "pick", title: "Pick: click a pixel to keep its color (I)" }
+] as const satisfies ReadonlyArray<{ id: State["tool"]; label: string; icon: IconName; title: string }>
+
+const setTool = (id: State["tool"]): void => {
+  state.tool = id
+  // Painting happens on the fixed picture.
+  if ((id === "erase" || id === "restore") && state.mode === "source") state.mode = "result"
+  update()
+}
+
+const renderTopbar = (): void => {
   const source = state.source
-  if (source === undefined) {
-    replace(status)
-    return
-  }
   const size = grid === undefined ? undefined : gridSize(grid)
+  const out = result === undefined ? size : { width: result.width, height: result.height }
   replace(
-    status,
-    h("span", {}, `${source.name} · ${source.image.width} × ${source.image.height}`),
-    size !== undefined && h("span", {}, `→ ${size.width} × ${size.height}`),
-    h("span", {}, `${Math.round(viewer.zoom() * 100)}%`)
+    topbar,
+    h(
+      "div",
+      { class: "topbar-start" },
+      h("div", { class: "brand" }, h("span", { class: "logo", attrs: { "aria-hidden": "true" } }), h("span", {}, "Pixel fixer")),
+      source !== undefined &&
+        h(
+          "div",
+          { class: "file", title: source.name },
+          h("span", { class: "file-name" }, source.name),
+          h("span", { class: "file-meta" }, `${source.image.width} × ${source.image.height}${out === undefined ? "" : ` → ${out.width} × ${out.height}`}`)
+        )
+    ),
+    h(
+      "div",
+      { class: "topbar-center" },
+      source !== undefined &&
+        segmented(
+          state.mode,
+          [
+            { id: "source", label: "Source" },
+            { id: "compare", label: "Compare" },
+            { id: "result", label: "Fixed" }
+          ],
+          (mode) => {
+            state.mode = mode
+            update()
+          },
+          { label: "View" }
+        )
+    ),
+    h(
+      "div",
+      { class: "topbar-end" },
+      h(
+        "div",
+        { class: "button-group" },
+        button("Undo", () => history.undo(), { variant: "ghost", icon: "undo", iconOnly: true, disabled: !history.canUndo(), title: "Undo (Ctrl/Cmd+Z)" }),
+        button("Redo", () => history.redo(), { variant: "ghost", icon: "redo", iconOnly: true, disabled: !history.canRedo(), title: "Redo (Ctrl/Cmd+Shift+Z)" })
+      ),
+      h("span", { class: "divider" }),
+      button("Demo", openDemo, { variant: "ghost", class: "hide-narrow", title: "Open the demo picture" }),
+      button("Open", () => fileInput.click(), { variant: "secondary", icon: "open", title: "Open a picture, sprite source, recipe, or pixel.config.json" }),
+      button("Export", () => reveal("export", () => update()), { variant: "primary", icon: "download", disabled: result === undefined })
+    )
   )
 }
+
+const renderTools = (): void => {
+  tools.hidden = state.source === undefined
+  zoomBox.hidden = state.source === undefined
+  if (tools.hidden) return
+  const painting = state.tool === "erase" || state.tool === "restore"
+  replace(
+    tools,
+    segmented(state.tool, TOOLS, setTool, { label: "Tool", class: "tool-strip" }),
+    painting &&
+      segmented(
+        state.brush,
+        [
+          { id: "pixel", label: "Pixel", icon: "pixel", title: "One pixel at a time" },
+          { id: "area", label: "Area", icon: "area", title: "The whole connected area of one color" }
+        ],
+        (brush) => {
+          state.brush = brush
+          update()
+        },
+        { label: "Brush", class: "tool-strip" }
+      )
+  )
+}
+
+const zoomText = h("span", { class: "zoom-value" })
+
+const renderZoom = (): void => {
+  zoomText.textContent = `${Math.round(viewer.zoom() * 100)}%`
+}
+
+replace(
+  zoomBox,
+  button("Zoom out", () => viewer.zoomBy(1 / 1.5), { variant: "ghost", icon: "minus", iconOnly: true, small: true }),
+  zoomText,
+  button("Zoom in", () => viewer.zoomBy(1.5), { variant: "ghost", icon: "plus", iconOnly: true, small: true }),
+  button("Fit", () => viewer.fit(), { variant: "ghost", icon: "fit", iconOnly: true, small: true, title: "Fit the picture (Shift+1, or double-click it)" })
+)
+
+let toastTimer: ReturnType<typeof setTimeout> | undefined
+let shownMessage = ""
+
+/** Shows the latest message for a few seconds at the bottom of the picture. */
+const renderToast = (): void => {
+  if (state.message === shownMessage) return
+  shownMessage = state.message
+  if (toastTimer !== undefined) clearTimeout(toastTimer)
+  if (state.message === "") {
+    toast.classList.remove("on")
+    return
+  }
+  replace(toast, h("span", {}, state.message), button("Dismiss", () => {
+    state.message = ""
+    renderToast()
+  }, { variant: "ghost", icon: "close", iconOnly: true, small: true }))
+  toast.classList.add("on")
+  toastTimer = setTimeout(() => {
+    state.message = ""
+    renderToast()
+  }, 6000)
+}
+
+// Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z or Ctrl+Y redoes; text fields keep their own undo.
+// Single keys pick a tool (V, E, R, I), toggle the grid (G), or fit the picture (Shift+1).
+window.addEventListener("keydown", (event) => {
+  const target = event.target
+  if (target instanceof HTMLInputElement && target.type !== "range" && target.type !== "checkbox") return
+  if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return
+  const key = event.key.toLowerCase()
+  if (event.metaKey || event.ctrlKey) {
+    if (key === "z" && !event.shiftKey) {
+      event.preventDefault()
+      history.undo()
+    } else if ((key === "z" && event.shiftKey) || key === "y") {
+      event.preventDefault()
+      history.redo()
+    }
+    return
+  }
+  if (event.altKey || state.source === undefined) return
+  const shortcuts: Record<string, () => void> = {
+    v: () => setTool("move"),
+    e: () => setTool("erase"),
+    r: () => setTool("restore"),
+    i: () => setTool("pick"),
+    g: () => {
+      state.showGrid = !state.showGrid
+      update()
+    },
+    "!": () => viewer.fit()
+  }
+  const action = shortcuts[event.shiftKey && event.code === "Digit1" ? "!" : key]
+  if (action !== undefined) {
+    event.preventDefault()
+    action()
+  }
+})
 
 const render = (rebuildPanels: boolean): void => {
   empty.hidden = state.source !== undefined
-  renderToolbar()
-  renderStatus()
+  renderTopbar()
+  renderTools()
+  renderZoom()
+  renderToast()
   if (rebuildPanels) {
     // Panels are rebuilt whole; keep the scroll position where the user left it.
     const scroll = panels.scrollTop
     replace(
       panels,
-      state.message !== "" && h("p", { class: "message" }, state.message),
-      gridPanel(),
-      palettePanel(),
-      lostPanel(),
-      backgroundPanel(),
-      checkPanel(),
-      exportPanel()
+      state.source === undefined
+        ? [introPanel(), palettePanel(), matchingPanel(), checkPanel()]
+        : [gridPanel(), sizePanel(), palettePanel(), proposePanel(), matchingPanel(), lostPanel(), backgroundPanel(), checkPanel(), exportPanel()]
     )
     panels.scrollTop = scroll
   } else {
