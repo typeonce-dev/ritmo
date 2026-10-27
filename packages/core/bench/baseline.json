@@ -1,193 +1,238 @@
 {
   "runtime": {
     "tolerance": 0.25,
+    "allocationTolerance": 0.1,
+    "allocationSlackBytes": 1024,
     "calibrationMs": 2.9616,
     "environment": "Apple M1 / node v24.16.0 / darwin",
     "cases": {
       "clock/advance-1000": {
         "minMs": 0.2136,
         "medianMs": 0.2328,
-        "score": 0.0721
+        "score": 0.0721,
+        "bytesPerRun": 880000
       },
       "spawn/10k-3c": {
         "minMs": 6.5937,
         "medianMs": 7.815,
-        "score": 2.222
+        "score": 2.222,
+        "bytesPerRun": 21637760
       },
       "despawn/10k": {
         "minMs": 12.8397,
         "medianMs": 14.4043,
-        "score": 4.3354
+        "score": 4.3354,
+        "bytesPerRun": 16518144
       },
       "query/iterate-read-10k-of-20k": {
         "minMs": 0.1475,
         "medianMs": 0.1488,
-        "score": 0.0498
+        "score": 0.0498,
+        "bytesPerRun": 1776
       },
       "query/optional-read-20k": {
         "minMs": 0.3871,
         "medianMs": 0.4,
-        "score": 0.1308
+        "score": 0.1308,
+        "bytesPerRun": 1776
       },
       "query/iterate-write-10k": {
         "minMs": 0.3474,
         "medianMs": 0.3633,
-        "score": 0.1173
+        "score": 0.1173,
+        "bytesPerRun": 401776
       },
       "query/number-write-10k": {
         "minMs": 0.2206,
         "medianMs": 0.2234,
-        "score": 0.0743
+        "score": 0.0743,
+        "bytesPerRun": 1776
       },
       "query/set-raw-10k": {
         "minMs": 0.9107,
         "medianMs": 1.1647,
-        "score": 0.3073
+        "score": 0.3073,
+        "bytesPerRun": 1681904
       },
       "entity-state/update-transition-10k": {
         "minMs": 1.6692,
         "medianMs": 1.9963,
-        "score": 0.5633
+        "score": 0.5633,
+        "bytesPerRun": 2930912
       },
       "machine/update-10k": {
         "minMs": 2.642,
         "medianMs": 3.1747,
-        "score": 0.8921
+        "score": 0.8921,
+        "bytesPerRun": 5523264
       },
       "query/single-in-20k-x1000": {
         "minMs": 0.2161,
         "medianMs": 0.2207,
-        "score": 0.073
+        "score": 0.073,
+        "bytesPerRun": 856056
       },
       "query/changed-100-of-10k-x20": {
         "minMs": 0.2491,
         "medianMs": 0.2546,
-        "score": 0.0841
+        "score": 0.0841,
+        "bytesPerRun": 380096
       },
       "structural/insert-remove-1k": {
         "minMs": 0.1918,
         "medianMs": 0.1979,
-        "score": 0.0646
+        "score": 0.0646,
+        "bytesPerRun": 676328
       },
       "schedule/100-systems-x10": {
         "minMs": 0.1064,
         "medianMs": 0.1087,
-        "score": 0.0359
+        "score": 0.0359,
+        "bytesPerRun": 466384
       },
       "schedule/150-systems-thistick-x10": {
         "minMs": 0.1773,
         "medianMs": 0.1886,
-        "score": 0.0598
+        "score": 0.0598,
+        "bytesPerRun": 722720
       },
       "lookup/get-10k": {
         "minMs": 0.6326,
         "medianMs": 0.662,
-        "score": 0.2136
+        "score": 0.2136,
+        "bytesPerRun": 401696
       },
       "events/emit-read-10k": {
         "minMs": 0.0957,
         "medianMs": 0.0978,
-        "score": 0.0323
+        "score": 0.0323,
+        "bytesPerRun": 248264
       },
       "relations/descendants-100x100": {
         "minMs": 0.2962,
         "medianMs": 0.3015,
-        "score": 0.0998
+        "score": 0.0998,
+        "bytesPerRun": 329800
       },
       "snapshot/json-roundtrip-10k": {
         "minMs": 23.2447,
         "medianMs": 25.8005,
-        "score": 7.8437
+        "score": 7.8437,
+        "bytesPerRun": 32709088
       },
       "frame/50-systems-5k": {
         "minMs": 2.9498,
         "medianMs": 3.102,
-        "score": 0.994
+        "score": 0.994,
+        "bytesPerRun": 4486864
       },
       "math/vec2-steer-10k": {
         "minMs": 1.1929,
         "medianMs": 1.2369,
-        "score": 0.3665
+        "score": 0.3665,
+        "bytesPerRun": 3566864
       },
       "math/scalar-spring-10k": {
         "minMs": 0.536,
         "medianMs": 0.5613,
-        "score": 0.1823
+        "score": 0.1823,
+        "bytesPerRun": 1653520
       },
       "math/flow-field-search": {
         "minMs": 0.1548,
         "medianMs": 0.1875,
-        "score": 0.0522
+        "score": 0.0522,
+        "bytesPerRun": 152
       },
       "math/flow-field-way-1k": {
         "minMs": 0.0685,
         "medianMs": 0.0716,
-        "score": 0.0231
+        "score": 0.0231,
+        "bytesPerRun": 109680
       },
       "math/collide-move-circle-1k": {
         "minMs": 0.5728,
         "medianMs": 0.5775,
-        "score": 0.193
+        "score": 0.193,
+        "bytesPerRun": 274664
       },
       "math/collide-move-circle-segments-1k": {
         "minMs": 5.5744,
         "medianMs": 5.78,
-        "score": 1.836
+        "score": 1.836,
+        "bytesPerRun": 272824
       },
       "random/next-100k": {
         "minMs": 0.7917,
         "medianMs": 0.8074,
-        "score": 0.2672
+        "score": 0.2672,
+        "bytesPerRun": 799984
       },
       "random/draw-resource-100k": {
         "minMs": 3.5241,
         "medianMs": 4.045,
-        "score": 1.1876
+        "score": 1.1876,
+        "bytesPerRun": 3054968
       },
       "ops/steer-10k": {
         "minMs": 0.8757,
         "medianMs": 0.8948,
-        "score": 0.2955
+        "score": 0.2955,
+        "bytesPerRun": 1760080
       },
       "render/sync-1k-changed-of-10k": {
         "minMs": 0.5343,
         "medianMs": 0.6286,
-        "score": 0.1803
+        "score": 0.1803,
+        "bytesPerRun": 430848
       },
       "render/sync-hierarchy-1k-changed-of-10k": {
         "minMs": 1.231,
         "medianMs": 1.354,
-        "score": 0.409
+        "score": 0.409,
+        "bytesPerRun": 470864
       },
       "render/sync-spawn-despawn-500": {
         "minMs": 2.4451,
         "medianMs": 2.8999,
-        "score": 0.8256
+        "score": 0.8256,
+        "bytesPerRun": 2368952
       },
       "render/interpolate-10k": {
         "minMs": 0.3482,
         "medianMs": 0.3521,
-        "score": 0.1175
+        "score": 0.1175,
+        "bytesPerRun": 1776
       },
       "checkpoint/take-tick-10k": {
         "minMs": 0.3495,
         "medianMs": 0.7052,
-        "score": 0.118
+        "score": 0.118,
+        "bytesPerRun": 514808
       },
       "checkpoint/rollback-8-of-5k": {
         "minMs": 3.3081,
         "medianMs": 3.5784,
-        "score": 1.117
+        "score": 1.117,
+        "bytesPerRun": 4527672
       },
       "netcode/rollback-frame-2-peers": {
         "minMs": 0.0549,
         "medianMs": 0.0656,
-        "score": 0.0186
+        "score": 0.0186,
+        "bytesPerRun": 67208
       },
       "netcode/lockstep-frame-2-peers": {
         "minMs": 0.0076,
         "medianMs": 0.0085,
-        "score": 0.0026
+        "score": 0.0026,
+        "bytesPerRun": 12184
+      },
+      "top-down/frame-x60": {
+        "minMs": 0.3934,
+        "medianMs": 0.4406,
+        "score": 0.1325,
+        "bytesPerRun": 1083048
       }
     }
   },
