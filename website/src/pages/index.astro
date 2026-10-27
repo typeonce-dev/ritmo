@@ -1,8 +1,8 @@
 ---
 import Game from "../components/Game.astro"
 import HeroMotion from "../components/HeroMotion.astro"
+import PixelShowcase from "../components/PixelShowcase.astro"
 import Base from "../layouts/Base.astro"
-import { repository } from "../nav.ts"
 import { Content as Complete } from "../snippets/home-complete.mdx"
 import { Content as Declared } from "../snippets/home-declared.mdx"
 import { Content as Order } from "../snippets/home-order.mdx"
@@ -41,12 +41,26 @@ const checks = [
       <div class="cta">
         <a class="button primary" href="/docs/">Get started</a>
         <button type="button" class="button" data-play="town">Play the demo</button>
-        <a class="button ghost" href={repository}>GitHub</a>
       </div>
     </section>
 
     <section class="play">
       <Game id="town" ratio="3 / 2" />
+    </section>
+
+    <section class="section pixel">
+      <div class="pixel-copy">
+        <h2>Fix your AI pixel art</h2>
+        <p>
+          Image generators fake pixel art: blurry, off the grid, off the palette. The pixel fixer finds the real grid, gives every
+          pixel one palette color, and drops the background.
+        </p>
+        <p class="muted-note">Free, all running locally in your browser.</p>
+        <div class="cta">
+          <a class="button primary" href="/tools/pixel/">Open the pixel fixer</a>
+        </div>
+      </div>
+      <PixelShowcase />
     </section>
 
     <section class="section">
@@ -403,6 +417,31 @@ const checks = [
     margin: 0;
   }
 
+  /* The pixel fixer: copy on the left, its effect on the right. */
+
+  .pixel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
+    align-items: center;
+    gap: 64px;
+  }
+
+  .pixel-copy p {
+    margin: 0 0 12px;
+    color: var(--muted);
+    font-size: 1.05rem;
+    max-width: 46ch;
+  }
+
+  .pixel-copy .muted-note {
+    font-size: 0.92rem;
+  }
+
+  .pixel-copy .cta {
+    justify-content: flex-start;
+    margin-top: 28px;
+  }
+
   /* End */
 
   .end {
@@ -416,6 +455,11 @@ const checks = [
   }
 
   @media (max-width: 900px) {
+    .pixel {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 40px;
+    }
+
     .step,
     .checks {
       grid-template-columns: minmax(0, 1fr);
