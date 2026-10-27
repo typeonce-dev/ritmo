@@ -3,3 +3,4 @@ packages:
   - integration/*
   - bench/*
   - website
+  - tools/*

@@ -10,6 +10,7 @@
     "deploy:cloudflare": "wrangler deploy"
   },
   "dependencies": {
+    "@typeonce/pixel-fixer": "workspace:*",
     "@typeonce/ritmo": "workspace:*",
     "@typeonce/ritmo-browser": "workspace:*",
     "@typeonce/ritmo-integration-netcode": "workspace:*",

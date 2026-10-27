@@ -1,0 +1,220 @@
+---
+// The pixel fixer's effect on the home page: an image generator's "pixel
+// art" fire creature and the fixer's output for it (38x40, background
+// removed), with a line sweeping across that turns one into the other and
+// back. Pointing at it (or dragging, on a phone) moves the line by hand;
+// clicking opens the tool.
+import ai from "../assets/pixel-fixer/fire-ai.png"
+import fixed from "../assets/pixel-fixer/fire-fixed.png"
+---
+
+<a
+  class="showcase"
+  href="/tools/pixel/"
+  aria-label="Open the pixel fixer: a blurry AI picture of a fire creature turning into crisp pixel art"
+  data-ai={ai.src}
+  data-fixed={fixed.src}
+  style={`aspect-ratio: ${ai.width} / ${ai.height}`}
+>
+  <canvas aria-hidden="true"></canvas>
+</a>
+
+<script>
+  /** The grid the fixer found in the AI picture, in its pixels: what the fix's pixels sit on. */
+  const GRID = { cellWidth: 13.499, cellHeight: 13.496, offsetX: 10, offsetY: 11.2 }
+
+  interface Showcase {
+    readonly image: HTMLImageElement
+    readonly fix: HTMLImageElement
+    readonly grid: { readonly xs: ReadonlyArray<number>; readonly ys: ReadonlyArray<number> }
+  }
+
+  const load = (src: string): Promise<HTMLImageElement> =>
+    new Promise((resolve, reject) => {
+      const image = new Image()
+      image.onload = () => resolve(image)
+      image.onerror = reject
+      image.src = src
+    })
+
+  const showcase = async (link: HTMLAnchorElement): Promise<Showcase> => {
+    const [image, fix] = await Promise.all([load(link.dataset.ai!), load(link.dataset.fixed!)])
+    const cuts = (count: number, offset: number, cell: number): Array<number> => Array.from({ length: count + 1 }, (_, i) => offset + i * cell)
+    return {
+      image,
+      fix,
+      grid: { xs: cuts(fix.width, GRID.offsetX, GRID.cellWidth), ys: cuts(fix.height, GRID.offsetY, GRID.cellHeight) }
+    }
+  }
+
+  const link = document.querySelector<HTMLAnchorElement>(".showcase")
+  const canvas = link?.querySelector("canvas")
+  const context = canvas?.getContext("2d")
+
+  // One loop: the AI picture, the sweep to the fix, the fix held, the sweep back.
+  const SOURCE = 1400
+  const SWEEP = 2600
+  const FIXED = 2600
+  const LOOP = SOURCE + SWEEP + FIXED + SWEEP
+  const ease = (t: number): number => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2)
+  const splitAt = (time: number): number => {
+    const t = time % LOOP
+    if (t < SOURCE) return 0
+    if (t < SOURCE + SWEEP) return ease((t - SOURCE) / SWEEP)
+    if (t < SOURCE + SWEEP + FIXED) return 1
+    return 1 - ease((t - SOURCE - SWEEP - FIXED) / SWEEP)
+  }
+
+  const start = (data: Showcase, canvas: HTMLCanvasElement, context: CanvasRenderingContext2D, link: HTMLAnchorElement): void => {
+    const { image, fix, grid } = data
+    const tick = getComputedStyle(document.documentElement).getPropertyValue("--tick").trim() || "#ff5a36"
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches
+
+    let clock = 0
+    let last: number | undefined
+    let split = still ? 0.5 : 0
+    let pointer: number | undefined
+    let dragged = false
+
+    const draw = (): void => {
+      const ratio = devicePixelRatio || 1
+      const width = Math.round(canvas.clientWidth * ratio)
+      const height = Math.round(canvas.clientHeight * ratio)
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width
+        canvas.height = height
+      }
+      const scale = width / image.width
+      const line = Math.round(split * width)
+      context.setTransform(1, 0, 0, 1, 0, 0)
+      context.imageSmoothingEnabled = true
+      context.drawImage(image, 0, 0, width, height)
+      if (line <= 0) return
+
+      context.save()
+      context.beginPath()
+      context.rect(0, 0, line, height)
+      context.clip()
+      // Transparent pixels show a checkerboard, two squares per cell.
+      const square = (GRID.cellWidth * scale) / 2
+      for (let y = 0; y * square < height; y++) {
+        for (let x = 0; x * square < line; x++) {
+          context.fillStyle = (x + y) % 2 === 0 ? "#f4f4f4" : "#dcdcdc"
+          context.fillRect(x * square, y * square, square + 1, square + 1)
+        }
+      }
+      const at = (value: number): number => Math.round(value * scale)
+      context.imageSmoothingEnabled = false
+      const left = at(grid.xs[0]!)
+      const top = at(grid.ys[0]!)
+      context.drawImage(fix, left, top, at(grid.xs[grid.xs.length - 1]!) - left, at(grid.ys[grid.ys.length - 1]!) - top)
+      // The grid shows just behind the line, where the cells have just snapped, and goes once the line is past the picture.
+      context.lineWidth = Math.max(1, ratio)
+      const band = GRID.cellWidth * scale * 4
+      for (const value of line >= width ? [] : grid.xs) {
+        const x = at(value)
+        const fade = 1 - (line - x) / band
+        if (fade <= 0 || x > line) continue
+        context.strokeStyle = `rgb(255 90 54 / ${0.55 * fade})`
+        context.beginPath()
+        context.moveTo(x + 0.5, 0)
+        context.lineTo(x + 0.5, height)
+        context.stroke()
+      }
+      for (const value of line >= width ? [] : grid.ys) {
+        const y = at(value)
+        const gradient = context.createLinearGradient(line - band, 0, line, 0)
+        gradient.addColorStop(0, "rgb(255 90 54 / 0)")
+        gradient.addColorStop(1, "rgb(255 90 54 / 0.55)")
+        context.strokeStyle = gradient
+        context.beginPath()
+        context.moveTo(Math.max(0, line - band), y + 0.5)
+        context.lineTo(line, y + 0.5)
+        context.stroke()
+      }
+      context.restore()
+
+      if (line >= width) return
+      context.save()
+      context.shadowColor = tick
+      context.shadowBlur = 14 * ratio
+      context.fillStyle = tick
+      context.fillRect(line - ratio, 0, 2 * ratio, height)
+      context.restore()
+    }
+
+    const frame = (now: number): void => {
+      if (last !== undefined && pointer === undefined && !still) clock += Math.min(64, now - last)
+      last = now
+      const target = pointer ?? (still ? 0.5 : splitAt(clock))
+      // Follow the pointer softly; the timeline is smooth on its own.
+      split = pointer === undefined ? target : split + (target - split) * 0.25
+      draw()
+      requestAnimationFrame(frame)
+    }
+    requestAnimationFrame(frame)
+
+    const follow = (event: PointerEvent): void => {
+      const rect = canvas.getBoundingClientRect()
+      pointer = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
+    }
+    link.addEventListener("pointermove", (event) => {
+      if (event.pointerType === "touch" && event.buttons === 0) return
+      if (event.pointerType === "touch") dragged = true
+      follow(event)
+    })
+    link.addEventListener("pointerdown", (event) => {
+      dragged = false
+      if (event.pointerType === "touch") follow(event)
+    })
+    const leave = (): void => {
+      if (pointer === undefined) return
+      // Pick the timeline up from the moment that matches where the line was left.
+      clock = split >= 0.5 ? SOURCE + SWEEP : 0
+      pointer = undefined
+    }
+    link.addEventListener("pointerleave", leave)
+    link.addEventListener("pointerup", (event) => {
+      if (event.pointerType === "touch") leave()
+    })
+    // A drag on a phone moves the line; only a tap opens the tool.
+    link.addEventListener("click", (event) => {
+      if (dragged) event.preventDefault()
+      dragged = false
+    })
+  }
+
+  // The pictures load when the effect is about to be seen.
+  if (link !== null && canvas !== undefined && canvas !== null && context !== undefined && context !== null) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return
+        observer.disconnect()
+        void showcase(link).then((data) => start(data, canvas, context, link))
+      },
+      { rootMargin: "200px" }
+    )
+    observer.observe(link)
+  }
+</script>
+
+<style>
+  .showcase {
+    display: block;
+    width: 100%;
+    max-width: 460px;
+    margin: 0 auto;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: #e8e6e3;
+    cursor: pointer;
+    touch-action: pan-y;
+  }
+
+  .showcase canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+</style>

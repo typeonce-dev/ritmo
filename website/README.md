@@ -53,6 +53,12 @@ any crash, out of the page and away from other games on it.
 The top-down demo is the headless simulation in `integration/top-down`, with
 a browser host and a Pixi renderer added here.
 
+## Tools
+
+Free tools from Ritmo live under `/tools/`, each a page that owns the whole
+window (no guide layout) and mounts the tool's own package:
+`/tools/pixel/` is the pixel fixer (`tools/pixel-fixer`, see its README).
+
 ## Brand
 
 Logos and icons are imported from `brand/assets` (`src/brand.ts`), never

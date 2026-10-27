@@ -47,4 +47,7 @@ export const sections = [
 
 export const pages: ReadonlyArray<Page> = sections.flatMap((section) => section.pages)
 
+/** Tools with pages of their own, outside the guide: linked at the end of the sidebar's Start section, not in the reading order. */
+export const tools: ReadonlyArray<Page> = [{ href: "/tools/pixel/", title: "Pixel fixer" }]
+
 export const repository = "https://github.com/typeonce-dev/ritmo"
