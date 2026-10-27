@@ -87,12 +87,15 @@ export const buttonTracker = <Button extends string, B extends ButtonBindings<Bu
       const actions = {} as Record<keyof B, ActionState>
       for (const name of names) {
         const isDown = isHeld(name)
-        actions[name] = { held: isDown, pressed: pressedActions.has(name), released: releasedActions.has(name) && !isDown }
+        const isPressed = pressedActions.has(name)
+        const isReleased = releasedActions.has(name) && !isDown
+        actions[name] = isDown || isPressed || isReleased ? { held: isDown, pressed: isPressed, released: isReleased } : idleState
       }
-      pressed.clear()
-      released.clear()
-      pressedActions.clear()
-      releasedActions.clear()
+      // V8 allocates a new table on every clear(), even of an empty set, and this runs every frame.
+      if (pressed.size > 0) pressed.clear()
+      if (released.size > 0) released.clear()
+      if (pressedActions.size > 0) pressedActions.clear()
+      if (releasedActions.size > 0) releasedActions.clear()
       return { actions, buttons }
     }
   }
