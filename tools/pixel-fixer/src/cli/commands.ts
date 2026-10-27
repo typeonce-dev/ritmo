@@ -336,7 +336,7 @@ const init = Command.make(
 ).pipe(Command.withDescription(`Writes a starting ${CONFIG_FILE} (palette, sizes, color limit) in the working directory.`))
 
 export const pixel = Command.make("pixel").pipe(
-  Command.withDescription("Checks, fixes, and makes pixel art. Prints JSON; exit 0 clean, 2 usage error, 3 fixable, 4 needs a person."),
+  Command.withDescription("Ritmo's pixel fixer: checks, fixes, and makes pixel art. Prints JSON; exit 0 clean, 2 usage error, 3 fixable, 4 needs a person."),
   Command.withSubcommands([check, fix, pixelate, render, lint, previewCommand, compare, palettes, init])
 )
 

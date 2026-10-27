@@ -12,6 +12,9 @@ and the `pixel` CLI for agents that check, fix, and make art on their own.
 A recipe saved by one runs in the other.
 
 This is a standalone tool in the Ritmo repository, not a published package.
+The page wears Ritmo's brand (`brand/README.md`): its colors, its mark as the
+logo, and its Tick orange only on what is active or selected. The palette
+presets include Ritmo's own six colors.
 
 ## Run it
 
@@ -54,7 +57,7 @@ node tools/pixel-fixer/bin/pixel.mjs check art.png   # the same, from any folder
    line through a block win over its most common color, so one-pixel
    outlines survive; a lone dark pixel does not.
 2. **Palette.** Pick a preset (Game Boy, PICO-8, Sweetie 16, DawnBringer
-   16/32, Endesga 32, NES, AAP-64), import a `.hex` or `.gpl` file, paste hex
+   16/32, Endesga 32, NES, AAP-64, Ritmo), import a `.hex` or `.gpl` file, paste hex
    colors, or fetch a palette from Lospec by name. Click a swatch to edit it.
    **Keep the picture's colors** turns the palette off, so each pixel keeps
    its own color. To build a palette from the picture, **Propose colors**:

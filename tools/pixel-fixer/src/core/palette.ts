@@ -61,7 +61,9 @@ export const presets: ReadonlyArray<Palette> = [
       "122020 143464 285cc4 249fde 20d6c7 a6fcdb ffffff fef3c0 fad6b8 f5a097 e86a73 bc4a9b 793a80 403353 242234 221c1a " +
       "322b28 71413b bb7547 dba463 f4d29c dae0ea b3b9d1 8b93af 6d758d 4a5462 333941 422433 5b3138 8e5252 ba756a e9b5a3 " +
       "e3e6ff b9bffb 849be4 588dbe 477d85 23674e 328464 5daf8d 92dcba cdf7e2 e4d2aa c7b08b a08662 796755 5a4e44 423934"
-  )
+  ),
+  // Ritmo's own colors (brand/README.md): Ink, Graphite, Steel, Line, Paper, and Tick.
+  fromHexList("Ritmo (6)", "0e1013 262a31 8a8f98 d9d5cc f3f1ec ff5a36")
 ]
 
 /**

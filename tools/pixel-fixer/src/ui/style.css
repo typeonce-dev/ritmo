@@ -2,66 +2,79 @@
  * One scale for everything: 4px spacing steps, 28px controls, 13px text,
  * quiet borders, and one accent color. Light and dark follow the device.
  */
+/*
+ * One scale for everything: 4px spacing steps, 28px controls, 13px text,
+ * quiet borders. The colors are Ritmo's (brand/README.md): Ink and Paper for
+ * surfaces and the primary action, Steel for secondary text, Line for
+ * borders, and Tick, the accent, only on what is changing or chosen right
+ * now: the active tool, the selected color, the field being edited.
+ */
 :root {
-  --bg: #f7f7f8;
-  --surface: #ffffff;
-  --surface-2: #f3f3f5;
-  --surface-3: #e9e9ec;
-  --border: #e6e6ea;
-  --border-strong: #d4d4da;
-  --text: #18181b;
-  --text-2: #52525b;
-  --muted: #8a8a93;
-  --accent: #5b5bd6;
-  --accent-hover: #4f4fc4;
-  --accent-soft: rgba(91, 91, 214, 0.1);
+  --ink: #0e1013;
+  --paper: #f3f1ec;
+  --tick: #ff5a36;
+  --graphite: #262a31;
+  --steel: #8a8f98;
+  --line: #d9d5cc;
+
+  --bg: #efede7;
+  --surface: #faf9f6;
+  --surface-2: #f1efea;
+  --surface-3: #e6e3dc;
+  --border: #e3e0d8;
+  --border-strong: var(--line);
+  --text: var(--ink);
+  --text-2: #4b4f57;
+  --muted: #80858e;
+  --primary: var(--ink);
+  --primary-hover: #262a31;
+  --primary-text: var(--paper);
+  --accent: var(--tick);
+  --accent-soft: rgba(255, 90, 54, 0.12);
   --accent-text: #ffffff;
-  --good: #16794c;
-  --good-soft: rgba(22, 121, 76, 0.09);
-  --warn: #a15c00;
+  --good: #1b7a4e;
+  --good-soft: rgba(27, 122, 78, 0.09);
+  --warn: #a35a00;
   --warn-soft: rgba(196, 120, 0, 0.11);
-  --bad: #c2334d;
-  --bad-soft: rgba(194, 51, 77, 0.09);
-  --stage: #1e1f23;
-  --stage-dots: rgba(255, 255, 255, 0.045);
-  --floating: rgba(30, 31, 35, 0.88);
-  --floating-border: rgba(255, 255, 255, 0.08);
-  --shadow: 0 1px 2px rgba(16, 16, 20, 0.06), 0 0 0 1px rgba(16, 16, 20, 0.04);
-  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.28), 0 0 0 1px var(--floating-border);
-  --focus: 0 0 0 2px var(--surface), 0 0 0 4px rgba(91, 91, 214, 0.45);
+  --bad: #c23a2b;
+  --bad-soft: rgba(194, 58, 43, 0.09);
+  --stage: var(--ink);
+  --stage-dots: rgba(243, 241, 236, 0.05);
+  --floating: rgba(38, 42, 49, 0.9);
+  --floating-border: rgba(243, 241, 236, 0.08);
+  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.32), 0 0 0 1px var(--floating-border);
+  --focus: 0 0 0 2px var(--surface), 0 0 0 4px rgba(255, 90, 54, 0.45);
   --radius: 6px;
   --radius-lg: 10px;
   --control: 28px;
   --font: "Inter", "InterVariable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0e0e10;
-    --surface: #151517;
-    --surface-2: #1c1c1f;
-    --surface-3: #26262a;
-    --border: #232326;
-    --border-strong: #303035;
-    --text: #ececef;
-    --text-2: #b4b4bb;
-    --muted: #7c7c85;
-    --accent: #7c7cf0;
-    --accent-hover: #8e8ef5;
-    --accent-soft: rgba(124, 124, 240, 0.14);
-    --accent-text: #ffffff;
+    --bg: #0b0d10;
+    --surface: var(--ink);
+    --surface-2: #171a1f;
+    --surface-3: var(--graphite);
+    --border: #1f2328;
+    --border-strong: #30353d;
+    --text: var(--paper);
+    --text-2: #bdbab3;
+    --muted: var(--steel);
+    --primary: var(--paper);
+    --primary-hover: #ffffff;
+    --primary-text: var(--ink);
+    --accent-soft: rgba(255, 90, 54, 0.16);
     --good: #4cc38a;
     --good-soft: rgba(76, 195, 138, 0.12);
     --warn: #f0a843;
     --warn-soft: rgba(240, 168, 67, 0.12);
-    --bad: #f07087;
-    --bad-soft: rgba(240, 112, 135, 0.12);
-    --stage: #09090b;
-    --stage-dots: rgba(255, 255, 255, 0.04);
-    --shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);
-    --focus: 0 0 0 2px var(--surface), 0 0 0 4px rgba(124, 124, 240, 0.55);
+    --bad: #ff7a5c;
+    --bad-soft: rgba(255, 122, 92, 0.12);
+    --stage: #08090b;
+    --focus: 0 0 0 2px var(--surface), 0 0 0 4px rgba(255, 90, 54, 0.55);
     color-scheme: dark;
   }
 }
@@ -169,13 +182,13 @@ p {
 }
 
 .btn.primary {
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--primary);
+  color: var(--primary-text);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
 .btn.primary:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: var(--primary-hover);
 }
 
 .btn.secondary {
@@ -287,13 +300,35 @@ p {
   white-space: nowrap;
 }
 
-.logo {
+/* Ritmo's mark: three blocks and the one cell that changes, in Tick. */
+.mark {
+  display: inline-flex;
+  flex: none;
   width: 18px;
   height: 18px;
-  border-radius: 4px;
-  background: conic-gradient(#b13e53 0 25%, #41a6f6 0 50%, #38b764 0 75%, #ffcd75 0);
-  transform: rotate(-90deg);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  color: var(--text);
+}
+
+.mark svg {
+  width: 100%;
+  height: 100%;
+}
+
+.by {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.by:hover {
+  color: var(--text);
+}
+
+.by b {
+  color: var(--text-2);
+  font-weight: 600;
 }
 
 .file {
@@ -523,9 +558,11 @@ p {
   color: #ececef;
 }
 
-.empty-icon .icon {
+.empty-icon .icon,
+.empty-icon .mark {
   width: 22px;
   height: 22px;
+  color: var(--paper);
 }
 
 .empty-card h2 {
@@ -614,9 +651,10 @@ p {
 }
 
 .section-toggle h2 {
-  font-size: 13px;
+  font-family: var(--mono);
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.01em;
 }
 
 .section-action {
@@ -871,12 +909,13 @@ input + .affix {
 }
 
 .switch:checked {
-  background: var(--accent);
+  background: var(--primary);
   box-shadow: none;
 }
 
 .switch:checked::after {
   transform: translateX(12px);
+  background: var(--primary-text);
 }
 
 /* Sliders */
@@ -902,7 +941,7 @@ input + .affix {
 .range::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 999px;
-  background: linear-gradient(to right, var(--accent) var(--fill), var(--surface-3) var(--fill));
+  background: linear-gradient(to right, var(--primary) var(--fill), var(--surface-3) var(--fill));
 }
 
 .range::-moz-range-track {
@@ -914,7 +953,7 @@ input + .affix {
 .range::-moz-range-progress {
   height: 4px;
   border-radius: 999px;
-  background: var(--accent);
+  background: var(--primary);
 }
 
 .range::-webkit-slider-thumb {
@@ -1420,4 +1459,67 @@ input + .affix {
 /* The brush beside the tools is a setting of the tool, so it is quieter. */
 .floating .segmented + .segmented button.on {
   background: rgba(255, 255, 255, 0.14);
+}
+
+/* About: where the tool comes from */
+
+.about {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 16px 24px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.about-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.about-head .mark {
+  width: 16px;
+  height: 16px;
+}
+
+.about code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+.about a {
+  color: var(--text-2);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2px;
+}
+
+.about a:hover {
+  color: var(--text);
+  text-decoration-color: var(--accent);
+}
+
+/* A ruler of ticks, as under Ritmo's wordmark: measured. */
+.ruler {
+  height: 6px;
+  background:
+    linear-gradient(to right, var(--border-strong) 1px, transparent 1px) 0 0 / 8px 4px repeat-x,
+    linear-gradient(to right, var(--muted) 1px, transparent 1px) 0 0 / 40px 6px repeat-x;
+  opacity: 0.8;
+}
+
+@media (max-width: 760px) {
+  .by {
+    display: none;
+  }
 }

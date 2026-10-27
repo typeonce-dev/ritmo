@@ -60,6 +60,7 @@ import {
   group,
   hint,
   icon,
+  mark,
   numberInput,
   prop,
   reveal,
@@ -546,7 +547,7 @@ const empty = h(
   h(
     "div",
     { class: "empty-card" },
-    h("div", { class: "empty-icon" }, icon("image")),
+    h("div", { class: "empty-icon" }, mark()),
     h("h2", {}, "Drop a picture to fix"),
     h("p", {}, "Or paste one, or open a file. Pictures never leave this device."),
     h(
@@ -555,7 +556,8 @@ const empty = h(
       button("Open a picture", () => fileInput.click(), { variant: "primary", icon: "open" }),
       button("Try the demo", openDemo, { variant: "secondary" })
     ),
-    h("p", { class: "empty-note" }, "Sprite sources (.txt), JSON maps, recipes, and pixel.config.json open here too.")
+    h("p", { class: "empty-note" }, "Sprite sources (.txt), JSON maps, recipes, and pixel.config.json open here too."),
+    h("p", { class: "empty-note" }, "A free tool from Ritmo, the agent-first ECS runtime.")
   )
 )
 const stage = h("div", { class: "stage" }, canvas, empty, tools, zoomBox, toast)
@@ -1394,6 +1396,28 @@ const exportPanel = (): HTMLElement | false => {
   )
 }
 
+const RITMO_URL = "https://github.com/typeonce-dev/ritmo"
+
+/** Where the tool comes from, at the end of the settings. */
+const aboutPanel = (): HTMLElement =>
+  h(
+    "footer",
+    { class: "about" },
+    h("div", { class: "ruler", attrs: { "aria-hidden": "true" } }),
+    h("div", { class: "about-head" }, mark(), "Pixel fixer, by Ritmo"),
+    h(
+      "p",
+      {},
+      "A free tool from ",
+      h("a", { attrs: { href: RITMO_URL, target: "_blank", rel: "noopener" } }, "Ritmo"),
+      ", the agent-first type safe ECS runtime. Agents run the same fixes from the command line: ",
+      h("code", {}, "pixel check"),
+      ", ",
+      h("code", {}, "pixel fix"),
+      ". A recipe saved here runs there, and back."
+    )
+  )
+
 /** Before a picture is open: what the tool does, in three steps. */
 const introPanel = (): HTMLElement =>
   h(
@@ -1435,7 +1459,13 @@ const renderTopbar = (): void => {
     h(
       "div",
       { class: "topbar-start" },
-      h("div", { class: "brand" }, h("span", { class: "logo", attrs: { "aria-hidden": "true" } }), h("span", {}, "Pixel fixer")),
+      h(
+        "div",
+        { class: "brand" },
+        mark(),
+        h("span", {}, "Pixel fixer"),
+        h("a", { class: "by", title: "Ritmo, the agent-first type safe ECS runtime", attrs: { href: RITMO_URL, target: "_blank", rel: "noopener" } }, "by ", h("b", {}, "ritmo"))
+      ),
       source !== undefined &&
         h(
           "div",
@@ -1588,8 +1618,8 @@ const render = (rebuildPanels: boolean): void => {
     replace(
       panels,
       state.source === undefined
-        ? [introPanel(), palettePanel(), matchingPanel(), checkPanel()]
-        : [gridPanel(), sizePanel(), palettePanel(), proposePanel(), matchingPanel(), lostPanel(), backgroundPanel(), checkPanel(), exportPanel()]
+        ? [introPanel(), palettePanel(), matchingPanel(), checkPanel(), aboutPanel()]
+        : [gridPanel(), sizePanel(), palettePanel(), proposePanel(), matchingPanel(), lostPanel(), backgroundPanel(), checkPanel(), exportPanel(), aboutPanel()]
     )
     panels.scrollTop = scroll
   } else {

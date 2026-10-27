@@ -49,6 +49,17 @@ export const icon = (name: IconName): HTMLElement => {
   return span
 }
 
+/**
+ * Ritmo's mark (brand/assets/ritmo-icon.svg): three blocks in the text color
+ * and the one cell that changes, in Tick.
+ */
+export const mark = (): HTMLElement => {
+  const span = h("span", { class: "mark", attrs: { "aria-hidden": "true" } })
+  span.innerHTML =
+    '<svg viewBox="0 0 100 100"><g fill="currentColor"><rect x="6" y="6" width="40" height="40" rx="6"/><rect x="54" y="6" width="40" height="40" rx="6"/><rect x="6" y="54" width="40" height="40" rx="6"/></g><rect x="62" y="62" width="24" height="24" rx="4" fill="#FF5A36"/></svg>'
+  return span
+}
+
 // ---------------------------------------------------------------------------
 // Buttons
 
