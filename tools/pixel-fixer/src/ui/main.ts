@@ -45,8 +45,11 @@ import {
   type Proposal,
   type ProposeMethod
 } from "../core/palette.ts"
-import { describeDetection, gridKeyOf, runWithSpec, type PipelineCache } from "../core/pipeline.ts"
-import { type Recipe } from "../core/recipe.ts"
+import type { LintRules } from "../core/lint.ts"
+import { describeDetection, gridKeyOf, resolveGrid, runWithSpec, type PipelineCache } from "../core/pipeline.ts"
+import { decodeRecipe, encodeRecipe, presetPalette, type Recipe } from "../core/recipe.ts"
+import { reportOfArt, reportOfFix, type Report } from "../core/report.ts"
+import { formatSprite, parseJsonMap, parseSprite } from "../core/sprite.ts"
 import { reduceModes, type ReduceMode } from "../core/reduce.ts"
 import { h, replace } from "./dom.ts"
 import { baseName, canvasOf, download, loadImage, pngOf } from "./files.ts"
@@ -67,6 +70,8 @@ interface State {
   moved: Map<string, number>
   detection: Detection | undefined
   detectionNote: string
+  /** Whether the note above is good news (a confident grid) or asks for a look. */
+  noteGood: boolean
   sample: SampleOptions
   /** The palette's name, or "original" to keep each cell's own color. */
   paletteName: string
@@ -100,6 +105,8 @@ interface State {
   mode: ViewMode
   showGrid: boolean
   exportScale: number
+  /** The project's rules the Check panel holds the result to, as in pixel.config.json. */
+  rules: { sizes: string; maxColors: number | undefined; transparentBackground: boolean }
   message: string
 }
 
@@ -113,6 +120,7 @@ const state: State = {
   moved: new Map(),
   detection: undefined,
   detectionNote: "",
+  noteGood: false,
   sample: defaultSampleOptions,
   paletteName: presets[2]!.name,
   swatches: presets[2]!.colors.map((color) => ({ color, locked: false })),
@@ -136,6 +144,7 @@ const state: State = {
   mode: "compare",
   showGrid: true,
   exportScale: 8,
+  rules: { sizes: "", maxColors: undefined, transparentBackground: false },
   message: ""
 }
 
@@ -147,6 +156,7 @@ const undoable = [
   "moved",
   "detection",
   "detectionNote",
+  "noteGood",
   "sample",
   "paletteName",
   "swatches",
@@ -194,6 +204,8 @@ let lost: Array<LostColor> = []
 let highlight: ReadonlyArray<number> = []
 /** The specks cleaned in the last result, each as its cells. */
 let specks: ReadonlyArray<ReadonlyArray<number>> = []
+/** What `pixel check` would say about the last result. */
+let report: Report | undefined
 
 /** The page's settings as a recipe: what the shared pipeline runs, and what Save recipe writes. */
 const recipeOf = (): Recipe => ({
@@ -222,11 +234,24 @@ const recipeOf = (): Recipe => ({
   edits: state.edits
 })
 
+/** "16x16, 32x32" as sizes; anything unreadable is left out. */
+const parseSizes = (text: string): Array<{ width: number; height: number }> =>
+  [...text.matchAll(/(\d+)\s*[x×]\s*(\d+)/g)].map((match) => ({ width: Number(match[1]), height: Number(match[2]) }))
+
+/** The rules the Check panel holds the result to: the panel's own, and the palette chosen. */
+const rulesOf = (): LintRules => ({
+  palette: state.paletteName === ORIGINAL ? undefined : state.swatches.map((swatch) => swatch.color),
+  sizes: parseSizes(state.rules.sizes),
+  maxColors: state.rules.maxColors,
+  transparentBackground: state.rules.transparentBackground
+})
+
 const recompute = (): void => {
   const source = state.source
   if (source === undefined) {
     grid = undefined
     result = undefined
+    report = undefined
     return
   }
   const outcome = runWithSpec(source.image, recipeOf(), state.spec, state.detection, cache)
@@ -236,6 +261,11 @@ const recompute = (): void => {
   specks = outcome.specks
   backgroundFound = [...outcome.backgroundFound]
   result = outcome.art
+  // Pixel art at its own size (a sprite source) has no grid to judge, only rules.
+  report =
+    state.spec.cellWidth === 1 && state.spec.cellHeight === 1
+      ? reportOfArt(outcome.art, rulesOf(), 0, source.image)
+      : reportOfFix(source.image, recipeOf(), outcome, rulesOf())
   // Hand edits belong to the size they were made at: a new size starts them over.
   const gridKey = gridKeyOf(outcome.grid)
   if (state.cleanKeep.size !== gridKey) state.cleanKeep = { size: gridKey, cells: [] }
@@ -268,7 +298,8 @@ const update = (options: { readonly panels: boolean } = { panels: true }): void 
 // ---------------------------------------------------------------------------
 // Loading pictures
 
-const setSource = (image: RgbaImage, canvas: HTMLCanvasElement, name: string): void => {
+/** Opens a picture; with `spec`, its grid is given (pixel art at its own size) instead of detected. */
+const setSource = (image: RgbaImage, canvas: HTMLCanvasElement, name: string, spec?: GridSpec): void => {
   state.source = { image, canvas, name }
   state.moved.clear()
   state.targetWidth = undefined
@@ -278,22 +309,150 @@ const setSource = (image: RgbaImage, canvas: HTMLCanvasElement, name: string): v
   samples = undefined
   state.message = ""
   history.reset()
-  autoDetect()
+  if (spec === undefined) {
+    autoDetect()
+    return
+  }
+  state.spec = spec
+  state.linked = true
+  state.detection = undefined
+  state.sample = { ...state.sample, inset: 0 }
+  state.detectionNote = "Pixel art at its own size: one pixel per cell."
+  state.noteGood = true
+  update()
 }
 
+const ONE_PIXEL: GridSpec = { cellWidth: 1, cellHeight: 1, offsetX: 0, offsetY: 0 }
+
+/** Opens pixel art given as data (a sprite source or a JSON map) as a picture with one pixel per cell. */
+const openArt = (art: PixelArt, name: string): void => {
+  const image = toRgba(art)
+  setSource(image, canvasOf(image), name, ONE_PIXEL)
+}
+
+/**
+ * Opens a dropped or picked file: a picture, a sprite source (.txt), a JSON
+ * map, a recipe (applied to the picture open), or a pixel.config.json (its
+ * rules, palette, and recipe).
+ */
 const openFile = async (file: Blob, name: string): Promise<void> => {
-  if (!file.type.startsWith("image/")) {
-    state.message = `${name} is not a picture.`
+  const fail = (text: string): void => {
+    state.message = text
+    update()
+  }
+  if (file.type.startsWith("image/")) {
+    try {
+      const { image, canvas } = await loadImage(file)
+      setSource(image, canvas, name)
+    } catch (error) {
+      fail(`Could not read ${name}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    return
+  }
+  const text = await file.text()
+  if (!/\.json$/i.test(name)) {
+    const parsed = parseSprite(text)
+    if (parsed.ok) openArt(parsed.art, name)
+    else fail(`${name} is not a picture or a sprite source: ${parsed.problems.slice(0, 3).map((problem) => (problem.line === undefined ? problem.message : `line ${problem.line}: ${problem.message}`)).join("; ")}`)
+    return
+  }
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    fail(`${name} is not JSON.`)
+    return
+  }
+  const record: Readonly<Record<string, unknown>> = isRecord(raw) ? raw : {}
+  if ("pixels" in record) {
+    const parsed = parseJsonMap(text)
+    if (parsed.ok) openArt(parsed.art, name)
+    else fail(`${name}: ${parsed.problems[0]?.message ?? "not a JSON map"}`)
+    return
+  }
+  if (/pixel\.config/i.test(name) || "sizes" in record || "maxColors" in record) {
+    applyConfig(record, name)
+    return
+  }
+  const decoded = decodeRecipe(text)
+  if (decoded.ok) applyRecipe(decoded.value, name)
+  else fail(`${name} is not a recipe: ${decoded.error}`)
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
+
+/** Sets the page from a recipe: the grid, the palette, and every setting, hand edits included. */
+const applyRecipe = (recipe: Recipe, name: string): void => {
+  const source = state.source
+  if (source === undefined) {
+    state.message = `Open the picture first, then the recipe ${name}.`
     update()
     return
   }
-  try {
-    const { image, canvas } = await loadImage(file)
-    setSource(image, canvas, name)
-  } catch (error) {
-    state.message = `Could not read ${name}: ${error instanceof Error ? error.message : String(error)}`
-    update()
+  if (recipe.grid.kind === "auto") autoDetect()
+  else {
+    const resolved = resolveGrid(source.image, recipe.grid)
+    if (resolved !== undefined) state.spec = resolved.spec
+    state.detection = undefined
+    state.linked = Math.abs(state.spec.cellWidth - state.spec.cellHeight) < 0.02 * state.spec.cellWidth
+    state.detectionNote = `Grid from ${name}.`
+    state.noteGood = true
   }
+  state.follow = recipe.follow
+  state.moved = new Map(recipe.moved)
+  state.sample = recipe.sample
+  if (recipe.palette === undefined) state.paletteName = ORIGINAL
+  else {
+    const locked = new Set(recipe.palette.locked)
+    state.paletteName = recipe.palette.name
+    state.swatches = recipe.palette.colors.map((color, i) => ({ color, locked: locked.has(i) }))
+  }
+  state.metric = recipe.metric
+  state.dither = recipe.dither
+  state.ditherStrength = recipe.ditherStrength
+  state.cleanup = { ...state.cleanup, ...recipe.cleanup }
+  state.cleanKeep = { size: recipe.cleanKeep.size, cells: [...recipe.cleanKeep.cells] }
+  state.targetWidth = recipe.targetWidth
+  state.reduceMode = recipe.reduceMode
+  state.removeBackground = recipe.removeBackground
+  state.background = recipe.background
+  state.lostThreshold = recipe.lostThreshold
+  state.edits = { size: recipe.edits.size, strokes: recipe.edits.strokes.map((stroke) => [...stroke]) }
+  // The recipe's sizes must be the ones it was made at, or its hand edits are dropped.
+  cache = {}
+  state.message = `Applied ${name}.`
+  update()
+}
+
+/** Takes a pixel.config.json's rules, its palette when it names a preset or colors, and its recipe settings. */
+const applyConfig = (config: Readonly<Record<string, unknown>>, name: string): void => {
+  const field = (key: string): unknown => config[key]
+  const sizes = field("sizes")
+  const maxColors = field("maxColors")
+  state.rules = {
+    sizes: Array.isArray(sizes) ? sizes.filter((size) => typeof size === "string").join(", ") : state.rules.sizes,
+    maxColors: typeof maxColors === "number" ? maxColors : undefined,
+    transparentBackground: field("transparentBackground") === true
+  }
+  const notes: Array<string> = [`Rules from ${name}.`]
+  const palette = field("palette")
+  const chosen = typeof palette === "string" ? presetPalette(palette) : undefined
+  if (chosen !== undefined) setPalette(chosen.name, chosen.colors)
+  else if (Array.isArray(palette)) setPalette("Project", parsePalette(palette.join(" ")).colors)
+  else if (typeof palette === "string") notes.push(`Its palette "${palette}" is a file: import it in Palette.`)
+  const recipe = field("recipe")
+  if (typeof recipe === "object" && recipe !== null && state.source !== undefined) {
+    const decoded = decodeRecipe(JSON.stringify({ ...recipe, palette: null, grid: { kind: "cells", spec: state.spec } }))
+    if (decoded.ok) {
+      state.cleanup = { ...state.cleanup, ...decoded.value.cleanup }
+      state.metric = decoded.value.metric
+      state.dither = decoded.value.dither
+      state.reduceMode = decoded.value.reduceMode
+    }
+  }
+  if (state.rules.transparentBackground) state.removeBackground = true
+  state.message = notes.join(" ")
+  update()
 }
 
 const openDemo = (): void => {
@@ -308,6 +467,7 @@ const autoDetect = (): void => {
   state.detection = detection
   state.moved.clear()
   state.detectionNote = describeDetection(source.image, detection)
+  state.noteGood = detection !== undefined && detection.confidence >= 0.5
   if (detection !== undefined) {
     state.spec = detection.spec
     state.linked = Math.abs(detection.spec.cellWidth - detection.spec.cellHeight) < 0.02 * detection.spec.cellWidth
@@ -352,6 +512,7 @@ const empty = h(
   { class: "empty" },
   h("p", { class: "empty-title" }, "Drop a picture here"),
   h("p", {}, "or paste one, or pick a file. Everything stays on this device."),
+  h("p", { class: "hint" }, "Sprite sources (.txt), JSON maps, recipes, and pixel.config.json open here too."),
   h(
     "div",
     { class: "row center" },
@@ -362,7 +523,7 @@ const empty = h(
 const stage = h("div", { class: "stage" }, canvas, empty, status)
 
 const fileInput = h("input", {
-  props: { type: "file", accept: "image/*" },
+  props: { type: "file", accept: "image/*,.txt,.json" },
   attrs: { hidden: true },
   on: {
     change: () => {
@@ -542,7 +703,7 @@ const gridPanel = (): HTMLElement => {
     state.detectionNote !== "" &&
       h(
         "p",
-        { class: `note ${state.detection !== undefined && state.detection.confidence >= 0.5 ? "good" : "warn"}` },
+        { class: `note ${state.noteGood ? "good" : "warn"}` },
         state.detectionNote
       ),
     h(
@@ -1193,6 +1354,62 @@ window.addEventListener("keydown", (event) => {
   }
 })
 
+/** What the CLI's `pixel check` says about the result, against the project's rules. */
+const checkPanel = (): HTMLElement => {
+  const current = report
+  const broken = current !== undefined && (current.verdict === "needs-person" || current.issues.some((issue) => issue.severity === "error"))
+  return panel(
+    "Check",
+    current !== undefined &&
+      h(
+        "p",
+        { class: `note ${broken ? "warn" : "good"}` },
+        current.summary
+      ),
+    current !== undefined &&
+      current.issues.length > 0 &&
+      h(
+        "ul",
+        { class: "issues" },
+        current.issues.map((issue) => h("li", { class: issue.severity }, h("strong", {}, issue.severity === "error" ? "Error" : "Warning"), " ", issue.message))
+      ),
+    h(
+      "div",
+      { class: "grid2" },
+      h(
+        "label",
+        { class: "field", title: 'Sizes the art may have, like "16x16, 32x32" (empty: any)' },
+        h("span", {}, "Allowed sizes"),
+        h("input", {
+          props: { type: "text", value: state.rules.sizes, placeholder: "any" },
+          on: {
+            change: (event) => {
+              const target = event.currentTarget
+              if (!(target instanceof HTMLInputElement)) return
+              state.rules = { ...state.rules, sizes: target.value }
+              update()
+            }
+          }
+        })
+      ),
+      numberField(
+        "Max colors",
+        state.rules.maxColors ?? 0,
+        (value) => {
+          state.rules = { ...state.rules, maxColors: value >= 1 ? Math.round(value) : undefined }
+          update()
+        },
+        { min: 0, step: 1, title: "The most colors the art may use (0: any)" }
+      )
+    ),
+    checkbox("Background must be transparent", state.rules.transparentBackground, (checked) => {
+      state.rules = { ...state.rules, transparentBackground: checked }
+      update()
+    }),
+    h("p", { class: "hint" }, "The same check agents run with the pixel CLI. Open a pixel.config.json to take a project's rules.")
+  )
+}
+
 const preview = h("canvas", { class: "preview" })
 
 /** The fixed picture at a whole scale that fits the panel. */
@@ -1267,7 +1484,25 @@ const exportPanel = (): HTMLElement => {
         "JSON map"
       ),
       h("button", { attrs: { disabled }, on: { click: () => download(`${name}-palette.hex`, toHexFile(paletteOf())) } }, "Palette .hex"),
-      h("button", { attrs: { disabled }, on: { click: () => download(`${name}-palette.gpl`, toGpl(paletteOf())) } }, "Palette .gpl")
+      h("button", { attrs: { disabled }, on: { click: () => download(`${name}-palette.gpl`, toGpl(paletteOf())) } }, "Palette .gpl"),
+      h(
+        "button",
+        {
+          attrs: { disabled: disabled || usedColors(art).length > 70 },
+          title: "The fixed picture as text: one letter per color, one row per pixel row",
+          on: { click: () => art && download(`${name}-fixed.sprite.txt`, formatSprite(art)) }
+        },
+        "Sprite text"
+      ),
+      h(
+        "button",
+        {
+          attrs: { disabled },
+          title: "Every setting, hand edits included: open it here again, or run it with `pixel fix --recipe`",
+          on: { click: () => download(`${name}.recipe.json`, encodeRecipe(recipeOf()), "application/json") }
+        },
+        "Recipe"
+      )
     ),
     h(
       "p",
@@ -1395,6 +1630,7 @@ const render = (rebuildPanels: boolean): void => {
       palettePanel(),
       lostPanel(),
       backgroundPanel(),
+      checkPanel(),
       exportPanel()
     )
     panels.scrollTop = scroll

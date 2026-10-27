@@ -514,3 +514,19 @@ button.primary {
   flex: 1;
   font-size: 12px;
 }
+
+.issues {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.issues .error strong {
+  color: var(--warn, #e0a030);
+}
+
+.issues .warning strong {
+  color: var(--muted, #8a8f9c);
+}
