@@ -1239,12 +1239,13 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     const despawnedAfter = rewindLog(despawnedLog, mark.despawnedLog)
 
     marks.length = index + 1
-    mark.pages.clear()
-    mark.records.clear()
-    mark.targets.clear()
-    mark.sources.clear()
-    mark.scopes.clear()
-    mark.entityScopes.clear()
+    // V8 allocates a new table on every clear(), even of an empty map.
+    if (mark.pages.size > 0) mark.pages.clear()
+    if (mark.records.size > 0) mark.records.clear()
+    if (mark.targets.size > 0) mark.targets.clear()
+    if (mark.sources.size > 0) mark.sources.clear()
+    if (mark.scopes.size > 0) mark.scopes.clear()
+    if (mark.entityScopes.size > 0) mark.entityScopes.clear()
     newestMark = mark
     return { tick: mark.tick, written, back, gone, despawned, removedAfter, despawnedAfter }
   }

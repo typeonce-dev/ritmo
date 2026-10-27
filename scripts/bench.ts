@@ -3,7 +3,8 @@
  *
  * Two suites run:
  *
- * - runtime: wall-clock timings of every `packages/<name>/bench/<suite>.bench.ts` file
+ * - runtime: wall-clock timings of every `packages/<name>/bench/<suite>.bench.ts` and
+ *   `integration/<name>/bench/<suite>.bench.ts` file
  *   (each exports `cases`). Every score is `minMs / calibrationMs`: the
  *   fastest observed sample of the case divided by the fastest run of plain-JS
  *   calibration work, measured in the runner and briefly in every case's
@@ -11,6 +12,12 @@
  *   than medians, and the ratio normalizes most machine-speed differences.
  *   Regressions are still allowed a tolerance because wall-clock time is
  *   noisy.
+ * - allocations: the bytes one run of each runtime case allocates on the JS
+ *   heap, garbage included, measured in another fresh process after a counted
+ *   warmup (see `measureAllocations` in `harness.ts`). Garbage is what makes a
+ *   game's frames stutter, and the count is the same in every process on one
+ *   Node version, so the gate is tight: growth past `ALLOCATION_TOLERANCE` and
+ *   `ALLOCATION_SLACK_BYTES` fails.
  * - types: checker metrics (types, instantiations) for the generated
  *   `packages/core/bench/types/stress.ts` program. These are deterministic for
  *   a given TypeScript version, so the tolerance is small.
@@ -32,13 +39,16 @@ import { execFileSync } from "node:child_process"
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import os from "node:os"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { calibration, measure, type BenchCase, type BenchSample, type MeasureOptions } from "../packages/core/bench/harness.ts"
+import { calibration, measure, measureAllocations, type AllocationOptions, type AllocationSample, type BenchCase, type BenchSample, type MeasureOptions } from "../packages/core/bench/harness.ts"
 
 const root = fileURLToPath(new URL("..", import.meta.url))
 const baselinePath = fileURLToPath(new URL("../packages/core/bench/baseline.json", import.meta.url))
 const typesProject = fileURLToPath(new URL("../packages/core/bench/types/tsconfig.json", import.meta.url))
 
 const RUNTIME_TOLERANCE = 0.25
+const ALLOCATION_TOLERANCE = 0.1
+// Absorbs the bytes V8 allocates for itself, so a case that allocates nothing stays at noise.
+const ALLOCATION_SLACK_BYTES = 1024
 const TYPES_TOLERANCE = 0.05
 const RETRIES = 2
 const UPDATE_RUNS = 3
@@ -50,6 +60,11 @@ const measureOptions: MeasureOptions = {
   maxSamples: 400,
   minSampleMs: 2,
   minPreparedSamples: 30
+}
+
+const allocationOptions: AllocationOptions = {
+  warmupRuns: 200,
+  samples: 20
 }
 
 // Each case process also measures calibration briefly; the fastest across all
@@ -64,11 +79,15 @@ interface RuntimeResult {
   readonly minMs: number
   readonly medianMs: number
   readonly score: number
+  /** Absent in results recorded before allocations were measured. */
+  readonly bytesPerRun?: number
 }
 
 interface Baseline {
   readonly runtime: {
     readonly tolerance: number
+    readonly allocationTolerance: number
+    readonly allocationSlackBytes: number
     readonly calibrationMs: number
     readonly environment: string
     readonly cases: Record<string, RuntimeResult>
@@ -100,13 +119,15 @@ const mode = args.includes("--check") || comparePath !== undefined
   ? "check"
   : args.includes("--update") ? "update" : "run"
 
-const packagesDir = fileURLToPath(new URL("../packages/", import.meta.url))
-const suiteFiles = readdirSync(packagesDir, { withFileTypes: true })
-  .filter((entry) => entry.isDirectory() && existsSync(`${packagesDir}${entry.name}/bench`))
-  .flatMap((entry) => readdirSync(`${packagesDir}${entry.name}/bench`)
-    .filter((file) => file.endsWith(".bench.ts"))
-    .map((file) => `${packagesDir}${entry.name}/bench/${file}`))
-  .sort()
+// Packages bench their own hot paths; integration games bench whole frames.
+const suiteFiles = ["../packages/", "../integration/"].flatMap((relative) => {
+  const dir = fileURLToPath(new URL(relative, import.meta.url))
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(`${dir}${entry.name}/bench`))
+    .flatMap((entry) => readdirSync(`${dir}${entry.name}/bench`)
+      .filter((file) => file.endsWith(".bench.ts"))
+      .map((file) => `${dir}${entry.name}/bench/${file}`))
+}).sort()
 const cases: Array<BenchCase> = []
 for (const file of suiteFiles) {
   const suite = await import(pathToFileURL(file).href) as { readonly cases: ReadonlyArray<BenchCase> }
@@ -127,6 +148,10 @@ const caseFlag = flagValue("--case")
 if (caseFlag !== undefined) {
   const bench = cases.find((candidate) => candidate.name === caseFlag)
   if (!bench) throw new Error(`Unknown benchmark case "${caseFlag}"`)
+  if (args.includes("--allocations")) {
+    process.stdout.write(JSON.stringify(measureAllocations(bench, allocationOptions)))
+    process.exit(0)
+  }
   const sample = measure(bench, measureOptions)
   const result: CaseRun = { sample, calibrationMs: measureCalibration() }
   process.stdout.write(JSON.stringify(result))
@@ -144,16 +169,28 @@ const measureCase = (name: string): CaseRun => JSON.parse(execFileSync(
   { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }
 )) as CaseRun
 
-const runRuntime = (): { calibrationMs: number; results: Record<string, RuntimeResult & BenchSample> } => {
+// Without V8's background threads, the optimizing compiler makes the same
+// decisions in every process, so the count does not depend on timing.
+const measureCaseAllocations = (name: string): AllocationSample => JSON.parse(execFileSync(
+  process.execPath,
+  [...process.execArgv, "--single-threaded", fileURLToPath(import.meta.url), "--case", name, "--allocations"],
+  { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }
+)) as AllocationSample
+
+/** A case measured by this run: allocations are always present, unlike in older recorded results. */
+type CaseResult = RuntimeResult & BenchSample & { readonly bytesPerRun: number }
+
+// `allocations` reuses counts measured by an earlier run; they do not change between runs.
+const runRuntime = (allocations?: Record<string, CaseResult>): { calibrationMs: number; results: Record<string, CaseResult> } => {
   let calibrationMs = measureCalibration()
-  const samples: Array<BenchSample> = []
+  const samples: Array<BenchSample & { readonly bytesPerRun: number }> = []
   for (const bench of cases) {
     if (filter && !bench.name.includes(filter)) continue
     const run = measureCase(bench.name)
-    samples.push(run.sample)
+    samples.push({ ...run.sample, bytesPerRun: allocations?.[bench.name]?.bytesPerRun ?? measureCaseAllocations(bench.name).bytesPerRun })
     calibrationMs = Math.min(calibrationMs, run.calibrationMs)
   }
-  const results: Record<string, RuntimeResult & BenchSample> = {}
+  const results: Record<string, CaseResult> = {}
   for (const sample of samples) {
     results[sample.name] = { ...sample, score: sample.minMs / calibrationMs }
   }
@@ -189,6 +226,11 @@ const runTypes = (): Record<string, number> => {
 }
 
 const formatMs = (value: number): string => value >= 10 ? value.toFixed(1) : value.toFixed(3)
+const formatBytes = (bytes: number): string =>
+  bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : bytes >= 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${Math.round(bytes)} B`
+// Allocation counts near zero make percentages meaningless; show the byte difference too.
+const formatBytesDelta = (current: number, base: number): string =>
+  base === 0 ? (current === 0 ? "0" : `+${formatBytes(current)}`) : formatDelta(current, base)
 const formatDelta = (current: number, base: number): string => {
   const delta = (current / base - 1) * 100
   return `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%`
@@ -211,12 +253,14 @@ const main = (): void => {
   }
   const referenceLabel = comparePath === undefined ? "baseline" : "compare"
   const tolerance = baseline?.runtime.tolerance ?? RUNTIME_TOLERANCE
+  const allocationTolerance = baseline?.runtime.allocationTolerance ?? ALLOCATION_TOLERANCE
+  const allocationSlack = baseline?.runtime.allocationSlackBytes ?? ALLOCATION_SLACK_BYTES
   console.log(`Runtime suite (${environment})`)
   let runtime = runRuntime()
   if (mode === "update") {
     // Record the best of several full runs so one noisy run cannot skew the baseline.
     for (let run = 1; run < UPDATE_RUNS; run++) {
-      const next = runRuntime()
+      const next = runRuntime(runtime.results)
       const results = { ...runtime.results }
       for (const [name, result] of Object.entries(next.results)) {
         if (result.score < results[name]!.score) results[name] = result
@@ -226,7 +270,7 @@ const main = (): void => {
   }
   const failures: Array<string> = []
 
-  const rows: Array<Array<string>> = [["case", "min ms", "median ms", "score", referenceLabel, "delta"]]
+  const rows: Array<Array<string>> = [["case", "min ms", "median ms", "score", referenceLabel, "delta", "alloc/run", referenceLabel, "delta"]]
   for (const [name, result] of Object.entries(runtime.results)) {
     let current = result
     const base = reference?.[name]
@@ -235,11 +279,17 @@ const main = (): void => {
       // Wall-clock noise: re-measure a failing case before reporting it.
       for (let attempt = 0; attempt < RETRIES && current.score > limit; attempt++) {
         const { sample } = measureCase(name)
-        const retried = { ...sample, score: sample.minMs / runtime.calibrationMs }
+        const retried = { ...sample, score: sample.minMs / runtime.calibrationMs, bytesPerRun: current.bytesPerRun }
         if (retried.score < current.score) current = retried
       }
       if (current.score > limit) {
         failures.push(`runtime ${name}: score ${current.score.toFixed(3)} exceeds ${referenceLabel} ${base.score.toFixed(3)} by ${formatDelta(current.score, base.score)}`)
+      }
+    }
+    const baseBytes = base?.bytesPerRun
+    if (mode === "check" && baseBytes !== undefined) {
+      if (current.bytesPerRun > baseBytes * (1 + allocationTolerance) + allocationSlack) {
+        failures.push(`allocations ${name}: ${formatBytes(current.bytesPerRun)} per run exceeds ${referenceLabel} ${formatBytes(baseBytes)} by ${formatBytesDelta(current.bytesPerRun, baseBytes)}`)
       }
     }
     rows.push([
@@ -248,7 +298,10 @@ const main = (): void => {
       formatMs(current.medianMs),
       current.score.toFixed(3),
       base ? base.score.toFixed(3) : "-",
-      base ? formatDelta(current.score, base.score) : "-"
+      base ? formatDelta(current.score, base.score) : "-",
+      formatBytes(current.bytesPerRun),
+      baseBytes === undefined ? "-" : formatBytes(baseBytes),
+      baseBytes === undefined ? "-" : formatBytesDelta(current.bytesPerRun, baseBytes)
     ])
   }
   const widths = rows[0]!.map((_, column) => Math.max(...rows.map((row) => row[column]!.length)))
@@ -284,12 +337,15 @@ const main = (): void => {
     const next: Baseline = {
       runtime: {
         tolerance: RUNTIME_TOLERANCE,
+        allocationTolerance: ALLOCATION_TOLERANCE,
+        allocationSlackBytes: ALLOCATION_SLACK_BYTES,
         calibrationMs: Number(runtime.calibrationMs.toFixed(4)),
         environment,
         cases: Object.fromEntries(Object.entries(runtime.results).map(([name, result]) => [name, {
           minMs: Number(result.minMs.toFixed(4)),
           medianMs: Number(result.medianMs.toFixed(4)),
-          score: Number(result.score.toFixed(4))
+          score: Number(result.score.toFixed(4)),
+          bytesPerRun: result.bytesPerRun
         }]))
       },
       types: {

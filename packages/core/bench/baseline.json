@@ -1,193 +1,238 @@
 {
   "runtime": {
     "tolerance": 0.25,
-    "calibrationMs": 2.9616,
+    "allocationTolerance": 0.1,
+    "allocationSlackBytes": 1024,
+    "calibrationMs": 2.9162,
     "environment": "Apple M1 / node v24.16.0 / darwin",
     "cases": {
-      "clock/advance-1000": {
-        "minMs": 0.2136,
-        "medianMs": 0.2328,
-        "score": 0.0721
-      },
-      "spawn/10k-3c": {
-        "minMs": 6.5937,
-        "medianMs": 7.815,
-        "score": 2.222
-      },
-      "despawn/10k": {
-        "minMs": 12.8397,
-        "medianMs": 14.4043,
-        "score": 4.3354
-      },
-      "query/iterate-read-10k-of-20k": {
-        "minMs": 0.1475,
-        "medianMs": 0.1488,
-        "score": 0.0498
-      },
-      "query/optional-read-20k": {
-        "minMs": 0.3871,
-        "medianMs": 0.4,
-        "score": 0.1308
-      },
-      "query/iterate-write-10k": {
-        "minMs": 0.3474,
-        "medianMs": 0.3633,
-        "score": 0.1173
-      },
-      "query/number-write-10k": {
-        "minMs": 0.2206,
-        "medianMs": 0.2234,
-        "score": 0.0743
-      },
-      "query/set-raw-10k": {
-        "minMs": 0.9107,
-        "medianMs": 1.1647,
-        "score": 0.3073
-      },
-      "entity-state/update-transition-10k": {
-        "minMs": 1.6692,
-        "medianMs": 1.9963,
-        "score": 0.5633
-      },
-      "machine/update-10k": {
-        "minMs": 2.642,
-        "medianMs": 3.1747,
-        "score": 0.8921
-      },
-      "query/single-in-20k-x1000": {
-        "minMs": 0.2161,
-        "medianMs": 0.2207,
-        "score": 0.073
-      },
-      "query/changed-100-of-10k-x20": {
-        "minMs": 0.2491,
-        "medianMs": 0.2546,
-        "score": 0.0841
-      },
-      "structural/insert-remove-1k": {
-        "minMs": 0.1918,
-        "medianMs": 0.1979,
-        "score": 0.0646
-      },
-      "schedule/100-systems-x10": {
-        "minMs": 0.1064,
-        "medianMs": 0.1087,
-        "score": 0.0359
-      },
-      "schedule/150-systems-thistick-x10": {
-        "minMs": 0.1773,
-        "medianMs": 0.1886,
-        "score": 0.0598
-      },
-      "lookup/get-10k": {
-        "minMs": 0.6326,
-        "medianMs": 0.662,
-        "score": 0.2136
-      },
-      "events/emit-read-10k": {
-        "minMs": 0.0957,
-        "medianMs": 0.0978,
-        "score": 0.0323
-      },
-      "relations/descendants-100x100": {
-        "minMs": 0.2962,
-        "medianMs": 0.3015,
-        "score": 0.0998
-      },
-      "snapshot/json-roundtrip-10k": {
-        "minMs": 23.2447,
-        "medianMs": 25.8005,
-        "score": 7.8437
-      },
-      "frame/50-systems-5k": {
-        "minMs": 2.9498,
-        "medianMs": 3.102,
-        "score": 0.994
-      },
-      "math/vec2-steer-10k": {
-        "minMs": 1.1929,
-        "medianMs": 1.2369,
-        "score": 0.3665
-      },
-      "math/scalar-spring-10k": {
-        "minMs": 0.536,
-        "medianMs": 0.5613,
-        "score": 0.1823
-      },
-      "math/flow-field-search": {
-        "minMs": 0.1548,
-        "medianMs": 0.1875,
-        "score": 0.0522
-      },
-      "math/flow-field-way-1k": {
-        "minMs": 0.0685,
-        "medianMs": 0.0716,
-        "score": 0.0231
-      },
-      "math/collide-move-circle-1k": {
-        "minMs": 0.5728,
-        "medianMs": 0.5775,
-        "score": 0.193
-      },
-      "math/collide-move-circle-segments-1k": {
-        "minMs": 5.5744,
-        "medianMs": 5.78,
-        "score": 1.836
+      "top-down/frame-x60": {
+        "minMs": 0.3359,
+        "medianMs": 0.3531,
+        "score": 0.1152,
+        "bytesPerRun": 791480
       },
       "random/next-100k": {
-        "minMs": 0.7917,
-        "medianMs": 0.8074,
-        "score": 0.2672
+        "minMs": 0.7788,
+        "medianMs": 0.7979,
+        "score": 0.2659,
+        "bytesPerRun": 799984
       },
       "random/draw-resource-100k": {
-        "minMs": 3.5241,
-        "medianMs": 4.045,
-        "score": 1.1876
+        "minMs": 3.7643,
+        "medianMs": 3.8112,
+        "score": 1.2902,
+        "bytesPerRun": 3054504
       },
       "ops/steer-10k": {
-        "minMs": 0.8757,
-        "medianMs": 0.8948,
-        "score": 0.2955
+        "minMs": 0.8611,
+        "medianMs": 0.8806,
+        "score": 0.2953,
+        "bytesPerRun": 1760080
       },
-      "render/sync-1k-changed-of-10k": {
-        "minMs": 0.5343,
-        "medianMs": 0.6286,
-        "score": 0.1803
+      "clock/advance-1000": {
+        "minMs": 0.1571,
+        "medianMs": 0.1728,
+        "score": 0.0539,
+        "bytesPerRun": 423592
       },
-      "render/sync-hierarchy-1k-changed-of-10k": {
-        "minMs": 1.231,
-        "medianMs": 1.354,
-        "score": 0.409
+      "spawn/10k-3c": {
+        "minMs": 6.2586,
+        "medianMs": 6.4161,
+        "score": 2.1451,
+        "bytesPerRun": 21637456
       },
-      "render/sync-spawn-despawn-500": {
-        "minMs": 2.4451,
-        "medianMs": 2.8999,
-        "score": 0.8256
+      "despawn/10k": {
+        "minMs": 12.5025,
+        "medianMs": 14.5648,
+        "score": 4.2872,
+        "bytesPerRun": 16517840
       },
-      "render/interpolate-10k": {
-        "minMs": 0.3482,
-        "medianMs": 0.3521,
-        "score": 0.1175
+      "query/iterate-read-10k-of-20k": {
+        "minMs": 0.0984,
+        "medianMs": 0.1047,
+        "score": 0.0337,
+        "bytesPerRun": 1320
+      },
+      "query/optional-read-20k": {
+        "minMs": 0.3588,
+        "medianMs": 0.3707,
+        "score": 0.1225,
+        "bytesPerRun": 1320
+      },
+      "query/iterate-write-10k": {
+        "minMs": 0.3266,
+        "medianMs": 0.3378,
+        "score": 0.1119,
+        "bytesPerRun": 401168
+      },
+      "query/number-write-10k": {
+        "minMs": 0.2151,
+        "medianMs": 0.2159,
+        "score": 0.0737,
+        "bytesPerRun": 1168
+      },
+      "query/set-raw-10k": {
+        "minMs": 0.8639,
+        "medianMs": 0.8885,
+        "score": 0.2961,
+        "bytesPerRun": 1681360
+      },
+      "entity-state/update-transition-10k": {
+        "minMs": 1.6565,
+        "medianMs": 1.9824,
+        "score": 0.568,
+        "bytesPerRun": 2930456
+      },
+      "machine/update-10k": {
+        "minMs": 2.7018,
+        "medianMs": 2.7334,
+        "score": 0.926,
+        "bytesPerRun": 5522488
+      },
+      "query/single-in-20k-x1000": {
+        "minMs": 0.1473,
+        "medianMs": 0.1523,
+        "score": 0.0503,
+        "bytesPerRun": 248000
+      },
+      "query/changed-100-of-10k-x20": {
+        "minMs": 0.2429,
+        "medianMs": 0.2561,
+        "score": 0.0833,
+        "bytesPerRun": 362280
+      },
+      "structural/insert-remove-1k": {
+        "minMs": 0.1828,
+        "medianMs": 0.1905,
+        "score": 0.0627,
+        "bytesPerRun": 675904
+      },
+      "schedule/100-systems-x10": {
+        "minMs": 0.0415,
+        "medianMs": 0.0425,
+        "score": 0.0142,
+        "bytesPerRun": 9280
+      },
+      "schedule/150-systems-thistick-x10": {
+        "minMs": 0.0826,
+        "medianMs": 0.084,
+        "score": 0.0283,
+        "bytesPerRun": 37200
+      },
+      "lookup/get-10k": {
+        "minMs": 0.6718,
+        "medianMs": 0.7018,
+        "score": 0.2304,
+        "bytesPerRun": 401240
+      },
+      "events/emit-read-10k": {
+        "minMs": 0.0945,
+        "medianMs": 0.0997,
+        "score": 0.0323,
+        "bytesPerRun": 247352
+      },
+      "relations/descendants-100x100": {
+        "minMs": 0.2891,
+        "medianMs": 0.2923,
+        "score": 0.0991,
+        "bytesPerRun": 329440
+      },
+      "snapshot/json-roundtrip-10k": {
+        "minMs": 23.88,
+        "medianMs": 26.155,
+        "score": 8.1522,
+        "bytesPerRun": 32709088
+      },
+      "frame/50-systems-5k": {
+        "minMs": 2.8775,
+        "medianMs": 2.9755,
+        "score": 0.9823,
+        "bytesPerRun": 4471000
       },
       "checkpoint/take-tick-10k": {
-        "minMs": 0.3495,
-        "medianMs": 0.7052,
-        "score": 0.118
+        "minMs": 0.3738,
+        "medianMs": 0.3957,
+        "score": 0.1282,
+        "bytesPerRun": 514200
       },
       "checkpoint/rollback-8-of-5k": {
-        "minMs": 3.3081,
-        "medianMs": 3.5784,
-        "score": 1.117
+        "minMs": 3.3537,
+        "medianMs": 3.4739,
+        "score": 1.1449,
+        "bytesPerRun": 4517168
+      },
+      "math/vec2-steer-10k": {
+        "minMs": 1.1917,
+        "medianMs": 1.2387,
+        "score": 0.4086,
+        "bytesPerRun": 3566864
+      },
+      "math/scalar-spring-10k": {
+        "minMs": 0.5344,
+        "medianMs": 0.555,
+        "score": 0.1824,
+        "bytesPerRun": 1653520
+      },
+      "math/flow-field-search": {
+        "minMs": 0.1519,
+        "medianMs": 0.1854,
+        "score": 0.0519,
+        "bytesPerRun": 152
+      },
+      "math/flow-field-way-1k": {
+        "minMs": 0.0664,
+        "medianMs": 0.0698,
+        "score": 0.0227,
+        "bytesPerRun": 109680
+      },
+      "math/collide-move-circle-1k": {
+        "minMs": 0.6119,
+        "medianMs": 0.6298,
+        "score": 0.2097,
+        "bytesPerRun": 274664
+      },
+      "math/collide-move-circle-segments-1k": {
+        "minMs": 5.3718,
+        "medianMs": 5.4587,
+        "score": 1.8411,
+        "bytesPerRun": 272824
       },
       "netcode/rollback-frame-2-peers": {
-        "minMs": 0.0549,
-        "medianMs": 0.0656,
-        "score": 0.0186
+        "minMs": 0.057,
+        "medianMs": 0.0695,
+        "score": 0.0195,
+        "bytesPerRun": 64168
       },
       "netcode/lockstep-frame-2-peers": {
-        "minMs": 0.0076,
-        "medianMs": 0.0085,
-        "score": 0.0026
+        "minMs": 0.0077,
+        "medianMs": 0.0086,
+        "score": 0.0026,
+        "bytesPerRun": 12184
+      },
+      "render/sync-1k-changed-of-10k": {
+        "minMs": 0.4262,
+        "medianMs": 0.6863,
+        "score": 0.1455,
+        "bytesPerRun": 429832
+      },
+      "render/sync-hierarchy-1k-changed-of-10k": {
+        "minMs": 1.043,
+        "medianMs": 1.2602,
+        "score": 0.356,
+        "bytesPerRun": 469776
+      },
+      "render/sync-spawn-despawn-500": {
+        "minMs": 2.3665,
+        "medianMs": 2.5434,
+        "score": 0.8115,
+        "bytesPerRun": 2367336
+      },
+      "render/interpolate-10k": {
+        "minMs": 0.2987,
+        "medianMs": 0.3196,
+        "score": 0.1024,
+        "bytesPerRun": 1168
       }
     }
   },
@@ -195,8 +240,8 @@
     "tolerance": 0.05,
     "typescript": "Version 7.0.2",
     "metrics": {
-      "types": 127124,
-      "instantiations": 1464098
+      "types": 127574,
+      "instantiations": 1462180
     }
   }
 }

@@ -7,7 +7,7 @@
 
 ## Repo
 - `packages/*`: the published packages (see each `package.json` description). Each has `src`, `test`, `dtslint`, and core, math, and render have `bench`.
-- `integration/*`: headless game simulations with tests, using the packages by name.
+- `integration/*`: headless game simulations with tests, using the packages by name. `top-down` also has a `bench` case for its whole frame.
 - `tools/*`: standalone tools that are not published (`tools/pixel-fixer`: fixes AI-made pixel art; see its README). Their tests run in `pnpm test`.
 - `bench/compare`: Ritmo against bitECS, Koota, and Miniplex on the community ECS benchmark cases (`pnpm bench:compare`). Internal, not a gate; run it before and after a storage or hot-path change. `test/` checks every claim the website's comparison page makes about the other libraries.
 - `website/`: the guide for humans (Astro), built from the workspace packages and deployed after each release.
@@ -19,7 +19,7 @@
 - JSDoc `@example` blocks compile in `pnpm check` (`pnpm check-examples`): modules are in scope by name, the game from `scripts/examples/prelude.ts`, anything else above a `// ---cut---` line. The header of `scripts/check-examples.ts` is the convention.
 - Changes to what a package publishes (exports, `package.json`, build config): `pnpm pack:check`.
 - Every change to a published package: a changeset (`pnpm changeset`). A breaking entry carries its fix.
-- Changes to runtime internals or public types: `pnpm bench:check`; record an intended shift with `pnpm bench:update`. For runtime work, compare with your own machine: `pnpm bench --json .bench/before.json`, then `pnpm bench --compare .bench/before.json` (`--filter <text>` for one case). Under about 20% is noise; do not report it. Add a bench case for a new per-frame hot path.
+- Changes to runtime internals or public types: `pnpm bench:check`; record an intended shift with `pnpm bench:update`. For runtime work, compare with your own machine: `pnpm bench --json .bench/before.json`, then `pnpm bench --compare .bench/before.json` (`--filter <text>` for one case). Under about 20% is noise; do not report it. Add a bench case for a new per-frame hot path. The bench also counts the bytes each case allocates per run and fails on growth past 10%: the count is the same on every run on one Node version, so a rise is real. Report it, and record an intended one with `pnpm bench:update`.
 
 ## API rules
 - Type safety comes first. If a runtime failure can be made impossible by types, it must be; when a guarantee depends on runtime state, the type says it can fail.
