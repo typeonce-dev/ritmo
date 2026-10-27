@@ -107,6 +107,9 @@ export interface KeyEvent {
   preventDefault(): void
 }
 
+/** Every action that is not in use shares this state, so a snapshot of an idle keyboard allocates no states. */
+const idleState: ActionState = { held: false, pressed: false, released: false }
+
 const editableTags: ReadonlySet<string> = new Set(["INPUT", "TEXTAREA", "SELECT"])
 
 /** Whether a key event's target is a form field, by the rule on {@link KeyEvent}. */
@@ -273,10 +276,8 @@ export interface ActionsOptions {
  * A snapshot with every action idle, for initializing an input resource
  * before the first capture.
  */
-export const idle = <const B extends Bindings>(bindings: B): Snapshot<B> => {
-  const idleState: ActionState = { held: false, pressed: false, released: false }
-  return assemble(bindings, () => idleState, false) as Snapshot<B>
-}
+export const idle = <const B extends Bindings>(bindings: B): Snapshot<B> =>
+  assemble(bindings, () => idleState, false) as Snapshot<B>
 
 /** Each action's keys, with every vector action split into its four directions (`move.up`, ...). */
 const flatten = (bindings: Bindings): Readonly<Record<string, Keys>> => {
@@ -438,14 +439,13 @@ export const actions = <const B extends Bindings>(
       const states: Record<string, ActionState> = {}
       for (const name of names) {
         const held = isHeld(name)
-        states[name] = {
-          held,
-          pressed: pressed.has(name),
-          released: released.has(name) && !held
-        }
+        const isPressed = pressed.has(name)
+        const isReleased = released.has(name) && !held
+        states[name] = held || isPressed || isReleased ? { held, pressed: isPressed, released: isReleased } : idleState
       }
-      pressed.clear()
-      released.clear()
+      // V8 allocates a new table on every clear(), even of an empty set, and this runs every frame.
+      if (pressed.size > 0) pressed.clear()
+      if (released.size > 0) released.clear()
       last = states
       return assemble(initial, (name) => states[name]!, anyUsed(states)) as Snapshot<B>
     },

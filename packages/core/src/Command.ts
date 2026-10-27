@@ -901,6 +901,9 @@ export interface CommandQueue<S extends Schema.Any, Root = unknown> {
   readonly flush: () => ReadonlyArray<DeferredCommand<S>>
 }
 
+/** What `flush` returns when nothing was queued, so an idle system allocates nothing. */
+const noCommands: ReadonlyArray<never> = []
+
 /**
  * Creates a fresh command queue for a system execution.
  *
@@ -1020,8 +1023,9 @@ export const makeCommands = <S extends Schema.Any, Root = unknown>(
       })
     },
     flush() {
-      spawnedThisRun.clear()
-      return queue.splice(0, queue.length)
+      // V8 allocates a new table on every clear(), even of an empty set.
+      if (spawnedThisRun.size > 0) spawnedThisRun.clear()
+      return queue.length === 0 ? noCommands : queue.splice(0, queue.length)
     }
   }
 }

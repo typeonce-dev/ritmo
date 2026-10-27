@@ -816,7 +816,9 @@ const makeValidatedRuntime = <
     return empty.get(stateOf(value)!) ?? value
   }
   /**
-   * Machine keys changed by transitions applied during the current schedule run.
+   * Machine keys changed by transitions applied during the current schedule
+   * run. Each run clears it only when it is not empty: V8 allocates a new
+   * table on every clear().
    */
   let changedMachines = new Set<symbol>()
   /**
@@ -1466,9 +1468,10 @@ const makeValidatedRuntime = <
       }
       emittedEvents.clear()
     }
-    resourceOriginals.clear()
-    machineOriginals.clear()
-    // Most systems never update a machine: skip the clear on that path.
+    // This runs after every system, and V8 allocates a new table on every
+    // clear(), even of an empty map: most systems write none of these.
+    if (resourceOriginals.size > 0) resourceOriginals.clear()
+    if (machineOriginals.size > 0) machineOriginals.clear()
     if (committedMachineOriginals.size > 0) committedMachineOriginals.clear()
   }
 
@@ -2206,7 +2209,9 @@ const makeValidatedRuntime = <
     bundle?: Schedule.TransitionBundleDefinition<S, ReadonlyArray<Machine.StateMachine.AnyTransitionSchedule<S, Root>>, any, Root, any, any>
   ): Result.Result<void, SystemFailure> => {
     applyDeferred("applyStateTransitions")
-    changedMachines = new Set()
+    if (changedMachines.size > 0) changedMachines.clear()
+    // Most frames request no transition: skip building and sorting the queue.
+    if (pendingMachines.size === 0) return succeeded
     const scheduledTransitions = Array.from(pendingMachines.entries())
       .sort(([leftKey], [rightKey]) =>
         (machineDefinitionOrder.get(leftKey) ?? Number.MAX_SAFE_INTEGER)
@@ -2438,7 +2443,7 @@ const makeValidatedRuntime = <
    * already succeeded stay committed, and their pending work stays pending.
    */
   const runScheduleUnsafe = (schedule: ExecutableScheduleDefinition<S, any, any, any, any>): Result.Result<void, SystemFailure> => {
-    changedMachines = new Set()
+    if (changedMachines.size > 0) changedMachines.clear()
     return tracing
       ? traceSchedule(scheduleName(schedule), () => runSteps(schedule))
       : runSteps(schedule)
