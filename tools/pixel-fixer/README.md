@@ -6,7 +6,10 @@ slightly off-color. The fixer finds the hidden pixel grid, gives each cell
 one color from a palette you choose, and exports the result at its true size
 (or any whole scale), as PNG, SVG, or a JSON map.
 
-It runs entirely in the browser. Pictures never leave the device.
+It comes in two parts that share one core: a web page for people tuning art
+by hand (it runs entirely in the browser; pictures never leave the device),
+and the `pixel` CLI for agents that check, fix, and make art on their own.
+A recipe saved by one runs in the other.
 
 This is a standalone tool in the Ritmo repository, not a published package.
 
@@ -20,7 +23,14 @@ pnpm --dir tools/pixel-fixer build          # static site in tools/pixel-fixer/d
 ```
 
 Open a picture (button, drag and drop, or paste), or press **Try the demo**
-for a fake AI picture of a mushroom.
+for a fake AI picture of a mushroom. The same button opens a sprite source
+(`.txt`) or a JSON map as pixel art at its own size, a recipe (applied to the
+picture open), and a `pixel.config.json` (its rules, palette, and settings).
+
+```sh
+pnpm --dir tools/pixel-fixer pixel --help   # the CLI
+node tools/pixel-fixer/bin/pixel.mjs check art.png   # the same, from any folder
+```
 
 ## How to use it
 
@@ -81,15 +91,80 @@ for a fake AI picture of a mushroom.
 5. **Compare.** **Source**, **Compare** (a split you can drag), and **Fixed**
    views. Zoom with the wheel, a pinch, or the buttons; drag to pan; double-click
    to fit.
-6. **Export.** PNG at 1x (the true pixel art) or any whole scale; SVG in pixel
+6. **Check.** What `pixel check` says about the fixed picture: confident or
+   not, and every rule it breaks. **Allowed sizes**, **Max colors**, and
+   **Background must be transparent** are the project's rules (a
+   `pixel.config.json` opened on the page sets them); the palette chosen is
+   one too.
+7. **Export.** PNG at 1x (the true pixel art) or any whole scale; SVG in pixel
    units with crisp edges (it stays sharp at any size; same-colored areas are
    merged into rectangles); a JSON map (size, palette, one row of palette
-   indices per pixel row, -1 for transparent); the palette as `.hex` or `.gpl`.
+   indices per pixel row, -1 for transparent); the palette as `.hex` or `.gpl`;
+   **Sprite text** (the sprite source format below); and the **Recipe**.
 
 **Undo** and **Redo** (above the picture, or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z
 or Ctrl+Y) cover every setting: the grid, the palette, the background,
 strokes, and the size. A slider drag, a typed number, or a stroke is one
 step. Opening another picture starts the history over.
+
+## The CLI
+
+`pixel` runs the page's pipeline from the command line, for agents. It is
+built on Effect (`effect/cli`), outside the core, so the page carries none of
+it. Every command prints a JSON report on stdout, and exits with what to do
+next: 0 clean (or fixed with confidence), 2 a usage problem, a missing file,
+or a broken sprite source, 3 fixable (rules broken: fix the picture or edit
+the source), 4 needs a person (the grid is unsure: look at the preview).
+
+| Command | What it does |
+| --- | --- |
+| `check <file>` | Clean pixel art, fixable with confidence, or needs a person? Writes nothing. |
+| `fix <png>` | Fixes it, writing `.png` (1x), `@Nx.png` (`--scale N`), `.svg`, `.json` map, `.sprite.txt`, `.recipe.json`, and `.preview.png`. |
+| `pixelate <png> -w N` | Cuts a picture that is not pixel art into N pixels across, on the palette (or `--colors N` proposed from it). |
+| `render <sprite>` | Renders a sprite source or JSON map to PNG and SVG, and lints it. |
+| `lint <file>` | The project's rules on the pixels as they are. |
+| `preview <file>` | A picture to look at: the art enlarged, or the source and its grid beside the fix. |
+| `compare <a> <b>` | Which of two versions is better, and why. |
+| `palettes [name]` | The presets, or one palette's colors. |
+| `init` | Writes a starting `pixel.config.json`. |
+
+`fix`, `check`, `pixelate`, and `preview` take the page's settings as flags
+(`--palette`, `--cell 8x8 --offset 2,3`, `--follow`, `--cleanup`,
+`--remove-background`, `--dither`, `--metric`, `--shrink-to`), over a
+`--recipe` file, over the config. `pixel <command> --help` lists them.
+
+**`pixel.config.json`**, found from the working directory up (or
+`--config`), holds a project's rules: `palette` (a preset's name, a list of
+hex colors, or a `.hex`/`.gpl` file next to the config), `sizes`
+(`["16x16", "32x32"]`), `maxColors`, `transparentBackground` (which also
+removes the background when fixing), and `recipe` (settings every fix starts
+from).
+
+**Sprite sources** are pixel art as text, for art drawn with code: a
+`palette` section of one-character keys, then a `pixels` section with one row
+of keys per pixel row. `pixel render` checks every row and key and reports
+each problem with its line.
+
+```
+# A coin. Lines starting with # are comments.
+palette
+. transparent
+K #1a1c2c
+Y #ffcd75
+
+pixels
+.KK.
+KYYK
+.KK.
+```
+
+**Recipes** are every setting as JSON (`src/core/recipe.ts`): the grid (found,
+given as cells, or a size to pixelate to), the palette with its locked
+colors, cleanup, background, size, and the hand edits. Missing settings take
+their defaults, so `{"palette": "sweetie-16"}` is a recipe.
+
+`skills/pixel-art/SKILL.md` is the skill for agents: which command for which
+case, and how to read the reports. Link it into a game's skills folder.
 
 ## How the grid is found
 
@@ -123,5 +198,11 @@ of the true size, which are as clean but have half their lines mid-cell.
   `cleanup.ts` (specks), `palette.ts` (presets, files, extraction, proposals), `reduce.ts`
   (fewer, bigger pixels), `background.ts` (background removal), `lost.ts`
   (colors the palette lost), `export.ts` (PNG pixels,
-  SVG, JSON), `demo.ts` (the fake AI picture generator).
+  SVG, JSON), `demo.ts` (the fake AI picture generator),
+  `pipeline.ts` (the whole fix, from a picture and a recipe: what the page and
+  the CLI both run), `recipe.ts` (recipes as JSON), `sprite.ts` (sprite
+  sources), `lint.ts` (the rules), `report.ts` (the check and its verdict),
+  `preview.ts` (pictures to look at).
 - `src/ui/`: the page (plain DOM and a canvas, no framework).
+- `src/cli/`: the `pixel` CLI (Effect), with PNG files through `pngjs`;
+  `bin/pixel.mjs` runs it from its TypeScript source.
