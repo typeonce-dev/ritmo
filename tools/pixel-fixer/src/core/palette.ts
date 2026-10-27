@@ -208,3 +208,80 @@ export const extractPalette = (
   const extracted = result.slice(locked.length).sort((x, y) => toOklab(x).l - toOklab(y).l)
   return [...locked, ...extracted]
 }
+
+/** How a palette is proposed from the picture. */
+export type ProposeMethod = "dominant" | "balanced" | "distinct"
+
+export const proposeMethods: ReadonlyArray<{ readonly id: ProposeMethod; readonly label: string; readonly hint: string }> = [
+  { id: "dominant", label: "Dominant", hint: "The most used colors, near-duplicates merged. Suits flat art." },
+  { id: "balanced", label: "Balanced", hint: "The colors that best cover the whole picture (k-means)." },
+  { id: "distinct", label: "Distinct", hint: "Colors as different from each other as possible: keeps small accents." }
+]
+
+/** A proposed color and the share of the picture nearest to it (0 to 1). */
+export interface Proposal {
+  readonly color: Rgb
+  readonly share: number
+}
+
+/** Two colors closer than this (OKLab) are the same color for "dominant". */
+const MERGE_RADIUS = 0.04
+/** "Distinct" ignores colors used by fewer than this share of the cells: they are noise, not accents. */
+const NOISE_SHARE = 0.002
+
+/**
+ * Up to `count` colors from the given ones (one per cell), most used first,
+ * each with the share of the colors nearest to it. Fewer when the picture
+ * has fewer: near-duplicates are never proposed.
+ */
+export const proposePalette = (colors: ReadonlyArray<Rgb>, count: number, method: ProposeMethod): Array<Proposal> => {
+  if (colors.length === 0 || count < 1) return []
+  const weights = new Map<number, number>()
+  for (const color of colors) {
+    const key = pack(color.r, color.g, color.b)
+    weights.set(key, (weights.get(key) ?? 0) + 1)
+  }
+  const points = [...weights]
+    .map(([key, weight]) => ({ color: unpack(key), lab: toOklab(unpack(key)), weight }))
+    .sort((x, y) => y.weight - x.weight)
+
+  let picked: Array<Rgb>
+  if (method === "balanced") {
+    picked = extractPalette(colors, count)
+  } else if (method === "dominant") {
+    const chosen: Array<(typeof points)[number]> = []
+    for (const point of points) {
+      if (chosen.length >= count) break
+      if (chosen.every((other) => distance2(point.lab, other.lab) > MERGE_RADIUS ** 2)) chosen.push(point)
+    }
+    picked = chosen.map((point) => point.color)
+  } else {
+    const candidates = points.filter((point) => point.weight >= NOISE_SHARE * colors.length)
+    const pool = candidates.length > 0 ? candidates : points
+    const chosen = [pool[0]!]
+    const reach = pool.map((point) => distance2(point.lab, pool[0]!.lab))
+    while (chosen.length < Math.min(count, pool.length)) {
+      let far = 0
+      for (let i = 1; i < pool.length; i++) if (reach[i]! > reach[far]!) far = i
+      if (reach[far]! <= MERGE_RADIUS ** 2) break
+      chosen.push(pool[far]!)
+      pool.forEach((point, i) => {
+        reach[i] = Math.min(reach[i]!, distance2(point.lab, pool[far]!.lab))
+      })
+    }
+    picked = chosen.map((point) => point.color)
+  }
+
+  // k-means may split one color in two when asked for more colors than the picture has.
+  picked = picked.filter((color, i) => picked.slice(0, i).every((other) => distance2(toOklab(color), toOklab(other)) > MERGE_RADIUS ** 2))
+  const labs = picked.map(toOklab)
+  const shares = new Array<number>(picked.length).fill(0)
+  for (const point of points) {
+    let best = 0
+    for (let c = 1; c < labs.length; c++) if (distance2(point.lab, labs[c]!) < distance2(point.lab, labs[best]!)) best = c
+    shares[best] = shares[best]! + point.weight
+  }
+  return picked
+    .map((color, i) => ({ color, share: shares[i]! / colors.length }))
+    .sort((x, y) => y.share - x.share)
+}

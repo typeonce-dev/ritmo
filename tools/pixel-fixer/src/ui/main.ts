@@ -2,15 +2,27 @@
  * The pixel fixer's page: one state object, a pipeline that recomputes the
  * fixed picture when anything changes, and panels that edit the state.
  */
+import {
+  applyEdits,
+  backgroundColors,
+  clearMasked,
+  defaultBackgroundOptions,
+  findBackground,
+  SPECK_SIZE,
+  type BackgroundOptions,
+  type Edit
+} from "../core/background.ts"
 import { metrics, parseHex, toHex, type Metric, type Rgb } from "../core/color.ts"
 import { demoImage } from "../core/demo.ts"
 import { toJson, toRgba, toSvg } from "../core/export.ts"
+import { cleanUp } from "../core/cleanup.ts"
+import { defaultLostThreshold, lostColors, type LostColor } from "../core/lost.ts"
 import {
-  cellColors,
   defaultSampleOptions,
+  medianColor,
   quantize,
-  removeStrays,
   sampleCells,
+  TRANSPARENT,
   usedColors,
   type CellSamples,
   type Dither,
@@ -28,9 +40,21 @@ import {
   type GridSpec,
   type RgbaImage
 } from "../core/grid.ts"
-import { extractPalette, parsePalette, presets, toGpl, toHexFile, type Palette } from "../core/palette.ts"
+import {
+  parsePalette,
+  presets,
+  proposeMethods,
+  proposePalette,
+  toGpl,
+  toHexFile,
+  type Palette,
+  type Proposal,
+  type ProposeMethod
+} from "../core/palette.ts"
+import { reduce, reduceModes, type ReduceMode } from "../core/reduce.ts"
 import { h, replace } from "./dom.ts"
 import { baseName, canvasOf, download, loadImage, pngOf } from "./files.ts"
+import { makeHistory } from "./history.ts"
 import { makeViewer, type ViewMode } from "./viewer.ts"
 
 interface Swatch {
@@ -51,11 +75,32 @@ interface State {
   /** The palette's name, or "original" to keep each cell's own color. */
   paletteName: string
   swatches: Array<Swatch>
-  extractCount: number
+  proposeMethod: ProposeMethod
+  /** How many colors to propose from the picture. */
+  proposeCount: number
+  /** How many colors the palette keeps (locked ones included) when the proposals are applied. */
+  keepCount: number
+  proposals: Array<Proposal>
   metric: Metric
   dither: Dither
   ditherStrength: number
-  cleanup: boolean
+  /** Specks up to `size` pixels (0: off) merge into their surroundings when doubtful enough for `strength` (0 to 1). */
+  cleanup: { size: number; strength: number; show: boolean }
+  /** Cells whose speck was brought back by hand, for the grid size they were made at. */
+  cleanKeep: { size: string; cells: Array<number> }
+  /** The fixed picture's width, smaller than the grid's to merge pixels; undefined keeps one pixel per cell. */
+  targetWidth: number | undefined
+  reduceMode: ReduceMode
+  removeBackground: boolean
+  background: BackgroundOptions
+  /** What pressing on the fixed picture does: pan, or erase or restore pixels. */
+  tool: "move" | "erase" | "restore" | "pick"
+  /** How far (OKLab) a cell's own color may be from the palette color it got before it counts as lost. */
+  lostThreshold: number
+  /** Whether erasing or restoring takes one pixel or its whole area of one color. */
+  brush: "pixel" | "area"
+  /** Strokes painted by hand, for the size they were made at: a new size drops them. */
+  edits: { size: string; strokes: Array<Array<Edit>> }
   mode: ViewMode
   showGrid: boolean
   exportScale: number
@@ -75,22 +120,84 @@ const state: State = {
   sample: defaultSampleOptions,
   paletteName: presets[2]!.name,
   swatches: presets[2]!.colors.map((color) => ({ color, locked: false })),
-  extractCount: 16,
+  proposeMethod: "dominant",
+  proposeCount: 24,
+  keepCount: 12,
+  proposals: [],
   metric: "oklab",
   dither: "none",
   ditherStrength: 0.5,
-  cleanup: false,
+  cleanup: { size: 0, strength: 0.5, show: true },
+  cleanKeep: { size: "", cells: [] },
+  targetWidth: undefined,
+  reduceMode: "outlines",
+  removeBackground: false,
+  background: defaultBackgroundOptions,
+  tool: "move",
+  lostThreshold: defaultLostThreshold,
+  brush: "pixel",
+  edits: { size: "", strokes: [] },
   mode: "compare",
   showGrid: true,
   exportScale: 8,
   message: ""
 }
 
+/** The settings undo and redo cover: everything but the picture itself and how it is viewed. */
+const undoable = [
+  "spec",
+  "linked",
+  "follow",
+  "moved",
+  "detection",
+  "detectionNote",
+  "sample",
+  "paletteName",
+  "swatches",
+  "proposeMethod",
+  "proposeCount",
+  "keepCount",
+  "proposals",
+  "metric",
+  "dither",
+  "ditherStrength",
+  "cleanup",
+  "cleanKeep",
+  "targetWidth",
+  "reduceMode",
+  "removeBackground",
+  "background",
+  "lostThreshold",
+  "edits"
+] as const satisfies ReadonlyArray<keyof State>
+
+const history = makeHistory(
+  () => JSON.stringify(undoable.map((key) => (key === "moved" ? [...state.moved] : state[key]) ?? null)),
+  (snapshot) => {
+    const values = JSON.parse(snapshot) as Array<unknown>
+    const target = state as unknown as Record<string, unknown>
+    undoable.forEach((key, i) => {
+      const value = values[i] ?? undefined
+      target[key] = key === "moved" ? new Map(value as Array<[string, number]>) : value
+    })
+    state.message = ""
+    update()
+  },
+  () => renderToolbar()
+)
+
 // The pipeline, cached step by step: a slider for dithering must not re-detect the grid.
 let baseGrid: { key: string; grid: Grid } | undefined
 let grid: Grid | undefined
 let samples: { grid: Grid; key: string; samples: CellSamples } | undefined
 let result: PixelArt | undefined
+/** The background colors found in the last result, for the Background panel. */
+let backgroundFound: Array<Rgb> = []
+/** The colors the palette lost in the last result, and the cells of the one pointed at. */
+let lost: Array<LostColor> = []
+let highlight: ReadonlyArray<number> = []
+/** The specks cleaned in the last result, each as its cells. */
+let specks: ReadonlyArray<ReadonlyArray<number>> = []
 
 const computeGrid = (): Grid | undefined => {
   const source = state.source
@@ -131,7 +238,41 @@ const recompute = (): void => {
     dither: state.dither,
     ditherStrength: state.ditherStrength
   })
-  if (state.cleanup) art = removeStrays(art)
+  lost = []
+  if (palette.length > 0) {
+    const skip = state.removeBackground ? findBackground(art, backgroundColors(art), state.background) : undefined
+    lost = lostColors(samples.samples, art, state.lostThreshold, skip)
+  }
+  specks = []
+  if (state.cleanup.size > 0) {
+    const gridKey = `${art.width}x${art.height}`
+    if (state.cleanKeep.size !== gridKey) state.cleanKeep = { size: gridKey, cells: [] }
+    const cleaned = cleanUp(art, samples.samples, {
+      size: state.cleanup.size,
+      strength: state.cleanup.strength,
+      metric: state.metric,
+      protect: palette.length === 0 ? [] : state.swatches.flatMap((swatch, i) => (swatch.locked ? [i] : [])),
+      keep: state.cleanKeep.cells
+    })
+    art = cleaned.art
+    specks = cleaned.specks
+  }
+  if (state.targetWidth !== undefined && state.targetWidth < art.width) {
+    art = reduce(art, state.targetWidth, Math.max(1, Math.round((art.height * state.targetWidth) / art.width)), state.reduceMode)
+  }
+  backgroundFound = []
+  const size = `${art.width}x${art.height}`
+  if (state.edits.size !== size) state.edits = { size, strokes: [] }
+  let mask: Uint8Array | undefined
+  if (state.removeBackground) {
+    const colors = backgroundColors(art)
+    backgroundFound = colors.map((index) => art.palette[index]!)
+    mask = findBackground(art, colors, state.background)
+  }
+  if (state.edits.strokes.length > 0) {
+    mask = applyEdits(art, mask ?? new Uint8Array(art.width * art.height), state.edits.strokes.flat())
+  }
+  if (mask !== undefined) art = clearMasked(art, mask)
   result = art
 }
 
@@ -146,6 +287,7 @@ let dragging = false
  */
 const update = (options: { readonly panels: boolean } = { panels: true }): void => {
   if (options.panels && !dragging) panelsStale = true
+  history.schedule()
   if (scheduled) return
   scheduled = true
   requestAnimationFrame(() => {
@@ -162,9 +304,13 @@ const update = (options: { readonly panels: boolean } = { panels: true }): void 
 const setSource = (image: RgbaImage, canvas: HTMLCanvasElement, name: string): void => {
   state.source = { image, canvas, name }
   state.moved.clear()
+  state.targetWidth = undefined
+  state.edits = { size: "", strokes: [] }
+  state.proposals = []
   baseGrid = undefined
   samples = undefined
   state.message = ""
+  history.reset()
   autoDetect()
 }
 
@@ -224,7 +370,22 @@ const viewer = makeViewer(canvas, {
     state.moved.set(`${axis}:${index}`, position)
     update()
   },
-  viewChanged: () => renderStatus()
+  viewChanged: () => renderStatus(),
+  pick: (x: number, y: number) => {
+    const cell = samples?.samples.cells[y * samples.samples.width + x]
+    if (cell !== undefined && cell.colors.length > 0) keepColor(medianColor(cell.colors))
+  },
+  paint: (x: number, y: number, start: boolean) => {
+    // Restoring over a cleaned speck brings the speck back, when the picture has one pixel per cell.
+    if (state.tool === "restore" && grid !== undefined && state.targetWidth === undefined) {
+      const cell = y * gridSize(grid).width + x
+      const speck = specks.find((cells) => cells.includes(cell))
+      if (speck !== undefined) state.cleanKeep.cells.push(...speck)
+    }
+    if (start) state.edits.strokes.push([])
+    state.edits.strokes[state.edits.strokes.length - 1]!.push({ x, y, erase: state.tool === "erase", area: state.brush === "area" })
+    update()
+  }
 })
 
 const status = h("div", { class: "status" })
@@ -472,7 +633,8 @@ const gridPanel = (): HTMLElement => {
       update()
     }),
     h("p", { class: "hint" }, "Drag a single line on the picture to fix it by hand. Moved lines turn yellow."),
-    size !== undefined && h("p", { class: "stat" }, `Output: ${size.width} × ${size.height} pixels`),
+    size !== undefined && h("p", { class: "stat" }, `One pixel per cell: ${size.width} × ${size.height} pixels`),
+    size !== undefined && sizeControls(size),
     h("h3", {}, "Reading cells"),
     slider(
       "Read the middle",
@@ -495,6 +657,55 @@ const gridPanel = (): HTMLElement => {
         update()
       }
     )
+  )
+}
+
+const sizeControls = (size: { readonly width: number; readonly height: number }): HTMLElement => {
+  const width = state.targetWidth ?? size.width
+  const setWidth = (value: number | undefined): void => {
+    state.targetWidth = value === undefined || value >= size.width ? undefined : Math.max(1, Math.round(value))
+    update()
+  }
+  const fraction = (label: string, divisor: number): HTMLElement =>
+    h(
+      "button",
+      {
+        class: width === Math.round(size.width / divisor) ? "toggle on" : "toggle",
+        on: { click: () => setWidth(divisor === 1 ? undefined : size.width / divisor) }
+      },
+      label
+    )
+  return h(
+    "div",
+    {},
+    h("h3", {}, "Size"),
+    h(
+      "div",
+      { class: "row" },
+      numberField("Width", width, (value) => setWidth(value), {
+        min: 1,
+        max: size.width,
+        step: 1,
+        title: "Fewer pixels than cells: each new pixel merges a block of them."
+      }),
+      fraction("Full", 1),
+      fraction("½", 2),
+      fraction("⅓", 3),
+      fraction("¼", 4)
+    ),
+    state.targetWidth !== undefined &&
+      select("Merge by", state.reduceMode, reduceModes, (mode) => {
+        state.reduceMode = mode
+        update()
+      }),
+    state.targetWidth !== undefined &&
+      h(
+        "p",
+        { class: "hint" },
+        state.reduceMode === "outlines"
+          ? "Each pixel takes its block's most common color, but a dark line through the block wins, so one-pixel outlines survive."
+          : "Each pixel takes its block's most common color."
+      )
   )
 }
 
@@ -588,13 +799,150 @@ const swatchEditor = (): HTMLElement => {
   )
 }
 
-const extract = (): void => {
-  if (samples === undefined) return
-  const locked = state.swatches.filter((swatch) => swatch.locked).map((swatch) => swatch.color)
-  const colors = extractPalette(cellColors(samples.samples), Math.max(1, state.extractCount), locked)
-  state.paletteName = "Extracted from the picture"
-  state.swatches = colors.map((color, index) => ({ color, locked: index < locked.length }))
+const PICKED = "Picked from the picture"
+
+/** Adds a color to the palette, locked so proposals and "Colors kept" never drop it; locks it if it is there already. */
+const keepColor = (color: Rgb): void => {
+  if (state.paletteName === ORIGINAL) {
+    state.message = "Choose a palette first: without one, every pixel already keeps its own color."
+    update()
+    return
+  }
+  const hex = toHex(color)
+  const index = state.swatches.findIndex((swatch) => toHex(swatch.color) === hex)
+  if (index >= 0) state.swatches[index] = { color, locked: true }
+  else state.swatches.push({ color, locked: true })
+  if (state.paletteName !== PICKED) state.paletteName = editedName()
+  state.message = `Kept ${hex} in the palette (locked).`
+  highlight = []
   update()
+}
+
+const lostPanel = (): HTMLElement | false => {
+  if (state.paletteName === ORIGINAL || result === undefined) return false
+  return panel(
+    "Lost colors",
+    lost.length === 0
+      ? h("p", { class: "hint" }, "None: every pixel is close to the palette color it got.")
+      : h(
+          "div",
+          { class: "lost" },
+          lost.map((entry) =>
+            h(
+              "div",
+              {
+                class: "lost-row",
+                on: {
+                  mouseenter: () => {
+                    highlight = entry.cells
+                    update({ panels: false })
+                  },
+                  mouseleave: () => {
+                    highlight = []
+                    update({ panels: false })
+                  }
+                }
+              },
+              h("span", { class: "chip mini", title: toHex(entry.color), attrs: { style: `background:${toHex(entry.color)}` } }),
+              h("span", { class: "hint" }, "→"),
+              h("span", { class: "chip mini", title: toHex(entry.became), attrs: { style: `background:${toHex(entry.became)}` } }),
+              h("span", { class: "lost-count" }, `${entry.cells.length} px`),
+              h("button", { title: `Add ${toHex(entry.color)} to the palette, locked`, on: { click: () => keepColor(entry.color) } }, "Keep")
+            )
+          )
+        ),
+    slider(
+      "Lost when off by",
+      Math.round(state.lostThreshold * 100),
+      { min: 4, max: 30, step: 1 },
+      (value) => String(value),
+      (value) => {
+        state.lostThreshold = value / 100
+        update()
+      },
+      "How far a pixel's own color may be from the color it got. Lower lists more."
+    ),
+    h(
+      "p",
+      { class: "hint" },
+      "Pixels whose own color is far from the palette color they got, grouped by color. Point at a row to see them; Keep adds the color, locked. To keep any other color, pick Pick above the picture and click it."
+    )
+  )
+}
+
+/** Proposes colors from the picture's cells, leaving out the background when it is removed, and keeps the top ones. */
+const propose = (): void => {
+  if (samples === undefined) return
+  const cells = quantize(samples.samples, { palette: [], metric: state.metric, dither: "none", ditherStrength: 0 })
+  const mask = state.removeBackground ? findBackground(cells, backgroundColors(cells), state.background) : undefined
+  const colors: Array<Rgb> = []
+  cells.indices.forEach((index, i) => {
+    if (index !== TRANSPARENT && mask?.[i] !== 1) colors.push(cells.palette[index]!)
+  })
+  state.proposals = proposePalette(colors, state.proposeCount, state.proposeMethod)
+  keepTop(state.keepCount)
+}
+
+/** The palette becomes the locked colors and the most used proposals, `count` colors in all. */
+const keepTop = (count: number): void => {
+  const locked = state.swatches.filter((swatch) => swatch.locked)
+  const lockedHex = new Set(locked.map((swatch) => toHex(swatch.color)))
+  const picks = state.proposals
+    .filter((proposal) => !lockedHex.has(toHex(proposal.color)))
+    .slice(0, Math.max(0, count - locked.length))
+    .map((proposal) => ({ color: proposal.color, locked: false }))
+  state.paletteName = PICKED
+  state.swatches = [...locked, ...picks]
+  update()
+}
+
+const toggleProposal = (color: Rgb): void => {
+  const hex = toHex(color)
+  const index = state.swatches.findIndex((swatch) => toHex(swatch.color) === hex)
+  if (index >= 0) state.swatches.splice(index, 1)
+  else state.swatches.push({ color, locked: false })
+  state.paletteName = PICKED
+  update()
+}
+
+const proposalPicker = (): HTMLElement | false => {
+  if (state.proposals.length === 0) return false
+  const inPalette = new Set(state.swatches.map((swatch) => toHex(swatch.color)))
+  return h(
+    "div",
+    {},
+    slider(
+      "Colors kept",
+      Math.min(state.keepCount, state.proposals.length),
+      { min: 1, max: state.proposals.length, step: 1 },
+      (value) => String(value),
+      (value) => {
+        state.keepCount = value
+        keepTop(value)
+      },
+      "Keeps the most used proposed colors (locked colors count toward it)."
+    ),
+    h(
+      "div",
+      { class: "swatches" },
+      state.proposals.map((proposal) => {
+        const hex = toHex(proposal.color)
+        const on = inPalette.has(hex)
+        return h(
+          "button",
+          {
+            class: `swatch proposal${on ? " on" : ""}`,
+            title: `${hex}: ${on ? "in the palette, click to remove" : "click to add"}`,
+            attrs: { "aria-pressed": on },
+            on: { click: () => toggleProposal(proposal.color) }
+          },
+          h("span", { class: "chip", attrs: { style: `background:${hex}` } }),
+          h("span", { class: "share" }, `${proposal.share >= 0.01 ? Math.round(proposal.share * 100) : "<1"}%`)
+        )
+      })
+    ),
+    h("p", { class: "hint" }, "Most used first, with the share of the picture each covers. Click a color to add or remove it.")
+  )
 }
 
 const importText = (text: string, name: string): void => {
@@ -668,16 +1016,29 @@ const palettePanel = (): HTMLElement => {
           swatchEditor()
         ),
     h("h3", {}, "From the picture"),
+    select("Propose by", state.proposeMethod, proposeMethods, (method) => {
+      state.proposeMethod = method
+      if (state.proposals.length > 0) propose()
+      else update()
+    }),
+    h("p", { class: "hint" }, proposeMethods.find((method) => method.id === state.proposeMethod)!.hint),
     h(
       "div",
       { class: "row" },
-      numberField("Colors", state.extractCount, (value) => {
-        state.extractCount = Math.min(256, Math.max(1, Math.round(value)))
-        update()
-      }, { min: 1, max: 256, step: 1 }),
-      h("button", { on: { click: extract }, attrs: { disabled: state.source === undefined } }, "Extract")
+      numberField(
+        "Propose",
+        state.proposeCount,
+        (value) => {
+          state.proposeCount = Math.min(64, Math.max(1, Math.round(value)))
+          if (state.proposals.length > 0) propose()
+          else update()
+        },
+        { min: 1, max: 64, step: 1, title: "How many colors to propose." }
+      ),
+      h("button", { on: { click: propose }, attrs: { disabled: state.source === undefined } }, "Propose colors")
     ),
-    h("p", { class: "hint" }, "Picks the colors that best cover the picture. Locked colors stay, and count toward the total."),
+    proposalPicker(),
+    h("p", { class: "hint" }, "Locked colors always stay in the palette."),
     h("h3", {}, "Import"),
     h(
       "div",
@@ -719,17 +1080,162 @@ const palettePanel = (): HTMLElement => {
         state.ditherStrength = value / 100
         update()
       }),
-    checkbox(
-      "Remove stray pixels",
-      state.cleanup,
-      (checked) => {
-        state.cleanup = checked
+    h("h3", {}, "Clean up specks"),
+    select(
+      "Specks up to",
+      String(state.cleanup.size),
+      [
+        { id: "0", label: "Off" },
+        { id: "1", label: "1 pixel" },
+        { id: "2", label: "2 pixels" },
+        { id: "3", label: "3 pixels" }
+      ],
+      (value) => {
+        state.cleanup = { ...state.cleanup, size: Number(value) }
         update()
-      },
-      "A lone pixel surrounded by one other color takes that color. Also removes deliberate one-pixel highlights."
-    )
+      }
+    ),
+    state.cleanup.size > 0 &&
+      h(
+        "div",
+        {},
+        slider(
+          "Strength",
+          Math.round(state.cleanup.strength * 100),
+          { min: 0, max: 100, step: 5 },
+          (value) => `${value}%`,
+          (value) => {
+            state.cleanup = { ...state.cleanup, strength: value / 100 }
+            update()
+          },
+          "Low merges only specks that were a coin flip, or nearly the color around them. High also merges specks drawn clearly in a different color."
+        ),
+        checkbox("Show cleaned pixels", state.cleanup.show, (checked) => {
+          state.cleanup = { ...state.cleanup, show: checked }
+          update()
+        }),
+        h(
+          "p",
+          { class: "stat" },
+          `${specks.length} speck${specks.length === 1 ? "" : "s"} cleaned (${specks.reduce((sum, cells) => sum + cells.length, 0)} pixels), outlined in yellow.`
+        ),
+        state.cleanKeep.cells.length > 0 &&
+          h(
+            "button",
+            {
+              on: {
+                click: () => {
+                  state.cleanKeep = { ...state.cleanKeep, cells: [] }
+                  update()
+                }
+              }
+            },
+            "Clean the brought-back specks again"
+          ),
+        h(
+          "p",
+          { class: "hint" },
+          "A speck is a group of one color this small (diagonal neighbours count, so thin outlines are never specks). It takes the color it touches most, unless it is clearly drawn and far from that color. Locked colors are never cleaned. Paint over a cleaned speck with Restore to bring it back."
+        )
+      )
   )
 }
+
+const backgroundPanel = (): HTMLElement =>
+  panel(
+    "Background",
+    checkbox(
+      "Remove the background",
+      state.removeBackground,
+      (checked) => {
+        state.removeBackground = checked
+        update()
+      },
+      "Makes the background transparent, including a fake checkerboard painted into the picture."
+    ),
+    state.removeBackground &&
+      h(
+        "div",
+        {},
+        backgroundFound.length === 0
+          ? h("p", { class: "hint" }, "No background color found on the border.")
+          : h(
+              "div",
+              { class: "row" },
+              h("span", { class: "hint" }, "Found on the border:"),
+              backgroundFound.map((color) =>
+                h("span", { class: "chip mini", title: toHex(color), attrs: { style: `background:${toHex(color)}` } })
+              )
+            ),
+        slider(
+          "Tolerance",
+          Math.round(state.background.tolerance * 100),
+          { min: 0, max: 30, step: 1 },
+          (value) => String(value),
+          (value) => {
+            state.background = { ...state.background, tolerance: value / 100 }
+            update()
+          },
+          "How close a color must be to a background color to count as background."
+        ),
+        checkbox(
+          "Also enclosed areas",
+          state.background.enclosed,
+          (checked) => {
+            state.background = { ...state.background, enclosed: checked }
+            update()
+          },
+          "Removes background-colored areas the border cannot reach, like a gap between arm and body. Also removes highlights of the same color."
+        ),
+        checkbox(
+          "Remove specks",
+          state.background.specks,
+          (checked) => {
+            state.background = { ...state.background, specks: checked }
+            update()
+          },
+          `Also removes groups of up to ${SPECK_SIZE} pixels left alone in the background.`
+        )
+      ),
+    h(
+      "p",
+      { class: "hint" },
+      "To erase or bring back pixels by hand, pick Erase or Restore above the picture, then paint on the fixed picture: one pixel at a time, or a whole area of one color."
+    ),
+    state.edits.strokes.length > 0 &&
+      h(
+        "div",
+        { class: "row" },
+        h(
+          "button",
+          {
+            on: {
+              click: () => {
+                state.edits.strokes = []
+                update()
+              }
+            }
+          },
+          `Clear ${state.edits.strokes.length} stroke${state.edits.strokes.length === 1 ? "" : "s"}`
+        )
+      )
+  )
+
+// Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z or Ctrl+Y redoes; text fields keep their own undo.
+window.addEventListener("keydown", (event) => {
+  const target = event.target
+  if (target instanceof HTMLInputElement && target.type !== "range" && target.type !== "checkbox") return
+  if (target instanceof HTMLTextAreaElement) return
+  if (!(event.metaKey || event.ctrlKey)) return
+  const key = event.key.toLowerCase()
+  if (key === "z" && !event.shiftKey) {
+    event.preventDefault()
+    history.undo()
+  } else if ((key === "z" && event.shiftKey) || key === "y") {
+    event.preventDefault()
+    history.redo()
+  }
+})
 
 const preview = h("canvas", { class: "preview" })
 
@@ -815,6 +1321,42 @@ const exportPanel = (): HTMLElement => {
   )
 }
 
+const tool = (id: State["tool"], label: string, title: string): HTMLElement =>
+  h(
+    "button",
+    {
+      class: state.tool === id ? "tab on" : "tab",
+      title,
+      attrs: { "aria-pressed": state.tool === id },
+      on: {
+        click: () => {
+          state.tool = id
+          // Painting happens on the fixed picture.
+          if ((id === "erase" || id === "restore") && state.mode === "source") state.mode = "result"
+          update()
+        }
+      }
+    },
+    label
+  )
+
+const brush = (id: State["brush"], label: string, title: string): HTMLElement =>
+  h(
+    "button",
+    {
+      class: state.brush === id ? "tab on" : "tab",
+      title,
+      attrs: { "aria-pressed": state.brush === id },
+      on: {
+        click: () => {
+          state.brush = id
+          update()
+        }
+      }
+    },
+    label
+  )
+
 const renderToolbar = (): void => {
   const mode = (id: ViewMode, label: string): HTMLElement =>
     h(
@@ -834,6 +1376,28 @@ const renderToolbar = (): void => {
   replace(
     toolbar,
     h("div", { class: "tabs" }, mode("source", "Source"), mode("compare", "Compare"), mode("result", "Fixed")),
+    h(
+      "div",
+      { class: "row" },
+      h("div", { class: "tabs" }, tool("move", "Move", "Drag to pan"), tool("erase", "Erase", "Paint to make pixels transparent"), tool("restore", "Restore", "Paint to bring erased pixels back"), tool("pick", "Pick", "Click a pixel to keep its color in the palette")),
+      (state.tool === "erase" || state.tool === "restore") &&
+        h(
+          "div",
+          { class: "tabs" },
+          brush("pixel", "Pixel", "One pixel at a time"),
+          brush("area", "Area", "The whole connected area of one color")
+        ),
+      h(
+        "div",
+        { class: "tabs" },
+        h("button", { class: "tab", title: "Undo (Ctrl/Cmd+Z)", attrs: { disabled: !history.canUndo() }, on: { click: () => history.undo() } }, "↶ Undo"),
+        h(
+          "button",
+          { class: "tab", title: "Redo (Ctrl/Cmd+Shift+Z)", attrs: { disabled: !history.canRedo() }, on: { click: () => history.redo() } },
+          "Redo ↷"
+        )
+      )
+    ),
     h(
       "div",
       { class: "row" },
@@ -873,6 +1437,8 @@ const render = (rebuildPanels: boolean): void => {
       state.message !== "" && h("p", { class: "message" }, state.message),
       gridPanel(),
       palettePanel(),
+      lostPanel(),
+      backgroundPanel(),
       exportPanel()
     )
     panels.scrollTop = scroll
@@ -885,7 +1451,11 @@ const render = (rebuildPanels: boolean): void => {
     result,
     mode: state.mode,
     showGrid: state.showGrid,
-    moved: new Set(state.moved.keys())
+    moved: new Set(state.moved.keys()),
+    painting: (state.tool === "erase" || state.tool === "restore") && result !== undefined,
+    picking: state.tool === "pick",
+    highlight,
+    marked: state.cleanup.size > 0 && state.cleanup.show ? specks.flat() : []
   })
 }
 

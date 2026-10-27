@@ -6,7 +6,7 @@
  * neighbours' colors when the picture is blurred). With a palette, every
  * pixel read votes for its nearest palette color and the most votes win, so
  * no in-between color is ever made up. Without one, the cell keeps the
- * median of its colors.
+ * median of its colors. Specks left over are cleaned up in `cleanup.ts`.
  */
 import { channel, makeMatcher, pack, unpack, type Metric, type Rgb } from "./color.ts"
 import { gridSize, type Grid, type RgbaImage } from "./grid.ts"
@@ -158,38 +158,6 @@ export const quantize = (samples: CellSamples, options: QuantizeOptions): PixelA
     indices[i] = best
   })
   return { width, height, palette: options.palette, indices }
-}
-
-/**
- * Replaces stray single pixels: a pixel none of whose four neighbours shares
- * its color, while at least five of its eight neighbours share another one,
- * takes that color. It removes AI speckle, and also deliberate one-pixel
- * highlights, so it is optional.
- */
-export const removeStrays = (art: PixelArt): PixelArt => {
-  const { width, height, indices } = art
-  const out = new Int32Array(indices)
-  const get = (x: number, y: number): number | undefined =>
-    x < 0 || y < 0 || x >= width || y >= height ? undefined : indices[y * width + x]
-  const counts = new Map<number, number>()
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const self = indices[y * width + x]!
-      if (get(x - 1, y) === self || get(x + 1, y) === self || get(x, y - 1) === self || get(x, y + 1) === self) continue
-      counts.clear()
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue
-          const value = get(x + dx, y + dy)
-          if (value !== undefined) counts.set(value, (counts.get(value) ?? 0) + 1)
-        }
-      }
-      for (const [value, count] of counts) {
-        if (count >= 5) out[y * width + x] = value
-      }
-    }
-  }
-  return { ...art, indices: out }
 }
 
 /** The palette colors the picture uses, in palette order, with how many pixels use each. */

@@ -457,3 +457,60 @@ button.primary {
     padding: 6px 8px;
   }
 }
+
+.proposal {
+  flex-direction: column;
+  align-items: stretch;
+  cursor: pointer;
+  opacity: 0.5;
+}
+
+.proposal .chip {
+  flex: none;
+}
+
+.proposal.on {
+  opacity: 1;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.share {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.chip.mini {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+.toggle.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.lost {
+  display: grid;
+  gap: 4px;
+}
+
+.lost-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 6px;
+}
+
+.lost-row:hover {
+  background: var(--surface-2);
+}
+
+.lost-count {
+  flex: 1;
+  font-size: 12px;
+}

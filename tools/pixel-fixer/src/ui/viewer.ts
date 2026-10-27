@@ -16,12 +16,24 @@ export interface Scene {
   readonly showGrid: boolean
   /** Lines moved by hand, drawn in another color: "x:3", "y:0". */
   readonly moved: ReadonlySet<string>
+  /** Whether pressing on the fixed picture paints (erases or restores) instead of panning. */
+  readonly painting: boolean
+  /** Whether pressing on the picture (source or fixed) picks the grid cell under it. */
+  readonly picking: boolean
+  /** Grid cells (row by row) to point out, drawn over everything. */
+  readonly highlight: ReadonlyArray<number>
+  /** Grid cells (row by row) to mark with an outline only, so their color stays visible. */
+  readonly marked: ReadonlyArray<number>
 }
 
 export interface ViewerEvents {
   /** A grid line is being dragged to a new position, in source pixels. */
   readonly moveLine: (axis: Axis, index: number, position: number) => void
   readonly viewChanged: () => void
+  /** A pixel of the fixed picture painted over, in its own pixels; `start` is true for the first of a stroke. */
+  readonly paint: (x: number, y: number, start: boolean) => void
+  /** A press on the picture while picking: the grid cell under it. */
+  readonly pick: (x: number, y: number) => void
 }
 
 export interface Viewer {
@@ -32,11 +44,13 @@ export interface Viewer {
 }
 
 interface Drag {
-  readonly kind: "pan" | "line" | "divider"
+  readonly kind: "pan" | "line" | "divider" | "paint"
   readonly axis?: Axis
   readonly index?: number
   lastX: number
   lastY: number
+  /** The last pixel painted, while painting. */
+  pixel?: { x: number; y: number }
 }
 
 const GRID_COLOR = "rgba(255, 64, 160, 0.85)"
@@ -45,7 +59,7 @@ const HOVER_COLOR = "rgba(0, 220, 255, 1)"
 
 export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Viewer => {
   const context = canvas.getContext("2d")!
-  let scene: Scene = { source: undefined, grid: undefined, result: undefined, mode: "source", showGrid: true, moved: new Set() }
+  let scene: Scene = { source: undefined, grid: undefined, result: undefined, mode: "source", showGrid: true, moved: new Set(), painting: false, picking: false, highlight: [], marked: [] }
   let zoom = 1
   let panX = 0
   let panY = 0
@@ -112,11 +126,28 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
     context.drawImage(scene.source, panX, panY, scene.source.width * zoom, scene.source.height * zoom)
   }
 
-  const drawResult = (): void => {
+  /**
+   * Where the fixed picture's pixels are, in source pixels: the grid's cells,
+   * or, for a picture made smaller, even steps across the grid's extent.
+   */
+  const resultCuts = (): { xs: ReadonlyArray<number>; ys: ReadonlyArray<number> } | undefined => {
     const { result, grid } = scene
-    if (result === undefined || grid === undefined) return
-    const xs = grid.xs.map((value) => Math.round(toScreen(value, "x")))
-    const ys = grid.ys.map((value) => Math.round(toScreen(value, "y")))
+    if (result === undefined || grid === undefined) return undefined
+    const even = (cuts: ReadonlyArray<number>, count: number): ReadonlyArray<number> => {
+      if (cuts.length === count + 1) return cuts
+      const from = cuts[0]!
+      const step = (cuts[cuts.length - 1]! - from) / count
+      return Array.from({ length: count + 1 }, (_, i) => from + i * step)
+    }
+    return { xs: even(grid.xs, result.width), ys: even(grid.ys, result.height) }
+  }
+
+  const drawResult = (): void => {
+    const { result } = scene
+    const cuts = resultCuts()
+    if (result === undefined || cuts === undefined) return
+    const xs = cuts.xs.map((value) => Math.round(toScreen(value, "x")))
+    const ys = cuts.ys.map((value) => Math.round(toScreen(value, "y")))
     const view = size()
     for (let y = 0; y < result.height; y++) {
       const top = ys[y]!
@@ -176,6 +207,32 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
     grid.ys.forEach((value, index) => line("y", index, value))
   }
 
+  const drawCells = (cells: ReadonlyArray<number>, fill: string | undefined, stroke: string): void => {
+    const { grid } = scene
+    if (grid === undefined || cells.length === 0) return
+    const columns = grid.xs.length - 1
+    context.strokeStyle = stroke
+    context.lineWidth = 2
+    for (const cell of cells) {
+      const x = cell % columns
+      const y = (cell - x) / columns
+      const left = toScreen(grid.xs[x]!, "x")
+      const top = toScreen(grid.ys[y]!, "y")
+      const width = toScreen(grid.xs[x + 1]!, "x") - left
+      const height = toScreen(grid.ys[y + 1]!, "y") - top
+      if (fill !== undefined) {
+        context.fillStyle = fill
+        context.fillRect(left, top, width, height)
+      }
+      context.strokeRect(left + 1, top + 1, width - 2, height - 2)
+    }
+  }
+
+  const drawHighlight = (): void => {
+    drawCells(scene.marked, undefined, MOVED_COLOR)
+    drawCells(scene.highlight, "rgba(0, 220, 255, 0.35)", HOVER_COLOR)
+  }
+
   const draw = (): void => {
     const ratio = window.devicePixelRatio || 1
     const view = size()
@@ -215,6 +272,7 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
       context.restore()
     }
     if (scene.mode !== "result") drawGrid()
+    drawHighlight()
     if (scene.mode === "compare") {
       const split = Math.round(view.width * divider) + 0.5
       context.strokeStyle = hover === "divider" ? HOVER_COLOR : "#ffffff"
@@ -280,7 +338,7 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
 
   const setCursor = (): void => {
     canvas.style.cursor =
-      hover === "divider" ? "ew-resize" : hover !== undefined ? (hover.axis === "x" ? "col-resize" : "row-resize") : drag?.kind === "pan" ? "grabbing" : "grab"
+      hover === "divider" ? "ew-resize" : hover !== undefined ? (hover.axis === "x" ? "col-resize" : "row-resize") : drag?.kind === "pan" ? "grabbing" : scene.painting || scene.picking ? "crosshair" : "grab"
   }
 
   canvas.addEventListener("pointerdown", (event) => {
@@ -293,9 +351,25 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
       drag = undefined
       return
     }
+    if (scene.picking && pointers.size === 1 && !(scene.mode === "compare" && Math.abs(at.x - size().width * divider) <= 12)) {
+      const cell = cellAt(at.x, at.y)
+      if (cell !== undefined) {
+        events.pick(cell.x, cell.y)
+        return
+      }
+    }
+    if (scene.painting && pointers.size === 1) {
+      const pixel = pixelAt(at.x, at.y)
+      const onDivider = scene.mode === "compare" && Math.abs(at.x - size().width * divider) <= 12
+      if (pixel !== undefined && !onDivider) {
+        drag = { kind: "paint", lastX: at.x, lastY: at.y, pixel }
+        events.paint(pixel.x, pixel.y, true)
+        return
+      }
+    }
     const hit = event.pointerType === "touch" ? hitTestTouch(at.x, at.y) : hitTest(at.x, at.y)
     if (hit === "divider") drag = { kind: "divider", lastX: at.x, lastY: at.y }
-    else if (hit !== undefined) drag = { kind: "line", axis: hit.axis, index: hit.index, lastX: at.x, lastY: at.y }
+    else if (hit !== undefined && !scene.painting) drag = { kind: "line", axis: hit.axis, index: hit.index, lastX: at.x, lastY: at.y }
     else drag = { kind: "pan", lastX: at.x, lastY: at.y }
     hover = hit
     setCursor()
@@ -322,14 +396,25 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
       return
     }
     if (drag === undefined) {
-      const next = hitTest(at.x, at.y)
+      const next = scene.painting || scene.picking ? (scene.mode === "compare" && Math.abs(at.x - size().width * divider) <= 12 ? "divider" : undefined) : hitTest(at.x, at.y)
       const changed = JSON.stringify(next) !== JSON.stringify(hover)
       hover = next
       setCursor()
       if (changed) draw()
       return
     }
-    if (drag.kind === "pan") {
+    if (drag.kind === "paint") {
+      const pixel = pixelAt(at.x, at.y)
+      const last = drag.pixel
+      if (pixel !== undefined && last !== undefined && (pixel.x !== last.x || pixel.y !== last.y)) {
+        // Every pixel on the way, so a fast stroke leaves no gaps.
+        const steps = Math.max(Math.abs(pixel.x - last.x), Math.abs(pixel.y - last.y))
+        for (let k = 1; k <= steps; k++) {
+          events.paint(Math.round(last.x + ((pixel.x - last.x) * k) / steps), Math.round(last.y + ((pixel.y - last.y) * k) / steps), false)
+        }
+      }
+      if (pixel !== undefined) drag.pixel = pixel
+    } else if (drag.kind === "pan") {
       panX += at.x - drag.lastX
       panY += at.y - drag.lastY
       draw()
@@ -343,6 +428,30 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
     drag.lastX = at.x
     drag.lastY = at.y
   })
+
+  const find = (values: ReadonlyArray<number>, at: number): number => {
+    for (let i = 0; i < values.length - 1; i++) if (at >= values[i]! && at < values[i + 1]!) return i
+    return -1
+  }
+
+  /** The grid cell under a point, wherever on the picture. */
+  const cellAt = (x: number, y: number): { x: number; y: number } | undefined => {
+    const { grid } = scene
+    if (grid === undefined) return undefined
+    const cx = find(grid.xs, (x - panX) / zoom)
+    const cy = find(grid.ys, (y - panY) / zoom)
+    return cx < 0 || cy < 0 ? undefined : { x: cx, y: cy }
+  }
+
+  /** The fixed picture's pixel under a point, where the fixed picture is shown. */
+  const pixelAt = (x: number, y: number): { x: number; y: number } | undefined => {
+    if (scene.mode === "source" || (scene.mode === "compare" && x < size().width * divider)) return undefined
+    const cuts = resultCuts()
+    if (cuts === undefined) return undefined
+    const px = find(cuts.xs, (x - panX) / zoom)
+    const py = find(cuts.ys, (y - panY) / zoom)
+    return px < 0 || py < 0 ? undefined : { x: px, y: py }
+  }
 
   const release = (event: PointerEvent): void => {
     pointers.delete(event.pointerId)

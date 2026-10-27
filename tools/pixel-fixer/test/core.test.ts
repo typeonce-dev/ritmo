@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import { ciede2000, fromOklab, makeMatcher, parseHex, toCielab, toHex, toOklab } from "../src/core/color.ts"
 import { demoImage, demoSprite } from "../src/core/demo.ts"
 import { toJson, toRects, toRgba, toSvg } from "../src/core/export.ts"
-import { cellColors, defaultSampleOptions, quantize, removeStrays, sampleCells, TRANSPARENT, type PixelArt } from "../src/core/fix.ts"
+import { cellColors, defaultSampleOptions, quantize, sampleCells, TRANSPARENT, type PixelArt } from "../src/core/fix.ts"
 import { detectGrid, edgeProfiles, refineCuts, refineGrid, uniformCuts, uniformGrid } from "../src/core/grid.ts"
 import { extractPalette, parsePalette, presets, toGpl, toHexFile } from "../src/core/palette.ts"
 import { boundaries, makeSprite, pad, upscale, type Upscale } from "./synthetic.ts"
@@ -182,22 +182,6 @@ describe("fixing", () => {
     const dithered = quantize(gray, { palette, metric: "oklab", dither: "ordered", ditherStrength: 1 })
     expect(new Set(flat.indices).size).toBe(1)
     expect(new Set(dithered.indices).size).toBe(2)
-  })
-
-  it("removes stray single pixels but keeps lines", () => {
-    const art: PixelArt = {
-      width: 5,
-      height: 5,
-      palette: [
-        { r: 0, g: 0, b: 0 },
-        { r: 255, g: 255, b: 255 }
-      ],
-      // A lone white dot in the middle, a white line along the bottom.
-      indices: Int32Array.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
-    }
-    const cleaned = removeStrays(art)
-    expect(cleaned.indices[12]).toBe(0)
-    expect(Array.from(cleaned.indices.subarray(20))).toEqual([1, 1, 1, 1, 1])
   })
 })
 
