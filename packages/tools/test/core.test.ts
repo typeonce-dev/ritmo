@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest"
 
-import { ciede2000, fromOklab, makeMatcher, parseHex, toCielab, toHex, toOklab } from "../src/core/color.ts"
-import { demoImage, demoSprite } from "../src/core/demo.ts"
-import { toJson, toRects, toRgba, toSvg } from "../src/core/export.ts"
-import { cellColors, defaultSampleOptions, quantize, sampleCells, TRANSPARENT, type PixelArt } from "../src/core/fix.ts"
-import { detectGrid, edgeProfiles, refineCuts, refineGrid, uniformCuts, uniformGrid } from "../src/core/grid.ts"
-import { extractPalette, parsePalette, presets, toGpl, toHexFile } from "../src/core/palette.ts"
+import { ciede2000, fromOklab, makeMatcher, parseHex, toCielab, toHex, toOklab } from "@typeonce/ritmo-tools/pixel/core/color.ts"
+import { demoImage, demoSprite } from "@typeonce/ritmo-tools/pixel/core/demo.ts"
+import { toJson, toRects, toRgba, toSvg } from "@typeonce/ritmo-tools/pixel/core/export.ts"
+import { cellColors, defaultSampleOptions, quantize, sampleCells, TRANSPARENT, type PixelArt } from "@typeonce/ritmo-tools/pixel/core/fix.ts"
+import { detectGrid, edgeProfiles, refineCuts, refineGrid, uniformCuts, uniformGrid } from "@typeonce/ritmo-tools/pixel/core/grid.ts"
+import { extractPalette, parsePalette, presets, toGpl, toHexFile } from "@typeonce/ritmo-tools/pixel/core/palette.ts"
 import { boundaries, makeSprite, pad, upscale, type Upscale } from "./synthetic.ts"
 
 const sweetie = presets.find((palette) => palette.name === "Sweetie 16")!.colors

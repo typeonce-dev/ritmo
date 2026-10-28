@@ -63,7 +63,7 @@ export const loadPalette = Effect.fn("loadPalette")(function* (value: string | R
     return { name: palette.name, colors: palette.colors, locked: [] }
   }
   if (/#?[0-9a-f]{3,6}/i.test(value) && !/[\\/]/.test(value)) return fromHex(value.replace(/,/g, " "), "Custom")
-  return yield* new CliFailure({ message: `"${value}" is not a preset palette (see \`pixel palettes\`), a palette file, or hex colors` })
+  return yield* new CliFailure({ message: `"${value}" is not a preset palette (see \`ritmo-tools pixel palettes\`), a palette file, or hex colors` })
 })
 
 const fromHex = (text: string, name: string): RecipePalette => {
@@ -124,7 +124,7 @@ export const decodeOrFail = (text: string, where: string): Effect.Effect<Recipe,
   return decoded.ok ? Effect.succeed(decoded.value) : Effect.fail(new CliFailure({ message: `${where}: ${decoded.error}` }))
 }
 
-/** A starting config for `pixel init`. */
+/** A starting config for `ritmo-tools pixel init`. */
 export const starterConfig = (palette: string): string =>
   JSON.stringify(
     {

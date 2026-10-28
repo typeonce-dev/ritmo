@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { evaluate } from "../src/core/math.ts"
+import { evaluate } from "@typeonce/ritmo-tools/pixel/core/math.ts"
 
 describe("math in number fields", () => {
   it("reads plain numbers", () => {

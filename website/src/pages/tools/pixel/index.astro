@@ -1,5 +1,5 @@
 ---
-// The pixel fixer (tools/pixel-fixer): a tool page that owns the whole
+// The pixel fixer (packages/tools, `@typeonce/ritmo-tools`): a tool page that owns the whole
 // window, so it skips the guide's layout. Its page code and styles come from
 // the tool's own package; the site only gives it a head and a place to mount.
 import Meta from "../../../components/Meta.astro"
@@ -24,8 +24,8 @@ import Meta from "../../../components/Meta.astro"
   <body data-pagefind-ignore="all">
     <div id="app"></div>
     <script>
-      import "@typeonce/pixel-fixer/page.css"
-      import "@typeonce/pixel-fixer/page"
+      import "@typeonce/ritmo-tools/pixel/page.css"
+      import "@typeonce/ritmo-tools/pixel/page"
     </script>
   </body>
 </html>

@@ -5,7 +5,7 @@
  *
  * - 0: clean (or fixed with confidence)
  * - 2: a usage problem, a missing file, a broken sprite source
- * - 3: fixable: rules are broken, `pixel fix` (or editing the source) fixes them
+ * - 3: fixable: rules are broken, `ritmo-tools pixel fix` (or editing the source) fixes them
  * - 4: needs a person: the grid is unsure; look at the preview, or open the recipe in the page
  */
 import { Data, Effect, Option, Path, Runtime } from "effect"
@@ -46,7 +46,7 @@ const config = Flag.String("config").pipe(Flag.withDescription(`The project conf
 const recipeFlag = Flag.String("recipe").pipe(Flag.withDescription("A recipe file (saved by the web page or a previous fix) to start from."), Flag.optional)
 const palette = Flag.String("palette").pipe(
   Flag.withAlias("p"),
-  Flag.withDescription('The palette: a preset (see `pixel palettes`), a .hex or .gpl file, or hex colors like "#000,#fff".'),
+  Flag.withDescription('The palette: a preset (see `ritmo-tools pixel palettes`), a .hex or .gpl file, or hex colors like "#000,#fff".'),
   Flag.optional
 )
 const colors = Flag.Int("colors").pipe(Flag.withDescription("Without a palette, propose one of this many colors from the picture itself."), Flag.optional)
@@ -292,7 +292,7 @@ const previewCommand = Command.make(
     const base = yield* outputBase(flags.input, Option.getOrUndefined(flags.out), "preview")
     const picture =
       source.kind === "art" ? previewArt(source.art, fitScale(source.art)) : preview(source.image, fixImage(source.image, recipe, rulesOf(project, recipe), Option.none(), "dominant"))
-    if (picture === undefined) return yield* new CliFailure({ message: "no grid found to preview: give one with `pixel fix --cell`" })
+    if (picture === undefined) return yield* new CliFailure({ message: "no grid found to preview: give one with `ritmo-tools pixel fix --cell`" })
     yield* printJson({ file: flags.input, preview: yield* writePng(`${base}.png`, picture) })
   })
 ).pipe(Command.withDescription("Writes a picture to look at: the art enlarged, or the source with its grid beside the fix."))

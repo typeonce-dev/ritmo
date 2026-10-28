@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { makeHistory } from "../src/ui/history.ts"
+import { makeHistory } from "@typeonce/ritmo-tools/pixel/ui/history.ts"
 
 describe("history", () => {
   beforeEach(() => vi.useFakeTimers())

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest"
 
-import { cleanUp, type CleanupOptions } from "../src/core/cleanup.ts"
-import { pack, type Rgb } from "../src/core/color.ts"
-import type { CellSamples, PixelArt } from "../src/core/fix.ts"
+import { cleanUp, type CleanupOptions } from "@typeonce/ritmo-tools/pixel/core/cleanup.ts"
+import { pack, type Rgb } from "@typeonce/ritmo-tools/pixel/core/color.ts"
+import type { CellSamples, PixelArt } from "@typeonce/ritmo-tools/pixel/core/fix.ts"
 
 const colors: Record<string, Rgb> = {
   C: { r: 252, g: 240, b: 232 },

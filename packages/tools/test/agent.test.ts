@@ -5,16 +5,16 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 
-import { demoImage, demoSprite } from "../src/core/demo.ts"
-import { toJson, toRgba } from "../src/core/export.ts"
-import { TRANSPARENT } from "../src/core/fix.ts"
-import { lintArt } from "../src/core/lint.ts"
-import { presets } from "../src/core/palette.ts"
-import { runRecipe } from "../src/core/pipeline.ts"
-import { decodeRecipe, defaultRecipe, encodeRecipe, presetPalette, type Recipe } from "../src/core/recipe.ts"
-import { checkImage, compareReports, reportOfArt } from "../src/core/report.ts"
-import { artOfImage, formatSprite, parseJsonMap, parseSprite } from "../src/core/sprite.ts"
-import { encodePng } from "../src/cli/png.ts"
+import { demoImage, demoSprite } from "@typeonce/ritmo-tools/pixel/core/demo.ts"
+import { toJson, toRgba } from "@typeonce/ritmo-tools/pixel/core/export.ts"
+import { TRANSPARENT } from "@typeonce/ritmo-tools/pixel/core/fix.ts"
+import { lintArt } from "@typeonce/ritmo-tools/pixel/core/lint.ts"
+import { presets } from "@typeonce/ritmo-tools/pixel/core/palette.ts"
+import { runRecipe } from "@typeonce/ritmo-tools/pixel/core/pipeline.ts"
+import { decodeRecipe, defaultRecipe, encodeRecipe, presetPalette, type Recipe } from "@typeonce/ritmo-tools/pixel/core/recipe.ts"
+import { checkImage, compareReports, reportOfArt } from "@typeonce/ritmo-tools/pixel/core/report.ts"
+import { artOfImage, formatSprite, parseJsonMap, parseSprite } from "@typeonce/ritmo-tools/pixel/core/sprite.ts"
+import { encodePng } from "@typeonce/ritmo-tools/pixel/cli/png.ts"
 import { makeSprite, upscale } from "./synthetic.ts"
 
 const sweetie = presetPalette("sweetie-16")!
@@ -188,10 +188,10 @@ describe("pixelate", () => {
 })
 
 describe("the pixel CLI", () => {
-  const bin = fileURLToPath(new URL("../bin/pixel.mjs", import.meta.url))
+  const bin = fileURLToPath(new URL("../bin/ritmo-tools.mjs", import.meta.url))
   const dir = mkdtempSync(join(tmpdir(), "pixel-"))
   const run = (...args: Array<string>) => {
-    const result = spawnSync(process.execPath, [bin, ...args], { cwd: dir, encoding: "utf8" })
+    const result = spawnSync(process.execPath, [bin, "pixel", ...args], { cwd: dir, encoding: "utf8" })
     return { code: result.status, json: result.stdout.trim().startsWith("{") ? JSON.parse(result.stdout) : undefined, stderr: result.stderr }
   }
   writeFileSync(join(dir, "demo.png"), encodePng(demoImage()))

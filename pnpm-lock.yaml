@@ -226,7 +226,7 @@ importers:
         specifier: workspace:^
         version: link:../core
 
-  tools/pixel-fixer:
+  packages/tools:
     dependencies:
       '@effect/platform-node':
         specifier: 4.0.6
@@ -250,9 +250,6 @@ importers:
 
   website:
     dependencies:
-      '@typeonce/pixel-fixer':
-        specifier: workspace:*
-        version: link:../tools/pixel-fixer
       '@typeonce/ritmo':
         specifier: workspace:*
         version: link:../packages/core
@@ -274,6 +271,9 @@ importers:
       '@typeonce/ritmo-render':
         specifier: workspace:*
         version: link:../packages/render
+      '@typeonce/ritmo-tools':
+        specifier: workspace:*
+        version: link:../packages/tools
       effect:
         specifier: 4.0.2
         version: 4.0.2

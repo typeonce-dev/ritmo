@@ -1633,9 +1633,9 @@ const aboutPanel = (): HTMLElement =>
       "A free tool from ",
       h("a", { attrs: { href: RITMO_URL, target: "_blank", rel: "noopener" } }, "Ritmo"),
       ", the agent-first type safe ECS runtime. Agents run the same fixes from the command line: ",
-      h("code", {}, "pixel check"),
+      h("code", {}, "ritmo-tools pixel check"),
       ", ",
-      h("code", {}, "pixel fix"),
+      h("code", {}, "ritmo-tools pixel fix"),
       ". A recipe saved here runs there, and back."
     )
   )

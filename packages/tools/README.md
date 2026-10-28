@@ -1,4 +1,25 @@
-# Pixel fixer
+# @typeonce/ritmo-tools
+
+Asset tools for games made with [Ritmo](https://github.com/typeonce-dev/ritmo/blob/main/packages/core/README.md),
+run by agents from the command line. One command, `ritmo-tools`, with one
+tool per kind of asset:
+
+| Tool | For |
+| --- | --- |
+| `ritmo-tools pixel` | Pixel art: fixes AI-made or blurry pictures and animation sheets onto a true pixel grid and a palette, renders sprites drawn as text, and checks a project's art against its rules. |
+
+```sh
+npx @typeonce/ritmo-tools pixel check art.png
+pnpm add -D @typeonce/ritmo-tools   # pins it to the game's Ritmo version
+```
+
+Every command prints JSON on stdout and exits with a code that says what
+to do next. A game's agent learns them from the skills that ship with
+`@typeonce/ritmo` (`skills/ritmo-pixel-art`), linked by its `SETUP.md`.
+The tools are built on Effect; nothing a game imports depends on this
+package.
+
+## Pixel fixer (`ritmo-tools pixel`)
 
 Turns blurry or AI-made pixel art into true pixel art. Image generators draw
 "pixel art" as a large picture whose fake pixels are uneven, blurred, and
@@ -11,15 +32,14 @@ sheet with its JSON, a GIF, and each frame.
 
 It comes in two parts that share one core: a web page for people tuning art
 by hand (it runs entirely in the browser; pictures never leave the device),
-and the `pixel` CLI for agents that check, fix, and make art on their own.
+and the `ritmo-tools pixel` command for agents that check, fix, and make art on their own.
 A recipe saved by one runs in the other.
 
-This is a standalone tool in the Ritmo repository, not a published package.
 The page wears Ritmo's brand (`brand/README.md`): its colors, its mark as the
 logo, and its Tick orange only on what is active or selected. The palette
 presets include Ritmo's own six colors.
 
-## Run it
+### Run it
 
 The page is part of the website, at https://ritmo.typeonce.dev/tools/pixel/
 (`website/src/pages/tools/pixel/index.astro` mounts it). It is built and
@@ -46,11 +66,11 @@ pick a tool, G shows or hides the grid, and Shift+1 fits the picture. On a
 phone the settings sit under the picture.
 
 ```sh
-pnpm --dir tools/pixel-fixer pixel --help   # the CLI
-node tools/pixel-fixer/bin/pixel.mjs check art.png   # the same, from any folder
+npx @typeonce/ritmo-tools pixel --help      # the CLI
+node packages/tools/bin/ritmo-tools.mjs pixel check art.png   # from its source, inside the Ritmo repository
 ```
 
-## How to use it
+### How to use it
 
 1. **Grid.** The grid is detected when a picture opens. The note under
    **Auto-detect** gives the cell size, the output size, and a confidence. Below
@@ -144,7 +164,7 @@ or Ctrl+Y) cover every setting: the grid, the palette, the background,
 strokes, and the size. A slider drag, a typed number, or a stroke is one
 step. Opening another picture starts the history over.
 
-## Animations
+### Animations
 
 An image generator asked for an animation draws a sheet: the frames side by
 side (or in rows), each in a box, over a dark background with a painted grid,
@@ -193,9 +213,9 @@ it is.
 Hand edits (**Erase**, **Paint**) and **Size** are for single pictures and
 are not offered for animations.
 
-## The CLI
+### The CLI
 
-`pixel` runs the page's pipeline from the command line, for agents. It is
+`ritmo-tools pixel` runs the page's pipeline from the command line, for agents. It is
 built on Effect (`effect/cli`), outside the core, so the page carries none of
 it. Every command prints a JSON report on stdout, and exits with what to do
 next: 0 clean (or fixed with confidence), 2 a usage problem, a missing file,
@@ -218,7 +238,7 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 `fix`, `check`, `pixelate`, and `preview` take the page's settings as flags
 (`--palette`, `--cell 8x8 --offset 2,3`, `--follow`, `--cleanup`,
 `--remove-background`, `--crop`, `--dither`, `--metric`, `--shrink-to`), over a
-`--recipe` file, over the config. `pixel <command> --help` lists them. `sheet` takes them too, plus
+`--recipe` file, over the config. `ritmo-tools pixel <command> --help` lists them. `sheet` takes them too, plus
 `--boxes`, `--skip`, `--anchor`, `--fps`, `--pingpong`, `--columns`, and
 `--spacing`. Every command reads PNG and JPEG.
 
@@ -231,7 +251,7 @@ from).
 
 **Sprite sources** are pixel art as text, for art drawn with code: a
 `palette` section of one-character keys, then a `pixels` section with one row
-of keys per pixel row. `pixel render` checks every row and key and reports
+of keys per pixel row. `ritmo-tools pixel render` checks every row and key and reports
 each problem with its line.
 
 ```
@@ -247,19 +267,19 @@ KYYK
 .KK.
 ```
 
-**Recipes** are every setting as JSON (`src/core/recipe.ts`): the grid (found,
+**Recipes** are every setting as JSON (`src/pixel/core/recipe.ts`): the grid (found,
 given as cells, or a size to pixelate to), the palette with its locked
 colors, cleanup, background, size, the hand edits, and for an animation its
 `sheet` (each frame's box, whether it is in, and its nudge; the anchor, frame
 rate, loop, and margin). Missing settings take
 their defaults, so `{"palette": "sweetie-16"}` is a recipe.
 
-`skills/pixel-art/SKILL.md` is the skill for agents: which command for which
-case, and how to read the reports. Link it into a game's skills folder.
+The `ritmo-pixel-art` skill, shipped with `@typeonce/ritmo`, is the guide for
+agents: which command for which case, and how to read the reports.
 
-## How the grid is found
+### How the grid is found
 
-`src/core/grid.ts`. For each axis, the picture's edge profile (how sharply the
+`src/pixel/core/grid.ts`. For each axis, the picture's edge profile (how sharply the
 color changes across each column or row boundary) repeats at the cell size.
 Its spectrum gives candidate sizes; each is refined to a few thousandths of a
 pixel with its offset, then judged by how often the middle of its cells holds
@@ -267,7 +287,7 @@ an edge (the true size almost never; a wrong size often). Among the clean
 candidates, the one whose lines are strongest wins: that rules out fractions
 of the true size, which are as clean but have half their lines mid-cell.
 
-## Limits
+### Limits
 
 - Cells of about 3 source pixels or fewer that are also blurred across their
   whole width cannot be found reliably. Confidence is then low; set the cell
@@ -280,9 +300,9 @@ of the true size, which are as clean but have half their lines mid-cell.
   browser. If it fails, download the `.hex` file from lospec.com and import it.
 - It fixes pixels and colors, not the drawing itself.
 
-## Code
+### Code
 
-- `src/core/`: the headless core, tested in `test/` with fake AI pictures made
+- `src/pixel/core/`: the headless core, tested in `test/` with fake AI pictures made
   from known sprites (`pnpm test` from the repository root runs them).
   `color.ts` (OKLab, CIELAB, CIEDE2000, nearest color), `grid.ts` (detection,
   drifting lines), `fix.ts` (reading cells, quantizing, dithering),
@@ -297,9 +317,11 @@ of the true size, which are as clean but have half their lines mid-cell.
   its frames, anchors, and laying frames on one canvas), `animation.ts` (the
   whole fix for a sheet), `spritesheet.ts` (sheet layouts and their JSON),
   `gif.ts` (animated GIFs), `zip.ts` (stored ZIP files).
-- `src/ui/`: the page (plain DOM and a canvas, no framework; `player.ts` plays
+- `src/pixel/ui/`: the page (plain DOM and a canvas, no framework; `player.ts` plays
   animations), exported as
-  `@typeonce/pixel-fixer/page` and `/page.css` for the website to mount on `#app`.
-- `src/cli/`: the `pixel` CLI (Effect), with PNG files through `pngjs` and
+  `@typeonce/ritmo-tools/pixel/page` and `/pixel/page.css` inside the repository
+  for the website to mount on `#app` (the published package ships the CLI only).
+- `src/pixel/cli/`: the `pixel` command (Effect), with PNG files through `pngjs` and
   JPEG through `jpeg-js`;
-  `bin/pixel.mjs` runs it from its TypeScript source.
+  `src/cli.ts` is `ritmo-tools` itself, and `bin/ritmo-tools.mjs` runs it from
+  its TypeScript source inside the repository.

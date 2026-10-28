@@ -1,14 +1,14 @@
 /**
  * Known sprites for the tests, made into fake "AI pixel art" by
- * `src/core/demo.ts`'s `upscale`. The tests check that the tool gets the
+ * `src/pixel/core/demo.ts`'s `upscale`. The tests check that the tool gets the
  * sprite back.
  */
-import type { Rgb } from "../src/core/color.ts"
-import type { RgbaImage } from "../src/core/grid.ts"
-import { random, upscale } from "../src/core/demo.ts"
-import { TRANSPARENT, type PixelArt } from "../src/core/fix.ts"
+import type { Rgb } from "@typeonce/ritmo-tools/pixel/core/color.ts"
+import type { RgbaImage } from "@typeonce/ritmo-tools/pixel/core/grid.ts"
+import { random, upscale } from "@typeonce/ritmo-tools/pixel/core/demo.ts"
+import { TRANSPARENT, type PixelArt } from "@typeonce/ritmo-tools/pixel/core/fix.ts"
 
-export { boundaries, random, upscale, type Upscale } from "../src/core/demo.ts"
+export { boundaries, random, upscale, type Upscale } from "@typeonce/ritmo-tools/pixel/core/demo.ts"
 
 /** A sprite in random blobs of the given colors, with a transparent border when asked. */
 export const makeSprite = (
