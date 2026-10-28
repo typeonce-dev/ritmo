@@ -54,7 +54,7 @@ import type { LintRules } from "../core/lint.ts"
 import { describeDetection, gridKeyOf, resolveGrid, runWithSpec, type PipelineCache } from "../core/pipeline.ts"
 import { isPng, readProjectRecipe, withProjectRecipe } from "../core/project.ts"
 import { decodeRecipe, encodeRecipe, presetPalette, type Recipe } from "../core/recipe.ts"
-import { reportOfArt, reportOfFix, reportOfSheet, type Report } from "../core/report.ts"
+import { isNative, reportOfArt, reportOfFix, reportOfSheet, type Report } from "../core/report.ts"
 import { detectFrames, isAnimationSheet, proposeForSheet, runSheet, type AnimationCache, type AnimationOutcome } from "../core/animation.ts"
 import { toGif } from "../core/gif.ts"
 import { anchors, defaultSheet, frameOf, playOrder, type Sheet } from "../core/sheet.ts"
@@ -652,13 +652,24 @@ const autoDetect = (): void => {
   const source = state.source
   if (source === undefined) return
   const detection = detectGrid(source.image)
-  state.detection = detection
   state.moved.clear()
-  state.detectionNote = describeDetection(source.image, detection)
-  state.noteGood = detection !== undefined && detection.confidence >= 0.5
-  if (detection !== undefined) {
+  // Pixel art at its own size (a small sprite) can show an unsure grid of its own
+  // shapes: it opens one pixel per cell, as `check` decides.
+  const found = detection === undefined ? undefined : runWithSpec(source.image, { ...recipeOf(), sample: defaultSampleOptions }, detection.spec, detection, cache)
+  if (isNative(source.image, found)) {
+    state.detection = undefined
+    state.spec = ONE_PIXEL
+    state.linked = true
+    state.sample = { ...state.sample, inset: 0 }
+    state.detectionNote = "Pixel art at its own size: one pixel per cell."
+    state.noteGood = true
+  } else if (detection !== undefined) {
+    state.detection = detection
     state.spec = detection.spec
     state.linked = Math.abs(detection.spec.cellWidth - detection.spec.cellHeight) < 0.02 * detection.spec.cellWidth
+    state.sample = { ...state.sample, inset: defaultSampleOptions.inset }
+    state.detectionNote = describeDetection(source.image, detection)
+    state.noteGood = detection.confidence >= 0.5
   }
   update()
 }

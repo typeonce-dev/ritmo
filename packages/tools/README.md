@@ -173,15 +173,19 @@ step. Opening another picture starts the history over.
 An image generator asked for an animation draws a sheet: the frames side by
 side (or in rows), each in a box, over a dark background with a painted grid,
 often with a label under each frame. Open it like any picture: when the
-fixer finds several boxes holding about as much art each, it opens the sheet
-as an **Animation** and says so. **Picture** and **Animation** in the top bar
+fixer finds several boxes, most of them holding about as much art each (a
+few faint ones, like the last smoke of an explosion, do not count against
+it), it opens the sheet as an **Animation** and says so. **Picture** and **Animation** in the top bar
 switch between the two at any time; everything about pictures above stays as
 it is.
 
 - **Frames.** The sheet's background is cleared from its border (the painted
   grid and the boxes with it), and each run of art is a frame: rows of art
   are split where the columns empty out, and short rows (the labels) are
-  dropped. A grid painted behind the frames is painted out first, where it
+  dropped. A box that still holds frames one over another (blocks side by
+  side whose rows do not line up) is cut into rows again, and a frame of a
+  few pixels set apart like the others (the last wisp of smoke) stays a
+  frame. A grid painted behind the frames is painted out first, where it
   runs over the background, so lines as dark as the art's outline never
   flood into the art; how close a color must be to the background follows
   how noisy the background is. The **Sheet** view shows the source with every frame's box,

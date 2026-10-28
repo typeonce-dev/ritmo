@@ -106,10 +106,13 @@ const FEW_COLORS = 256
 
 /**
  * True when a picture is already pixel art at its own size: no grid of fake
- * pixels found in it, or only an unsure one in a picture with few colors (a
- * small sprite's own shapes can look like a grid).
+ * pixels found in it, cells under 1.5 pixels, a grid found with little
+ * confidence, or an unsure one in a picture with few colors (a small sprite's
+ * own shapes can look like a grid). `outcome` is the fix with the grid found.
+ * The CLI's `check` and the page both decide with it, so one picture opens
+ * the same way in both.
  */
-const isNative = (image: RgbaImage, outcome: Outcome | undefined): boolean => {
+export const isNative = (image: RgbaImage, outcome: Outcome | undefined): boolean => {
   if (outcome === undefined) return true
   const { spec, detection } = outcome
   if (Math.min(spec.cellWidth, spec.cellHeight) < 1.5) return true
