@@ -482,7 +482,7 @@ const renderStage = (): void => {
       h(
         "div",
         { class: "lane mix" },
-        h("button", { class: "lane-label play-lane", title: "Play (Space)", attrs: { type: "button" }, on: { click: toggle } }, icon(player.playing()?.id === name ? "pause" : "play"), "Mix"),
+        h("span", { class: "lane-label", title: "Every layer together: the sound as the game plays it" }, "all"),
         waveCanvas(sound, name, span, { ruler: true, class: "wave big" })
       ),
       h(
