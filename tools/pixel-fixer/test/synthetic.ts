@@ -76,9 +76,11 @@ export interface FakeSheet {
 /**
  * An animation sheet as image generators make them: a dark background with
  * a grid painted over it, a box around each frame, the frames upscaled and
- * blurred (each at its own offset), and a light label under each box.
+ * blurred (each at its own offset, or with `jitter` off all on one pixel
+ * grid, as a generator that draws small and upscales makes them), and a
+ * light label under each box.
  */
-export const fakeSheet = (frames: ReadonlyArray<PixelArt>, scale: number, seed = 5): FakeSheet => {
+export const fakeSheet = (frames: ReadonlyArray<PixelArt>, scale: number, seed = 5, jitter = true): FakeSheet => {
   const next = random(seed)
   const first = frames[0]!
   const frameWidth = Math.ceil(first.width * scale) + 8
@@ -97,8 +99,10 @@ export const fakeSheet = (frames: ReadonlyArray<PixelArt>, scale: number, seed =
   }
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      if (x % 40 < 2 || y % 40 < 2) paint(x, y, 4, 6, 16)
-      else paint(x, y, 29, 36, 52)
+      // A little noise, as a JPEG's flat areas have.
+      const n = Math.round((next() - 0.5) * 6)
+      if (x % 40 < 2 || y % 40 < 2) paint(x, y, 4 + Math.max(0, n), 6 + Math.max(0, n), 16 + n)
+      else paint(x, y, 29 + n, 36 + n, 52 + n)
     }
   }
   const placed: Array<FakeSheet["frames"][number]> = []
@@ -113,7 +117,7 @@ export const fakeSheet = (frames: ReadonlyArray<PixelArt>, scale: number, seed =
       paint(left, y, 4, 6, 16)
       paint(left + frameWidth - 1, y, 4, 6, 16)
     }
-    const picture = upscale(art, { scale, offset: Math.round(next() * scale * 0.8), blur: 1, noise: 4, seed: seed + f })
+    const picture = upscale(art, { scale, offset: jitter ? Math.round(next() * scale * 0.8) : 0, blur: 1, noise: 4, seed: seed + f })
     const x0 = left + 4
     const y0 = top + 4
     for (let y = 0; y < picture.height && y0 + y < height; y++) {

@@ -7,13 +7,14 @@ import { TRANSPARENT, type PixelArt } from "../src/core/fix.ts"
 import { toGif } from "../src/core/gif.ts"
 import { presets } from "../src/core/palette.ts"
 import { decodeRecipe, defaultRecipe, encodeRecipe, type Recipe } from "../src/core/recipe.ts"
-import { layOut, looksAnimated, playOrder, findFrames, frameOf, type Sheet } from "../src/core/sheet.ts"
+import { clearSheet, findFrames, frameOf, layOut, looksAnimated, playOrder, removeGridLines, sheetBackground, type Sheet } from "../src/core/sheet.ts"
 import { sheetArt, spritesheetJson } from "../src/core/spritesheet.ts"
 import { crc32, toZip } from "../src/core/zip.ts"
 import { fakeSheet, makeSprite, place } from "./synthetic.ts"
 
 const sweetie = presets.find((palette) => palette.name === "Sweetie 16")!.colors
-const fire: ReadonlyArray<Rgb> = [sweetie[2]!, sweetie[3]!, sweetie[4]!, sweetie[0]!]
+// Warm colors with a dark purple outline: none as dark as the background.
+const fire: ReadonlyArray<Rgb> = [sweetie[2]!, sweetie[3]!, sweetie[4]!, sweetie[1]!]
 
 /** A small sprite that bobs up and down: the frames of a loop, each on its own transparent canvas. */
 const bobbing = (count: number): Array<PixelArt> => {
@@ -49,6 +50,35 @@ describe("finding frames on a sheet", () => {
     expect(isAnimationSheet(image, sheetRecipe, found)).toBe(true)
   })
 
+  it("paints out a grid whose lines are as dark as the art's outline, and keeps the outline", () => {
+    // A navy fill with black lines every 10 pixels, and a black-outlined red square across two lines.
+    const width = 60
+    const height = 60
+    const data = new Uint8ClampedArray(width * height * 4)
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4
+        const inside = x >= 15 && x < 45 && y >= 15 && y < 45
+        const edge = inside && (x < 17 || x >= 43 || y < 17 || y >= 43)
+        const color = edge ? [0, 4, 14] : inside ? [200, 40, 30] : x % 10 === 0 || y % 10 === 0 ? [0, 5, 15] : [28, 36, 53]
+        data.set([...color, 255], i)
+      }
+    }
+    const image = { width, height, data }
+    const colors = sheetBackground(image)
+    expect(colors).toHaveLength(2)
+    const unlined = removeGridLines(image, colors, 0.05)
+    expect(unlined.colors).toHaveLength(1)
+    const { mask } = clearSheet(unlined.image, unlined.colors, 0.05)
+    // The background is clear, lines included; the outline and the inside are not.
+    expect(mask[5 * width + 5]).toBe(1)
+    expect(mask[10 * width + 5]).toBe(1)
+    expect(mask[30 * width + 10]).toBe(1)
+    expect(mask[30 * width + 15]).toBe(0)
+    expect(mask[15 * width + 30]).toBe(0)
+    expect(mask[30 * width + 30]).toBe(0)
+  })
+
   it("does not take a single picture for a sheet", () => {
     const image = demoImage()
     expect(looksAnimated(image, findFrames(image))).toBe(false)
@@ -71,6 +101,21 @@ describe("finding frames on a sheet", () => {
     // About the sprite's own size (12 by 14 with the bob, plus padding).
     expect(outcome.width).toBeGreaterThanOrEqual(10)
     expect(outcome.width).toBeLessThanOrEqual(15)
+  })
+
+  it("keeps each frame's height as drawn on the ground anchor, so the bob stays", () => {
+    // Frames on one pixel grid, as a generator draws them: their heights are whole pixels apart.
+    // The cell size is given: on a sprite this small, finding it is off by a percent, and that alone moves rows.
+    const { image: onGrid } = fakeSheet(frames, 6, 5, false)
+    const recipe: Recipe = { ...sheetRecipe, grid: { kind: "cells", spec: { cellWidth: 6, cellHeight: 6, offsetX: 0, offsetY: 0 } } }
+    const sheet: Sheet = { frames: detectFrames(onGrid, recipe), anchor: "ground", fps: 8, loop: "forward", padding: 1 }
+    const outcome = runSheet(onGrid, recipe, sheet)
+    const lowest = outcome.placed.map((frame) => Math.max(...opaqueRows(frame.art)))
+    // The sprite is one pixel lower on odd frames.
+    expect(lowest.map((row) => row - lowest[0]!)).toEqual([0, 1, 0, 1, 0])
+    // Sideways, the bodies still line up.
+    const left = outcome.placed.map((frame) => Math.min(...frame.art.indices.map((index, p) => (index === TRANSPARENT ? Infinity : p % frame.art.width))))
+    expect(new Set(left).size).toBe(1)
   })
 
   it("leaves out an excluded frame and keeps the rest", () => {

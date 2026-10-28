@@ -27,11 +27,17 @@ export interface FrameBox {
   readonly height: number
 }
 
-/** Where a frame's anchor is: under the body (the feet), at the body's middle, or nowhere (frames are placed as their boxes are). */
-export type Anchor = "feet" | "center" | "box"
+/**
+ * What lines frames up: the body's middle column, at the height drawn on the
+ * sheet (the ground: hops and bobs stay); under the body (the feet, pinned to
+ * one row); at the body's middle; or nothing (frames are placed as their
+ * boxes are).
+ */
+export type Anchor = "ground" | "feet" | "center" | "box"
 
 export const anchors: ReadonlyArray<{ readonly id: Anchor; readonly label: string; readonly hint: string }> = [
-  { id: "feet", label: "Feet", hint: "Each frame stands on the same spot: the bottom of its body, centered on it." },
+  { id: "ground", label: "Ground", hint: "Each frame keeps its height as drawn, so hops and bobs stay; only the sideways drift is taken out." },
+  { id: "feet", label: "Feet", hint: "Each frame stands on the same spot: the bottom of its body, centered on it. Hops are flattened." },
   { id: "center", label: "Center", hint: "Each frame's body is centered on the same spot: for flying or floating things." },
   { id: "box", label: "Box", hint: "Frames are placed as they sit in their boxes, unmoved." }
 ]
@@ -57,7 +63,7 @@ export interface Sheet {
   readonly padding: number
 }
 
-export const defaultSheet: Sheet = { frames: [], anchor: "feet", fps: 8, loop: "forward", padding: 1 }
+export const defaultSheet: Sheet = { frames: [], anchor: "ground", fps: 8, loop: "forward", padding: 1 }
 
 export const frameOf = (box: FrameBox): SheetFrame => ({ box, include: true, nudge: { x: 0, y: 0 } })
 
@@ -108,6 +114,144 @@ export const sheetBackground = (image: RgbaImage): Array<Rgb> => {
     .sort((a, b) => b.n - a.n)
     .slice(0, 4)
     .map((group) => group.color)
+}
+
+/**
+ * How far the background's fill strays from its own color on the border
+ * (JPEG noise, a gradient), in OKLab: the 95th percentile of the border
+ * pixels near it. A clean fill strays little, so the art's dark outline,
+ * often close to a dark background, is kept.
+ */
+export const fillNoise = (image: RgbaImage, fill: Rgb): number => {
+  const { width, height, data } = image
+  const target = toOklab(fill)
+  const found: Array<number> = []
+  const look = (x: number, y: number): void => {
+    const i = (y * width + x) * 4
+    if (data[i + 3]! < 128) return
+    const d = distance(toOklab({ r: data[i]!, g: data[i + 1]!, b: data[i + 2]! }), target)
+    if (d <= SAME_COLOR) found.push(d)
+  }
+  for (let x = 0; x < width; x++) {
+    look(x, 0)
+    look(x, height - 1)
+  }
+  for (let y = 0; y < height; y++) {
+    look(0, y)
+    look(width - 1, y)
+  }
+  if (found.length === 0) return SAME_COLOR
+  found.sort((a, b) => a - b)
+  return found[Math.floor(found.length * 0.95)]!
+}
+
+/**
+ * A row (or column) is a painted line when the line's color covers at least
+ * this share of it: frames hide much of a line where they cross it.
+ */
+const LINE_SHARE = 0.25
+/** How far past a line its two sides are looked at, for blurred line edges. */
+const LINE_SIDE = 2
+
+/**
+ * The sheet with the lines of a painted grid painted over in the
+ * background's fill, where they run over the background (never over the
+ * art). A grid's lines are often as dark as the art's outline, so clearing
+ * them by color would flood through the outline into the art.
+ *
+ * `colors` are the background's colors, most common first (the fill). Any
+ * other color that covers most of whole rows or columns is a line color.
+ * Returns the sheet, and the colors still to clear (the line colors gone).
+ */
+export const removeGridLines = (
+  image: RgbaImage,
+  colors: ReadonlyArray<Rgb>,
+  tolerance: number
+): { readonly image: RgbaImage; readonly colors: ReadonlyArray<Rgb> } => {
+  const fill = colors[0]
+  if (fill === undefined || colors.length < 2) return { image, colors }
+  const { width, height } = image
+  const data = new Uint8ClampedArray(image.data)
+  const fillLab = toOklab(fill)
+  // Colors repeat a lot: convert each one once.
+  const labs = new Map<number, Lab>()
+  const near = (p: number, target: Lab): boolean => {
+    const i = p * 4
+    if (data[i + 3]! < 128) return false
+    const key = (data[i]! << 16) | (data[i + 1]! << 8) | data[i + 2]!
+    let lab = labs.get(key)
+    if (lab === undefined) {
+      lab = toOklab({ r: data[i]!, g: data[i + 1]!, b: data[i + 2]! })
+      labs.set(key, lab)
+    }
+    return distance(lab, target) <= tolerance
+  }
+  const kept: Array<Rgb> = [fill]
+  for (const color of colors.slice(1)) {
+    const lab = toOklab(color)
+    const rowShare = Array.from({ length: height }, (_, y) => {
+      let n = 0
+      for (let x = 0; x < width; x++) if (near(y * width + x, lab)) n++
+      return n / width
+    })
+    const columnShare = Array.from({ length: width }, (_, x) => {
+      let n = 0
+      for (let y = 0; y < height; y++) if (near(y * width + x, lab)) n++
+      return n / height
+    })
+    // Lines are thin; a checkerboard's second tone fills half of every row, in one thick run.
+    const thin = (runs: Array<Run>, size: number): Array<Run> => runs.filter((run) => run.to - run.from <= Math.max(4, 0.01 * size))
+    const lineRows = thin(
+      runsOf(
+        rowShare.map((share) => share >= LINE_SHARE),
+        1
+      ),
+      height
+    )
+    const lineColumns = thin(
+      runsOf(
+        columnShare.map((share) => share >= LINE_SHARE),
+        1
+      ),
+      width
+    )
+    if (lineRows.length + lineColumns.length < 2) {
+      kept.push(color)
+      continue
+    }
+    const paint = (p: number): void => {
+      data[p * 4] = fill.r
+      data[p * 4 + 1] = fill.g
+      data[p * 4 + 2] = fill.b
+      data[p * 4 + 3] = 255
+    }
+    // Across a line, it is background when both sides are the fill (or another line beside it,
+    // as where a frame's box runs next to the grid); rows first, then columns, so a crossing
+    // (lines on two sides) is painted once its row line is.
+    const onRow = new Uint8Array(height)
+    for (const run of lineRows) onRow.fill(1, run.from, run.to)
+    const onColumn = new Uint8Array(width)
+    for (const run of lineColumns) onColumn.fill(1, run.from, run.to)
+    const side = (p: number, beside: boolean): boolean => near(p, fillLab) || (beside && near(p, lab))
+    for (const run of lineRows) {
+      const above = run.from - 1 - LINE_SIDE
+      const below = run.to + LINE_SIDE
+      for (let x = 0; x < width; x++) {
+        // At the sheet's edge, the one side there is.
+        if ((above >= 0 && !side(above * width + x, onRow[above] === 1)) || (below < height && !side(below * width + x, onRow[below] === 1))) continue
+        for (let y = Math.max(0, run.from - LINE_SIDE); y < Math.min(height, run.to + LINE_SIDE); y++) paint(y * width + x)
+      }
+    }
+    for (const run of lineColumns) {
+      const left = run.from - 1 - LINE_SIDE
+      const right = run.to + LINE_SIDE
+      for (let y = 0; y < height; y++) {
+        if ((left >= 0 && !side(y * width + left, onColumn[left] === 1)) || (right < width && !side(y * width + right, onColumn[right] === 1))) continue
+        for (let x = Math.max(0, run.from - LINE_SIDE); x < Math.min(width, run.to + LINE_SIDE); x++) paint(y * width + x)
+      }
+    }
+  }
+  return { image: { width, height, data }, colors: kept }
 }
 
 /**
@@ -252,6 +396,22 @@ export const findFrames = (image: RgbaImage): Array<FrameBox> => {
       }
     })
     groups.push({ from: start, to: pieces[pieces.length - 1]!.to })
+    // Two frames close together (a flame reaching toward the next frame) make one group about
+    // twice as wide as the rest: split it at its own widest gap.
+    for (let pass = 0; pass < pieces.length; pass++) {
+      const widths = groups.map((run) => run.to - run.from).sort((a, b) => a - b)
+      const median = widths[Math.floor(widths.length / 2)]!
+      const wide = groups.findIndex((run) => run.to - run.from > 1.6 * median)
+      if (groups.length < 2 || wide < 0) break
+      const run = groups[wide]!
+      const inside = pieces.filter((piece) => piece.from >= run.from && piece.to <= run.to)
+      let at = -1
+      for (let i = 1; i < inside.length; i++) {
+        if (at < 0 || inside[i]!.from - inside[i - 1]!.to > inside[at]!.from - inside[at - 1]!.to) at = i
+      }
+      if (at < 0 || inside[at]!.from - inside[at - 1]!.to < Math.max(2, 0.01 * width)) break
+      groups.splice(wide, 1, { from: run.from, to: inside[at - 1]!.to }, { from: inside[at]!.from, to: run.to })
+    }
     // A group with almost nothing in it is left-over noise: it joins its neighbour.
     const mass = (run: Run): number => columns.slice(run.from, run.to).reduce((sum, n) => sum + n, 0)
     const biggest = Math.max(...groups.map(mass))
@@ -351,7 +511,7 @@ export const bodyOf = (art: PixelArt): Array<number> => {
 
 /**
  * Where a frame's anchor is, in its own pixels: the body's lowest row
- * ("feet") or its middle row ("center"), at the body's average column.
+ * ("feet" and "ground") or its middle row ("center"), at the body's average column.
  * Undefined for "box", and for a frame with nothing in it.
  */
 export const anchorOf = (art: PixelArt, anchor: Anchor): Point | undefined => {
@@ -368,7 +528,7 @@ export const anchorOf = (art: PixelArt, anchor: Anchor): Point | undefined => {
     sumY += y
     bottom = Math.max(bottom, y)
   }
-  return { x: Math.round(sumX / body.length), y: anchor === "feet" ? bottom : Math.round(sumY / body.length) }
+  return { x: Math.round(sumX / body.length), y: anchor === "center" ? Math.round(sumY / body.length) : bottom }
 }
 
 /** One palette for many pictures: every color any of them uses, once, in the order first met. */

@@ -7,6 +7,7 @@
  * A cache keeps the slow steps (clearing, finding each frame's grid) between
  * runs, so the page reruns it on every slider move.
  */
+import { defaultBackgroundOptions } from "./background.ts"
 import type { Rgb } from "./color.ts"
 import { proposePalette, type ProposeMethod, type Proposal } from "./palette.ts"
 import { TRANSPARENT, type PixelArt } from "./fix.ts"
@@ -18,10 +19,12 @@ import {
   anchorOf,
   clearSheet,
   cropImage,
+  fillNoise,
   findFrames,
   frameOf,
   layOut,
   looksAnimated,
+  removeGridLines,
   sharePalette,
   sheetBackground,
   type FrameBox,
@@ -86,8 +89,12 @@ export const clearedSheet = (image: RgbaImage, recipe: Recipe, cache: AnimationC
     if (!recipe.removeBackground) cache.cleared = { image, key, cleared: image, colors: [] }
     else {
       const colors = sheetBackground(image)
-      // Clearing a sheet tolerates more than clearing fixed pixels: the source is blurred and noisy.
-      cache.cleared = { image, key, cleared: clearSheet(image, colors, recipe.background.tolerance + 0.04).image, colors }
+      // A sheet's tolerance follows how noisy its fill is (JPEG noise), so a dark outline next to a
+      // dark background is kept; the recipe's tolerance moves it from there.
+      const noise = colors[0] === undefined ? 0 : fillNoise(image, colors[0])
+      const tolerance = Math.max(0.02, Math.max(0.04, 4 * noise + 0.01) + recipe.background.tolerance - defaultBackgroundOptions.tolerance)
+      const unlined = removeGridLines(image, colors, tolerance)
+      cache.cleared = { image, key, cleared: clearSheet(unlined.image, unlined.colors, tolerance).image, colors }
       delete cache.frames
     }
   }
@@ -193,10 +200,20 @@ export const runSheet = (image: RgbaImage, recipe: Recipe, sheet: Sheet, cache: 
   const frames: Array<FixedFrame> = fixed.map((frame, i) => ({ ...frame, art: shared[i]!, anchor: anchorOf(shared[i]!, sheet.anchor) }))
 
   const included = frames.filter((frame) => sheet.frames[frame.index]!.include)
-  const offsets = included.map((frame) => {
+  // On the ground, each frame keeps its height as drawn on the sheet (a hop stays a hop): its
+  // top, in cells, above the bottom of its row of boxes; the lowest feet of all set the ground.
+  const drawn = included.map((frame) => {
+    const row = included.filter((other) => overlapsVertically(other.box, frame.box))
+    const bottom = Math.max(...row.map((other) => other.box.y + other.box.height))
+    return Math.round((Math.max(0, Math.round(frame.box.y)) + frame.spec.offsetY - bottom) / cell.height)
+  })
+  const ground = Math.max(...included.map((frame, i) => drawn[i]! + (frame.anchor?.y ?? 0)))
+  const offsets = included.map((frame, i) => {
     const nudge = sheet.frames[frame.index]!.nudge
     // Frames without an anchor sit as they are in their boxes.
-    return frame.anchor === undefined ? { x: nudge.x, y: nudge.y } : { x: nudge.x - frame.anchor.x, y: nudge.y - frame.anchor.y }
+    if (frame.anchor === undefined) return { x: nudge.x, y: nudge.y }
+    if (sheet.anchor === "ground") return { x: nudge.x - frame.anchor.x, y: nudge.y + drawn[i]! - ground }
+    return { x: nudge.x - frame.anchor.x, y: nudge.y - frame.anchor.y }
   })
   const laid = layOut(
     included.map((frame) => frame.art),
@@ -219,6 +236,10 @@ export const runSheet = (image: RgbaImage, recipe: Recipe, sheet: Sheet, cache: 
     lost
   }
 }
+
+/** Whether two boxes share most of their height: frames on one row of the sheet. */
+const overlapsVertically = (a: FrameBox, b: FrameBox): boolean =>
+  Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y) >= 0.5 * Math.min(a.height, b.height)
 
 /** Every opaque cell color of every included frame, for proposing one palette for the whole animation. */
 export const sheetColors = (outcome: AnimationOutcome): Array<Rgb> =>
