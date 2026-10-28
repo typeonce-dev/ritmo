@@ -396,7 +396,7 @@ file, broken bank), or 3 (a sound has errors).
 `ritmo-tools sound review` opens the bank on a local page: the sounds on the left with
 their status, the selected sound's wave and layers on the stage with the
 takes beside each other, and on the right its review, its check, the takes
-maker, tune sliders, the layers' numbers, and a player for sounds in a row.
+maker, tune sliders, and the layers' numbers (takes and layers start closed).
 Space plays, the arrows move through the list, 1 to 9 play the takes, and
 Ctrl/Cmd+Z undoes. Every change is written to the bank and its review as it
 happens, and changes the agent writes while the page is open show up in it.

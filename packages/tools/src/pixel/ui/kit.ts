@@ -355,26 +355,28 @@ export const chip = (hex: string, extra: { readonly class?: string; readonly tit
 // ---------------------------------------------------------------------------
 // Inspector sections
 
-const COLLAPSED_KEY = "pixel-fixer:collapsed"
+const SECTIONS_KEY = "ritmo-tools:sections"
 
-const readCollapsed = (): Set<string> => {
+/** The sections the person opened or closed, by id; the rest follow their default. */
+const readChoices = (): Map<string, boolean> => {
   try {
-    const raw = localStorage.getItem(COLLAPSED_KEY)
-    const parsed: unknown = raw === null ? [] : JSON.parse(raw)
-    return new Set(Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : [])
+    const raw = localStorage.getItem(SECTIONS_KEY)
+    const parsed: unknown = raw === null ? {} : JSON.parse(raw)
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return new Map()
+    return new Map(Object.entries(parsed).filter((entry): entry is [string, boolean] => typeof entry[1] === "boolean"))
   } catch {
-    return new Set()
+    return new Map()
   }
 }
 
-const collapsed = readCollapsed()
+const choices = readChoices()
 const helpOpen = new Set<string>()
 
 const save = (): void => {
   try {
-    localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed]))
+    localStorage.setItem(SECTIONS_KEY, JSON.stringify(Object.fromEntries(choices)))
   } catch {
-    // Remembering which sections are closed is a convenience only.
+    // Remembering which sections are open is a convenience only.
   }
 }
 
@@ -387,11 +389,13 @@ export interface SectionOptions {
   readonly help?: string
   /** Called after opening or closing, to redraw. */
   readonly onToggle: () => void
+  /** Starts closed until the person opens it: for sections most visits do not need. */
+  readonly closed?: boolean
 }
 
 /** A collapsible inspector section, remembered across visits. */
 export const section = (options: SectionOptions, ...children: Array<Child | ReadonlyArray<Child>>): HTMLElement => {
-  const open = !collapsed.has(options.id)
+  const open = choices.get(options.id) ?? options.closed !== true
   const showHelp = helpOpen.has(options.id)
   return h(
     "section",
@@ -406,8 +410,7 @@ export const section = (options: SectionOptions, ...children: Array<Child | Read
           attrs: { type: "button", "aria-expanded": String(open) },
           on: {
             click: () => {
-              if (open) collapsed.add(options.id)
-              else collapsed.delete(options.id)
+              choices.set(options.id, !open)
               save()
               options.onToggle()
             }
@@ -442,7 +445,8 @@ export const section = (options: SectionOptions, ...children: Array<Child | Read
 
 /** Opens a section (when it was closed) and scrolls it into view. */
 export const reveal = (id: string, onToggle: () => void): void => {
-  if (collapsed.delete(id)) {
+  if (document.querySelector(`[data-section="${id}"]`)?.classList.contains("closed") === true) {
+    choices.set(id, true)
     save()
     onToggle()
   }

@@ -8,12 +8,12 @@
  *
  * Built from the pixel fixer's kit, so the two tools look and work alike.
  */
-import { badge, button, callout, group, hint, icon, mark, numberInput, prop, section, segmented, selectInput, sliderRow, switchRow, textInput } from "../../pixel/ui/kit.ts"
+import { badge, button, callout, group, hint, icon, mark, numberInput, prop, section, segmented, selectInput, sliderRow, switchRow } from "../../pixel/ui/kit.ts"
 import { h, replace } from "../../pixel/ui/dom.ts"
 import { makeHistory } from "../../pixel/ui/history.ts"
 import { issuesOf, measure, checkBank, type Issue, type Measures } from "../core/measure.ts"
 import { applyTune, decodeBank, describeLayer, encodeBank, filters, neutralTune, waves, type Bank, type Filter as NoiseFilter, type Layer, type Recipe, type Tune, type Wave } from "../core/recipe.ts"
-import { layerEnd, render, renderSequence, type Rendered } from "../core/render.ts"
+import { layerEnd, render, type Rendered } from "../core/render.ts"
 import { decodeReview, emptyReview, encodeReview, newSound, type SoundReview, type Status } from "../core/review.ts"
 import { makeTakes, towards, type Take, type Toward } from "../core/takes.ts"
 import { toWav } from "../core/wav.ts"
@@ -40,8 +40,6 @@ const state = {
   seed: 1,
   /** The layer open in the Layers section. */
   layer: 0,
-  sequence: "",
-  gap: 0.25,
   message: "",
   saving: "saved" as "saved" | "saving" | "failed",
   version: "",
@@ -185,7 +183,6 @@ const load = async (): Promise<void> => {
   state.name = answer.name
   state.version = answer.version
   if (recipeOf(state.selected) === undefined) state.selected = names()[0] ?? ""
-  if (state.sequence === "") state.sequence = names().slice(0, 3).join(", ")
   checkAll()
   history.reset()
   history.schedule()
@@ -727,7 +724,8 @@ const takesPanel = (name: string, recipe: Recipe): HTMLElement => {
       id: "takes",
       title: "Takes",
       help: "Other versions of this sound to choose from, nudged one way and each a little different. Listen, then Use the one that sounds right. The agent makes them too, with `ritmo-tools sound vary`.",
-      onToggle: update
+      onToggle: update,
+      closed: true
     },
     prop(
       "Toward",
@@ -812,6 +810,7 @@ const layersPanel = (name: string, recipe: Recipe): HTMLElement => {
       title: "Layers",
       help: "The recipe itself: the room, and each layer's numbers. Pick a layer here or on its bar over the stage.",
       onToggle: update,
+      closed: true,
       action: h("span", { class: "meta" }, `${recipe.layers.length}`)
     },
     sliderRow("Room", recipe.reverb, { min: 0, max: 1, step: 0.01 }, (v) => `${Math.round(v * 100)}%`, (reverb) => {
@@ -870,41 +869,6 @@ const layersPanel = (name: string, recipe: Recipe): HTMLElement => {
   )
 }
 
-const sequencePanel = (): HTMLElement => {
-  const chosen = state.sequence
-    .split(/[\s,]+/)
-    .filter((name) => name !== "")
-  const missing = chosen.filter((name) => recipeOf(name) === undefined)
-  return section(
-    {
-      id: "sequence",
-      title: "Play in a row",
-      help: "Sounds one after another, as a fight plays them: a combo, a hit and a kill. The agent renders the same with `ritmo-tools sound render --sequence`.",
-      onToggle: update
-    },
-    textInput(state.sequence, (value) => {
-      state.sequence = value
-      update()
-    }, { placeholder: "slash, hit, kill", label: "Sounds to play in a row" }),
-    prop("Gap", numberInput(state.gap, (gap) => {
-      state.gap = gap
-      update()
-    }, { min: 0, max: 3, step: 0.05, label: "Seconds between sounds", suffix: "s" })),
-    missing.length > 0 && callout("warn", `No sound named ${missing.join(", ")}.`),
-    button(
-      "Play in a row",
-      () => {
-        const parts = chosen.flatMap((name, i) => {
-          const recipe = recipeOf(name)
-          return recipe === undefined ? [] : [{ recipe, at: i * state.gap }]
-        })
-        if (parts.length > 0) player.play(renderSequence(parts, { master: state.bank.master }), "sequence")
-      },
-      { icon: "play", class: "block", disabled: chosen.length === missing.length }
-    )
-  )
-}
-
 const aboutPanel = (): HTMLElement =>
   h(
     "footer",
@@ -931,7 +895,7 @@ const renderPanels = (): void => {
   const scroll = panels.scrollTop
   replace(
     panels,
-    recipe !== undefined && [reviewPanel(state.selected), checkPanel(state.selected), takesPanel(state.selected, recipe), tunePanel(state.selected, recipe), layersPanel(state.selected, recipe), sequencePanel()],
+    recipe !== undefined && [reviewPanel(state.selected), checkPanel(state.selected), takesPanel(state.selected, recipe), tunePanel(state.selected, recipe), layersPanel(state.selected, recipe)],
     aboutPanel()
   )
   panels.scrollTop = scroll
