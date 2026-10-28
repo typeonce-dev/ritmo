@@ -192,6 +192,12 @@ export type Axis = "x" | "y"
 
 /** Two cell sizes this close (a share of the larger) are one size. */
 const SAME_SIZE = 0.02
+/**
+ * Two cell sizes this close (a share of the larger) are one square cell, stretched: a
+ * screenshot or a resize often scales one axis a few percent more than the other. The
+ * wrong sizes are fractions and multiples of the true one, far outside it.
+ */
+const NEAR_SQUARE = 0.1
 /** How much less clean (share of cells with an edge in their middle) the other axis's size may be and still be chosen. */
 const SQUARE_SLACK = 0.12
 
@@ -250,8 +256,9 @@ const edgeThreshold = (image: RgbaImage): number => {
  * (upscales by a factor that is not a whole number are common), and judged
  * by how flat the middle of its cells is.
  *
- * `prefer` is a size to choose when it is nearly as clean as the cleanest:
- * the other axis's cell, since pixel art's cells are square.
+ * `prefer` is a size to choose (or one within `NEAR_SQUARE` of it) when it is
+ * nearly as clean as the cleanest: the other axis's cell, since pixel art's
+ * cells are square.
  */
 export const detectAxis = (
   image: RgbaImage,
@@ -345,7 +352,7 @@ export const detectAxis = (
   if (judged.length === 0) return undefined
   const flattest = Math.min(...judged.map((entry) => entry.residual))
   const square = judged.filter(
-    (entry) => prefer !== undefined && Math.abs(entry.candidate.cell - prefer) <= SAME_SIZE * prefer && entry.residual <= flattest + SQUARE_SLACK
+    (entry) => prefer !== undefined && Math.abs(entry.candidate.cell - prefer) <= NEAR_SQUARE * prefer && entry.residual <= flattest + SQUARE_SLACK
   )
   const best = (square.length > 0 ? square : judged.filter((entry) => entry.residual <= flattest + 0.04)).reduce((chosen, entry) =>
     entry.candidate.score > chosen.candidate.score ? entry : chosen
@@ -367,14 +374,15 @@ export const detectGrid = (image: RgbaImage): Detection | undefined => {
   let y = detectAxis(image, "y", rows)
   if (x === undefined || y === undefined) return undefined
   // Cells are square: when the axes disagree, the less sure one looks again for the
-  // surer one's size (a fraction of the true size always looks at least as clean).
+  // surer one's size, or one near it (a fraction of the true size always looks at
+  // least as clean).
   if (Math.abs(x.cell - y.cell) > SAME_SIZE * Math.max(x.cell, y.cell)) {
     if (x.confidence >= y.confidence) {
       const again = detectAxis(image, "y", rows, undefined, x.cell)
-      if (again !== undefined && Math.abs(again.cell - x.cell) <= SAME_SIZE * x.cell) y = again
+      if (again !== undefined && Math.abs(again.cell - x.cell) <= NEAR_SQUARE * x.cell) y = again
     } else {
       const again = detectAxis(image, "x", columns, undefined, y.cell)
-      if (again !== undefined && Math.abs(again.cell - y.cell) <= SAME_SIZE * y.cell) x = again
+      if (again !== undefined && Math.abs(again.cell - y.cell) <= NEAR_SQUARE * y.cell) x = again
     }
   }
   return {

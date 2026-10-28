@@ -9,6 +9,7 @@ import { demoImage, demoSprite } from "@typeonce/ritmo-tools/pixel/core/demo.ts"
 import { toJson, toRgba } from "@typeonce/ritmo-tools/pixel/core/export.ts"
 import { TRANSPARENT } from "@typeonce/ritmo-tools/pixel/core/fix.ts"
 import { lintArt } from "@typeonce/ritmo-tools/pixel/core/lint.ts"
+import { readProjectRecipe } from "@typeonce/ritmo-tools/pixel/core/project.ts"
 import { presets } from "@typeonce/ritmo-tools/pixel/core/palette.ts"
 import { runRecipe } from "@typeonce/ritmo-tools/pixel/core/pipeline.ts"
 import { decodeRecipe, defaultRecipe, encodeRecipe, presetPalette, type Recipe } from "@typeonce/ritmo-tools/pixel/core/recipe.ts"
@@ -214,6 +215,20 @@ describe("the pixel CLI", () => {
     const rendered = run("render", "coin.txt", "--scale", "8")
     expect(rendered.code).toBe(0)
     expect(rendered.json.verdict).toBe("clean")
+  })
+
+  it("writes a project PNG that runs its stored recipe, and lets --recipe win over it", { timeout: 60_000 }, () => {
+    const fixed = run("fix", "demo.png", "-p", "sweetie-16", "--project")
+    expect(fixed.code).toBe(0)
+    expect(fixed.json.files.project).toBe("demo.project.png")
+    expect(readProjectRecipe(readFileSync(join(dir, "demo.project.png")))).toBe(readFileSync(join(dir, "demo.fixed.recipe.json"), "utf8"))
+    // No palette flag: the stored recipe brings it.
+    const again = run("fix", "demo.project.png", "-o", "from-project")
+    expect(again.code).toBe(0)
+    expect(again.json.storedRecipe).toBe(true)
+    expect(readFileSync(join(dir, "from-project.sprite.txt"), "utf8")).toBe(readFileSync(join(dir, "demo.fixed.sprite.txt"), "utf8"))
+    const given = run("check", "demo.project.png", "--recipe", "demo.fixed.recipe.json")
+    expect(given.json.storedRecipe).toBeUndefined()
   })
 
   it("reads the project's rules from pixel.config.json", { timeout: 60_000 }, () => {

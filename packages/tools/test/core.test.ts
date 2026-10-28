@@ -143,6 +143,26 @@ describe("grid", () => {
     expect(detection.spec.cellHeight).toBeCloseTo(9.4, 1)
   })
 
+  it("finds cells a screenshot stretched a few percent on one axis, and keeps them near square", () => {
+    // Every row moved to 96.5% of its height, smoothly: cells 31.5 wide and about 30.4 tall.
+    const wide = upscale(demoSprite(), { scale: 31.5, offset: 3, blur: 1, noise: 6, seed: 1 })
+    const squeeze = 0.965
+    const height = Math.floor(wide.height * squeeze)
+    const data = new Uint8ClampedArray(wide.width * height * 4)
+    for (let y = 0; y < height; y++) {
+      const from = Math.min(wide.height - 1, y / squeeze)
+      const top = Math.floor(from)
+      const bottom = Math.min(wide.height - 1, top + 1)
+      const t = from - top
+      for (let i = 0; i < wide.width * 4; i++) {
+        data[y * wide.width * 4 + i] = Math.round(wide.data[top * wide.width * 4 + i]! * (1 - t) + wide.data[bottom * wide.width * 4 + i]! * t)
+      }
+    }
+    const detection = detectGrid({ width: wide.width, height, data })!
+    expect(detection.spec.cellWidth).toBeCloseTo(31.5, 0)
+    expect(detection.spec.cellHeight).toBeCloseTo(31.5 * squeeze, 0)
+  })
+
   it("does not invent a grid in a blank picture", () => {
     expect(detectGrid({ width: 40, height: 40, data: new Uint8ClampedArray(40 * 40 * 4) })).toBeUndefined()
   })

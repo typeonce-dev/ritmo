@@ -52,6 +52,7 @@ import {
 } from "../core/palette.ts"
 import type { LintRules } from "../core/lint.ts"
 import { describeDetection, gridKeyOf, resolveGrid, runWithSpec, type PipelineCache } from "../core/pipeline.ts"
+import { isPng, readProjectRecipe, withProjectRecipe } from "../core/project.ts"
 import { decodeRecipe, encodeRecipe, presetPalette, type Recipe } from "../core/recipe.ts"
 import { reportOfArt, reportOfFix, reportOfSheet, type Report } from "../core/report.ts"
 import { detectFrames, isAnimationSheet, proposeForSheet, runSheet, type AnimationCache, type AnimationOutcome } from "../core/animation.ts"
@@ -82,7 +83,7 @@ import {
   textInput,
   type IconName
 } from "./kit.ts"
-import { baseName, canvasOf, download, loadImage, pngOf } from "./files.ts"
+import { baseName, canvasOf, download, loadImage, pngOf, pngOfCanvas } from "./files.ts"
 import { makeHistory } from "./history.ts"
 import { makePlayer } from "./player.ts"
 import { makeViewer, type Box, type ViewMode } from "./viewer.ts"
@@ -96,7 +97,8 @@ interface Swatch {
 type AnimationView = "sheet" | "frames" | "play"
 
 interface State {
-  source: { readonly image: RgbaImage; readonly canvas: HTMLCanvasElement; readonly name: string } | undefined
+  /** The picture open; `png` holds its file's own bytes when it was a PNG, so a project PNG keeps them exactly. */
+  source: { readonly image: RgbaImage; readonly canvas: HTMLCanvasElement; readonly name: string; readonly png?: Uint8Array | undefined } | undefined
   /** Fixed as one picture, or as an animation of the frames on it. */
   kind: "picture" | "animation"
   /** The animation's frames and how they play, when `kind` is "animation". */
@@ -415,8 +417,8 @@ const update = (options: { readonly panels: boolean } = { panels: true }): void 
 // Loading pictures
 
 /** Opens a picture; with `spec`, its grid is given (pixel art at its own size) instead of detected. */
-const setSource = (image: RgbaImage, canvas: HTMLCanvasElement, name: string, spec?: GridSpec): void => {
-  state.source = { image, canvas, name }
+const setSource = (image: RgbaImage, canvas: HTMLCanvasElement, name: string, spec?: GridSpec, png?: Uint8Array): void => {
+  state.source = { image, canvas, name, png }
   state.moved.clear()
   state.targetWidth = undefined
   state.edits = { size: "", strokes: [] }
@@ -498,9 +500,9 @@ const openArt = (art: PixelArt, name: string): void => {
 }
 
 /**
- * Opens a dropped or picked file: a picture, a sprite source (.txt), a JSON
- * map, a recipe (applied to the picture open), or a pixel.config.json (its
- * rules, palette, and recipe).
+ * Opens a dropped or picked file: a picture, a project PNG (the picture and
+ * its recipe), a sprite source (.txt), a JSON map, a recipe (applied to the
+ * picture open), or a pixel.config.json (its rules, palette, and recipe).
  */
 const openFile = async (file: Blob, name: string): Promise<void> => {
   const fail = (text: string): void => {
@@ -509,12 +511,19 @@ const openFile = async (file: Blob, name: string): Promise<void> => {
   }
   if (file.type.startsWith("image/")) {
     try {
+      const bytes = new Uint8Array(await file.arrayBuffer())
       const { image, canvas } = await loadImage(file)
       // Finding frames and grids in a large picture takes a moment: say so first.
       state.message = `Reading ${name}…`
       renderToast()
       await new Promise((resolve) => setTimeout(resolve, 30))
-      setSource(image, canvas, name)
+      const png = isPng(bytes) ? bytes : undefined
+      setSource(image, canvas, name, undefined, png)
+      const stored = png === undefined ? undefined : readProjectRecipe(png)
+      if (stored === undefined) return
+      const decoded = decodeRecipe(stored)
+      if (decoded.ok) applyRecipe(decoded.value, name, `Opened the project ${name}: the picture with every setting it was saved with.`)
+      else fail(`${name} holds a recipe that cannot be read (${decoded.error}), so it opened as a plain picture.`)
     } catch (error) {
       fail(`Could not read ${name}: ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -553,7 +562,7 @@ const openFile = async (file: Blob, name: string): Promise<void> => {
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
 
 /** Sets the page from a recipe: the grid, the palette, and every setting, hand edits included. */
-const applyRecipe = (recipe: Recipe, name: string): void => {
+const applyRecipe = (recipe: Recipe, name: string, message = `Applied ${name}.`): void => {
   const source = state.source
   if (source === undefined) {
     state.message = `Open the picture first, then the recipe ${name}.`
@@ -599,7 +608,7 @@ const applyRecipe = (recipe: Recipe, name: string): void => {
   } else state.kind = "picture"
   // The recipe's sizes must be the ones it was made at, or its hand edits are dropped.
   cache = {}
-  state.message = `Applied ${name}.`
+  state.message = message
   update()
 }
 
@@ -750,7 +759,7 @@ const empty = h(
       button("Try the demo", openDemo, { variant: "secondary" })
     ),
     h("p", { class: "empty-note" }, "Animation sheets open as animations: every frame found, fixed, lined up, and played."),
-    h("p", { class: "empty-note" }, "Sprite sources (.txt), JSON maps, recipes, and pixel.config.json open here too."),
+    h("p", { class: "empty-note" }, "Project PNGs, sprite sources (.txt), JSON maps, recipes, and pixel.config.json open here too."),
     h("p", { class: "empty-note" }, "A free tool from Ritmo, the agent-first ECS runtime.")
   )
 )
@@ -1551,6 +1560,14 @@ const drawPreview = (): void => {
   context.drawImage(image, 0, 0)
 }
 
+/** The source picture (its own bytes when it was a PNG) with this recipe stored inside. */
+const projectPng = async (recipe: Recipe): Promise<Blob> => {
+  const source = state.source
+  if (source === undefined) throw new Error("No picture is open.")
+  const png = source.png ?? new Uint8Array(await (await pngOfCanvas(source.canvas)).arrayBuffer())
+  return new Blob([withProjectRecipe(png, encodeRecipe(recipe))], { type: "image/png" })
+}
+
 const exportPanel = (): HTMLElement | false => {
   const art = exported
   if (art === undefined) return false
@@ -1563,7 +1580,7 @@ const exportPanel = (): HTMLElement | false => {
     "Export",
     {
       action: h("span", { class: "meta" }, `${art.width} × ${art.height} · ${usedColors(art).length} colors`),
-      help: "PNG at 1× is the true pixel art. The SVG is drawn in pixel units with crisp edges, so it stays sharp at any size; the scale only sets the size it opens at. The JSON map holds the palette and one row of palette indices per pixel row (-1 for transparent). The recipe holds every setting, hand edits included: open it here again, or run it with pixel fix --recipe."
+      help: "PNG at 1× is the true pixel art. The SVG is drawn in pixel units with crisp edges, so it stays sharp at any size; the scale only sets the size it opens at. The JSON map holds the palette and one row of palette indices per pixel row (-1 for transparent). The recipe holds every setting, hand edits included: open it here again, or run it with pixel fix --recipe. The project PNG is the source picture with the recipe stored inside: open it here to get the whole session back, or send it to someone (as a file, since some apps strip what is stored in pictures). It is for sharing work, not a game asset: export the fixed art for that."
     },
     h("div", { class: "preview-box" }, preview),
     switchRow(
@@ -1610,6 +1627,11 @@ const exportPanel = (): HTMLElement | false => {
           variant: "secondary",
           small: true,
           title: "Every setting, hand edits included: open it here again, or run it with pixel fix --recipe"
+        }),
+        button("Project PNG", () => void projectPng(recipeOf()).then((blob) => download(`${name}.project.png`, blob)), {
+          variant: "secondary",
+          small: true,
+          title: "The source picture with every setting stored inside: open it here to pick up where you left off, or share it. Not a game asset."
         }),
         button("Palette .hex", () => download(`${name}-palette.hex`, toHexFile(paletteOf())), { variant: "secondary", small: true }),
         button("Palette .gpl", () => download(`${name}-palette.gpl`, toGpl(paletteOf())), { variant: "secondary", small: true })
@@ -2110,6 +2132,11 @@ const animationExportPanel = (): HTMLElement | false => {
           small: true,
           title: "Every setting and every frame's box: open it here again, or run it with pixel sheet --recipe"
         }),
+        button("Project PNG", () => void projectPng(animationRecipe()).then((blob) => download(`${name}.project.png`, blob)), {
+          variant: "secondary",
+          small: true,
+          title: "The sheet with every setting and frame stored inside: open it here to pick up where you left off, or share it. Not a game asset."
+        }),
         button("Palette .hex", () => download(`${name}-palette.hex`, toHexFile(paletteOf())), { variant: "secondary", small: true }),
         button("Palette .gpl", () => download(`${name}-palette.gpl`, toGpl(paletteOf())), { variant: "secondary", small: true })
       )
@@ -2237,7 +2264,7 @@ const renderTopbar = (): void => {
       ),
       h("span", { class: "divider" }),
       button("Demo", openDemo, { variant: "ghost", class: "hide-narrow", title: "Open the demo picture" }),
-      button("Open", () => fileInput.click(), { variant: "secondary", icon: "open", title: "Open a picture, sprite source, recipe, or pixel.config.json" }),
+      button("Open", () => fileInput.click(), { variant: "secondary", icon: "open", title: "Open a picture, project PNG, sprite source, recipe, or pixel.config.json" }),
       button("Export", () => reveal("export", () => update()), { variant: "primary", icon: "download", disabled: result === undefined && (animation?.placed.length ?? 0) === 0 })
     )
   )
