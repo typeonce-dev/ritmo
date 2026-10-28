@@ -47,4 +47,6 @@ One character per key, every row as wide as the first; `pixel fix` writes keys t
 
 ## Recipes
 
-A recipe holds every setting of a fix, the grid and hand edits included. `pixel fix` writes one next to its outputs, the web page saves one (**Recipe**), and `--recipe file` runs it: the same picture with the same recipe fixes the same way in both. When a person must finish a fix by hand, give them the picture and its recipe; when they send back a recipe, rerun with it.
+A recipe holds every setting of a fix, the grid and hand edits included. `pixel fix` writes one next to its outputs, the web page saves one (**Recipe**), and `--recipe file` runs it: the same picture with the same recipe fixes the same way in both. When a person must finish a fix by hand, `pixel fix pic.png --project` writes `pic.project.png`: the picture with the recipe inside, which opens in the web page with every setting. A project PNG the person sends back runs as it is: `pixel fix pic.project.png` uses the recipe it holds (`"storedRecipe": true` in the report).
+
+A project PNG is never a game asset: ship the fixed `.png`. To spot one, `grep -a ritmo-pixel-recipe file.png` (the recipe is an uncompressed `iTXt` chunk with that keyword); to make it a plain picture, `exiftool -all= file.png` or `oxipng --strip safe file.png`.

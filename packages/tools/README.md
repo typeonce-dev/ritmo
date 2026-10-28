@@ -55,7 +55,8 @@ pnpm --dir website build          # the site, with the page at dist/tools/pixel/
 ```
 
 Open a picture (PNG or JPEG: **Open** in the top bar, drag and drop, or paste), or press
-**Try the demo** for a fake AI picture of a mushroom. The same button opens a sprite source
+**Try the demo** for a fake AI picture of a mushroom. The same button opens a project PNG
+(the picture with every setting it was saved with), a sprite source
 (`.txt`) or a JSON map as pixel art at its own size, a recipe (applied to the
 picture open), and a `pixel.config.json` (its rules, palette, and settings).
 
@@ -159,7 +160,8 @@ node packages/tools/bin/ritmo-tools.mjs pixel check art.png   # from its source,
    units with crisp edges (it stays sharp at any size; same-colored areas are
    merged into rectangles); a JSON map (size, palette, one row of palette
    indices per pixel row, -1 for transparent); the palette as `.hex` or `.gpl`;
-   **Sprite text** (the sprite source format below); and the **Recipe**.
+   **Sprite text** (the sprite source format below); the **Recipe**; and the
+   **Project PNG** (below).
 
 **Undo** and **Redo** (in the top bar, or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z
 or Ctrl+Y) cover every setting: the grid, the palette, the background,
@@ -215,6 +217,30 @@ it is.
 Hand edits (**Erase**, **Paint**) and **Size** are for single pictures and
 are not offered for animations.
 
+### Project PNGs
+
+A **Project PNG** (in Export) is the source picture with the recipe stored
+inside it, so one file holds the whole session: open it on the page and every
+setting comes back, hand edits included. It is how to share work in progress
+or pick it up later; nothing leaves the device unless you send the file. It is
+not a game asset: export the fixed art for that.
+
+The picture's pixels are untouched (a PNG opened keeps its own bytes; another
+format is stored as PNG). The recipe is one uncompressed `iTXt` text chunk
+with the keyword `ritmo-pixel-recipe`, right after the header, holding the
+recipe JSON: about 0.5 to 2 KB, more with many hand strokes. Viewers ignore
+it. Some apps re-encode pictures and drop it (chat apps sending a photo as a
+photo): send it as a file. A project PNG without its chunk opens as the plain
+picture.
+
+To see the recipe: `exiftool art.png`, `pngcheck -t art.png`, or
+`grep -a ritmo-pixel-recipe art.png`. To remove it: `exiftool -all= art.png`,
+`oxipng --strip safe art.png`, or `pngcrush -rem text in.png out.png`; what is
+left is the plain picture. `ritmo-tools pixel fix --project` writes one from the CLI, and
+`check`, `fix`, `sheet`, and `preview` run the recipe a project PNG holds (a
+`--recipe` file wins over it; the report says `"storedRecipe": true` when it
+ran).
+
 ### The CLI
 
 `ritmo-tools pixel` runs the page's pipeline from the command line, for agents. It is
@@ -227,7 +253,7 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 | Command | What it does |
 | --- | --- |
 | `check <file>` | Clean pixel art, fixable with confidence, or needs a person? Writes nothing. |
-| `fix <png>` | Fixes it, writing `.png` (1x), `@Nx.png` (`--scale N`), `.svg`, `.json` map, `.sprite.txt`, `.recipe.json`, and `.preview.png`. |
+| `fix <png>` | Fixes it, writing `.png` (1x), `@Nx.png` (`--scale N`), `.svg`, `.json` map, `.sprite.txt`, `.recipe.json`, and `.preview.png`; `--project` also writes `<name>.project.png`. |
 | `sheet <png>` | Fixes an animation sheet: `.png` (the frames in a strip, or `--columns N` per row), its `.json`, a `.gif`, `.frames/` (one PNG each), `.recipe.json`, and `.preview.png` (the boxes found over the source, and the fixed frames). |
 | `pixelate <png> -w N` | Cuts a picture that is not pixel art into N pixels across, on the palette (or `--colors N` proposed from it). |
 | `render <sprite>` | Renders a sprite source or JSON map to PNG and SVG, and lints it. |
@@ -240,7 +266,7 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 `fix`, `check`, `pixelate`, and `preview` take the page's settings as flags
 (`--palette`, `--cell 8x8 --offset 2,3`, `--follow`, `--cleanup`,
 `--remove-background`, `--crop`, `--dither`, `--metric`, `--shrink-to`), over a
-`--recipe` file, over the config. `ritmo-tools pixel <command> --help` lists them. `sheet` takes them too, plus
+`--recipe` file (or the recipe a project PNG holds), over the config. `ritmo-tools pixel <command> --help` lists them. `sheet` takes them too, plus
 `--boxes`, `--skip`, `--anchor`, `--fps`, `--pingpong`, `--columns`, and
 `--spacing`. Every command reads PNG and JPEG.
 
@@ -313,7 +339,8 @@ of the true size, which are as clean but have half their lines mid-cell.
   (colors the palette lost), `export.ts` (PNG pixels,
   SVG, JSON), `demo.ts` (the fake AI picture generator),
   `pipeline.ts` (the whole fix, from a picture and a recipe: what the page and
-  the CLI both run), `recipe.ts` (recipes as JSON), `sprite.ts` (sprite
+  the CLI both run), `recipe.ts` (recipes as JSON), `project.ts` (project
+  PNGs: the recipe in a PNG text chunk), `sprite.ts` (sprite
   sources), `lint.ts` (the rules), `report.ts` (the check and its verdict),
   `preview.ts` (pictures to look at), `sheet.ts` (clearing a sheet, finding
   its frames, anchors, and laying frames on one canvas), `animation.ts` (the

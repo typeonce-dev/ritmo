@@ -2,9 +2,10 @@
  * Reading what the CLI is given (pictures, sprite sources, recipes) and
  * writing what it makes, through Effect's FileSystem.
  */
-import { Console, Effect, FileSystem, Path } from "effect"
+import { Console, Effect, FileSystem, Option, Path } from "effect"
 import type { PixelArt } from "../core/fix.ts"
 import type { RgbaImage } from "../core/grid.ts"
+import { isPng, readProjectRecipe, withProjectRecipe } from "../core/project.ts"
 import { parseJsonMap, parseSprite } from "../core/sprite.ts"
 import { CliFailure } from "./config.ts"
 import { decodePicture, encodePng } from "./png.ts"
@@ -22,6 +23,21 @@ export const readPicture = Effect.fn("readPicture")(function* (file: string) {
     try: () => decodePicture(bytes),
     catch: (error) => new CliFailure({ message: `${file} is not a PNG or a JPEG: ${error instanceof Error ? error.message : String(error)}` })
   })
+})
+
+/** The recipe stored in a project PNG; none for a plain picture or a file that is not a PNG. */
+export const readProjectRecipeOf = Effect.fn("readProjectRecipeOf")(function* (file: string) {
+  if (!/\.png$/i.test(file)) return Option.none<string>()
+  const fs = yield* FileSystem.FileSystem
+  const bytes = yield* fs.readFile(file).pipe(Effect.mapError(() => new CliFailure({ message: `cannot read ${file}` })))
+  return Option.fromUndefinedOr(readProjectRecipe(bytes))
+})
+
+/** Writes a project PNG: the source file's own bytes (or, for a JPEG, its pixels as PNG) with this recipe stored inside. */
+export const writeProject = Effect.fn("writeProject")(function* (source: string, image: RgbaImage, file: string, recipe: string) {
+  const fs = yield* FileSystem.FileSystem
+  const bytes = yield* fs.readFile(source).pipe(Effect.mapError(() => new CliFailure({ message: `cannot read ${source}` })))
+  return yield* writeBytes(file, withProjectRecipe(isPng(bytes) ? bytes : encodePng(image), recipe))
 })
 
 /** Reads a picture (PNG or JPEG), a sprite source (any other text file), or a JSON map (`.json`). */

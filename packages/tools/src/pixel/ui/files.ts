@@ -34,10 +34,13 @@ export const loadImage = async (blob: Blob): Promise<LoadedImage> => {
   return { image: { width: data.width, height: data.height, data: data.data }, canvas }
 }
 
-export const pngOf = (art: PixelArt, scale: number): Promise<Blob> =>
+/** The canvas's pixels as a PNG. */
+export const pngOfCanvas = (canvas: HTMLCanvasElement): Promise<Blob> =>
   new Promise((resolve, reject) => {
-    canvasOf(toRgba(art, scale)).toBlob((blob) => (blob === null ? reject(new Error("PNG encoding failed")) : resolve(blob)), "image/png")
+    canvas.toBlob((blob) => (blob === null ? reject(new Error("PNG encoding failed")) : resolve(blob)), "image/png")
   })
+
+export const pngOf = (art: PixelArt, scale: number): Promise<Blob> => pngOfCanvas(canvasOf(toRgba(art, scale)))
 
 export const download = (name: string, content: Blob | string, type = "text/plain"): void => {
   const blob = typeof content === "string" ? new Blob([content], { type }) : content
@@ -51,5 +54,5 @@ export const download = (name: string, content: Blob | string, type = "text/plai
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
-/** The file name without its extension, for naming exports. */
-export const baseName = (name: string): string => name.replace(/\.[^.]+$/, "") || "pixel-art"
+/** The file name without its extension (and a project PNG's `.project`), for naming exports. */
+export const baseName = (name: string): string => name.replace(/\.[^.]+$/, "").replace(/\.project$/i, "") || "pixel-art"

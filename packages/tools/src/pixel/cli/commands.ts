@@ -26,7 +26,7 @@ import { encodeRecipe, type GridChoice, type Recipe } from "../core/recipe.ts"
 import { checkImage, compareReports, reportOfArt, reportOfFix, reportOfSheet, type Report, type Verdict } from "../core/report.ts"
 import { artOfImage, formatSprite } from "../core/sprite.ts"
 import { CliFailure, CONFIG_FILE, decodeOrFail, loadConfig, loadPalette, starterConfig, type Config } from "./config.ts"
-import { outputBase, printJson, readPicture, readSource, readText, writeBytes, writePng, writeText } from "./io.ts"
+import { outputBase, printJson, readPicture, readProjectRecipeOf, readSource, readText, writeBytes, writePng, writeProject, writeText } from "./io.ts"
 
 /** Ends the run with an exit code, already reported on stdout. */
 export class Exit extends Data.TaggedError("Exit")<{ readonly code: number }> {
@@ -72,11 +72,17 @@ interface Overrides {
 
 const overrides = { palette, removeBackground, crop, cleanup, metric, dither, shrink }
 
-/** The recipe a command runs: the config's, then the recipe file, then the flags. */
-const recipeOf = Effect.fn("recipeOf")(function* (project: Config, file: Option.Option<string>, flags: Overrides) {
+/**
+ * The recipe a command runs: the config's, then the recipe file (or, without
+ * one, the recipe stored in the input when it is a project PNG), then the flags.
+ * `stored` says whether the input's own recipe was used, for the report.
+ */
+const recipeOf = Effect.fn("recipeOf")(function* (project: Config, file: Option.Option<string>, flags: Overrides, input?: string) {
   let recipe = project.recipe
-  if (Option.isSome(file)) {
-    const fromFile = yield* decodeOrFail(yield* readText(file.value), file.value)
+  const inside = Option.isNone(file) && input !== undefined ? yield* readProjectRecipeOf(input) : Option.none<string>()
+  const text = Option.isSome(file) ? Option.some(yield* readText(file.value)) : inside
+  if (Option.isSome(text)) {
+    const fromFile = yield* decodeOrFail(text.value, Option.isSome(file) ? file.value : `${input} (its stored recipe)`)
     recipe = { ...fromFile, palette: fromFile.palette ?? recipe.palette }
   }
   if (Option.isSome(flags.palette)) recipe = { ...recipe, palette: yield* loadPalette(flags.palette.value, ".") }
@@ -86,8 +92,11 @@ const recipeOf = Effect.fn("recipeOf")(function* (project: Config, file: Option.
   if (Option.isSome(flags.metric)) recipe = { ...recipe, metric: flags.metric.value }
   if (flags.dither) recipe = { ...recipe, dither: "ordered" }
   if (Option.isSome(flags.shrink)) recipe = { ...recipe, targetWidth: flags.shrink.value }
-  return recipe
+  return { recipe, stored: Option.isSome(inside) }
 })
+
+/** What a report says about where its recipe came from: only when the input's own stored recipe ran. */
+const storedNote = (stored: boolean): { readonly storedRecipe?: true } => (stored ? { storedRecipe: true } : {})
 
 /** The project's rules, with the recipe's palette when the config names none. */
 const rulesOf = (project: Config, recipe: Recipe): LintRules => ({ ...project.rules, palette: project.rules.palette ?? recipe.palette?.colors })
@@ -170,10 +179,10 @@ const check = Command.make(
   { input: Argument.String("input").pipe(Argument.withDescription("A PNG or JPEG, a sprite source, or a JSON map.")), config, recipe: recipeFlag, ...overrides },
   Effect.fn("check")(function* (flags) {
     const project = yield* loadConfig(flags.config)
-    const recipe = yield* recipeOf(project, flags.recipe, flags)
+    const { recipe, stored } = yield* recipeOf(project, flags.recipe, flags, flags.input)
     const source = yield* readSource(flags.input)
     const report = source.kind === "art" ? reportOfArt(source.art, rulesOf(project, recipe)) : checkImage(source.image, recipe, rulesOf(project, recipe)).report
-    yield* printJson({ file: flags.input, ...report })
+    yield* printJson({ file: flags.input, ...storedNote(stored), ...report })
     yield* exitWith(exitCode[report.verdict])
   })
 ).pipe(Command.withDescription("Is this clean pixel art, can it be fixed with confidence, or does a person need to look? Writes nothing."))
@@ -189,20 +198,31 @@ const fix = Command.make(
     cell: Flag.String("cell").pipe(Flag.withDescription('The grid\'s cell size in source pixels, "8" or "8x6", instead of finding it.'), Flag.optional),
     offset: Flag.String("offset").pipe(Flag.withDescription('Where the grid starts, "x,y" in source pixels (with --cell).'), Flag.optional),
     follow: Flag.Boolean("follow").pipe(Flag.withDefault(false), Flag.withDescription("Move each grid line onto its nearest edge, for cells that drift.")),
+    project: Flag.Boolean("project").pipe(
+      Flag.withDefault(false),
+      Flag.withDescription("Also write a project PNG: the input with this fix's recipe stored inside, to open in the web page and finish by hand. Not a game asset.")
+    ),
     out,
     scale
   },
   Effect.fn("fix")(function* (flags) {
     const project = yield* loadConfig(flags.config)
-    let recipe = yield* recipeOf(project, flags.recipe, flags)
+    const start = yield* recipeOf(project, flags.recipe, flags, flags.input)
+    const stored = start.stored
+    let recipe = start.recipe
     if (Option.isSome(flags.cell)) recipe = { ...recipe, grid: yield* parseCell(flags.cell.value, flags.offset) }
     if (flags.follow) recipe = { ...recipe, follow: true }
     const image = yield* readPicture(flags.input)
     const fixed = fixImage(image, recipe, rulesOf(project, recipe), flags.colors, "dominant")
     const base = yield* outputBase(flags.input, Option.getOrUndefined(flags.out), "fixed")
     const extra = { recipe: fixed.recipe, ...(fixed.outcome === undefined ? {} : { preview: preview(image, fixed)! }) }
-    const files = fixed.outcome === undefined ? {} : yield* writeOutputs(base, fixed.outcome.exported, flags.scale, extra)
-    yield* printJson({ file: flags.input, ...fixed.report, files })
+    const files: Record<string, string> = fixed.outcome === undefined ? {} : yield* writeOutputs(base, fixed.outcome.exported, flags.scale, extra)
+    if (flags.project) {
+      // Beside the input as <name>.project.png; with --out, beside the other outputs.
+      const file = Option.isSome(flags.out) ? `${base}.project.png` : `${yield* outputBase(flags.input, undefined, "project")}.png`
+      files.project = yield* writeProject(flags.input, image, file, encodeRecipe(fixed.recipe))
+    }
+    yield* printJson({ file: flags.input, ...storedNote(stored), ...fixed.report, files })
     yield* exitWith(fixed.report.verdict === "needs-person" ? 4 : fixed.report.issues.some((issue) => issue.severity === "error") ? 3 : 0)
   })
 ).pipe(Command.withDescription("Fixes a picture into crisp pixel art, and writes it as PNG, SVG, a JSON map, a sprite source, its recipe, and a preview."))
@@ -222,7 +242,7 @@ const pixelate = Command.make(
   },
   Effect.fn("pixelate")(function* (flags) {
     const project = yield* loadConfig(flags.config)
-    const start = yield* recipeOf(project, flags.recipe, flags)
+    const { recipe: start } = yield* recipeOf(project, flags.recipe, flags)
     if (flags.width < 1) return yield* new CliFailure({ message: "--width must be at least 1" })
     const recipe: Recipe = {
       ...start,
@@ -287,7 +307,7 @@ const previewCommand = Command.make(
   { input: Argument.String("input").pipe(Argument.withDescription("A PNG or JPEG, a sprite source, or a JSON map.")), config, recipe: recipeFlag, ...overrides, out },
   Effect.fn("preview")(function* (flags) {
     const project = yield* loadConfig(flags.config)
-    const recipe = yield* recipeOf(project, flags.recipe, flags)
+    const { recipe } = yield* recipeOf(project, flags.recipe, flags, flags.input)
     const source = yield* readSource(flags.input)
     const base = yield* outputBase(flags.input, Option.getOrUndefined(flags.out), "preview")
     const picture =
@@ -302,7 +322,7 @@ const compare = Command.make(
   { a: Argument.String("a"), b: Argument.String("b"), config, recipe: recipeFlag, ...overrides },
   Effect.fn("compare")(function* (flags) {
     const project = yield* loadConfig(flags.config)
-    const recipe = yield* recipeOf(project, flags.recipe, flags)
+    const { recipe } = yield* recipeOf(project, flags.recipe, flags)
     const reportOf = Effect.fn("reportOf")(function* (file: string) {
       const source = yield* readSource(file)
       return source.kind === "art" ? reportOfArt(source.art, rulesOf(project, recipe)) : checkImage(source.image, recipe, rulesOf(project, recipe)).report
@@ -344,7 +364,8 @@ const sheetCommand = Command.make(
   },
   Effect.fn("sheet")(function* (flags) {
     const project = yield* loadConfig(flags.config)
-    let recipe = yield* recipeOf(project, flags.recipe, flags)
+    const resolved = yield* recipeOf(project, flags.recipe, flags, flags.input)
+    let recipe = resolved.recipe
     if (Option.isSome(flags.cell)) recipe = { ...recipe, grid: yield* parseCell(flags.cell.value, Option.none()) }
     if (!flags.keepBackground) recipe = { ...recipe, removeBackground: true }
     else recipe = { ...recipe, removeBackground: false }
@@ -404,7 +425,7 @@ const sheetCommand = Command.make(
         sheet.anchor === "feet" || sheet.anchor === "ground" ? anchor.y : undefined
       )
     )
-    yield* printJson({ file: flags.input, ...report, files })
+    yield* printJson({ file: flags.input, ...storedNote(resolved.stored), ...report, files })
     yield* exitWith(report.verdict === "needs-person" ? 4 : report.issues.some((issue) => issue.severity === "error") ? 3 : 0)
   })
 ).pipe(
