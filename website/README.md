@@ -57,7 +57,7 @@ a browser host and a Pixi renderer added here.
 
 Free tools from Ritmo live under `/tools/`, each a page that owns the whole
 window (no guide layout) and mounts the tool's own package:
-`/tools/pixel/` is the pixel fixer (`tools/pixel-fixer`, see its README).
+`/tools/pixel/` is the pixel fixer (`packages/tools`, see its README).
 
 ## Brand
 

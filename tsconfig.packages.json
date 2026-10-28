@@ -10,6 +10,7 @@
     { "path": "packages/math" },
     { "path": "packages/netcode" },
     { "path": "packages/devtools" },
-    { "path": "packages/oxlint-plugin" }
+    { "path": "packages/oxlint-plugin" },
+    { "path": "packages/tools" }
   ]
 }

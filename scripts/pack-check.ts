@@ -11,6 +11,8 @@
  *    `moduleResolution: nodenext` with TypeScript 7 and 6, runs it with
  *    plain Node, and checks that `internal/*` paths are not exported.
  * 5. Runs oxlint with the published plugin over a file that breaks its rules.
+ * 6. Runs the published `ritmo-tools` CLI, and checks the core package ships
+ *    the skills that point agents at it.
  *
  *   pnpm pack:check
  */
@@ -21,7 +23,9 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 const root = fileURLToPath(new URL("..", import.meta.url))
-const packages = ["core", "math", "browser", "render", "pixi", "netcode", "devtools", "oxlint-plugin"] as const
+const packages = ["core", "math", "browser", "render", "pixi", "netcode", "devtools", "oxlint-plugin", "tools"] as const
+/** Packages that publish a command line and no modules: no `index`, and no source. */
+const commandLineOnly = new Set<string>(["tools"])
 
 const run = (command: string, args: ReadonlyArray<string>, cwd: string): string =>
   execFileSync(command, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] })
@@ -46,17 +50,23 @@ for (const directory of packages) {
   if (created === undefined) throw new Error(`pnpm pack produced no tarball for ${manifest.name}`)
   tarballByName.set(manifest.name, path.join(tarballs, created))
   const listing = run("tar", ["-tzf", path.join(tarballs, created)], work).split("\n")
-  for (const required of ["package/LICENSE", "package/README.md", "package/CHANGELOG.md", "package/dist/index.js", "package/dist/index.d.ts", "package/src/index.ts"]) {
+  const shipped = commandLineOnly.has(directory)
+    ? ["package/LICENSE", "package/README.md", "package/CHANGELOG.md", "package/dist/cli.js"]
+    : ["package/LICENSE", "package/README.md", "package/CHANGELOG.md", "package/dist/index.js", "package/dist/index.d.ts", "package/src/index.ts"]
+  for (const required of shipped) {
     if (!listing.includes(required)) throw new Error(`${manifest.name} tarball is missing ${required}`)
   }
   if (listing.some((file) => file.includes("/test/") || file.includes("tsbuildinfo"))) {
     throw new Error(`${manifest.name} tarball contains test or build-info files`)
   }
   if (directory === "core") {
-    for (const required of ["package/skills/ritmo/SKILL.md", "package/skills/ritmo/playbooks/mechanic.md", "package/skills/ritmo/references/spatial-grid.ts", "package/skills/ritmo-prototype/SKILL.md", "package/SETUP.md"]) {
+    for (const required of ["package/skills/ritmo/SKILL.md", "package/skills/ritmo/playbooks/mechanic.md", "package/skills/ritmo/references/spatial-grid.ts", "package/skills/ritmo-prototype/SKILL.md", "package/skills/ritmo-pixel-art/SKILL.md", "package/SETUP.md"]) {
       if (!listing.includes(required)) throw new Error(`${manifest.name} tarball is missing ${required}`)
     }
     if (listing.includes("package/PROTOTYPE.md")) throw new Error(`${manifest.name} tarball contains the repo-only PROTOTYPE.md`)
+  }
+  if (commandLineOnly.has(directory) && listing.some((file) => file.startsWith("package/src/") || file.startsWith("package/bin/") || file.startsWith("package/dist/pixel/ui/"))) {
+    throw new Error(`${manifest.name} tarball contains its source, its in-repo launcher, or the website's page`)
   }
   if (directory === "pixi" && listing.some((file) => /\/(NodeRegistry|RenderSync)\.(ts|js|d\.ts)$/.test(file))) {
     throw new Error("Pixi tarball contains removed compatibility modules")
@@ -223,6 +233,14 @@ for (const rule of ["use-random-for-randomness", "use-ops-for-math", "handle-run
   if (!linted.stdout.includes(`ritmo(${rule})`)) throw new Error(`published plugin did not report ritmo/${rule}:\n${linted.stdout}${linted.stderr}`)
 }
 console.log(linted.stdout.split("\n").filter((line) => line.includes("ritmo(")).map((line) => line.replace(/: .*\[/, " [")).join("\n"))
+
+step("run the published ritmo-tools CLI")
+const toolsBin = path.join(consumer, "node_modules", ".bin", "ritmo-tools")
+const toolsVersion = run(toolsBin, ["--version"], consumer).trim()
+if (!toolsVersion.includes(JSON.parse(readFileSync(path.join(root, "packages", "tools", "package.json"), "utf8")).version)) throw new Error(`ritmo-tools --version printed ${toolsVersion}`)
+const palettes = run(toolsBin, ["pixel", "palettes"], consumer)
+if (!palettes.includes("PICO-8")) throw new Error(`ritmo-tools pixel palettes printed ${palettes}`)
+console.log(`${toolsVersion}: pixel palettes ok`)
 
 step("internal modules are not exported")
 writeFileSync(path.join(consumer, "internal.mjs"), `import("@typeonce/ritmo/internal/world").then(() => process.exit(1), (error) => { if (error.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") process.exit(2) })\n`)

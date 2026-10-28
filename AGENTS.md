@@ -8,7 +8,7 @@
 ## Repo
 - `packages/*`: the published packages (see each `package.json` description). Each has `src`, `test`, `dtslint`, and core, math, and render have `bench`.
 - `integration/*`: headless game simulations with tests, using the packages by name. `top-down` also has a `bench` case for its whole frame.
-- `tools/*`: standalone tools that are not published (`tools/pixel-fixer`: fixes AI-made pixel art; see its README). Their tests run in `pnpm test`.
+- `packages/tools` (`@typeonce/ritmo-tools`) is the asset command for agents, not a runtime package: a CLI built on Effect (no index and no `dtslint`, since it has no TypeScript API; it ships `dist` only) and the pixel fixer's page the website mounts. The runtime rules below (no drawing, no platform APIs, `Clock`/`Random`/`Ops`) do not apply to it; its skills live in `packages/core/skills` like the others.
 - `bench/compare`: Ritmo against bitECS, Koota, and Miniplex on the community ECS benchmark cases (`pnpm bench:compare`). Internal, not a gate; run it before and after a storage or hot-path change. `test/` checks every claim the website's comparison page makes about the other libraries.
 - `website/`: the guide for humans (Astro), built from the workspace packages and deployed after each release.
 - `.changeset/README.md`: releases and adding a package.

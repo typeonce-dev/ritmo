@@ -1,0 +1,68 @@
+{
+  "name": "@typeonce/ritmo-tools",
+  "version": "0.17.0",
+  "description": "Asset tools for games made with Ritmo, for agents: fixes AI-made pixel art and animation sheets onto a true pixel grid and a palette, from the command line",
+  "author": "Sandro Maglione",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/typeonce-dev/ritmo.git",
+    "directory": "packages/tools"
+  },
+  "bugs": {
+    "url": "https://github.com/typeonce-dev/ritmo/issues"
+  },
+  "homepage": "https://github.com/typeonce-dev/ritmo#readme",
+  "keywords": [
+    "gamedev",
+    "ritmo",
+    "pixel-art",
+    "sprite-sheet",
+    "agents",
+    "cli"
+  ],
+  "type": "module",
+  "files": [
+    "dist",
+    "!dist/pixel/ui",
+    "!dist/**/*.tsbuildinfo",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "ritmo-tools": "./bin/ritmo-tools.mjs"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    "./pixel/page": "./src/pixel/ui/main.ts",
+    "./pixel/page.css": "./src/pixel/ui/style.css"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      "./package.json": "./package.json"
+    },
+    "bin": {
+      "ritmo-tools": "./dist/cli.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.json --pretty false",
+    "check": "tsc -b tsconfig.json --pretty false"
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.0.6",
+    "effect": "4.0.6",
+    "jpeg-js": "0.4.4",
+    "pngjs": "7.0.0"
+  },
+  "devDependencies": {
+    "@types/pngjs": "^6.0.5",
+    "tsx": "^4.21.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

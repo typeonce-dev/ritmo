@@ -73,6 +73,20 @@
         "typescript/no-unnecessary-type-assertion": "off",
         "eslint/no-unused-vars": "off"
       }
+    },
+    {
+      // The asset tools run on a developer's machine (a CLI and a web page), never in a game's simulation.
+      "files": [
+        "packages/tools/**"
+      ],
+      "rules": {
+        "ritmo/use-clock-for-time": "off",
+        "ritmo/use-random-for-randomness": "off",
+        "ritmo/use-ops-for-math": "off",
+        "ritmo/keep-simulation-headless": "off",
+        "ritmo/no-infinity-in-simulation-data": "off",
+        "ritmo/no-float-timers": "off"
+      }
     }
   ],
   "ignorePatterns": [

@@ -6,7 +6,6 @@
     "scripts/**/*.ts",
     "integration/**/*.ts",
     "bench/**/*.ts",
-    "tools/**/*.ts",
     "packages/*/test/**/*.ts",
     "packages/*/dtslint/**/*.ts",
     "packages/*/bench/**/*.ts",
@@ -34,7 +33,8 @@
       "@typeonce/ritmo-netcode/*": ["./packages/netcode/src/*"],
       "@typeonce/ritmo-devtools": ["./packages/devtools/src/index.ts"],
       "@typeonce/ritmo-devtools/*": ["./packages/devtools/src/*"],
-      "@typeonce/oxlint-plugin-ritmo": ["./packages/oxlint-plugin/src/index.ts"]
+      "@typeonce/oxlint-plugin-ritmo": ["./packages/oxlint-plugin/src/index.ts"],
+      "@typeonce/ritmo-tools/*": ["./packages/tools/src/*"]
     }
   }
 }
