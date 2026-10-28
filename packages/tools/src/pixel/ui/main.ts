@@ -1945,15 +1945,13 @@ const framesPanel = (): HTMLElement | false => {
   const clip = selectedClip()
   const exportedCount = animations.filter((entry) => entry.include).length
   const selected = state.selectedFrame === undefined ? undefined : frames[state.selectedFrame]
-  // Where the chosen frame is in the chosen animation: a split goes before it.
-  const at = chosen === undefined || state.selectedFrame === undefined ? -1 : chosen.frames.indexOf(state.selectedFrame)
   return sectionOf(
     "frames",
     "Animations",
     {
       action: button("Find again", findFramesAgain, { variant: "ghost", small: true, icon: "wand", title: "Find the frames again, one animation per row (drops boxes and animations changed by hand)" }),
       help:
-        "Each box on the sheet is one frame, and each row of frames is one animation, named so a game can play it by name. In or Out chooses which animations are exported; the others keep their frames and settings. Choose one to play it, rename it, and set its speed. Split cuts the chosen animation in two before the chosen frame; Join puts it together with the next one. Choose Boxes in the toolbar over the sheet to move a box, drag its edges, or draw a new one. Frames are lined up by the anchor: Ground keeps each frame at the height it was drawn (hops stay), Feet pins the feet to one row. Nudge a frame by a pixel with the arrow keys when it looks off."
+        "Each box on the sheet is one frame, and each row of frames is one animation, named so a game can play it by name. In or Out chooses which animations are exported; the others keep their frames and settings. Choose one to play it, rename it, and set its speed. Its frames are listed under it: Split here, between two frames, cuts it in two there; Join puts it together with the next one. Choose Boxes in the toolbar over the sheet to move a box, drag its edges, or draw a new one. Frames are lined up by the anchor: Ground keeps each frame at the height it was drawn (hops stay), Feet pins the feet to one row. Nudge a frame by a pixel with the arrow keys when it looks off."
     },
     callout(
       exportedCount > 0 ? "good" : "warn",
@@ -2005,10 +2003,29 @@ const framesPanel = (): HTMLElement | false => {
         h(
           "div",
           { class: "frame-list" },
-          chosen.frames.map((i) => {
+          chosen.frames.flatMap((i, position) => {
             const entry = frames[i]!
             const nudged = entry.nudge.x !== 0 || entry.nudge.y !== 0
-            return listRow({
+            // Between two frames: cuts the animation there, the frames below becoming a new one.
+            const seam =
+              position > 0 &&
+              h(
+                "button",
+                {
+                  class: "split-seam",
+                  props: { type: "button" },
+                  attrs: { title: `Split ${chosen.name} here: frames ${chosen.frames.slice(position).map((frame) => frame + 1).join(", ")} become a new animation` },
+                  on: {
+                    click: () => {
+                      state.selectedFrame = undefined
+                      setSheet((sheet) => splitAnimation(sheet, state.selectedAnimation, position))
+                    }
+                  }
+                },
+                icon("split"),
+                h("span", {}, "Split here")
+              )
+            const row = listRow({
               number: i + 1,
               text: `${entry.box.width} × ${entry.box.height} px${nudged ? ` · moved ${entry.nudge.x}, ${entry.nudge.y}` : ""}`,
               on: state.selectedFrame === i,
@@ -2025,22 +2042,19 @@ const framesPanel = (): HTMLElement | false => {
               toggle: () => toggleFrame(i),
               toggleTitle: entry.include ? "In the animation: click to leave it out" : "Left out: click to put it back"
             })
+            return seam === false ? [row] : [seam, row]
           })
         ),
-        h(
-          "div",
-          { class: "inline-action" },
-          button(at > 0 ? `Split before frame ${state.selectedFrame! + 1}` : "Split", () => {
-            state.selectedFrame = undefined
-            setSheet((sheet) => splitAnimation(sheet, state.selectedAnimation, at))
-          }, { variant: "ghost", small: true, disabled: at < 1, title: "Choose a frame after the first to cut the animation in two before it" }),
-          button("Join with next", () => setSheet((sheet) => joinAnimation(sheet, state.selectedAnimation)), {
-            variant: "ghost",
-            small: true,
-            disabled: state.selectedAnimation >= animations.length - 1,
-            title: "Puts the next animation's frames at the end of this one"
-          })
-        )
+        state.selectedAnimation < animations.length - 1 &&
+          h(
+            "div",
+            { class: "inline-action" },
+            button(`Join with ${animations[state.selectedAnimation + 1]!.name}`, () => setSheet((sheet) => joinAnimation(sheet, state.selectedAnimation)), {
+              variant: "ghost",
+              small: true,
+              title: `Puts ${animations[state.selectedAnimation + 1]!.name}'s frames at the end of ${chosen.name}, as one animation`
+            })
+          )
       ),
     selected !== undefined &&
       h(

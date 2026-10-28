@@ -201,9 +201,10 @@ it is.
   chooses which are exported (the others keep their frames and settings);
   choose one to play it, rename it (the name a game plays it by), and set its
   speed and loop. Its frames are listed under it: **In**/**Out** leaves one
-  out without losing its box. **Split** cuts the animation in two before the
-  chosen frame, and **Join with next** puts it together with the next one,
-  for a sheet whose rows are not its animations. **Find again** starts over
+  out without losing its box. **Split here**, on the line between two of
+  its frames, cuts the animation in two there (the frames after it become a
+  new animation), and **Join with** puts it together with the next one, for
+  a sheet whose rows are not its animations. **Find again** starts over
   (boxes and animations changed by hand are dropped).
 - **Grid and palette.** Every frame is read on one cell size (found from all
   the frames together, or typed), each at its own offset, and fixed with one
