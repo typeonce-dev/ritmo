@@ -50,6 +50,45 @@ describe("finding frames on a sheet", () => {
     expect(isAnimationSheet(image, sheetRecipe, found)).toBe(true)
   })
 
+  it("splits blocks side by side whose rows do not line up, keeps a thrown bomb in its frame, and keeps a last faint frame, still an animation", () => {
+    // Already cleared: opaque art on transparency. Left, walking: 4 frames in each of two rows.
+    // Right, throwing: 4 frames, each a body and a bomb 3 pixels from it, in one row that spans
+    // the gap between the left block's rows. Below, an explosion ending in a wisp of 3x3 pixels.
+    const width = 600
+    const height = 140
+    const data = new Uint8ClampedArray(width * height * 4)
+    const fill = (x: number, y: number, w: number, h: number): void => {
+      for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) data.set([200, 60, 40, 255], (j * width + i) * 4)
+    }
+    const walking = [10, 60, 110, 160]
+    for (const x of walking) {
+      fill(x, 10, 30, 30)
+      fill(x, 52, 30, 30)
+    }
+    const throwing = [224, 289, 354, 419]
+    for (const x of throwing) {
+      fill(x, 20, 30, 42)
+      fill(x + 33, 50, 8, 8)
+    }
+    for (const x of walking) fill(x, 95, 30, 30)
+    fill(210, 108, 3, 3)
+
+    const boxes = findFrames({ width, height, data })
+    const holding = (x: number, y: number, w: number, h: number) =>
+      boxes.filter((box) => box.x <= x && box.y <= y && box.x + box.width >= x + w && box.y + box.height >= y + h)
+    expect(boxes).toHaveLength(17)
+    for (const x of walking) {
+      expect(holding(x, 10, 30, 30)).toHaveLength(1)
+      expect(holding(x, 52, 30, 30)).toHaveLength(1)
+      expect(holding(x, 95, 30, 30)).toHaveLength(1)
+    }
+    // Each throw is one frame with its bomb.
+    for (const x of throwing) expect(holding(x, 20, 41, 42)).toHaveLength(1)
+    expect(holding(210, 108, 3, 3)).toHaveLength(1)
+    // The faint last frame does not make the sheet a picture.
+    expect(looksAnimated({ width, height, data }, boxes)).toBe(true)
+  })
+
   it("paints out a grid whose lines are as dark as the art's outline, and keeps the outline", () => {
     // A navy fill with black lines every 10 pixels, and a black-outlined red square across two lines.
     const width = 60

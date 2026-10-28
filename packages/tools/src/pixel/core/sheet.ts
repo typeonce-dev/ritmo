@@ -348,45 +348,79 @@ const LABEL_BAND = 0.4
  * per frame, row by row, left to right. Boxes reach halfway into the gaps
  * around them, so a frame's loose bits (sparks, dust) stay inside it.
  * Returns one box around everything when the sheet has a single frame.
+ *
+ * The sheet is cut into rows of art, each row into frames, and each frame's
+ * box is cut into rows again when it holds frames stacked one over another:
+ * a sheet made of blocks side by side whose rows do not line up (walking on
+ * the left, throwing on the right) has no empty row across its whole width
+ * between two of a block's rows. Every cut is judged at the sheet's size, so
+ * a gap inside a frame (a body and the bomb it throws) never splits it.
  */
 export const findFrames = (image: RgbaImage): Array<FrameBox> => {
-  const { width, height } = image
-  const whole = { x: 0, y: 0, width, height }
-  const { rows } = counts(image, whole)
+  const least = Math.max(2, 0.01 * image.width)
+  const spacing: Array<number> = []
+  const top = framesIn(image, { x: 0, y: 0, width: image.width, height: image.height }, least, spacing)
+  // Below the top, frames split only at gaps not much narrower than the narrowest gap that
+  // already split two frames: one frame's own gaps (a body and its bomb) are narrower.
+  const usual = spacing.length === 0 ? least : Math.max(least, 0.6 * Math.min(...spacing))
+  const again = (box: FrameBox, depth: number): Array<FrameBox> => {
+    if (depth >= DEPTH || bandsIn(image, box).kept.length < 2) return [box]
+    const inner = framesIn(image, box, usual, [])
+    return inner.length > 1 ? inner.flatMap((part) => again(part, depth + 1)) : [box]
+  }
+  return top.flatMap((box) => again(box, 0))
+}
+
+/** How many times a box is cut into rows again: blocks within blocks are rare. */
+const DEPTH = 3
+
+/** The rows of art in one part of the sheet, and those tall enough to be frames (the rest are labels). */
+const bandsIn = (image: RgbaImage, area: FrameBox): { readonly bands: Array<Run>; readonly kept: Array<Run> } => {
+  const { rows } = counts(image, area)
   // A row with a pixel or two in it is noise left by the clearing, not art.
-  const noise = Math.max(1, Math.round(width * 0.001))
+  const noise = Math.max(1, Math.round(image.width * 0.001))
   const bands = runsOf(
     rows.map((n) => n > noise),
-    Math.max(2, Math.round(height * 0.01))
-  ).filter((band) => band.to - band.from >= 3)
+    Math.max(2, Math.round(image.height * 0.01))
+  )
+    .filter((band) => band.to - band.from >= 3)
+    .map((band) => ({ from: band.from + area.y, to: band.to + area.y }))
+  const tallest = Math.max(0, ...bands.map((band) => band.to - band.from))
+  return { bands, kept: bands.filter((band) => band.to - band.from >= LABEL_BAND * tallest) }
+}
+
+/**
+ * The frames inside one part of the sheet, split only at gaps at least
+ * `least` wide. Adds the width of each gap it split frames at to `spacing`.
+ */
+const framesIn = (image: RgbaImage, area: FrameBox, least: number, spacing: Array<number>): Array<FrameBox> => {
+  const { bands, kept } = bandsIn(image, area)
   if (bands.length === 0) return []
-  const tallest = Math.max(...bands.map((band) => band.to - band.from))
-  const kept = bands.filter((band) => band.to - band.from >= LABEL_BAND * tallest)
+  const bottomOf = area.y + area.height
 
   const boxes: Array<FrameBox> = []
-  kept.forEach((band, b) => {
+  kept.forEach((band) => {
     // The band's own space, halfway to the bands around it (labels included).
     const above = bands[bands.indexOf(band) - 1]
     const below = bands[bands.indexOf(band) + 1]
-    const marginTop = Math.round((band.from - (above?.to ?? Math.max(0, band.from - (band.to - band.from) * 0.1))) / 2)
-    const marginBottom = Math.round(((below?.from ?? Math.min(height, band.to + (band.to - band.from) * 0.1)) - band.to) / 2)
-    const top = Math.max(0, band.from - Math.min(marginTop, Math.round(0.15 * (band.to - band.from))))
-    const bottom = Math.min(height, band.to + Math.min(marginBottom, Math.round(0.15 * (band.to - band.from))))
-    void b
-    const area = { x: 0, y: band.from, width, height: band.to - band.from }
-    const { columns } = counts(image, area)
+    const marginTop = Math.round((band.from - (above?.to ?? Math.max(area.y, band.from - (band.to - band.from) * 0.1))) / 2)
+    const marginBottom = Math.round(((below?.from ?? Math.min(bottomOf, band.to + (band.to - band.from) * 0.1)) - band.to) / 2)
+    const top = Math.max(area.y, band.from - Math.min(marginTop, Math.round(0.15 * (band.to - band.from))))
+    const bottom = Math.min(bottomOf, band.to + Math.min(marginBottom, Math.round(0.15 * (band.to - band.from))))
+    const { columns } = counts(image, { x: area.x, y: band.from, width: area.width, height: band.to - band.from })
     const pieces = runsOf(
       columns.map((n) => n > 0),
       1
-    )
+    ).map((piece) => ({ from: piece.from + area.x, to: piece.to + area.x }))
     if (pieces.length === 0) return
     // Gaps between the pieces; the frames are split at the widest ones.
     const gaps = pieces.slice(1).map((piece, i) => ({ at: i, size: piece.from - pieces[i]!.to }))
     const splits = widestGaps(
       gaps.map((gap) => gap.size),
-      width
+      least
     )
     const cuts = new Set(splits.map((i) => gaps[i]!.at))
+    for (const i of splits) spacing.push(gaps[i]!.size)
     let start = pieces[0]!.from
     const groups: Array<Run> = []
     pieces.forEach((piece, i) => {
@@ -409,18 +443,34 @@ export const findFrames = (image: RgbaImage): Array<FrameBox> => {
       for (let i = 1; i < inside.length; i++) {
         if (at < 0 || inside[i]!.from - inside[i - 1]!.to > inside[at]!.from - inside[at - 1]!.to) at = i
       }
-      if (at < 0 || inside[at]!.from - inside[at - 1]!.to < Math.max(2, 0.01 * width)) break
+      if (at < 0 || inside[at]!.from - inside[at - 1]!.to < least) break
       groups.splice(wide, 1, { from: run.from, to: inside[at - 1]!.to }, { from: inside[at]!.from, to: run.to })
     }
-    // A group with almost nothing in it is left-over noise: it joins its neighbour.
-    const mass = (run: Run): number => columns.slice(run.from, run.to).reduce((sum, n) => sum + n, 0)
+    // A group with almost nothing in it is noise when it sits against a frame, and joins
+    // it; set apart like a frame, it is one (the last wisp of smoke of an explosion).
+    const mass = (run: Run): number => columns.slice(run.from - area.x, run.to - area.x).reduce((sum, n) => sum + n, 0)
     const biggest = Math.max(...groups.map(mass))
-    const solid = groups.filter((run) => mass(run) >= 0.02 * biggest)
+    const spaced = groups.slice(1).map((run, i) => run.from - groups[i]!.to)
+    const usualGap = [...spaced].sort((a, b) => a - b)[Math.floor(spaced.length / 2)] ?? 0
+    const solid: Array<Run> = []
+    groups.forEach((run, i) => {
+      const before = i > 0 ? run.from - groups[i - 1]!.to : Number.POSITIVE_INFINITY
+      const after = i + 1 < groups.length ? groups[i + 1]!.from - run.to : Number.POSITIVE_INFINITY
+      if (mass(run) >= 0.02 * biggest || Math.min(before, after) >= 0.5 * usualGap) {
+        solid.push(run)
+        return
+      }
+      // Joins the nearer neighbour: the one before when it is already kept, else the next.
+      const last = solid[solid.length - 1]
+      if (last !== undefined && before <= after) solid[solid.length - 1] = { from: last.from, to: run.to }
+      else if (i + 1 < groups.length) groups[i + 1] = { from: run.from, to: groups[i + 1]!.to }
+      else if (last !== undefined) solid[solid.length - 1] = { from: last.from, to: run.to }
+    })
     const typicalGap =
       solid.length > 1 ? solid.slice(1).reduce((sum, run, i) => sum + (run.from - solid[i]!.to), 0) / (solid.length - 1) : Math.round(0.05 * (band.to - band.from))
     solid.forEach((run, i) => {
-      const left = i === 0 ? Math.max(0, run.from - Math.round(typicalGap / 2)) : Math.round((solid[i - 1]!.to + run.from) / 2)
-      const right = i === solid.length - 1 ? Math.min(width, run.to + Math.round(typicalGap / 2)) : Math.round((run.to + solid[i + 1]!.from) / 2)
+      const left = i === 0 ? Math.max(area.x, run.from - Math.round(typicalGap / 2)) : Math.round((solid[i - 1]!.to + run.from) / 2)
+      const right = i === solid.length - 1 ? Math.min(area.x + area.width, run.to + Math.round(typicalGap / 2)) : Math.round((run.to + solid[i + 1]!.from) / 2)
       boxes.push({ x: left, y: top, width: right - left, height: bottom - top })
     })
   })
@@ -431,11 +481,10 @@ export const findFrames = (image: RgbaImage): Array<FrameBox> => {
  * Which gaps (by index) separate frames: the widest ones, down to the
  * biggest drop in width. Gaps inside a frame (between a body and its
  * sparks) are much narrower than the gaps between frames. A gap narrower
- * than 1% of the sheet never splits.
+ * than `least` (1% of the sheet at the top) never splits.
  */
-const widestGaps = (gaps: ReadonlyArray<number>, width: number): Array<number> => {
+const widestGaps = (gaps: ReadonlyArray<number>, least: number): Array<number> => {
   const order = gaps.map((size, i) => ({ size, i })).sort((a, b) => b.size - a.size)
-  const least = Math.max(2, 0.01 * width)
   const wide = order.filter((gap) => gap.size >= least)
   if (wide.length === 0) return []
   if (wide.length === 1) return [wide[0]!.i]
@@ -618,9 +667,11 @@ export const playOrder = (count: number, loop: Loop): Array<number> => {
 }
 
 /**
- * Whether boxes found in a sheet look like frames of one animation rather
- * than parts of one picture: at least two, holding about as much art each
- * (the least at least a fifth of the most) and about as wide.
+ * Whether boxes found in a sheet look like frames of an animation rather
+ * than parts of one picture: at least two, and most of them (three in four)
+ * alike, holding about as much art as the typical frame and about as wide.
+ * The rest may be faint (the sparks and smoke at the end of an explosion):
+ * one such frame does not make a sheet a picture.
  */
 export const looksAnimated = (image: RgbaImage, boxes: ReadonlyArray<FrameBox>): boolean => {
   if (boxes.length < 2) return false
@@ -633,6 +684,11 @@ export const looksAnimated = (image: RgbaImage, boxes: ReadonlyArray<FrameBox>):
     })
     return columns.reduce((sum, n) => sum + n, 0)
   })
-  const widths = boxes.map((box) => box.width)
-  return Math.min(...masses) >= 0.2 * Math.max(...masses) && Math.min(...widths) >= 0.4 * Math.max(...widths)
+  const median = (values: ReadonlyArray<number>): number => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)]!
+  const typicalMass = median(masses)
+  const typicalWidth = median(boxes.map((box) => box.width))
+  const alike = boxes.filter(
+    (box, i) => masses[i]! >= 0.2 * typicalMass && masses[i]! <= 5 * typicalMass && box.width >= 0.4 * typicalWidth && box.width <= 2.5 * typicalWidth
+  ).length
+  return alike >= 2 && alike >= 0.75 * boxes.length
 }

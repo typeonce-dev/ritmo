@@ -13,7 +13,7 @@ import { readProjectRecipe } from "@typeonce/ritmo-tools/pixel/core/project.ts"
 import { presets } from "@typeonce/ritmo-tools/pixel/core/palette.ts"
 import { runRecipe } from "@typeonce/ritmo-tools/pixel/core/pipeline.ts"
 import { decodeRecipe, defaultRecipe, encodeRecipe, presetPalette, type Recipe } from "@typeonce/ritmo-tools/pixel/core/recipe.ts"
-import { checkImage, compareReports, reportOfArt } from "@typeonce/ritmo-tools/pixel/core/report.ts"
+import { checkImage, compareReports, isNative, reportOfArt } from "@typeonce/ritmo-tools/pixel/core/report.ts"
 import { artOfImage, formatSprite, parseJsonMap, parseSprite } from "@typeonce/ritmo-tools/pixel/core/sprite.ts"
 import { encodePng } from "@typeonce/ritmo-tools/pixel/cli/png.ts"
 import { makeSprite, upscale } from "./synthetic.ts"
@@ -157,6 +157,16 @@ describe("check", () => {
     const { report } = checkImage(toRgba(demoSprite()), defaultRecipe)
     expect(report.verdict).toBe("clean")
     expect(report.kind).toBe("pixel-art")
+  })
+
+  it("takes a small sprite with an AI's noisy colors as pixel art at its own size, though a grid shows in it", () => {
+    // 24x24 with every pixel a few levels off its color, as an image generator saves it.
+    const sprite = toRgba(makeSprite(24, 24, presetPalette("pico-8")!.colors.slice(0, 6), 7, true))
+    const data = new Uint8ClampedArray(sprite.data)
+    for (let i = 0; i < data.length; i++) if (i % 4 !== 3 && data[i - (i % 4) + 3]! > 0) data[i] = data[i]! + ((i * 7919) % 7) - 3
+    const image = { ...sprite, data }
+    expect(isNative(image, runRecipe(image, defaultRecipe))).toBe(true)
+    expect(checkImage(image, defaultRecipe).report.output).toMatchObject({ width: 24, height: 24 })
   })
 
   it("asks for a person when the grid given does not fit", () => {
