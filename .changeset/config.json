@@ -11,7 +11,8 @@
       "@typeonce/ritmo-math",
       "@typeonce/ritmo-netcode",
       "@typeonce/ritmo-devtools",
-      "@typeonce/oxlint-plugin-ritmo"
+      "@typeonce/oxlint-plugin-ritmo",
+      "@typeonce/ritmo-tools"
     ]
   ],
   "linked": [],

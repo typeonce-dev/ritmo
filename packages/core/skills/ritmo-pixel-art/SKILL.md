@@ -1,11 +1,13 @@
 ---
-name: pixel-art
-description: "Apply whenever a game's pixel art is made, changed, or checked: a sprite drawn with code, a picture from an image generator, a reference image to turn into game art, or assets checked before they ship. Says which pixel command to run for each case and how to read its report."
+name: ritmo-pixel-art
+description: "Apply whenever a game's pixel art is made, changed, or checked: a sprite drawn with code, a picture from an image generator, a reference image to turn into game art, or assets checked before they ship. Says which `ritmo-tools pixel` command to run for each case and how to read its report."
 ---
 
-# Pixel art with the `pixel` CLI
+# Pixel art with `ritmo-tools pixel`
 
-`pixel` (`tools/pixel-fixer` in the Ritmo repository; `node <ritmo>/tools/pixel-fixer/bin/pixel.mjs`) checks, fixes, and makes pixel art. Every command prints a JSON report on stdout and exits with what to do next:
+`ritmo-tools pixel` checks, fixes, and makes pixel art. It ships in `@typeonce/ritmo-tools`: run it as `npx @typeonce/ritmo-tools pixel <command>` (add the package as a dev dependency to pin it to the game's Ritmo version). Below, `pixel <command>` stands for that. `pixel <command> --help` lists every flag, and the package's README explains the pipeline. A person tunes the same fixes by hand on the web page, https://ritmo.typeonce.dev/tools/pixel/.
+
+Every command prints a JSON report on stdout and exits with what to do next:
 
 | Exit | Verdict | Do |
 | --- | --- | --- |
