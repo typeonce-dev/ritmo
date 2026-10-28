@@ -2,6 +2,10 @@
  * The picture view: the source, the fixed result laid over the same frame,
  * or both split by a draggable divider; the grid on top, whose lines can be
  * dragged one by one. Zooms with the wheel or a pinch, pans by dragging.
+ *
+ * For an animation sheet it shows the frames' boxes over the sheet, each
+ * with its own grid; with the Boxes tool a box is moved by dragging it,
+ * resized by its edges and corners, and a new one drawn on empty space.
  */
 import type { Axis, Grid } from "../core/grid.ts"
 import { TRANSPARENT, type PixelArt } from "../core/fix.ts"
@@ -28,6 +32,26 @@ export interface Scene {
   readonly marked: ReadonlyArray<number>
   /** Pixels of the fixed picture (row by row) painted by hand, outlined where the fixed picture shows. */
   readonly painted: ReadonlyArray<number>
+  /** An animation sheet's frame boxes, in source pixels, drawn over the source. */
+  readonly boxes?: ReadonlyArray<SceneBox> | undefined
+  /** Each frame's own grid, in source pixels (drawn instead of `grid`). */
+  readonly frameGrids?: ReadonlyArray<Grid> | undefined
+  /** The box being edited, by index. */
+  readonly selectedBox?: number | undefined
+  /** Whether boxes can be moved, resized, and drawn (the Boxes tool). */
+  readonly editingBoxes?: boolean | undefined
+}
+
+export interface Box {
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+}
+
+export interface SceneBox extends Box {
+  /** Left out of the animation: drawn dashed and dimmed. */
+  readonly include: boolean
 }
 
 export interface ViewerEvents {
@@ -40,6 +64,12 @@ export interface ViewerEvents {
   readonly pick: (x: number, y: number) => void
   /** An Alt-press on the fixed picture while painting: the pixel whose color to take. */
   readonly sample: (x: number, y: number) => void
+  /** A box was pressed (or empty space: undefined), with the Boxes tool. */
+  readonly selectBox?: (index: number | undefined) => void
+  /** A box was moved or resized: its new place, in whole source pixels, when the drag ends. */
+  readonly changeBox?: (index: number, box: Box) => void
+  /** A new box was drawn on empty space. */
+  readonly addBox?: (box: Box) => void
 }
 
 export interface Viewer {
@@ -49,10 +79,22 @@ export interface Viewer {
   readonly zoom: () => number
 }
 
+/** Which sides of a box a drag moves: all four to move it, some to resize it. */
+interface BoxGrip {
+  readonly index: number
+  readonly left: boolean
+  readonly right: boolean
+  readonly top: boolean
+  readonly bottom: boolean
+}
+
 interface Drag {
-  readonly kind: "pan" | "line" | "divider" | "paint"
+  readonly kind: "pan" | "line" | "divider" | "paint" | "box" | "new-box"
   readonly axis?: Axis
   readonly index?: number
+  readonly grip?: BoxGrip
+  /** Where the drag started, in source pixels, and the box as it was. */
+  readonly from?: { readonly x: number; readonly y: number; readonly box?: Box }
   lastX: number
   lastY: number
   /** The last pixel painted, while painting. */
@@ -64,6 +106,9 @@ const MOVED_COLOR = "rgba(255, 200, 0, 0.95)"
 const HOVER_COLOR = "rgba(0, 220, 255, 1)"
 /** Pixels painted by hand: white, apart from the yellow of cleaned specks and moved lines. */
 const PAINTED_COLOR = "rgba(255, 255, 255, 0.95)"
+const BOX_COLOR = "rgba(0, 220, 255, 0.95)"
+const BOX_SELECTED = "rgba(255, 200, 0, 1)"
+const BOX_OUT = "rgba(200, 200, 210, 0.8)"
 
 export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Viewer => {
   const context = canvas.getContext("2d")!
@@ -73,7 +118,10 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
   let panY = 0
   let divider = 0.5
   let hover: { readonly axis: Axis; readonly index: number } | "divider" | undefined
+  let boxHover: BoxGrip | undefined
   let drag: Drag | undefined
+  /** A box being dragged, drawn in its new place until the drag ends. */
+  let draft: { readonly index: number | undefined; readonly box: Box } | undefined
   const pointers = new Map<number, { x: number; y: number }>()
   let pinch: { distance: number } | undefined
   let fitted = false
@@ -183,8 +231,15 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
   }
 
   const drawGrid = (): void => {
-    const { grid } = scene
-    if (grid === undefined || !scene.showGrid) return
+    if (scene.frameGrids !== undefined) {
+      if (scene.showGrid) for (const grid of scene.frameGrids) drawOneGrid(grid)
+      return
+    }
+    if (scene.grid !== undefined) drawOneGrid(scene.grid)
+  }
+
+  const drawOneGrid = (grid: Grid): void => {
+    if (!scene.showGrid) return
     const view = size()
     const top = toScreen(grid.ys[0]!, "y")
     const bottom = toScreen(grid.ys[grid.ys.length - 1]!, "y")
@@ -194,8 +249,8 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
       ((grid.xs[grid.xs.length - 1]! - grid.xs[0]!) / Math.max(1, grid.xs.length - 1)) * zoom,
       ((grid.ys[grid.ys.length - 1]! - grid.ys[0]!) / Math.max(1, grid.ys.length - 1)) * zoom
     )
-    // Lines closer than a few screen pixels would only paint the picture over.
-    if (spacing < 3) return
+    // Lines closer than a few screen pixels would only paint the picture over (a sheet's many frames, sooner).
+    if (spacing < (scene.frameGrids === undefined ? 3 : 6)) return
     context.lineWidth = 1
     const line = (axis: Axis, index: number, value: number): void => {
       const at = Math.round(toScreen(value, axis)) + 0.5
@@ -242,6 +297,120 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
       }
       context.strokeRect(left + 1, top + 1, width - 2, height - 2)
     }
+  }
+
+  /** The boxes, the outside of them dimmed, each numbered at its top left. */
+  const drawBoxes = (): void => {
+    const boxes = scene.boxes
+    if (boxes === undefined) return
+    const view = size()
+    const shown = boxes.map((box, i) => (draft !== undefined && draft.index === i ? { ...box, ...draft.box } : box))
+    const rects = shown.map((box) => ({
+      left: toScreen(box.x, "x"),
+      top: toScreen(box.y, "y"),
+      width: box.width * zoom,
+      height: box.height * zoom
+    }))
+    // Everything outside the boxes is left out of the animation: dimmed.
+    context.save()
+    context.beginPath()
+    context.rect(0, 0, view.width, view.height)
+    for (const rect of rects) context.rect(rect.left + rect.width, rect.top, -rect.width, rect.height)
+    context.fillStyle = "rgba(10, 10, 14, 0.55)"
+    context.fill("evenodd")
+    context.restore()
+    context.font = '600 11px "Inter", system-ui, sans-serif'
+    context.textBaseline = "middle"
+    context.textAlign = "center"
+    rects.forEach((rect, i) => {
+      const box = shown[i]!
+      const selected = scene.selectedBox === i
+      const hovered = boxHover?.index === i
+      context.strokeStyle = !box.include ? BOX_OUT : selected ? BOX_SELECTED : hovered ? HOVER_COLOR : BOX_COLOR
+      context.lineWidth = selected ? 2.5 : 1.5
+      context.setLineDash(box.include ? [] : [6, 4])
+      context.strokeRect(Math.round(rect.left) + 0.5, Math.round(rect.top) + 0.5, Math.round(rect.width), Math.round(rect.height))
+      context.setLineDash([])
+      const label = String(i + 1)
+      const tag = Math.max(20, context.measureText(label).width + 12)
+      context.fillStyle = !box.include ? BOX_OUT : selected ? BOX_SELECTED : BOX_COLOR
+      context.beginPath()
+      context.roundRect(Math.round(rect.left), Math.round(rect.top) - 20, tag, 18, 4)
+      context.fill()
+      context.fillStyle = "#101014"
+      context.fillText(label, Math.round(rect.left) + tag / 2, Math.round(rect.top) - 11)
+      if (scene.editingBoxes && selected) {
+        // Handles at the corners and the middle of each side.
+        context.fillStyle = "#ffffff"
+        context.strokeStyle = "#101014"
+        context.lineWidth = 1
+        for (const fx of [0, 0.5, 1]) {
+          for (const fy of [0, 0.5, 1]) {
+            if (fx === 0.5 && fy === 0.5) continue
+            const hx = rect.left + rect.width * fx
+            const hy = rect.top + rect.height * fy
+            context.fillRect(Math.round(hx) - 4, Math.round(hy) - 4, 8, 8)
+            context.strokeRect(Math.round(hx) - 4 + 0.5, Math.round(hy) - 4 + 0.5, 7, 7)
+          }
+        }
+      }
+    })
+    if (draft !== undefined && draft.index === undefined) {
+      context.strokeStyle = BOX_SELECTED
+      context.lineWidth = 2
+      context.setLineDash([6, 4])
+      context.strokeRect(toScreen(draft.box.x, "x"), toScreen(draft.box.y, "y"), draft.box.width * zoom, draft.box.height * zoom)
+      context.setLineDash([])
+    }
+    context.textAlign = "left"
+    context.textBaseline = "alphabetic"
+  }
+
+  /** The box edge, corner, or inside under a point, with the Boxes tool. */
+  const boxAt = (x: number, y: number, reach: number): BoxGrip | undefined => {
+    const boxes = scene.boxes
+    if (boxes === undefined || !scene.editingBoxes) return undefined
+    // The selected box first, then the others from the top of the drawing down.
+    const order = boxes.map((_, i) => i).reverse()
+    if (scene.selectedBox !== undefined) order.unshift(scene.selectedBox)
+    for (const i of order) {
+      const box = boxes[i]
+      if (box === undefined) continue
+      const left = toScreen(box.x, "x")
+      const top = toScreen(box.y, "y")
+      const right = left + box.width * zoom
+      const bottom = top + box.height * zoom
+      if (x < left - reach || x > right + reach || y < top - reach || y > bottom + reach) continue
+      const grip = {
+        index: i,
+        left: Math.abs(x - left) <= reach,
+        right: Math.abs(x - right) <= reach,
+        top: Math.abs(y - top) <= reach,
+        bottom: Math.abs(y - bottom) <= reach
+      }
+      if (grip.left || grip.right || grip.top || grip.bottom) return grip
+      if (x > left && x < right && y > top && y < bottom) return { index: i, left: true, right: true, top: true, bottom: true }
+    }
+    return undefined
+  }
+
+  const toSource = (x: number, y: number): { x: number; y: number } => ({ x: (x - panX) / zoom, y: (y - panY) / zoom })
+
+  /** The box a drag makes of `from`, moved by the pointer now at `at` (source pixels). */
+  const dragged = (grip: BoxGrip, box: Box, from: { x: number; y: number }, at: { x: number; y: number }): Box => {
+    const dx = Math.round(at.x - from.x)
+    const dy = Math.round(at.y - from.y)
+    const whole = grip.left && grip.right && grip.top && grip.bottom
+    if (whole) return { ...box, x: box.x + dx, y: box.y + dy }
+    let left = box.x
+    let right = box.x + box.width
+    let top = box.y
+    let bottom = box.y + box.height
+    if (grip.left) left = Math.min(right - 4, left + dx)
+    if (grip.right) right = Math.max(left + 4, right + dx)
+    if (grip.top) top = Math.min(bottom - 4, top + dy)
+    if (grip.bottom) bottom = Math.max(top + 4, bottom + dy)
+    return { x: left, y: top, width: right - left, height: bottom - top }
   }
 
   const drawHighlight = (): void => {
@@ -292,6 +461,7 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
       context.restore()
     }
     if (scene.mode !== "result") drawGrid()
+    drawBoxes()
     drawHighlight()
     if (scene.mode === "compare") {
       const split = Math.round(view.width * divider) + 0.5
@@ -359,7 +529,21 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
   }
 
   const setCursor = (): void => {
+    if (boxHover !== undefined || drag?.kind === "box" || drag?.kind === "new-box") {
+      const grip = drag?.grip ?? boxHover
+      const whole = grip !== undefined && grip.left && grip.right && grip.top && grip.bottom
+      canvas.style.cursor =
+        grip === undefined
+          ? "crosshair"
+          : whole
+            ? drag === undefined ? "move" : "grabbing"
+            : (grip.left || grip.right) && (grip.top || grip.bottom)
+              ? (grip.left && grip.top) || (grip.right && grip.bottom) ? "nwse-resize" : "nesw-resize"
+              : grip.left || grip.right ? "ew-resize" : "ns-resize"
+      return
+    }
     canvas.style.cursor =
+      scene.editingBoxes && drag === undefined ? "crosshair" :
       hover === "divider" ? "ew-resize" : hover !== undefined ? (hover.axis === "x" ? "col-resize" : "row-resize") : drag?.kind === "pan" ? "grabbing" : scene.painting || scene.picking ? "crosshair" : "grab"
   }
 
@@ -371,6 +555,21 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
       const [a, b] = [...pointers.values()]
       pinch = { distance: Math.hypot(a!.x - b!.x, a!.y - b!.y) }
       drag = undefined
+      return
+    }
+    if (scene.editingBoxes && pointers.size === 1) {
+      const grip = boxAt(at.x, at.y, event.pointerType === "touch" ? 14 : 6)
+      const point = toSource(at.x, at.y)
+      if (grip !== undefined) {
+        const box = scene.boxes![grip.index]!
+        events.selectBox?.(grip.index)
+        drag = { kind: "box", grip, from: { ...point, box }, lastX: at.x, lastY: at.y }
+      } else {
+        events.selectBox?.(undefined)
+        drag = { kind: "new-box", from: point, lastX: at.x, lastY: at.y }
+      }
+      setCursor()
+      draw()
       return
     }
     if (scene.picking && pointers.size === 1 && !(scene.mode === "compare" && Math.abs(at.x - size().width * divider) <= 12)) {
@@ -421,6 +620,14 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
       pinch.distance = distance
       return
     }
+    if (drag === undefined && scene.editingBoxes) {
+      const next = boxAt(at.x, at.y, event.pointerType === "touch" ? 14 : 6)
+      const changed = JSON.stringify(next) !== JSON.stringify(boxHover)
+      boxHover = next
+      setCursor()
+      if (changed) draw()
+      return
+    }
     if (drag === undefined) {
       const next = scene.painting || scene.picking ? (scene.mode === "compare" && Math.abs(at.x - size().width * divider) <= 12 ? "divider" : undefined) : hitTest(at.x, at.y)
       const changed = JSON.stringify(next) !== JSON.stringify(hover)
@@ -440,6 +647,15 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
         }
       }
       if (pixel !== undefined) drag.pixel = pixel
+    } else if (drag.kind === "box" && drag.grip !== undefined && drag.from?.box !== undefined) {
+      draft = { index: drag.grip.index, box: dragged(drag.grip, drag.from.box, drag.from, toSource(at.x, at.y)) }
+      draw()
+    } else if (drag.kind === "new-box" && drag.from !== undefined) {
+      const point = toSource(at.x, at.y)
+      const x = Math.round(Math.min(point.x, drag.from.x))
+      const y = Math.round(Math.min(point.y, drag.from.y))
+      draft = { index: undefined, box: { x, y, width: Math.round(Math.max(point.x, drag.from.x)) - x, height: Math.round(Math.max(point.y, drag.from.y)) - y } }
+      draw()
     } else if (drag.kind === "pan") {
       panX += at.x - drag.lastX
       panY += at.y - drag.lastY
@@ -483,6 +699,13 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
     pointers.delete(event.pointerId)
     if (pointers.size < 2) pinch = undefined
     if (pointers.size === 0) {
+      const ended = draft
+      draft = undefined
+      if (ended !== undefined) {
+        if (ended.index !== undefined) events.changeBox?.(ended.index, ended.box)
+        // A click on empty space draws nothing: a box needs a few pixels.
+        else if (ended.box.width * zoom >= 8 && ended.box.height * zoom >= 8) events.addBox?.(ended.box)
+      }
       drag = undefined
       setCursor()
       draw()
@@ -491,8 +714,9 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
   canvas.addEventListener("pointerup", release)
   canvas.addEventListener("pointercancel", release)
   canvas.addEventListener("pointerleave", () => {
-    if (drag === undefined && hover !== undefined) {
+    if (drag === undefined && (hover !== undefined || boxHover !== undefined)) {
       hover = undefined
+      boxHover = undefined
       draw()
     }
   })

@@ -40,7 +40,14 @@ const paths = {
   lines: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
   brush: '<path d="m14.6 3.4 6 6L10 20H4v-6z"/><path d="m12 6 6 6"/>',
   pixel: '<rect x="6" y="6" width="12" height="12" rx="1"/>',
-  area: '<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4z"/>'
+  area: '<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4z"/>',
+  play: '<path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5z"/>',
+  pause: '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>',
+  previous: '<path d="M19 20 9 12l10-8v16zM5 19V5"/>',
+  next: '<path d="m5 4 10 8-10 8V4zM19 5v14"/>',
+  frames: '<rect x="2" y="6" width="6" height="12" rx="1"/><rect x="9" y="6" width="6" height="12" rx="1"/><rect x="16" y="6" width="6" height="12" rx="1"/>',
+  onion: '<rect x="3" y="3" width="13" height="13" rx="2" stroke-dasharray="2 2"/><rect x="8" y="8" width="13" height="13" rx="2"/>',
+  film: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 7.5h4M3 12h18M3 16.5h4M17 7.5h4M17 16.5h4"/>'
 } as const
 
 export type IconName = keyof typeof paths

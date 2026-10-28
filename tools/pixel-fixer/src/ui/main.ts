@@ -1,6 +1,11 @@
 /**
  * The pixel fixer's page: one state object, a pipeline that recomputes the
  * fixed picture when anything changes, and panels that edit the state.
+ *
+ * A picture is fixed as one picture, or, when it is an animation sheet (a
+ * row of frames), as an animation: the same settings fix every frame, and
+ * the stage shows the sheet with its frame boxes, the frames side by side,
+ * or the animation playing.
  */
 import {
   backgroundColors,
@@ -48,7 +53,12 @@ import {
 import type { LintRules } from "../core/lint.ts"
 import { describeDetection, gridKeyOf, resolveGrid, runWithSpec, type PipelineCache } from "../core/pipeline.ts"
 import { decodeRecipe, encodeRecipe, presetPalette, type Recipe } from "../core/recipe.ts"
-import { reportOfArt, reportOfFix, type Report } from "../core/report.ts"
+import { reportOfArt, reportOfFix, reportOfSheet, type Report } from "../core/report.ts"
+import { detectFrames, isAnimationSheet, proposeForSheet, runSheet, type AnimationCache, type AnimationOutcome } from "../core/animation.ts"
+import { toGif } from "../core/gif.ts"
+import { anchors, defaultSheet, frameOf, playOrder, type Sheet } from "../core/sheet.ts"
+import { sheetArt, spritesheetJson, type SheetLayout } from "../core/spritesheet.ts"
+import { toZip } from "../core/zip.ts"
 import { formatSprite, parseJsonMap, parseSprite } from "../core/sprite.ts"
 import { reduceModes, type ReduceMode } from "../core/reduce.ts"
 import { h, replace } from "./dom.ts"
@@ -74,15 +84,35 @@ import {
 } from "./kit.ts"
 import { baseName, canvasOf, download, loadImage, pngOf } from "./files.ts"
 import { makeHistory } from "./history.ts"
-import { makeViewer, type ViewMode } from "./viewer.ts"
+import { makePlayer } from "./player.ts"
+import { makeViewer, type Box, type ViewMode } from "./viewer.ts"
 
 interface Swatch {
   readonly color: Rgb
   readonly locked: boolean
 }
 
+/** What is shown for an animation: the sheet with its frame boxes, the fixed frames side by side, or the animation playing. */
+type AnimationView = "sheet" | "frames" | "play"
+
 interface State {
   source: { readonly image: RgbaImage; readonly canvas: HTMLCanvasElement; readonly name: string } | undefined
+  /** Fixed as one picture, or as an animation of the frames on it. */
+  kind: "picture" | "animation"
+  /** The animation's frames and how they play, when `kind` is "animation". */
+  sheet: Sheet
+  /** The animation's cell size typed by hand; undefined finds it in the frames. */
+  sheetCell: number | undefined
+  animationView: AnimationView
+  /** The frame being edited (its box, or its nudge), by its index on the sheet. */
+  selectedFrame: number | undefined
+  playing: boolean
+  /** Shows the frame before faintly under the one playing. */
+  onion: boolean
+  /** The sheet as it is, or with its background cleared, in the sheet view. */
+  sheetShows: "cleared" | "original"
+  /** How the exported sheet lays its frames out. */
+  exportLayout: { kind: "strip" | "grid"; columns: number; spacing: number }
   spec: GridSpec
   linked: boolean
   follow: boolean
@@ -117,7 +147,7 @@ interface State {
   crop: boolean
   background: BackgroundOptions
   /** What pressing on the picture does: pan, move grid lines, erase, restore, or paint pixels, or pick a color. */
-  tool: "move" | "lines" | "erase" | "restore" | "paint" | "pick"
+  tool: "move" | "lines" | "erase" | "restore" | "paint" | "pick" | "frames"
   /** The color Paint paints; it snaps to the nearest palette color. */
   paintColor: Rgb | undefined
   /** How far (OKLab) a cell's own color may be from the palette color it got before it counts as lost. */
@@ -138,6 +168,15 @@ const ORIGINAL = "original"
 
 const state: State = {
   source: undefined,
+  kind: "picture",
+  sheet: defaultSheet,
+  sheetCell: undefined,
+  animationView: "play",
+  selectedFrame: undefined,
+  playing: true,
+  onion: false,
+  sheetShows: "cleared",
+  exportLayout: { kind: "strip", columns: 4, spacing: 0 },
   spec: { cellWidth: 8, cellHeight: 8, offsetX: 0, offsetY: 0 },
   linked: true,
   follow: false,
@@ -176,6 +215,9 @@ const state: State = {
 
 /** The settings undo and redo cover: everything but the picture itself and how it is viewed. */
 const undoable = [
+  "kind",
+  "sheet",
+  "sheetCell",
   "spec",
   "linked",
   "follow",
@@ -237,6 +279,15 @@ let specks: ReadonlyArray<ReadonlyArray<number>> = []
 let painted: ReadonlyArray<number> = []
 /** What `pixel check` would say about the last result. */
 let report: Report | undefined
+/** Fit the view to the picture on the next render (a new picture, or a switch between picture and animation). */
+let refit = false
+/** The animation's place in its play order (which repeats the middle frames backwards when playing there and back). */
+let frame = 0
+/** The last animation run, when the picture is fixed as an animation. */
+let animation: AnimationOutcome | undefined
+let animationCache: AnimationCache = {}
+/** The sheet with its background cleared, ready to draw, for the sheet view. */
+let clearedCanvas: { readonly image: RgbaImage; readonly canvas: HTMLCanvasElement } | undefined
 
 /** The page's settings as a recipe: what the shared pipeline runs, and what Save recipe writes. */
 const recipeOf = (): Recipe => ({
@@ -263,12 +314,22 @@ const recipeOf = (): Recipe => ({
   crop: state.crop,
   background: state.background,
   lostThreshold: state.lostThreshold,
-  edits: state.edits
+  edits: state.edits,
+  sheet: state.kind === "animation" ? state.sheet : undefined
+})
+
+/** The recipe an animation runs: the page's, with the cell size found in the frames unless one was typed. */
+const animationRecipe = (): Recipe => ({
+  ...recipeOf(),
+  grid: state.sheetCell === undefined ? { kind: "auto" } : { kind: "cells", spec: { cellWidth: state.sheetCell, cellHeight: state.sheetCell, offsetX: 0, offsetY: 0 } }
 })
 
 /** "16x16, 32x32" as sizes; anything unreadable is left out. */
 const parseSizes = (text: string): Array<{ width: number; height: number }> =>
   [...text.matchAll(/(\d+)\s*[x×]\s*(\d+)/g)].map((match) => ({ width: Number(match[1]), height: Number(match[2]) }))
+
+/** The fixed pixels the palette is used on: the picture, or every frame of the animation. */
+const fixedArt = (): PixelArt | undefined => (state.kind === "animation" ? exported : result)
 
 /** The rules the Check panel holds the result to: the panel's own, and the palette chosen. */
 const rulesOf = (): LintRules => ({
@@ -285,8 +346,28 @@ const recompute = (): void => {
     result = undefined
     exported = undefined
     report = undefined
+    animation = undefined
     return
   }
+  if (state.kind === "animation") {
+    const recipe = animationRecipe()
+    animation = runSheet(source.image, recipe, state.sheet, animationCache)
+    if (clearedCanvas?.image !== animation.cleared) clearedCanvas = { image: animation.cleared, canvas: canvasOf(animation.cleared) }
+    grid = undefined
+    samples = undefined
+    lost = []
+    specks = animation.frames.flatMap((frame) => frame.outcome.specks)
+    painted = []
+    backgroundFound = [...animation.backgroundFound]
+    result = undefined
+    exported = sheetArt(
+      animation.placed.map((frame) => frame.art),
+      exportLayout()
+    )
+    report = reportOfSheet(source.image, recipe, animation, rulesOf())
+    return
+  }
+  animation = undefined
   const outcome = runWithSpec(source.image, recipeOf(), state.spec, state.detection, cache)
   grid = outcome.grid
   samples = outcome.samples
@@ -340,12 +421,21 @@ const setSource = (image: RgbaImage, canvas: HTMLCanvasElement, name: string, sp
   state.targetWidth = undefined
   state.edits = { size: "", strokes: [] }
   state.proposals = []
+  state.kind = "picture"
+  state.sheet = defaultSheet
+  state.selectedFrame = undefined
+  if (state.tool === "frames") state.tool = "move"
   cache = {}
+  animationCache = {}
+  clearedCanvas = undefined
   samples = undefined
   state.message = ""
+  refit = true
   history.reset()
   if (spec === undefined) {
-    autoDetect()
+    // A sheet's grid is found in its frames; a picture's, in the whole of it.
+    if (!openAsAnimation()) autoDetect()
+    else state.detectionNote = ""
     return
   }
   state.spec = spec
@@ -354,6 +444,48 @@ const setSource = (image: RgbaImage, canvas: HTMLCanvasElement, name: string, sp
   state.sample = { ...state.sample, inset: 0 }
   state.detectionNote = "Pixel art at its own size: one pixel per cell."
   state.noteGood = true
+  update()
+}
+
+/**
+ * Looks for frames in the picture just opened: when it holds two or more
+ * alike, it opens as an animation, with a palette proposed from all of them.
+ */
+const openAsAnimation = (): boolean => {
+  const source = state.source
+  if (source === undefined) return false
+  const recipe: Recipe = { ...recipeOf(), removeBackground: true }
+  const frames = detectFrames(source.image, recipe, animationCache)
+  if (!isAnimationSheet(source.image, recipe, frames, animationCache)) return false
+  state.kind = "animation"
+  state.removeBackground = true
+  state.sheet = { ...defaultSheet, frames }
+  state.sheetCell = undefined
+  state.animationView = "play"
+  state.playing = true
+  frame = 0
+  state.keepCount = 16
+  propose()
+  state.message = `Found ${frames.length} frames: opened as an animation. Choose Picture in the top bar to fix it as one picture.`
+  return true
+}
+
+/** Fixes the picture as one picture, or as an animation of the frames on it (found the first time). */
+const setKind = (kind: State["kind"]): void => {
+  const source = state.source
+  if (kind === state.kind || source === undefined) return
+  if (kind === "animation" && state.sheet.frames.length === 0) {
+    const found = detectFrames(source.image, { ...recipeOf(), removeBackground: true }, animationCache)
+    // Nothing found: one box around the whole picture, to move and add to by hand.
+    state.sheet = { ...state.sheet, frames: found.length > 0 ? found : [frameOf({ x: 0, y: 0, width: source.image.width, height: source.image.height })] }
+    state.removeBackground = true
+  }
+  state.kind = kind
+  // A picture opened as an animation has not looked for its own grid yet.
+  if (kind === "picture" && state.detectionNote === "") autoDetect()
+  if (kind === "picture" && state.tool === "frames") state.tool = "move"
+  if (kind === "animation" && state.tool !== "move" && state.tool !== "frames") state.tool = "move"
+  refit = true
   update()
 }
 
@@ -378,6 +510,10 @@ const openFile = async (file: Blob, name: string): Promise<void> => {
   if (file.type.startsWith("image/")) {
     try {
       const { image, canvas } = await loadImage(file)
+      // Finding frames and grids in a large picture takes a moment: say so first.
+      state.message = `Reading ${name}…`
+      renderToast()
+      await new Promise((resolve) => setTimeout(resolve, 30))
       setSource(image, canvas, name)
     } catch (error) {
       fail(`Could not read ${name}: ${error instanceof Error ? error.message : String(error)}`)
@@ -454,6 +590,13 @@ const applyRecipe = (recipe: Recipe, name: string): void => {
   state.background = recipe.background
   state.lostThreshold = recipe.lostThreshold
   state.edits = { size: recipe.edits.size, strokes: recipe.edits.strokes.map((stroke) => [...stroke]) }
+  if (recipe.sheet !== undefined) {
+    state.kind = "animation"
+    state.sheet = recipe.sheet
+    state.sheetCell = recipe.grid.kind === "cells" ? recipe.grid.spec.cellWidth : undefined
+    state.selectedFrame = undefined
+    if (state.tool !== "move" && state.tool !== "frames") state.tool = "move"
+  } else state.kind = "picture"
   // The recipe's sizes must be the ones it was made at, or its hand edits are dropped.
   cache = {}
   state.message = `Applied ${name}.`
@@ -523,6 +666,12 @@ const viewer = makeViewer(canvas, {
     update()
   },
   viewChanged: () => renderZoom(),
+  selectBox: (index) => {
+    state.selectedFrame = index
+    update()
+  },
+  changeBox: (index, box) => setFrameBox(index, box),
+  addBox: (box) => addFrame(box),
   pick: (x: number, y: number) => {
     const cell = samples?.cells[y * samples.width + x]
     if (cell !== undefined && cell.colors.length > 0) keepColor(medianColor(cell.colors))
@@ -552,6 +701,20 @@ const viewer = makeViewer(canvas, {
     state.edits.strokes[state.edits.strokes.length - 1]!.push(edit)
     update()
   }
+})
+
+const playerCanvas = h("canvas", { class: "view", attrs: { "aria-label": "Animation view", hidden: true } })
+const player = makePlayer(playerCanvas, {
+  choose: (index) => {
+    const placed = animation?.placed[index]
+    if (placed === undefined) return
+    state.selectedFrame = placed.index
+    state.playing = false
+    const order = playOrder(animation!.placed.length, state.sheet.loop)
+    frame = Math.max(0, order.indexOf(index))
+    update()
+  },
+  viewChanged: () => renderZoom()
 })
 
 const fileInput = h("input", {
@@ -586,11 +749,13 @@ const empty = h(
       button("Open a picture", () => fileInput.click(), { variant: "primary", icon: "open" }),
       button("Try the demo", openDemo, { variant: "secondary" })
     ),
+    h("p", { class: "empty-note" }, "Animation sheets open as animations: every frame found, fixed, lined up, and played."),
     h("p", { class: "empty-note" }, "Sprite sources (.txt), JSON maps, recipes, and pixel.config.json open here too."),
     h("p", { class: "empty-note" }, "A free tool from Ritmo, the agent-first ECS runtime.")
   )
 )
-const stage = h("div", { class: "stage" }, canvas, empty, tools, zoomBox, toast)
+const playback = h("div", { class: "floating playback" })
+const stage = h("div", { class: "stage" }, canvas, playerCanvas, empty, tools, playback, zoomBox, toast)
 
 app.append(topbar, h("main", { class: "layout" }, h("section", { class: "workspace" }, stage), panels), fileInput)
 
@@ -815,7 +980,8 @@ const colorInput = (hex: string, label: string, onPick: (color: Rgb) => void): H
   })
 
 const swatchEditor = (): HTMLElement => {
-  const used = result === undefined ? new Map<string, number>() : new Map(usedColors(result).map((entry) => [toHex(entry.color), entry.count]))
+  const fixed = fixedArt()
+  const used = fixed === undefined ? new Map<string, number>() : new Map(usedColors(fixed).map((entry) => [toHex(entry.color), entry.count]))
   if (selectedSwatch !== undefined && selectedSwatch >= state.swatches.length) selectedSwatch = undefined
   const chosen = selectedSwatch === undefined ? undefined : state.swatches[selectedSwatch]
   const add = h("label", { class: "swatch add", title: "Add a color" }, icon("plus"))
@@ -957,7 +1123,8 @@ const palettePanel = (): HTMLElement => {
   })
   const pasted = h("textarea", { class: "textarea", attrs: { rows: 2, placeholder: "#1a1c2c, #5d275d, …", "aria-label": "Hex colors", spellcheck: "false" } })
   const slug = h("input", { props: { type: "text" }, attrs: { placeholder: "endesga-32", "aria-label": "Lospec palette name", spellcheck: "false" } })
-  const used = result === undefined ? 0 : usedColors(result).length
+  const fixed = fixedArt()
+  const used = fixed === undefined ? 0 : usedColors(fixed).length
   return sectionOf(
     "palette",
     "Palette",
@@ -991,6 +1158,12 @@ const palettePanel = (): HTMLElement => {
 
 /** Proposes colors from the picture's cells, leaving out the background when it is removed, and keeps the top ones. */
 const propose = (): void => {
+  if (state.kind === "animation") {
+    if (state.source === undefined) return
+    state.proposals = proposeForSheet(state.source.image, animationRecipe(), state.sheet, state.proposeCount, state.proposeMethod, animationCache)
+    keepTop(state.keepCount)
+    return
+  }
   if (samples === undefined) return
   const cells = quantize(samples, { palette: [], metric: state.metric, dither: "none", ditherStrength: 0 })
   const mask = state.removeBackground ? findBackground(cells, backgroundColors(cells), state.background) : undefined
@@ -1478,9 +1651,471 @@ const introPanel = (): HTMLElement =>
       {},
       h("li", {}, h("strong", {}, "Open a picture."), " The grid of fake pixels is found for you."),
       h("li", {}, h("strong", {}, "Pick a palette."), " Every pixel snaps to its nearest color."),
-      h("li", {}, h("strong", {}, "Export"), " crisp pixel art at its true size, as PNG or SVG.")
+      h("li", {}, h("strong", {}, "Export"), " crisp pixel art at its true size, as PNG or SVG."),
+      h("li", {}, h("strong", {}, "Animation sheets"), " play as animations, frame by frame on one grid, ready as a sprite sheet or a GIF.")
     )
   )
+
+// ---------------------------------------------------------------------------
+// Animation: frames, playback, and the frames' panel
+
+/** The animation's frames on the canvas, in the order they play, as positions in `animation.placed`. */
+const playing = (): Array<number> => playOrder(animation?.placed.length ?? 0, state.sheet.loop)
+
+/** The frame on screen, as a position in `animation.placed`. */
+const shownFrame = (): number => {
+  const order = playing()
+  return order.length === 0 ? 0 : order[((frame % order.length) + order.length) % order.length]!
+}
+
+/** The sheet's frames, changed with `change`. */
+const setFrames = (change: (frames: Array<Sheet["frames"][number]>) => void): void => {
+  const frames = [...state.sheet.frames]
+  change(frames)
+  state.sheet = { ...state.sheet, frames }
+  update()
+}
+
+const setFrameBox = (index: number, box: Box): void =>
+  setFrames((frames) => {
+    const current = frames[index]
+    if (current !== undefined) frames[index] = { ...current, box: { x: Math.round(box.x), y: Math.round(box.y), width: Math.max(1, Math.round(box.width)), height: Math.max(1, Math.round(box.height)) } }
+  })
+
+/** Adds a frame drawn by hand, in reading order: before the first frame below it or to its right on the same row. */
+const addFrame = (box: Box): void => {
+  const middle = box.y + box.height / 2
+  const at = state.sheet.frames.findIndex((other) => {
+    const sameRow = middle >= other.box.y && middle <= other.box.y + other.box.height
+    return sameRow ? other.box.x > box.x : other.box.y > middle
+  })
+  const index = at < 0 ? state.sheet.frames.length : at
+  state.selectedFrame = index
+  state.message = `Frame ${index + 1} added.`
+  setFrames((frames) => frames.splice(index, 0, frameOf({ x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) })))
+}
+
+const removeFrame = (index: number): void => {
+  state.selectedFrame = undefined
+  setFrames((frames) => frames.splice(index, 1))
+}
+
+const toggleFrame = (index: number): void =>
+  setFrames((frames) => {
+    const current = frames[index]
+    if (current !== undefined) frames[index] = { ...current, include: !current.include }
+  })
+
+/** Moves a frame by whole pixels on the animation's canvas. */
+const nudgeFrame = (index: number, dx: number, dy: number): void =>
+  setFrames((frames) => {
+    const current = frames[index]
+    if (current !== undefined) frames[index] = { ...current, nudge: { x: current.nudge.x + dx, y: current.nudge.y + dy } }
+  })
+
+/** The frames found again, replacing every box (hand nudges and left-out frames are dropped). */
+const findFramesAgain = (): void => {
+  const source = state.source
+  if (source === undefined) return
+  const found = detectFrames(source.image, { ...recipeOf(), removeBackground: true }, animationCache)
+  state.selectedFrame = undefined
+  state.message = found.length === 0 ? "No frames found: draw boxes with the Boxes tool." : `Found ${found.length} frame${found.length === 1 ? "" : "s"}.`
+  setFrames((frames) => frames.splice(0, frames.length, ...found))
+}
+
+/** Steps the animation by `by` frames, stopping playback. */
+const step = (by: number): void => {
+  state.playing = false
+  frame += by
+  const placed = animation?.placed[shownFrame()]
+  if (placed !== undefined) state.selectedFrame = placed.index
+  update()
+}
+
+/** Whether the animation should be moving on screen now. */
+const shouldPlay = (): boolean => state.playing && state.kind === "animation" && state.animationView !== "sheet" && state.source !== undefined
+
+let looping = false
+let lastTick: number | undefined
+const tick = (now: number): void => {
+  if (!shouldPlay()) {
+    looping = false
+    lastTick = undefined
+    return
+  }
+  const every = 1000 / Math.max(0.5, state.sheet.fps)
+  if (lastTick === undefined) lastTick = now
+  else if (now - lastTick >= every) {
+    // A slow frame skips ahead instead of slowing the animation down.
+    frame += Math.floor((now - lastTick) / every)
+    lastTick = now - ((now - lastTick) % every)
+    renderPlayer()
+    renderCounter()
+  }
+  requestAnimationFrame(tick)
+}
+
+/** Starts the playback loop when the animation should be playing and it is not running yet. */
+const keepPlaying = (): void => {
+  if (looping || !shouldPlay()) return
+  looping = true
+  lastTick = undefined
+  requestAnimationFrame(tick)
+}
+
+const counter = h("span", { class: "frame-counter" })
+
+const renderCounter = (): void => {
+  const count = playing().length
+  const placed = animation?.placed[shownFrame()]
+  counter.textContent = count === 0 ? "No frames" : `Frame ${placed === undefined ? "" : placed.index + 1} · ${(frame % count + count) % count + 1}/${count}`
+}
+
+const renderPlayer = (): void => {
+  const outcome = animation
+  if (outcome === undefined) return
+  const order = playing()
+  const position = order.length === 0 ? 0 : ((frame % order.length) + order.length) % order.length
+  const chosen = state.selectedFrame === undefined ? -1 : outcome.placed.findIndex((placed) => placed.index === state.selectedFrame)
+  player.setScene({
+    frames: outcome.placed.map((placed) => placed.art),
+    numbers: outcome.placed.map((placed) => placed.index + 1),
+    view: state.animationView === "frames" ? "frames" : "play",
+    current: state.animationView === "frames" ? chosen : shownFrame(),
+    onion: state.onion && order.length > 1 ? order[(position - 1 + order.length) % order.length] : undefined,
+    anchor: state.sheet.anchor === "box" ? undefined : outcome.placed[0]?.anchor,
+    showGrid: state.showGrid
+  })
+}
+
+/** The floating bar under the animation: play, step, frame rate, how it loops, and onion skin. */
+const renderPlayback = (): void => {
+  playback.hidden = state.source === undefined || state.kind !== "animation" || state.animationView === "sheet"
+  if (playback.hidden) return
+  renderCounter()
+  replace(
+    playback,
+    button("Previous frame", () => step(-1), { variant: "ghost", icon: "previous", iconOnly: true, small: true, title: "Previous frame (,)" }),
+    button(state.playing ? "Pause" : "Play", () => {
+      state.playing = !state.playing
+      update()
+    }, { variant: "ghost", icon: state.playing ? "pause" : "play", iconOnly: true, title: state.playing ? "Pause (Space)" : "Play (Space)" }),
+    button("Next frame", () => step(1), { variant: "ghost", icon: "next", iconOnly: true, small: true, title: "Next frame (.)" }),
+    counter,
+    h("span", { class: "divider" }),
+    h(
+      "label",
+      { class: "fps", title: "Frames per second" },
+      numberInput(state.sheet.fps, (value) => {
+        state.sheet = { ...state.sheet, fps: Math.min(60, Math.max(0.5, value)) }
+        update()
+      }, { min: 0.5, max: 60, step: 1, label: "Frames per second", suffix: "fps" })
+    ),
+    segmented(
+      state.sheet.loop,
+      [
+        { id: "forward", label: "Loop", title: "Plays start to end, then again" },
+        { id: "pingpong", label: "Ping-pong", title: "Plays there and back" }
+      ],
+      (loop) => {
+        state.sheet = { ...state.sheet, loop }
+        update()
+      },
+      { label: "Loop" }
+    ),
+    segmented(
+      state.onion ? "on" : "off",
+      [{ id: "on", label: "Onion skin", icon: "onion", iconOnly: true, title: "Show the frame before, faintly, under the frame playing" }],
+      () => {
+        state.onion = !state.onion
+        update()
+      },
+      { label: "Onion skin" }
+    )
+  )
+}
+
+const framesPanel = (): HTMLElement | false => {
+  const outcome = animation
+  if (outcome === undefined) return false
+  const frames = state.sheet.frames
+  const included = frames.filter((entry) => entry.include).length
+  const selected = state.selectedFrame === undefined ? undefined : frames[state.selectedFrame]
+  return sectionOf(
+    "frames",
+    "Frames",
+    {
+      action: button("Find again", findFramesAgain, { variant: "ghost", small: true, icon: "wand", title: "Find the frames again (drops boxes changed by hand)" }),
+      help:
+        "Each box on the sheet is one frame, fixed with the same settings. Choose Boxes in the toolbar over the sheet to move a box, drag its edges, or draw a new one on empty space; a box left out keeps its place but is not in the animation. Every frame is placed so its anchor stays on one spot; nudge a frame by a pixel with the arrow keys when it looks off."
+    },
+    callout(
+      included >= 2 ? "good" : "warn",
+      `${frames.length} frame${frames.length === 1 ? "" : "s"} on the sheet, ${included} in the animation, ${outcome.width} × ${outcome.height} each.`
+    ),
+    h(
+      "div",
+      { class: "frame-list" },
+      frames.map((entry, i) => {
+        const nudged = entry.nudge.x !== 0 || entry.nudge.y !== 0
+        return h(
+          "div",
+          {
+            class: `frame-row${state.selectedFrame === i ? " on" : ""}${entry.include ? "" : " out"}`,
+            on: {
+              click: () => {
+                state.selectedFrame = i
+                const position = outcome.placed.findIndex((placed) => placed.index === i)
+                if (position >= 0) {
+                  state.playing = false
+                  frame = Math.max(0, playing().indexOf(position))
+                }
+                update()
+              }
+            }
+          },
+          h("span", { class: "frame-number" }, String(i + 1)),
+          h("span", { class: "list-text" }, `${entry.box.width} × ${entry.box.height} px${nudged ? ` · moved ${entry.nudge.x}, ${entry.nudge.y}` : ""}`),
+          button(entry.include ? "In" : "Out", (event) => {
+            event.stopPropagation()
+            toggleFrame(i)
+          }, { variant: "ghost", small: true, title: entry.include ? "In the animation: click to leave it out" : "Left out: click to put it back" })
+        )
+      })
+    ),
+    selected !== undefined &&
+      h(
+        "div",
+        { class: "inline-action" },
+        h("span", {}, `Frame ${state.selectedFrame! + 1}: arrow keys move it`),
+        (selected.nudge.x !== 0 || selected.nudge.y !== 0) &&
+          button("Reset", () => nudgeFrame(state.selectedFrame!, -selected.nudge.x, -selected.nudge.y), { variant: "ghost", small: true }),
+        button("Remove", () => removeFrame(state.selectedFrame!), { variant: "ghost", small: true, icon: "trash", title: "Remove this frame's box (Delete)" })
+      ),
+    prop(
+      "Anchor",
+      segmented(state.sheet.anchor, anchors.map((entry) => ({ id: entry.id, label: entry.label, title: entry.hint })), (anchor) => {
+        state.sheet = { ...state.sheet, anchor }
+        update()
+      }, { label: "Anchor", class: "fill" }),
+      anchors.find((entry) => entry.id === state.sheet.anchor)!.hint
+    ),
+    prop(
+      "Margin",
+      numberInput(state.sheet.padding, (value) => {
+        state.sheet = { ...state.sheet, padding: Math.max(0, Math.round(value)) }
+        update()
+      }, { min: 0, max: 64, step: 1, suffix: "px", label: "Margin" }),
+      "Empty pixels kept around the frames, on every side."
+    ),
+    group(
+      "Playback",
+      prop("Speed", numberInput(state.sheet.fps, (value) => {
+        state.sheet = { ...state.sheet, fps: Math.min(60, Math.max(0.5, value)) }
+        update()
+      }, { min: 0.5, max: 60, step: 1, suffix: "fps", label: "Speed" }), "Frames per second, saved in the JSON and the GIF."),
+      prop(
+        "Loop",
+        segmented(
+          state.sheet.loop,
+          [
+            { id: "forward", label: "Loop" },
+            { id: "pingpong", label: "Ping-pong" }
+          ],
+          (loop) => {
+            state.sheet = { ...state.sheet, loop }
+            update()
+          },
+          { label: "Loop", class: "fill" }
+        )
+      )
+    )
+  )
+}
+
+/** The animation's grid: one cell size for every frame, found in all of them or typed; each frame finds its own offset. */
+const sheetGridPanel = (): HTMLElement | false => {
+  const outcome = animation
+  if (outcome === undefined) return false
+  const confidence = outcome.confidence
+  const note =
+    state.sheetCell !== undefined
+      ? `Cells of ${state.sheetCell} px, as typed. Each frame finds its own offset.`
+      : `Found ${Math.round(outcome.cell.width * 100) / 100} px cells across the frames${confidence === undefined ? "" : `, confidence ${Math.round(confidence * 100)}%`}. Each frame finds its own offset.`
+  return sectionOf(
+    "grid",
+    "Grid",
+    {
+      action: button("Auto-detect", () => {
+        state.sheetCell = undefined
+        update()
+      }, { variant: "ghost", small: true, icon: "wand", title: "Find the cell size in the frames again" }),
+      help: "Every frame is read at one cell size, so the animation keeps one scale. Image generators draw each frame on its own, so each frame finds where its grid starts. Turn the grid on to see each frame's lines on the sheet."
+    },
+    callout(state.sheetCell !== undefined || (confidence ?? 0) >= 0.5 ? "good" : "warn", note),
+    prop(
+      "Cell size",
+      numberInput(Math.round(outcome.cell.width * 1000) / 1000, (value) => {
+        state.sheetCell = Math.max(1, value)
+        update()
+      }, { min: 1, label: "Cell size", suffix: "px" }),
+      "Source pixels per pixel, for every frame. Fractions are fine."
+    ),
+    switchRow("Show grid", state.showGrid, (checked) => {
+      state.showGrid = checked
+      update()
+    }, "G"),
+    group(
+      "Reading cells",
+      slider(
+        "Read middle",
+        Math.round((1 - 2 * state.sample.inset) * 100),
+        { min: 10, max: 100, step: 5 },
+        (value) => `${value}%`,
+        (value) => {
+          state.sample = { ...state.sample, inset: (1 - value / 100) / 2 }
+          update()
+        },
+        "How much of each cell is read. Less ignores blurred edges; more helps tiny cells."
+      )
+    )
+  )
+}
+
+/** Clearing the sheet: its background, a grid painted behind the frames, and their boxes. */
+const sheetBackgroundPanel = (): HTMLElement =>
+  sectionOf(
+    "background",
+    "Background",
+    {
+      help: "The colors covering most of the sheet's border are its background, including a grid painted behind the frames and the frames' borders. They are cleared from the border inward, and stop at each sprite's outline. Labels under the frames are outside the boxes, so they are not in the animation."
+    },
+    switchRow("Clear the sheet's background", state.removeBackground, (checked) => {
+      state.removeBackground = checked
+      update()
+    }, "Makes the sheet's background transparent before the frames are read."),
+    state.removeBackground &&
+      prop(
+        "Found",
+        backgroundFound.length === 0
+          ? h("span", { class: "meta" }, "No color on the border")
+          : h("div", { class: "chips" }, backgroundFound.map((color) => chip(toHex(color))))
+      ),
+    state.removeBackground &&
+      slider(
+        "Tolerance",
+        Math.round(state.background.tolerance * 100),
+        { min: 0, max: 30, step: 1 },
+        (value) => String(value),
+        (value) => {
+          state.background = { ...state.background, tolerance: value / 100 }
+          update()
+        },
+        "How close a color must be to a background color to be cleared. Raise it when a haze is left around the sprites; lower it when parts of a sprite go missing."
+      )
+  )
+
+const exportLayout = (): SheetLayout => ({
+  columns: state.exportLayout.kind === "strip" ? Math.max(1, animation?.placed.length ?? 1) : Math.max(1, state.exportLayout.columns),
+  spacing: state.exportLayout.spacing
+})
+
+const bytesOf = async (blob: Blob): Promise<Uint8Array> => new Uint8Array(await blob.arrayBuffer())
+
+const animationExportPanel = (): HTMLElement | false => {
+  const outcome = animation
+  const art = exported
+  if (outcome === undefined || art === undefined || outcome.placed.length === 0) return false
+  const name = state.source === undefined ? "animation" : baseName(state.source.name)
+  drawPreview()
+  const scale = state.exportScale
+  const layout = exportLayout()
+  const frames = outcome.placed.map((placed) => placed.art)
+  const anchor = outcome.placed[0]!.anchor
+  const sheetName = scale === 1 ? `${name}-sheet.png` : `${name}-sheet-${scale}x.png`
+  const json = (): string =>
+    spritesheetJson({ name, image: sheetName, frameWidth: outcome.width, frameHeight: outcome.height, count: frames.length, layout, scale, fps: state.sheet.fps, loop: state.sheet.loop, anchor })
+  const paletteOf = (): Palette => ({ name: state.paletteName === ORIGINAL ? name : state.paletteName, colors: usedColors(art).map((entry) => entry.color) })
+  return sectionOf(
+    "export",
+    "Export",
+    {
+      action: h("span", { class: "meta" }, `${frames.length} × ${outcome.width} × ${outcome.height} · ${usedColors(art).length} colors`),
+      help: "The sheet holds every frame on one picture, as a strip or in rows, with a JSON file saying where each frame is, how long it shows, and where it stands (its anchor): Pixi's Spritesheet, Phaser's atlas, and Aseprite's JSON read it. The GIF plays the animation to share it. Frames gives each frame as its own PNG, in a ZIP. The recipe holds every setting and every box: open it here again, or run it with pixel sheet --recipe."
+    },
+    h("div", { class: "preview-box" }, preview),
+    prop(
+      "Layout",
+      segmented(
+        state.exportLayout.kind,
+        [
+          { id: "strip", label: "Strip" },
+          { id: "grid", label: "Rows" }
+        ],
+        (kind) => {
+          state.exportLayout = { ...state.exportLayout, kind }
+          update()
+        },
+        { label: "Layout", class: "fill" }
+      ),
+      "One row of frames, or rows of a few frames each."
+    ),
+    state.exportLayout.kind === "grid" &&
+      prop("Per row", numberInput(state.exportLayout.columns, (value) => {
+        state.exportLayout = { ...state.exportLayout, columns: Math.max(1, Math.round(value)) }
+        update()
+      }, { min: 1, step: 1, label: "Frames per row" })),
+    prop("Spacing", numberInput(state.exportLayout.spacing, (value) => {
+      state.exportLayout = { ...state.exportLayout, spacing: Math.max(0, Math.round(value)) }
+      update()
+    }, { min: 0, step: 1, suffix: "px", label: "Spacing" }), "Empty pixels between frames on the sheet."),
+    prop(
+      "Scale",
+      selectInput(
+        String(scale),
+        [1, 2, 4, 8, 16].map((option) => ({ id: String(option), label: `${option}×  ·  ${art.width * option} × ${art.height * option}` })),
+        (value) => {
+          state.exportScale = Number(value)
+          update()
+        },
+        "Export scale"
+      )
+    ),
+    h(
+      "div",
+      { class: "export-main" },
+      button("Sheet PNG", () => void pngOf(art, scale).then((blob) => download(sheetName, blob)), { variant: "primary", icon: "download" }),
+      button("JSON", () => download(`${name}-sheet${scale === 1 ? "" : `-${scale}x`}.json`, json(), "application/json"), {
+        variant: "secondary",
+        icon: "download",
+        title: "Where each frame is on the sheet PNG at this scale, its duration, and its anchor"
+      })
+    ),
+    group(
+      "Other formats",
+      h(
+        "div",
+        { class: "export-grid" },
+        button("GIF", () => {
+          const order = playOrder(frames.length, state.sheet.loop).map((i) => frames[i]!)
+          download(`${name}.gif`, new Blob([toGif(order, { scale: Math.max(scale, 1), delay: 1000 / state.sheet.fps })], { type: "image/gif" }))
+        }, { variant: "secondary", small: true, title: "The animation playing, at this scale, looping" }),
+        button("Frames .zip", () => {
+          void Promise.all(frames.map(async (frameArt, i) => ({ name: `${name}-${i}.png`, bytes: await bytesOf(await pngOf(frameArt, scale)) }))).then((entries) =>
+            download(`${name}-frames.zip`, new Blob([toZip(entries)], { type: "application/zip" }))
+          )
+        }, { variant: "secondary", small: true, title: "Each frame as its own PNG, at this scale" }),
+        button("Recipe", () => download(`${name}.recipe.json`, encodeRecipe(animationRecipe()), "application/json"), {
+          variant: "secondary",
+          small: true,
+          title: "Every setting and every frame's box: open it here again, or run it with pixel sheet --recipe"
+        }),
+        button("Palette .hex", () => download(`${name}-palette.hex`, toHexFile(paletteOf())), { variant: "secondary", small: true }),
+        button("Palette .gpl", () => download(`${name}-palette.gpl`, toGpl(paletteOf())), { variant: "secondary", small: true })
+      )
+    )
+  )
+}
 
 // ---------------------------------------------------------------------------
 // The top bar and the floating tools
@@ -1494,8 +2129,17 @@ const TOOLS = [
   { id: "pick", label: "Pick", icon: "pick", title: "Pick: click a pixel to keep its color (I)" }
 ] as const satisfies ReadonlyArray<{ id: State["tool"]; label: string; icon: IconName; title: string }>
 
+/** The tools over an animation's sheet: look around, or edit the frames' boxes. */
+const SHEET_TOOLS = [
+  { id: "move", label: "Move", icon: "move", title: "Move: drag to pan (V)" },
+  { id: "frames", label: "Boxes", icon: "frames", title: "Boxes: drag a frame's box to move it, its edges to resize it, or draw a new one on empty space (F)" }
+] as const satisfies ReadonlyArray<{ id: State["tool"]; label: string; icon: IconName; title: string }>
+
 const setTool = (id: State["tool"]): void => {
+  if (state.kind === "animation" && id !== "move" && id !== "frames") return
+  if (state.kind === "picture" && id === "frames") return
   state.tool = id
+  if (id === "frames") state.animationView = "sheet"
   // Painting happens on the fixed picture; grid lines are moved on the source.
   if ((id === "erase" || id === "restore" || id === "paint") && state.mode === "source") state.mode = "result"
   if (id === "paint" && state.paintColor === undefined) state.paintColor = paintColors()[0]
@@ -1527,13 +2171,30 @@ const renderTopbar = (): void => {
           "div",
           { class: "file", title: source.name },
           h("span", { class: "file-name" }, source.name),
-          h("span", { class: "file-meta" }, `${source.image.width} × ${source.image.height}${out === undefined ? "" : ` → ${out.width} × ${out.height}`}`)
+          h(
+            "span",
+            { class: "file-meta" },
+            state.kind === "animation" && animation !== undefined
+              ? `${source.image.width} × ${source.image.height} → ${animation.placed.length} × ${animation.width} × ${animation.height}`
+              : `${source.image.width} × ${source.image.height}${out === undefined ? "" : ` → ${out.width} × ${out.height}`}`
+          )
+        ),
+      source !== undefined &&
+        segmented(
+          state.kind,
+          [
+            { id: "picture", label: "Picture", icon: "image", title: "Fix it as one picture" },
+            { id: "animation", label: "Animation", icon: "film", title: "Fix it as an animation: one frame per box, played in order" }
+          ],
+          setKind,
+          { label: "Fix as", class: "kind" }
         )
     ),
     h(
       "div",
       { class: "topbar-center" },
       source !== undefined &&
+        state.kind === "picture" &&
         segmented(
           state.mode,
           [
@@ -1543,6 +2204,23 @@ const renderTopbar = (): void => {
           ],
           (mode) => {
             state.mode = mode
+            update()
+          },
+          { label: "View" }
+        ),
+      source !== undefined &&
+        state.kind === "animation" &&
+        segmented(
+          state.animationView,
+          [
+            { id: "sheet", label: "Sheet", title: "The sheet with each frame's box" },
+            { id: "frames", label: "Frames", title: "The fixed frames side by side" },
+            { id: "play", label: "Play", title: "The animation playing" }
+          ],
+          (view) => {
+            state.animationView = view
+            if (view !== "sheet" && state.tool === "frames") state.tool = "move"
+            refit = true
             update()
           },
           { label: "View" }
@@ -1560,15 +2238,45 @@ const renderTopbar = (): void => {
       h("span", { class: "divider" }),
       button("Demo", openDemo, { variant: "ghost", class: "hide-narrow", title: "Open the demo picture" }),
       button("Open", () => fileInput.click(), { variant: "secondary", icon: "open", title: "Open a picture, sprite source, recipe, or pixel.config.json" }),
-      button("Export", () => reveal("export", () => update()), { variant: "primary", icon: "download", disabled: result === undefined })
+      button("Export", () => reveal("export", () => update()), { variant: "primary", icon: "download", disabled: result === undefined && (animation?.placed.length ?? 0) === 0 })
     )
   )
 }
 
 const renderTools = (): void => {
-  tools.hidden = state.source === undefined
+  tools.hidden = state.source === undefined || (state.kind === "animation" && state.animationView !== "sheet")
   zoomBox.hidden = state.source === undefined
   if (tools.hidden) return
+  if (state.kind === "animation") {
+    const index = state.selectedFrame
+    const chosen = index === undefined ? undefined : state.sheet.frames[index]
+    replace(
+      tools,
+      segmented(state.tool, SHEET_TOOLS, setTool, { label: "Tool", class: "tool-strip" }),
+      segmented(
+        state.sheetShows,
+        [
+          { id: "cleared", label: "Cleared", icon: "erase", title: "The sheet with its background cleared: what the frames are read from" },
+          { id: "original", label: "Original", icon: "image", title: "The sheet as it was opened" }
+        ],
+        (shows) => {
+          state.sheetShows = shows
+          update()
+        },
+        { label: "Sheet", class: "tool-strip" }
+      ),
+      chosen !== undefined &&
+        index !== undefined &&
+        h(
+          "div",
+          { class: "box-actions" },
+          h("span", { class: "paint-hint" }, `Frame ${index + 1}`),
+          button(chosen.include ? "Leave out" : "Put back", () => toggleFrame(index), { variant: "ghost", small: true }),
+          button("Remove", () => removeFrame(index), { variant: "ghost", small: true, icon: "trash", iconOnly: true, title: "Remove this box (Delete)" })
+        )
+    )
+    return
+  }
   const painting = isPainting()
   replace(
     tools,
@@ -1626,16 +2334,19 @@ const paintStrip = (): HTMLElement => {
 
 const zoomText = h("span", { class: "zoom-value" })
 
+/** Whether the stage shows the animation's frames (the player) rather than a picture or the sheet (the viewer). */
+const showsPlayer = (): boolean => state.kind === "animation" && state.animationView !== "sheet"
+
 const renderZoom = (): void => {
-  zoomText.textContent = `${Math.round(viewer.zoom() * 100)}%`
+  zoomText.textContent = `${Math.round((showsPlayer() ? player.zoom() : viewer.zoom()) * 100)}%`
 }
 
 replace(
   zoomBox,
-  button("Zoom out", () => viewer.zoomBy(1 / 1.5), { variant: "ghost", icon: "minus", iconOnly: true, small: true }),
+  button("Zoom out", () => (showsPlayer() ? player.zoomBy(1 / 1.5) : viewer.zoomBy(1 / 1.5)), { variant: "ghost", icon: "minus", iconOnly: true, small: true }),
   zoomText,
-  button("Zoom in", () => viewer.zoomBy(1.5), { variant: "ghost", icon: "plus", iconOnly: true, small: true }),
-  button("Fit", () => viewer.fit(), { variant: "ghost", icon: "fit", iconOnly: true, small: true, title: "Fit the picture (Shift+1, or double-click it)" })
+  button("Zoom in", () => (showsPlayer() ? player.zoomBy(1.5) : viewer.zoomBy(1.5)), { variant: "ghost", icon: "plus", iconOnly: true, small: true }),
+  button("Fit", () => (showsPlayer() ? player.fit() : viewer.fit()), { variant: "ghost", icon: "fit", iconOnly: true, small: true, title: "Fit the picture (Shift+1, or double-click it)" })
 )
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined
@@ -1679,6 +2390,46 @@ window.addEventListener("keydown", (event) => {
     return
   }
   if (event.altKey || state.source === undefined) return
+  if (state.kind === "animation") {
+    // Space plays, comma and period step, arrows move the chosen (or shown) frame by a pixel, Delete removes a box.
+    const target = state.selectedFrame ?? (state.animationView === "play" ? animation?.placed[shownFrame()]?.index : undefined)
+    const arrows: Record<string, readonly [number, number]> = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] }
+    const arrow = arrows[key]
+    const keys: Record<string, () => void> = {
+      " ": () => {
+        state.playing = !state.playing
+        update()
+      },
+      ",": () => step(-1),
+      ".": () => step(1),
+      v: () => setTool("move"),
+      f: () => setTool("frames"),
+      g: () => {
+        state.showGrid = !state.showGrid
+        update()
+      },
+      delete: () => {
+        if (state.selectedFrame !== undefined && state.animationView === "sheet") removeFrame(state.selectedFrame)
+      },
+      backspace: () => {
+        if (state.selectedFrame !== undefined && state.animationView === "sheet") removeFrame(state.selectedFrame)
+      },
+      "!": () => (showsPlayer() ? player.fit() : viewer.fit())
+    }
+    if (arrow !== undefined && target !== undefined && state.animationView !== "sheet") {
+      event.preventDefault()
+      state.playing = false
+      state.selectedFrame = target
+      nudgeFrame(target, arrow[0] * (event.shiftKey ? 4 : 1), arrow[1] * (event.shiftKey ? 4 : 1))
+      return
+    }
+    const action = keys[event.shiftKey && event.code === "Digit1" ? "!" : key]
+    if (action !== undefined) {
+      event.preventDefault()
+      action()
+    }
+    return
+  }
   const shortcuts: Record<string, () => void> = {
     v: () => setTool("move"),
     l: () => setTool("lines"),
@@ -1703,6 +2454,7 @@ const render = (rebuildPanels: boolean): void => {
   empty.hidden = state.source !== undefined
   renderTopbar()
   renderTools()
+  renderPlayback()
   renderZoom()
   renderToast()
   if (rebuildPanels) {
@@ -1715,7 +2467,9 @@ const render = (rebuildPanels: boolean): void => {
       panels,
       state.source === undefined
         ? [introPanel(), palettePanel(), matchingPanel(), checkPanel(), aboutPanel()]
-        : [gridPanel(), sizePanel(), palettePanel(), proposePanel(), matchingPanel(), lostPanel(), backgroundPanel(), checkPanel(), exportPanel(), aboutPanel()]
+        : state.kind === "animation"
+          ? [framesPanel(), sheetGridPanel(), palettePanel(), proposePanel(), matchingPanel(), sheetBackgroundPanel(), checkPanel(), animationExportPanel(), aboutPanel()]
+          : [gridPanel(), sizePanel(), palettePanel(), proposePanel(), matchingPanel(), lostPanel(), backgroundPanel(), checkPanel(), exportPanel(), aboutPanel()]
     )
     panels.scrollTop = scroll
     if (focused !== null) {
@@ -1729,20 +2483,57 @@ const render = (rebuildPanels: boolean): void => {
   } else {
     drawPreview()
   }
-  viewer.setScene({
-    source: state.source?.canvas,
-    grid,
-    result,
-    mode: state.mode,
-    showGrid: state.showGrid,
-    moved: new Set(state.moved.keys()),
-    painting: isPainting() && result !== undefined,
-    picking: state.tool === "pick",
-    adjusting: state.tool === "lines",
-    highlight,
-    marked: state.cleanup.size > 0 && state.cleanup.show ? specks.flat() : [],
-    painted
-  })
+  const onPlayer = showsPlayer()
+  canvas.hidden = onPlayer
+  playerCanvas.hidden = !onPlayer
+  if (onPlayer) {
+    renderPlayer()
+    keepPlaying()
+  } else if (state.kind === "animation" && animation !== undefined) {
+    const shown = state.sheetShows === "cleared" && clearedCanvas !== undefined ? clearedCanvas.canvas : state.source?.canvas
+    viewer.setScene({
+      source: shown,
+      grid: undefined,
+      result: undefined,
+      mode: "source",
+      showGrid: state.showGrid,
+      moved: new Set(),
+      painting: false,
+      picking: false,
+      adjusting: false,
+      highlight: [],
+      marked: [],
+      painted: [],
+      boxes: state.sheet.frames.map((entry) => ({ ...entry.box, include: entry.include })),
+      frameGrids: animation.frames.map((entry) => {
+        const dx = Math.max(0, Math.round(entry.box.x))
+        const dy = Math.max(0, Math.round(entry.box.y))
+        return { xs: entry.outcome.grid.xs.map((cut) => cut + dx), ys: entry.outcome.grid.ys.map((cut) => cut + dy) }
+      }),
+      selectedBox: state.selectedFrame,
+      editingBoxes: state.tool === "frames"
+    })
+  } else {
+    viewer.setScene({
+      source: state.source?.canvas,
+      grid,
+      result,
+      mode: state.mode,
+      showGrid: state.showGrid,
+      moved: new Set(state.moved.keys()),
+      painting: isPainting() && result !== undefined,
+      picking: state.tool === "pick",
+      adjusting: state.tool === "lines",
+      highlight,
+      marked: state.cleanup.size > 0 && state.cleanup.show ? specks.flat() : [],
+      painted
+    })
+  }
+  if (refit) {
+    refit = false
+    if (onPlayer) player.fit()
+    else viewer.fit()
+  }
 }
 
 update()
