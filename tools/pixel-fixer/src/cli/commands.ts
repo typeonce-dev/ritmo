@@ -17,12 +17,16 @@ import { toJson, toRgba, toSvg } from "../core/export.ts"
 import type { LintRules } from "../core/lint.ts"
 import { presets, proposePalette, type ProposeMethod } from "../core/palette.ts"
 import { runRecipe, type Outcome } from "../core/pipeline.ts"
-import { fitScale, previewArt, previewFix } from "../core/preview.ts"
+import { detectFrames, proposeForSheet, runSheet, type AnimationCache } from "../core/animation.ts"
+import { toGif } from "../core/gif.ts"
+import { fitScale, previewArt, previewFix, previewSheet } from "../core/preview.ts"
+import { defaultSheet, playOrder, type Sheet } from "../core/sheet.ts"
+import { sheetArt, spritesheetJson } from "../core/spritesheet.ts"
 import { encodeRecipe, type GridChoice, type Recipe } from "../core/recipe.ts"
-import { checkImage, compareReports, reportOfArt, reportOfFix, type Report, type Verdict } from "../core/report.ts"
+import { checkImage, compareReports, reportOfArt, reportOfFix, reportOfSheet, type Report, type Verdict } from "../core/report.ts"
 import { artOfImage, formatSprite } from "../core/sprite.ts"
 import { CliFailure, CONFIG_FILE, decodeOrFail, loadConfig, loadPalette, starterConfig, type Config } from "./config.ts"
-import { outputBase, printJson, readPng, readSource, readText, writePng, writeText } from "./io.ts"
+import { outputBase, printJson, readPicture, readSource, readText, writeBytes, writePng, writeText } from "./io.ts"
 
 /** Ends the run with an exit code, already reported on stdout. */
 export class Exit extends Data.TaggedError("Exit")<{ readonly code: number }> {
@@ -163,7 +167,7 @@ const preview = (image: Parameters<typeof checkImage>[0], fixed: Fixed): Paramet
 
 const check = Command.make(
   "check",
-  { input: Argument.String("input").pipe(Argument.withDescription("A PNG, a sprite source, or a JSON map.")), config, recipe: recipeFlag, ...overrides },
+  { input: Argument.String("input").pipe(Argument.withDescription("A PNG or JPEG, a sprite source, or a JSON map.")), config, recipe: recipeFlag, ...overrides },
   Effect.fn("check")(function* (flags) {
     const project = yield* loadConfig(flags.config)
     const recipe = yield* recipeOf(project, flags.recipe, flags)
@@ -177,7 +181,7 @@ const check = Command.make(
 const fix = Command.make(
   "fix",
   {
-    input: Argument.String("input").pipe(Argument.withDescription("The PNG to fix: upscaled or blurry pixel art, or pixel art breaking the project's rules.")),
+    input: Argument.String("input").pipe(Argument.withDescription("The picture to fix (PNG or JPEG): upscaled or blurry pixel art, or pixel art breaking the project's rules.")),
     config,
     recipe: recipeFlag,
     ...overrides,
@@ -193,7 +197,7 @@ const fix = Command.make(
     let recipe = yield* recipeOf(project, flags.recipe, flags)
     if (Option.isSome(flags.cell)) recipe = { ...recipe, grid: yield* parseCell(flags.cell.value, flags.offset) }
     if (flags.follow) recipe = { ...recipe, follow: true }
-    const image = yield* readPng(flags.input)
+    const image = yield* readPicture(flags.input)
     const fixed = fixImage(image, recipe, rulesOf(project, recipe), flags.colors, "dominant")
     const base = yield* outputBase(flags.input, Option.getOrUndefined(flags.out), "fixed")
     const extra = { recipe: fixed.recipe, ...(fixed.outcome === undefined ? {} : { preview: preview(image, fixed)! }) }
@@ -226,7 +230,7 @@ const pixelate = Command.make(
       // A reference picture has no flat cells: read most of each one.
       sample: { ...start.sample, inset: Math.min(start.sample.inset, 0.15) }
     }
-    const image = yield* readPng(flags.input)
+    const image = yield* readPicture(flags.input)
     const fixed = fixImage(image, recipe, rulesOf(project, recipe), Option.some(flags.colors), "balanced")
     const base = yield* outputBase(flags.input, Option.getOrUndefined(flags.out), "pixel")
     if (fixed.outcome === undefined) return yield* new CliFailure({ message: "the picture could not be cut into pixels" })
@@ -280,7 +284,7 @@ const lint = Command.make(
 
 const previewCommand = Command.make(
   "preview",
-  { input: Argument.String("input").pipe(Argument.withDescription("A PNG, a sprite source, or a JSON map.")), config, recipe: recipeFlag, ...overrides, out },
+  { input: Argument.String("input").pipe(Argument.withDescription("A PNG or JPEG, a sprite source, or a JSON map.")), config, recipe: recipeFlag, ...overrides, out },
   Effect.fn("preview")(function* (flags) {
     const project = yield* loadConfig(flags.config)
     const recipe = yield* recipeOf(project, flags.recipe, flags)
@@ -308,6 +312,106 @@ const compare = Command.make(
     yield* printJson({ ...compareReports(a, b), a: { file: flags.a, ...a }, b: { file: flags.b, ...b } })
   })
 ).pipe(Command.withDescription("Checks two versions of an asset and says which is better, and why."))
+
+/** Reads "x,y,w,h;x,y,w,h" as frame boxes, in source pixels. */
+const parseBoxes = (text: string): Effect.Effect<Sheet["frames"], CliFailure> => {
+  const boxes = text.split(/[;\s]+/).filter((part) => part !== "").map((part) => part.split(",").map(Number))
+  if (boxes.length === 0 || boxes.some((box) => box.length !== 4 || box.some((value) => !Number.isFinite(value)) || box[2]! < 1 || box[3]! < 1)) {
+    return Effect.fail(new CliFailure({ message: 'frame boxes are "x,y,w,h" in source pixels, separated by ";"' }))
+  }
+  return Effect.succeed(boxes.map(([x, y, width, height]) => ({ box: { x: x!, y: y!, width: width!, height: height! }, include: true, nudge: { x: 0, y: 0 } })))
+}
+
+const sheetCommand = Command.make(
+  "sheet",
+  {
+    input: Argument.String("input").pipe(Argument.withDescription("An animation sheet (PNG or JPEG): frames in rows of boxes, as image generators make them.")),
+    config,
+    recipe: recipeFlag,
+    ...overrides,
+    colors: Flag.Int("colors").pipe(Flag.withDescription("Without a palette, how many colors to propose from all the frames together."), Flag.withDefault(16)),
+    cell: Flag.String("cell").pipe(Flag.withDescription('The cell size in source pixels, "11.5", instead of finding it (each frame finds its own offset).'), Flag.optional),
+    boxes: Flag.String("boxes").pipe(Flag.withDescription('The frames\' boxes, "x,y,w,h;x,y,w,h" in source pixels, instead of finding them.'), Flag.optional),
+    skip: Flag.String("skip").pipe(Flag.withDescription('Frames to leave out of the animation, by number from 1: "1,6".'), Flag.optional),
+    keepBackground: Flag.Boolean("keep-background").pipe(Flag.withDefault(false), Flag.withDescription("Keep the sheet's background (by default it is cleared, with any painted grid and labels).")),
+    anchor: Flag.Literals("anchor", ["feet", "center", "box"]).pipe(Flag.withDescription("What stays still from frame to frame: the feet (default), the body's center, or nothing (frames as in their boxes)."), Flag.optional),
+    fps: Flag.Finite("fps").pipe(Flag.withDescription("Frames per second (default 8)."), Flag.optional),
+    pingpong: Flag.Boolean("pingpong").pipe(Flag.withDefault(false), Flag.withDescription("Play there and back instead of looping from the start.")),
+    columns: Flag.Int("columns").pipe(Flag.withDescription("Frames per row on the sheet written (default: one row)."), Flag.optional),
+    spacing: Flag.Int("spacing").pipe(Flag.withDescription("Empty pixels between frames on the sheet written."), Flag.withDefault(0)),
+    out,
+    scale
+  },
+  Effect.fn("sheet")(function* (flags) {
+    const project = yield* loadConfig(flags.config)
+    let recipe = yield* recipeOf(project, flags.recipe, flags)
+    if (Option.isSome(flags.cell)) recipe = { ...recipe, grid: yield* parseCell(flags.cell.value, Option.none()) }
+    if (!flags.keepBackground) recipe = { ...recipe, removeBackground: true }
+    else recipe = { ...recipe, removeBackground: false }
+    const image = yield* readPicture(flags.input)
+    const cache: AnimationCache = {}
+    const start = recipe.sheet ?? defaultSheet
+    let frames = Option.isSome(flags.boxes) ? yield* parseBoxes(flags.boxes.value) : start.frames.length > 0 ? start.frames : detectFrames(image, recipe, cache)
+    if (Option.isSome(flags.skip)) {
+      const skipped = new Set(flags.skip.value.split(",").map((part) => Number(part.trim()) - 1))
+      frames = frames.map((frame, i) => ({ ...frame, include: !skipped.has(i) }))
+    }
+    const sheet: Sheet = {
+      ...start,
+      frames,
+      anchor: Option.getOrElse(flags.anchor, () => start.anchor),
+      fps: Option.getOrElse(flags.fps, () => start.fps),
+      loop: flags.pingpong ? "pingpong" : start.loop
+    }
+    if (sheet.frames.length === 0) return yield* new CliFailure({ message: "no frames found in the sheet: give them with --boxes" })
+    recipe = { ...recipe, sheet }
+    if (recipe.palette === undefined && flags.colors > 0) {
+      const proposed = proposeForSheet(image, recipe, sheet, flags.colors, "dominant", cache).map((proposal) => proposal.color)
+      recipe = { ...recipe, palette: { name: `Proposed (${proposed.length})`, colors: proposed, locked: [] } }
+    }
+    const outcome = runSheet(image, recipe, sheet, cache)
+    const report = reportOfSheet(image, recipe, outcome, rulesOf(project, recipe))
+    const base = yield* outputBase(flags.input, Option.getOrUndefined(flags.out), "sheet")
+    const path = yield* Path.Path
+    const name = path.basename(base)
+    const arts = outcome.placed.map((frame) => frame.art)
+    const layout = { columns: Option.getOrElse(flags.columns, () => arts.length), spacing: flags.spacing }
+    const art = sheetArt(arts, layout)
+    const anchor = outcome.placed[0]?.anchor ?? { x: 0, y: 0 }
+    const info = (image: string, scale: number) =>
+      spritesheetJson({ name, image, frameWidth: outcome.width, frameHeight: outcome.height, count: arts.length, layout, scale, fps: sheet.fps, loop: sheet.loop, anchor })
+    const files: Record<string, string | ReadonlyArray<string>> = {}
+    if (arts.length > 0) {
+      files.png = yield* writePng(`${base}.png`, toRgba(art))
+      files.json = yield* writeText(`${base}.json`, info(`${name}.png`, 1))
+      if (flags.scale > 1) {
+        files.scaled = yield* writePng(`${base}@${flags.scale}x.png`, toRgba(art, flags.scale))
+        files.scaledJson = yield* writeText(`${base}@${flags.scale}x.json`, info(`${name}@${flags.scale}x.png`, flags.scale))
+      }
+      const order = playOrder(arts.length, sheet.loop).map((i) => arts[i]!)
+      files.gif = yield* writeBytes(`${base}.gif`, toGif(order, { scale: Math.max(flags.scale, fitScale(arts[0]!, 256)), delay: 1000 / sheet.fps }))
+      const written: Array<string> = []
+      for (const [i, frame] of arts.entries()) written.push(yield* writePng(path.join(`${base}.frames`, `${name}-${i}.png`), toRgba(frame, flags.scale)))
+      files.frames = written
+    }
+    files.recipe = yield* writeText(`${base}.recipe.json`, encodeRecipe(recipe))
+    files.preview = yield* writePng(
+      `${base}.preview.png`,
+      previewSheet(
+        image,
+        sheet.frames.map((frame) => ({ ...frame.box, include: frame.include })),
+        arts,
+        sheet.anchor === "feet" ? anchor.y : undefined
+      )
+    )
+    yield* printJson({ file: flags.input, ...report, files })
+    yield* exitWith(report.verdict === "needs-person" ? 4 : report.issues.some((issue) => issue.severity === "error") ? 3 : 0)
+  })
+).pipe(
+  Command.withDescription(
+    "Fixes an animation sheet: finds its frames, clears its background and labels, fixes every frame on one grid and one palette, lines them up, and writes a sprite sheet with its JSON, a GIF, each frame, its recipe, and a preview."
+  )
+)
 
 const palettes = Command.make(
   "palettes",
@@ -340,6 +444,6 @@ const init = Command.make(
 
 export const pixel = Command.make("pixel").pipe(
   Command.withDescription("Ritmo's pixel fixer: checks, fixes, and makes pixel art. Prints JSON; exit 0 clean, 2 usage error, 3 fixable, 4 needs a person."),
-  Command.withSubcommands([check, fix, pixelate, render, lint, previewCommand, compare, palettes, init])
+  Command.withSubcommands([check, fix, sheetCommand, pixelate, render, lint, previewCommand, compare, palettes, init])
 )
 
