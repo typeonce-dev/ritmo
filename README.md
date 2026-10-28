@@ -111,7 +111,7 @@ All packages are released together with the same version.
 | `@typeonce/ritmo-netcode` | Online multiplayer: rollback and lockstep sessions over WebSocket, WebRTC, or any transport, with resyncs and desync checks |
 | `@typeonce/ritmo-devtools` | Headless debug sessions, reports, and `ritmo-devtools lint` |
 | `@typeonce/oxlint-plugin-ritmo` | Lint rules for deterministic, headless simulation code |
-| `@typeonce/ritmo-tools` | `ritmo-tools`, the asset command for agents: pixel art and animation sheets |
+| `@typeonce/ritmo-tools` | `ritmo-tools`, the asset command for agents: pixel art, animation sheets, and sound effects |
 
 ## Get started with your agent
 

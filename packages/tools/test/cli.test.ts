@@ -18,5 +18,6 @@ describe("ritmo-tools", () => {
   it("lists its tools", { timeout: 30_000 }, () => {
     const result = spawnSync(process.execPath, [bin, "--help"], { encoding: "utf8" })
     expect(result.stdout).toContain("pixel")
+    expect(result.stdout).toContain("sound")
   })
 })

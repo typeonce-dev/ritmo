@@ -51,7 +51,7 @@ for (const directory of packages) {
   tarballByName.set(manifest.name, path.join(tarballs, created))
   const listing = run("tar", ["-tzf", path.join(tarballs, created)], work).split("\n")
   const shipped = commandLineOnly.has(directory)
-    ? ["package/LICENSE", "package/README.md", "package/CHANGELOG.md", "package/dist/cli.js"]
+    ? ["package/LICENSE", "package/README.md", "package/CHANGELOG.md", "package/dist/cli.js", "package/dist/sound/page/index.html"]
     : ["package/LICENSE", "package/README.md", "package/CHANGELOG.md", "package/dist/index.js", "package/dist/index.d.ts", "package/src/index.ts"]
   for (const required of shipped) {
     if (!listing.includes(required)) throw new Error(`${manifest.name} tarball is missing ${required}`)
@@ -60,12 +60,12 @@ for (const directory of packages) {
     throw new Error(`${manifest.name} tarball contains test or build-info files`)
   }
   if (directory === "core") {
-    for (const required of ["package/skills/ritmo/SKILL.md", "package/skills/ritmo/playbooks/mechanic.md", "package/skills/ritmo/references/spatial-grid.ts", "package/skills/ritmo-prototype/SKILL.md", "package/skills/ritmo-pixel-art/SKILL.md", "package/SETUP.md"]) {
+    for (const required of ["package/skills/ritmo/SKILL.md", "package/skills/ritmo/playbooks/mechanic.md", "package/skills/ritmo/references/spatial-grid.ts", "package/skills/ritmo-prototype/SKILL.md", "package/skills/ritmo-pixel-art/SKILL.md", "package/skills/ritmo-sounds/SKILL.md", "package/SETUP.md"]) {
       if (!listing.includes(required)) throw new Error(`${manifest.name} tarball is missing ${required}`)
     }
     if (listing.includes("package/PROTOTYPE.md")) throw new Error(`${manifest.name} tarball contains the repo-only PROTOTYPE.md`)
   }
-  if (commandLineOnly.has(directory) && listing.some((file) => file.startsWith("package/src/") || file.startsWith("package/bin/") || file.startsWith("package/dist/pixel/ui/"))) {
+  if (commandLineOnly.has(directory) && listing.some((file) => file.startsWith("package/src/") || file.startsWith("package/bin/") || file.startsWith("package/dist/pixel/ui/") || file.startsWith("package/dist/sound/ui/"))) {
     throw new Error(`${manifest.name} tarball contains its source, its in-repo launcher, or the website's page`)
   }
   if (directory === "pixi" && listing.some((file) => /\/(NodeRegistry|RenderSync)\.(ts|js|d\.ts)$/.test(file))) {
@@ -240,7 +240,10 @@ const toolsVersion = run(toolsBin, ["--version"], consumer).trim()
 if (!toolsVersion.includes(JSON.parse(readFileSync(path.join(root, "packages", "tools", "package.json"), "utf8")).version)) throw new Error(`ritmo-tools --version printed ${toolsVersion}`)
 const palettes = run(toolsBin, ["pixel", "palettes"], consumer)
 if (!palettes.includes("PICO-8")) throw new Error(`ritmo-tools pixel palettes printed ${palettes}`)
-console.log(`${toolsVersion}: pixel palettes ok`)
+run(toolsBin, ["sound", "init", "game.sounds.json"], consumer)
+const checked = run(toolsBin, ["sound", "check", "game.sounds.json"], consumer)
+if (!checked.includes('"verdict": "clean"')) throw new Error(`ritmo-tools sound check printed ${checked}`)
+console.log(`${toolsVersion}: pixel palettes and sound check ok`)
 
 step("internal modules are not exported")
 writeFileSync(path.join(consumer, "internal.mjs"), `import("@typeonce/ritmo/internal/world").then(() => process.exit(1), (error) => { if (error.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") process.exit(2) })\n`)

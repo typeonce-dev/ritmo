@@ -47,7 +47,15 @@ const paths = {
   next: '<path d="m5 4 10 8-10 8V4zM19 5v14"/>',
   frames: '<rect x="2" y="6" width="6" height="12" rx="1"/><rect x="9" y="6" width="6" height="12" rx="1"/><rect x="16" y="6" width="6" height="12" rx="1"/>',
   onion: '<rect x="3" y="3" width="13" height="13" rx="2" stroke-dasharray="2 2"/><rect x="8" y="8" width="13" height="13" rx="2"/>',
-  film: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 7.5h4M3 12h18M3 16.5h4M17 7.5h4M17 16.5h4"/>'
+  film: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 7.5h4M3 12h18M3 16.5h4M17 7.5h4M17 16.5h4"/>',
+  volume:
+    '<path d="M11 4.7a.7.7 0 0 0-1.2-.5L6.4 7.6A1.4 1.4 0 0 1 5.4 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.4a1.4 1.4 0 0 1 1 .4l3.4 3.4a.7.7 0 0 0 1.2-.5z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.4 18.4a9 9 0 0 0 0-12.7"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  wave: '<path d="M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2"/>',
+  shuffle:
+    '<path d="m18 14 4 4-4 4"/><path d="m18 2 4 4-4 4"/><path d="M2 18h1.97a4 4 0 0 0 3.3-1.7l5.46-7.6a4 4 0 0 1 3.3-1.7H22"/><path d="M2 6h1.97a4 4 0 0 1 3.3 1.7l.67.94"/><path d="M22 18h-6.03a4 4 0 0 1-3.3-1.7l-.67-.94"/>',
+  layers:
+    '<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>'
 } as const
 
 export type IconName = keyof typeof paths
@@ -347,26 +355,28 @@ export const chip = (hex: string, extra: { readonly class?: string; readonly tit
 // ---------------------------------------------------------------------------
 // Inspector sections
 
-const COLLAPSED_KEY = "pixel-fixer:collapsed"
+const SECTIONS_KEY = "ritmo-tools:sections"
 
-const readCollapsed = (): Set<string> => {
+/** The sections the person opened or closed, by id; the rest follow their default. */
+const readChoices = (): Map<string, boolean> => {
   try {
-    const raw = localStorage.getItem(COLLAPSED_KEY)
-    const parsed: unknown = raw === null ? [] : JSON.parse(raw)
-    return new Set(Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : [])
+    const raw = localStorage.getItem(SECTIONS_KEY)
+    const parsed: unknown = raw === null ? {} : JSON.parse(raw)
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return new Map()
+    return new Map(Object.entries(parsed).filter((entry): entry is [string, boolean] => typeof entry[1] === "boolean"))
   } catch {
-    return new Set()
+    return new Map()
   }
 }
 
-const collapsed = readCollapsed()
+const choices = readChoices()
 const helpOpen = new Set<string>()
 
 const save = (): void => {
   try {
-    localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed]))
+    localStorage.setItem(SECTIONS_KEY, JSON.stringify(Object.fromEntries(choices)))
   } catch {
-    // Remembering which sections are closed is a convenience only.
+    // Remembering which sections are open is a convenience only.
   }
 }
 
@@ -379,11 +389,13 @@ export interface SectionOptions {
   readonly help?: string
   /** Called after opening or closing, to redraw. */
   readonly onToggle: () => void
+  /** Starts closed until the person opens it: for sections most visits do not need. */
+  readonly closed?: boolean
 }
 
 /** A collapsible inspector section, remembered across visits. */
 export const section = (options: SectionOptions, ...children: Array<Child | ReadonlyArray<Child>>): HTMLElement => {
-  const open = !collapsed.has(options.id)
+  const open = choices.get(options.id) ?? options.closed !== true
   const showHelp = helpOpen.has(options.id)
   return h(
     "section",
@@ -398,8 +410,7 @@ export const section = (options: SectionOptions, ...children: Array<Child | Read
           attrs: { type: "button", "aria-expanded": String(open) },
           on: {
             click: () => {
-              if (open) collapsed.add(options.id)
-              else collapsed.delete(options.id)
+              choices.set(options.id, !open)
               save()
               options.onToggle()
             }
@@ -434,7 +445,8 @@ export const section = (options: SectionOptions, ...children: Array<Child | Read
 
 /** Opens a section (when it was closed) and scrolls it into view. */
 export const reveal = (id: string, onToggle: () => void): void => {
-  if (collapsed.delete(id)) {
+  if (document.querySelector(`[data-section="${id}"]`)?.classList.contains("closed") === true) {
+    choices.set(id, true)
     save()
     onToggle()
   }

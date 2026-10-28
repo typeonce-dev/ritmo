@@ -3,6 +3,7 @@
  * `ritmo-tools`: the asset tools for games made with Ritmo, run by agents.
  *
  *   ritmo-tools pixel <command>   checks, fixes, and makes pixel art and animations
+ *   ritmo-tools sound <command>   checks, renders, and varies game sounds, and opens the review page
  *
  * Every command prints JSON on stdout and exits with what to do next (see
  * each tool's `--help`). Built on Effect; nothing a game imports depends on it.
@@ -13,10 +14,11 @@ import { CliError, Command } from "effect/cli"
 import { toolsVersion } from "./internal/version.ts"
 import { Exit, pixel } from "./pixel/cli/commands.ts"
 import { printJson } from "./pixel/cli/io.ts"
+import { sound } from "./sound/cli/commands.ts"
 
 const tools = Command.make("ritmo-tools").pipe(
-  Command.withDescription("Ritmo's asset tools for agents: `pixel` for pixel art and animations. Each prints JSON and exits with what to do next."),
-  Command.withSubcommands([pixel])
+  Command.withDescription("Ritmo's asset tools for agents: `pixel` for pixel art and animations, `sound` for sound effects. Each prints JSON and exits with what to do next."),
+  Command.withSubcommands([pixel, sound])
 )
 
 const program = Command.run(tools, { version: toolsVersion }).pipe(
