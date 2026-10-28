@@ -295,8 +295,10 @@
   margin-bottom: 8px;
 }
 
+/* Centered on the wave's middle line, below the wave's 18px time ruler. */
 .lane.mix .lane-label {
   align-self: center;
+  padding-top: 18px;
 }
 
 .wave {
