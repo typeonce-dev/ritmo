@@ -7,6 +7,7 @@ tool per kind of asset:
 | Tool | For |
 | --- | --- |
 | `ritmo-tools pixel` | Pixel art: fixes AI-made or blurry pictures and animation sheets onto a true pixel grid and a palette, renders sprites drawn as text, and checks a project's art against its rules. |
+| `ritmo-tools sound` | Sound effects: keeps them as JSON recipes, measures and varies them, writes WAV files, and opens a local page where a person listens, picks, tunes, and notes. |
 
 ```sh
 npx @typeonce/ritmo-tools pixel check art.png
@@ -15,7 +16,8 @@ pnpm add -D @typeonce/ritmo-tools   # pins it to the game's Ritmo version
 
 Every command prints JSON on stdout and exits with a code that says what
 to do next. A game's agent learns them from the skills that ship with
-`@typeonce/ritmo` (`skills/ritmo-pixel-art`), linked by its `SETUP.md`.
+`@typeonce/ritmo` (`skills/ritmo-pixel-art`, `skills/ritmo-sounds`), linked by
+its `SETUP.md`.
 The tools are built on Effect; nothing a game imports depends on this
 package.
 
@@ -325,3 +327,89 @@ of the true size, which are as clean but have half their lines mid-cell.
   JPEG through `jpeg-js`;
   `src/cli.ts` is `ritmo-tools` itself, and `bin/ritmo-tools.mjs` runs it from
   its TypeScript source inside the repository.
+
+## Sound lab (`ritmo-tools sound`)
+
+Game sounds as JSON recipes, for agents and the people they make games with.
+An agent writes and checks sounds from the command line; a person listens,
+compares, tunes, and notes them on a local page in the pixel fixer's look.
+Both use one renderer, so what the person hears, what the agent measures,
+and what the game plays are the same samples.
+
+Its page is built from the pixel fixer's kit, so the two tools look and
+work alike.
+
+### Recipes and banks
+
+A recipe is a few layers built from small instruments, mixed into a room:
+
+```json
+{
+  "about": "A blow lands: a short thud and a crack.",
+  "reverb": 0.12,
+  "layers": [
+    { "type": "click", "gain": 0.45 },
+    { "type": "tone", "wave": "sine", "from": 160, "to": 55, "duration": 0.12, "attack": 0.002, "gain": 0.65 },
+    { "type": "crunch", "from": 1500, "to": 500, "duration": 0.07, "gain": 0.3 }
+  ]
+}
+```
+
+| Layer | What it is |
+| --- | --- |
+| `tone` | A wave (`sine`, `triangle`, `square`, `sawtooth`) gliding `from` → `to` Hz: thuds, notes, hums. |
+| `noise` | Noise through a filter (`lowpass`, `highpass`, `bandpass`) gliding `from` → `to` Hz, with `q`: air, hiss, rumble. |
+| `swish` | A band of noise rising from `low` to `peak` Hz, loudest at `peakAt`: a swing. |
+| `crunch` | Distorted band-passed noise: the crack of a blow. |
+| `metal` | Inharmonic partials of `pitch` Hz, the higher dying first: a ring. |
+| `click` | A short tick at the very start, for punch. |
+
+Every layer has `gain` and an optional `delay` in seconds. A recipe may
+carry `heavy` (it ducks the others in the game's mixer), `interval` (the
+least time between two plays), and a `tune` the person set with sliders
+(`pitch`, `length`, `brightness`, `echo`, `volume`), kept apart from the
+layers so it reads at a glance.
+
+A bank is one file of named recipes and the game's master volume:
+`{"version": 1, "master": 0.6, "sounds": {...}}`. Its review lives next to
+it (`game.sounds.json` → `game.sounds.review.json`): each sound's status
+(`new`, `approved`, `changes`), the person's note, and the takes offered.
+`examples/spirit-call.sounds.json` in the repository is Spirit call's 46 sounds.
+
+### The command line
+
+`npx @typeonce/ritmo-tools sound <command>` (inside the Ritmo repository, `node packages/tools/bin/ritmo-tools.mjs sound <command>`).
+Every command prints JSON and exits 0 (clean), 2 (usage error, missing
+file, broken bank), or 3 (a sound has errors).
+
+| Command | Does |
+| --- | --- |
+| `ritmo-tools sound init [bank]` | Writes a starting bank of three sounds. |
+| `ritmo-tools sound check <bank> [names...]` | Measures each sound (length, peak, loudness, attack, brightness, ending) and lists what breaks the rules: clipping, silence, a late start, a click at the end, much louder or quieter than its kind. |
+| `ritmo-tools sound render <bank> [names...] [-o dir] [--sequence 0.25]` | Writes WAV files, and with `--sequence` the sounds in a row. |
+| `ritmo-tools sound vary <bank> <name> --toward heavier [--count 4] [--seed 1]` | Makes takes nudged one way (`heavier`, `lighter`, `brighter`, `darker`, `punchier`, `softer`, `shorter`, `longer`, or `wider` for anything) and offers them in the review. |
+| `ritmo-tools sound review <bank> [--port 5190] [--host]` | Serves the review page and prints its address; runs until stopped. |
+| `ritmo-tools sound notes <bank>` | What the person said: status and note for each sound, changes asked first. |
+
+### The review page
+
+`ritmo-tools sound review` opens the bank on a local page: the sounds on the left with
+their status, the selected sound's wave and layers on the stage with the
+takes beside each other, and on the right its review, its check, the takes
+maker, tune sliders, the layers' numbers, and a player for sounds in a row.
+Space plays, the arrows move through the list, 1 to 9 play the takes, and
+Ctrl/Cmd+Z undoes. Every change is written to the bank and its review as it
+happens, and changes the agent writes while the page is open show up in it.
+`--host` serves it on the network too, to listen on a phone.
+
+### Code
+
+- `src/sound/core/`: recipes (`recipe.ts`), the renderer (`render.ts`, plain
+  TypeScript that plays the same in Node and the browser), the measures and
+  checks (`measure.ts`), takes (`takes.ts`), reviews (`review.ts`), and WAV
+  files (`wav.ts`).
+- `src/sound/cli/`: the `sound` command (Effect), and the review page's
+  server (`serve.ts`).
+- `src/sound/ui/`: the review page, built from the pixel fixer's kit. The
+  published package carries it built (`dist/sound/page`, made by `prepack`);
+  inside the repository Vite serves it from source.

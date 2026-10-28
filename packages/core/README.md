@@ -47,7 +47,7 @@ const damping = Ops.exp(-friction * dt)
 
 Randomness is `Random`, a generator (mulberry32) whose whole state is one integer, kept in a resource so a run replays and saves with the world: `Descriptor.ConstructedResource(Random.codec)`, started with `Random.seed(n)`, drawn in a system with `Random.draw(resources.rng)`.
 
-Agents: set up a project with `SETUP.md`, then follow the skill at `skills/ritmo/SKILL.md` on every change, or `skills/ritmo-prototype/SKILL.md` while the game is a prototype; `skills/ritmo-pixel-art/SKILL.md` covers pixel art with `@typeonce/ritmo-tools`.
+Agents: set up a project with `SETUP.md`, then follow the skill at `skills/ritmo/SKILL.md` on every change, or `skills/ritmo-prototype/SKILL.md` while the game is a prototype; `skills/ritmo-pixel-art/SKILL.md` and `skills/ritmo-sounds/SKILL.md` cover pixel art and sounds with `@typeonce/ritmo-tools`.
 
 Related packages, released together with the same version:
 
@@ -58,6 +58,6 @@ Related packages, released together with the same version:
 - [`@typeonce/ritmo-netcode`](https://github.com/typeonce-dev/ritmo/blob/main/packages/netcode/README.md): online multiplayer: rollback and lockstep sessions over any transport
 - [`@typeonce/ritmo-devtools`](https://github.com/typeonce-dev/ritmo/blob/main/packages/devtools/README.md): headless debug sessions and trace reports
 - [`@typeonce/oxlint-plugin-ritmo`](https://github.com/typeonce-dev/ritmo/blob/main/packages/oxlint-plugin/README.md): oxlint rules that keep simulation code deterministic and headless
-- [`@typeonce/ritmo-tools`](https://github.com/typeonce-dev/ritmo/blob/main/packages/tools/README.md): the `ritmo-tools` command for game assets: pixel art and animation sheets fixed onto a true pixel grid and palette
+- [`@typeonce/ritmo-tools`](https://github.com/typeonce-dev/ritmo/blob/main/packages/tools/README.md): the `ritmo-tools` command for game assets: pixel art and animation sheets fixed onto a true pixel grid and palette, and sound effects as recipes with a review page
 
 Source: https://github.com/typeonce-dev/ritmo
