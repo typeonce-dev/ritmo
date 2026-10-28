@@ -51,6 +51,10 @@ export const makePlayer = (canvas: HTMLCanvasElement, events: PlayerEvents): Pla
   let panY = 0
   let fitted = false
   let fittedKey = ""
+  /** Zoomed or moved by hand since the last fit: a new picture keeps that zoom instead of being fitted. */
+  let adjusted = false
+  /** The picture's size when last drawn, so a new one can take its place on screen. */
+  let shown = { width: 0, height: 0 }
   let drag: { lastX: number; lastY: number; moved: number } | undefined
   const pointers = new Map<number, { x: number; y: number }>()
   let pinch: { distance: number } | undefined
@@ -81,6 +85,8 @@ export const makePlayer = (canvas: HTMLCanvasElement, events: PlayerEvents): Pla
     panX = Math.round((view.width - picture.width * zoom) / 2)
     panY = Math.round(top + (view.height - top - bottom - picture.height * zoom) / 2)
     fitted = true
+    adjusted = false
+    shown = picture
     draw()
     events.viewChanged()
   }
@@ -165,9 +171,18 @@ export const makePlayer = (canvas: HTMLCanvasElement, events: PlayerEvents): Pla
     if (first === undefined) return
     const key = `${scene.view}:${scene.frames.length}:${first.width}x${first.height}`
     if (!fitted || key !== fittedKey) {
+      // Play and Frames show pictures of very different widths: a switch between them fits.
+      const sameView = fittedKey.startsWith(`${scene.view}:`)
       fittedKey = key
-      fit()
-      return
+      if (!fitted || !adjusted || !sameView) {
+        fit()
+        return
+      }
+      // Another picture (another animation, of another size) at the zoom chosen by hand, centered where the last one was.
+      const picture = extent()
+      panX = Math.round(panX + ((shown.width - picture.width) * zoom) / 2)
+      panY = Math.round(panY + ((shown.height - picture.height) * zoom) / 2)
+      shown = picture
     }
     context.imageSmoothingEnabled = false
     context.font = '600 11px "Inter", system-ui, sans-serif'
@@ -234,6 +249,7 @@ export const makePlayer = (canvas: HTMLCanvasElement, events: PlayerEvents): Pla
       return
     }
     if (drag === undefined) return
+    if (at.x !== drag.lastX || at.y !== drag.lastY) adjusted = true
     panX += at.x - drag.lastX
     panY += at.y - drag.lastY
     drag.moved += Math.abs(at.x - drag.lastX) + Math.abs(at.y - drag.lastY)
@@ -285,6 +301,7 @@ export const makePlayer = (canvas: HTMLCanvasElement, events: PlayerEvents): Pla
     panX = at.x - ((at.x - panX) * next) / zoom
     panY = at.y - ((at.y - panY) * next) / zoom
     zoom = next
+    adjusted = true
     draw()
     events.viewChanged()
   }
