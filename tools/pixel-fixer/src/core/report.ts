@@ -8,12 +8,14 @@
  * measure; it rarely fools both, and when either is low the answer is
  * "needs-person", never a confident bad fix.
  */
+import type { AnimationOutcome } from "./animation.ts"
 import { pack, toHex, toOklab, unpack, type Lab } from "./color.ts"
 import { medianColor, usedColors, type CellSamples, type PixelArt } from "./fix.ts"
 import type { GridSpec, RgbaImage } from "./grid.ts"
 import { lintArt, type Issue, type LintRules } from "./lint.ts"
 import { runRecipe, type Outcome } from "./pipeline.ts"
 import type { Recipe } from "./recipe.ts"
+import { sheetArt } from "./spritesheet.ts"
 import { artOfImage } from "./sprite.ts"
 
 export type Verdict = "clean" | "fixable" | "needs-person"
@@ -22,8 +24,8 @@ export interface Report {
   readonly verdict: Verdict
   /** One sentence for whoever reads the report. */
   readonly summary: string
-  /** "pixel-art": one pixel per pixel already; "upscaled": fake pixels, each many source pixels. */
-  readonly kind: "pixel-art" | "upscaled"
+  /** "pixel-art": one pixel per pixel already; "upscaled": fake pixels, each many source pixels; "animation": a sheet of frames. */
+  readonly kind: "pixel-art" | "upscaled" | "animation"
   readonly source: { readonly width: number; readonly height: number }
   readonly grid?: {
     readonly cellWidth: number
@@ -35,7 +37,27 @@ export interface Report {
     /** How much of the middle of each cell is one color, 0 to 1. */
     readonly fit: number
   }
+  /** The output's size is one frame's; `colors` counts every frame's. */
   readonly output: { readonly width: number; readonly height: number; readonly colors: number }
+  /** For an animation sheet: its frames, where they are in the source, and how sure each frame's own grid was. */
+  readonly animation?: {
+    readonly frames: number
+    readonly included: number
+    readonly fps: number
+    readonly loop: string
+    readonly anchor: string
+    readonly boxes: ReadonlyArray<{
+      readonly frame: number
+      readonly x: number
+      readonly y: number
+      readonly width: number
+      readonly height: number
+      readonly include: boolean
+      /** The cell size this frame alone looks drawn at, and how sure that is. */
+      readonly cell?: number
+      readonly confidence?: number
+    }>
+  }
   readonly palette?: {
     readonly name: string
     /** Colors the palette has no match for, with what they became. */
@@ -235,4 +257,97 @@ export const compareReports = (a: Report, b: Report): { readonly better: "a" | "
   const fitB = b.grid?.fit ?? 1
   if (Math.abs(fitA - fitB) > 0.01) return { better: fitA > fitB ? "a" : "b", reason: `${fitA > fitB ? "a" : "b"} has the better grid fit` }
   return { better: "same", reason: "both are equally clean" }
+}
+
+/** A frame whose own cell size is this far (a share) from the shared one looks drawn at another size. */
+const OTHER_SCALE = 0.05
+
+/**
+ * The report on an animation sheet that has run: how sure the shared grid
+ * is, each frame's box, and the project's rules on the frames. "needs-person"
+ * when the grid is unsure or a frame came out empty.
+ */
+export const reportOfSheet = (image: RgbaImage, recipe: Recipe, outcome: AnimationOutcome, rules: LintRules = {}): Report => {
+  const sheet = recipe.sheet
+  const placed = outcome.placed.map((frame) => frame.art)
+  const strip = sheetArt(placed, { columns: placed.length, spacing: 1 })
+  const issues: Array<Issue> = lintArt(strip, { ...rules, sizes: undefined, palette: rules.palette ?? recipe.palette?.colors }).filter(
+    // Sparks and dust around a body are single pixels on purpose: stray pixels are judged on single pictures only.
+    (issue) => issue.rule !== "stray-pixel"
+  )
+  const first = placed[0]
+  if (first !== undefined && rules.sizes !== undefined && rules.sizes.length > 0) {
+    issues.unshift(...lintArt(first, { sizes: rules.sizes }).filter((issue) => issue.rule === "size"))
+  }
+  if (outcome.placed.length < 2) {
+    issues.push({ rule: "one-frame", severity: "warning", message: `${outcome.placed.length} frame${outcome.placed.length === 1 ? "" : "s"} in the animation: check the frames found, or add boxes by hand`, count: 0, at: [] })
+  }
+  const empty = outcome.frames.filter((frame) => sheet?.frames[frame.index]?.include === true && !frame.art.indices.some((index) => index >= 0))
+  for (const frame of empty) {
+    issues.push({ rule: "empty-frame", severity: "error", message: `Frame ${frame.index + 1} has nothing in it: move its box onto the art, or leave it out`, count: 0, at: [] })
+  }
+  const size = (outcome.cell.width + outcome.cell.height) / 2
+  for (const frame of outcome.frames) {
+    const own = frame.detection
+    if (own === undefined || own.confidence < CONFIDENT.confidence) continue
+    const cell = (own.spec.cellWidth + own.spec.cellHeight) / 2
+    if (Math.abs(cell - size) > OTHER_SCALE * size) {
+      issues.push({
+        rule: "frame-scale",
+        severity: "warning",
+        message: `Frame ${frame.index + 1} looks drawn at another size (${round(cell)} px cells, against ${round(size)} for the animation): it is read at the animation's size`,
+        count: 0,
+        at: []
+      })
+    }
+  }
+  const confidence = outcome.confidence
+  const sure = confidence === undefined || confidence >= CONFIDENT.confidence
+  const verdict: Verdict = sure && errors(issues) === 0 ? "fixable" : "needs-person"
+  const colors = usedColors(strip).length
+  const count = outcome.placed.length
+  const frameSize = `${outcome.width}×${outcome.height}`
+  const summary =
+    verdict === "fixable"
+      ? `Animation of ${count} frame${count === 1 ? "" : "s"}, ${frameSize} each, ${colors} colors (cells ${round(size)} px${confidence === undefined ? "" : `, confidence ${Math.round(confidence * 100)}%`}).`
+      : !sure
+        ? `Unsure of the grid (confidence ${Math.round((confidence ?? 0) * 100)}%): look at the preview, or set the cell size by hand.`
+        : `Animation of ${count} frames, but rules are still broken: see issues.`
+  return {
+    verdict,
+    summary,
+    kind: "animation",
+    source: { width: image.width, height: image.height },
+    grid: {
+      cellWidth: round(outcome.cell.width),
+      cellHeight: round(outcome.cell.height),
+      offsetX: 0,
+      offsetY: 0,
+      ...(confidence === undefined ? {} : { confidence: round(confidence) }),
+      fit: round(outcome.frames.length === 0 ? 0 : outcome.frames.reduce((sum, frame) => sum + gridFit(frame.outcome.samples), 0) / outcome.frames.length)
+    },
+    output: { width: outcome.width, height: outcome.height, colors },
+    animation: {
+      frames: outcome.frames.length,
+      included: count,
+      fps: sheet?.fps ?? 0,
+      loop: sheet?.loop ?? "forward",
+      anchor: sheet?.anchor ?? "feet",
+      boxes: outcome.frames.map((frame) => ({
+        frame: frame.index + 1,
+        ...frame.box,
+        include: sheet?.frames[frame.index]?.include ?? true,
+        ...(frame.detection === undefined ? {} : { cell: round((frame.detection.spec.cellWidth + frame.detection.spec.cellHeight) / 2), confidence: round(frame.detection.confidence) })
+      }))
+    },
+    ...(recipe.palette === undefined
+      ? {}
+      : {
+          palette: {
+            name: recipe.palette.name,
+            lost: outcome.lost.map((entry) => ({ color: toHex(entry.color), became: toHex(entry.became), pixels: entry.cells.length }))
+          }
+        }),
+    issues
+  }
 }

@@ -13,6 +13,7 @@ import { defaultSampleOptions, type Dither, type SampleOptions } from "./fix.ts"
 import type { GridSpec } from "./grid.ts"
 import { presets } from "./palette.ts"
 import type { ReduceMode } from "./reduce.ts"
+import { anchors, defaultSheet, type Sheet, type SheetFrame } from "./sheet.ts"
 
 /**
  * Where the grid comes from: found in the picture ("auto"), given as a cell
@@ -59,6 +60,12 @@ export interface Recipe {
   readonly lostThreshold: number
   /** Erase, restore, and paint strokes made by hand, for the size ("WxH") they were made at. */
   readonly edits: { readonly size: string; readonly strokes: ReadonlyArray<ReadonlyArray<Edit>> }
+  /**
+   * The picture is an animation sheet: its frames, how they line up, and how
+   * they play. Every frame is fixed with the rest of the recipe. Undefined
+   * for a single picture.
+   */
+  readonly sheet: Sheet | undefined
 }
 
 export const defaultRecipe: Recipe = {
@@ -78,7 +85,8 @@ export const defaultRecipe: Recipe = {
   crop: false,
   background: defaultBackgroundOptions,
   lostThreshold: defaultLostThreshold,
-  edits: { size: "", strokes: [] }
+  edits: { size: "", strokes: [] },
+  sheet: undefined
 }
 
 /** A recipe palette from a preset's name ("Sweetie 16", or "sweetie-16"), undefined when there is no such preset. */
@@ -102,7 +110,8 @@ export const encodeRecipe = (recipe: Recipe): string =>
       edits: {
         size: recipe.edits.size,
         strokes: recipe.edits.strokes.map((stroke) => stroke.map((edit) => (edit.tool === "paint" ? { ...edit, color: toHex(edit.color) } : edit)))
-      }
+      },
+      sheet: recipe.sheet ?? null
     },
     null,
     2
@@ -229,6 +238,44 @@ export const decodeRecipe = (text: string): Decoded<Recipe> => {
         Array.isArray(entry) && typeof entry[0] === "string" && typeof entry[1] === "number" ? [[entry[0], entry[1]]] : []
       )
     : []
+  const sheet = ((): Sheet | undefined => {
+    const value = raw.sheet
+    if (value === undefined || value === null) return undefined
+    if (!isRecord(value)) {
+      errors.push("sheet must be an object")
+      return undefined
+    }
+    const frames = Array.isArray(value.frames) ? value.frames : []
+    const read = frames.flatMap((entry, i): Array<SheetFrame> => {
+      const frame = isRecord(entry) ? entry : {}
+      const box = isRecord(frame.box) ? frame.box : frame
+      const at = (key: string): number => number(box[key], `sheet.frames[${i}].box.${key}`, 0)
+      const nudge = isRecord(frame.nudge) ? frame.nudge : {}
+      const width = at("width")
+      const height = at("height")
+      if (!(width >= 1) || !(height >= 1)) {
+        errors.push(`sheet.frames[${i}] needs a box at least 1 pixel wide and tall`)
+        return []
+      }
+      return [
+        {
+          box: { x: Math.round(at("x")), y: Math.round(at("y")), width: Math.round(width), height: Math.round(height) },
+          include: boolean(frame.include, `sheet.frames[${i}].include`, true),
+          nudge: { x: Math.round(number(nudge.x, `sheet.frames[${i}].nudge.x`, 0)), y: Math.round(number(nudge.y, `sheet.frames[${i}].nudge.y`, 0)) }
+        }
+      ]
+    })
+    const fps = number(value.fps, "sheet.fps", defaultSheet.fps)
+    if (!(fps > 0)) errors.push("sheet.fps must be more than 0")
+    return {
+      frames: read,
+      anchor: oneOf(value.anchor, "sheet.anchor", anchors.map((entry) => entry.id), defaultSheet.anchor),
+      fps,
+      loop: oneOf(value.loop, "sheet.loop", ["forward", "pingpong"], defaultSheet.loop),
+      padding: Math.max(0, Math.round(number(value.padding, "sheet.padding", defaultSheet.padding)))
+    }
+  })()
+
   const targetWidth = raw.targetWidth === undefined || raw.targetWidth === null ? undefined : number(raw.targetWidth, "targetWidth", 1)
 
   const recipe: Recipe = {
@@ -259,7 +306,8 @@ export const decodeRecipe = (text: string): Decoded<Recipe> => {
       shadow: boolean(background.shadow, "background.shadow", defaultBackgroundOptions.shadow)
     },
     lostThreshold: number(raw.lostThreshold, "lostThreshold", defaultRecipe.lostThreshold),
-    edits: { size: edits.size, strokes: edits.list }
+    edits: { size: edits.size, strokes: edits.list },
+    sheet
   }
   return errors.length > 0 ? { ok: false, error: errors.join("; ") } : { ok: true, value: recipe }
 }

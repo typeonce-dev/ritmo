@@ -437,3 +437,17 @@ export const refineGrid = (image: RgbaImage, grid: Grid): Grid => {
   const { columns, rows } = edgeProfiles(image)
   return { xs: refineCuts(columns, grid.xs, image.width), ys: refineCuts(rows, grid.ys, image.height) }
 }
+
+/**
+ * Where a grid of a known cell size starts in a picture: the offset whose
+ * lines land on the strongest edges, on each axis. For frames of one sheet,
+ * drawn at one size but each placed on its own.
+ */
+export const fitOffsets = (image: RgbaImage, cellWidth: number, cellHeight: number): { readonly offsetX: number; readonly offsetY: number } => {
+  const { columns, rows } = edgeProfiles(image)
+  const fit = (profile: Float64Array, length: number, cell: number): number => {
+    const found = bestOffset(smoothed(profile), length, cell, 0, cell, 0.05).offset
+    return Math.round(found * 100) / 100
+  }
+  return { offsetX: fit(columns, image.width, cellWidth), offsetY: fit(rows, image.height, cellHeight) }
+}

@@ -20,7 +20,18 @@ export interface LintRules {
 export type Severity = "error" | "warning"
 
 export interface Issue {
-  readonly rule: "size" | "off-palette" | "too-many-colors" | "partial-alpha" | "opaque-background" | "stray-pixel" | "near-duplicate-colors"
+  readonly rule:
+    | "size"
+    | "off-palette"
+    | "too-many-colors"
+    | "partial-alpha"
+    | "opaque-background"
+    | "stray-pixel"
+    | "near-duplicate-colors"
+    // Animation sheets (see `reportOfSheet`).
+    | "one-frame"
+    | "empty-frame"
+    | "frame-scale"
   readonly severity: Severity
   readonly message: string
   /** How many pixels the issue covers. */
