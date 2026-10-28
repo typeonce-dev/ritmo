@@ -30,6 +30,7 @@ export const cases: ReadonlyArray<BenchCase> = [
   {
     name: "netcode/rollback-frame-2-peers",
     description: "One frame of two rollback peers over a 50 ms link: read, roll back, tick, send",
+    critical: true,
     setup: peersFrame("rollback")
   },
   {

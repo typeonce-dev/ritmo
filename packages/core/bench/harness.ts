@@ -13,13 +13,22 @@
  * in its own process with `--single-threaded --expose-gc`: whether V8's
  * optimizing compiler removes short-lived objects depends on when its
  * background compiles finish, so with them on the count changes from one
- * process to the next.
+ * process to the next. Even then V8 books some bytes to one run or the next
+ * depending on load, and runs of one case can differ (each rollback frame
+ * rolls back a different number of ticks), so the count is a mean over many
+ * runs: within about 2% from one process to the next, where the fewest of
+ * single runs moved by 28%.
  */
 import v8 from "node:v8"
 
 export interface BenchCase {
   readonly name: string
   readonly description: string
+  /**
+   * A per-frame hot path every game runs: CI gates its wall-clock time against
+   * the base commit. Other cases gate only their allocations, and report time.
+   */
+  readonly critical?: true
   readonly setup: () => BenchInstance
 }
 
@@ -39,14 +48,15 @@ export interface BenchSample {
 
 export interface AllocationSample {
   readonly name: string
-  /** Bytes one `run()` allocates on the JS heap, garbage included: the fewest seen across samples. */
+  /** Bytes one `run()` allocates on the JS heap, garbage included: the mean across the measured runs. */
   readonly bytesPerRun: number
 }
 
 export interface AllocationOptions {
   /** Runs before measuring, counted rather than timed so every process compiles the case the same way. */
   readonly warmupRuns: number
-  readonly samples: number
+  /** Runs measured; the count is their mean. */
+  readonly runs: number
 }
 
 export interface MeasureOptions {
@@ -158,9 +168,9 @@ const allocatedBy = (run: () => void): number => {
 const noop = (): void => {}
 
 /**
- * The fewest bytes one `run()` allocated across `samples` runs, each after
+ * The mean bytes one `run()` allocates across `runs` runs, each after
  * `prepare()` and a full collection, minus what measuring an empty run
- * allocates. The minimum drops bytes V8 occasionally allocates for itself.
+ * allocates.
  */
 export const measureAllocations = (bench: BenchCase, options: AllocationOptions): AllocationSample => {
   const instance = bench.setup()
@@ -168,16 +178,16 @@ export const measureAllocations = (bench: BenchCase, options: AllocationOptions)
     instance.prepare?.()
     instance.run()
   }
+  collectGarbage()
   let overhead = Infinity
-  let fewest = Infinity
-  for (let index = 0; index < options.samples; index++) {
-    collectGarbage()
-    overhead = Math.min(overhead, allocatedBy(noop))
+  for (let index = 0; index < 5; index++) overhead = Math.min(overhead, allocatedBy(noop))
+  let total = 0
+  for (let index = 0; index < options.runs; index++) {
     instance.prepare?.()
     collectGarbage()
-    fewest = Math.min(fewest, allocatedBy(instance.run))
+    total += allocatedBy(instance.run)
   }
-  return { name: bench.name, bytesPerRun: Math.max(0, fewest - overhead) }
+  return { name: bench.name, bytesPerRun: Math.max(0, Math.round(total / options.runs - overhead)) }
 }
 
 /**

@@ -117,6 +117,7 @@ const Movers = Game.Query({
 const changed: BenchCase = {
   name: "render/sync-1k-changed-of-10k",
   description: "Sync 10k rendered entities after 1k of them moved",
+  critical: true,
   setup: () => {
     const runtime = makeRuntime()
     runtime.tick(Game.Schedule(SpawnSprites(N), Game.Schedule.applyDeferred(), Sync))
@@ -178,6 +179,7 @@ const churn: BenchCase = {
 const interpolate: BenchCase = {
   name: "render/interpolate-10k",
   description: "Place 10k nodes between their previous and current positions",
+  critical: true,
   setup: () => {
     const runtime = makeRuntime()
     runtime.tick(Game.Schedule(SpawnSprites(N), Game.Schedule.applyDeferred(), Sync))
