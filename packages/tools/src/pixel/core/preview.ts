@@ -120,31 +120,38 @@ export const previewFix = (source: RgbaImage, grid: Grid, art: PixelArt, height 
 }
 
 /** The colors frame boxes are outlined in, in turn, so neighbouring boxes tell apart. */
+/** One color per animation, in turn, so neighbouring animations' boxes differ. */
 const BOX_COLORS = [
   [0, 220, 255],
-  [255, 200, 0]
+  [255, 200, 0],
+  [120, 255, 120],
+  [255, 110, 200]
 ] as const
 
 /**
  * An animation sheet to look at: the source on top with each frame's box
- * outlined, and under it every fixed frame enlarged, side by side on one
- * canvas size, with a line through the anchor so a frame that jumps shows.
+ * outlined in its animation's color, and under it each animation's fixed
+ * frames enlarged, side by side on one row, with a line through the anchor
+ * so a frame that jumps shows.
  */
 export const previewSheet = (
   source: RgbaImage,
-  boxes: ReadonlyArray<{ readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly include: boolean }>,
-  frames: ReadonlyArray<PixelArt>,
-  anchorY: number | undefined,
+  boxes: ReadonlyArray<{ readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly include: boolean; readonly group: number }>,
+  clips: ReadonlyArray<{ readonly frames: ReadonlyArray<PixelArt>; readonly anchorY: number | undefined }>,
   target = 1024
 ): RgbaImage => {
-  const first = frames[0]
-  const frameScale = first === undefined ? 1 : Math.max(1, Math.floor((target - GAP * (frames.length - 1)) / Math.max(1, frames.length * first.width)))
-  const rowWidth = first === undefined ? 0 : frames.length * first.width * frameScale + GAP * (frames.length - 1)
-  const rowHeight = first === undefined ? 0 : first.height * frameScale
-  const width = Math.max(rowWidth, Math.min(target, source.width))
+  const rows = clips
+    .filter((clip) => clip.frames.length > 0)
+    .map((clip) => {
+      const first = clip.frames[0]!
+      const n = clip.frames.length
+      const frameScale = Math.max(1, Math.floor((target - GAP * (n - 1)) / Math.max(1, n * first.width)))
+      return { ...clip, frameScale, width: n * first.width * frameScale + GAP * (n - 1), height: first.height * frameScale }
+    })
+  const width = Math.max(Math.min(target, source.width), ...rows.map((row) => row.width))
   const scale = width / source.width
   const top = Math.max(1, Math.round(source.height * scale))
-  const height = top + (first === undefined ? 0 : GAP * 2 + rowHeight)
+  const height = top + rows.reduce((sum, row) => sum + GAP * 2 + row.height, 0)
   const data = new Uint8ClampedArray(width * height * 4)
   for (let i = 0; i < width * height; i++) {
     data[i * 4] = BACKDROP[0]
@@ -165,34 +172,40 @@ export const previewSheet = (
       data[i + 2] = source.data[s + 2]! * alpha + shade * (1 - alpha)
     }
   }
-  boxes.forEach((box, b) => {
-    const [r, g, bl] = BOX_COLORS[b % BOX_COLORS.length]!
+  boxes.forEach((box) => {
+    const [r, g, bl] = BOX_COLORS[box.group % BOX_COLORS.length]!
     const color = [r, g, bl, box.include ? 255 : 110] as const
     const x0 = Math.max(0, Math.round(box.x * scale))
     const y0 = Math.max(0, Math.round(box.y * scale))
     const x1 = Math.min(width - 1, Math.round((box.x + box.width) * scale) - 1)
     const y1 = Math.min(top - 1, Math.round((box.y + box.height) * scale) - 1)
-    for (let t = 0; t < 2; t++) {
-      for (let x = x0; x <= x1; x++) {
+    // Inset by a pixel, so two boxes that touch both show.
+    for (let t = 1; t < 3; t++) {
+      for (let x = x0 + t; x <= x1 - t; x++) {
         blend(data, ((y0 + t) * width + x) * 4, color)
         blend(data, ((y1 - t) * width + x) * 4, color)
       }
-      for (let y = y0; y <= y1; y++) {
+      for (let y = y0 + t; y <= y1 - t; y++) {
         blend(data, (y * width + x0 + t) * 4, color)
         blend(data, (y * width + x1 - t) * 4, color)
       }
     }
   })
-  frames.forEach((art, f) => {
-    const picture = previewArt(art, frameScale)
-    const left = f * (art.width * frameScale + GAP)
-    for (let y = 0; y < picture.height; y++) {
-      data.set(picture.data.subarray(y * picture.width * 4, (y + 1) * picture.width * 4), ((top + GAP + y) * width + left) * 4)
+  let at = top
+  for (const row of rows) {
+    at += GAP
+    row.frames.forEach((art, f) => {
+      const picture = previewArt(art, row.frameScale)
+      const left = f * (art.width * row.frameScale + GAP)
+      for (let y = 0; y < picture.height; y++) {
+        data.set(picture.data.subarray(y * picture.width * 4, (y + 1) * picture.width * 4), ((at + y) * width + left) * 4)
+      }
+    })
+    if (row.anchorY !== undefined) {
+      const y = at + Math.min(row.height - 1, (row.anchorY + 1) * row.frameScale - 1)
+      for (let x = 0; x < row.width; x++) blend(data, (y * width + x) * 4, [255, 64, 160, 200])
     }
-  })
-  if (anchorY !== undefined && first !== undefined) {
-    const y = top + GAP + Math.min(rowHeight - 1, (anchorY + 1) * frameScale - 1)
-    for (let x = 0; x < rowWidth; x++) blend(data, (y * width + x) * 4, [255, 64, 160, 200])
+    at += row.height + GAP
   }
   return { width, height, data }
 }
