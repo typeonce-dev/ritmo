@@ -47,6 +47,7 @@ const silentHost = {
 export const cases: ReadonlyArray<BenchCase> = [{
   name: "top-down/frame-x60",
   description: "One second of the top-down game: 60 fixed updates, walking right then left with live devices and no debug handle",
+  critical: true,
   setup: () => {
     const keyboard = keyboardHost()
     const frame = { deltaSeconds: FIXED_STEP_SECONDS }

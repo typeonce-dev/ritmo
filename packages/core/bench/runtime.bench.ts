@@ -135,6 +135,7 @@ const despawn: BenchCase = {
 const iterateRead: BenchCase = {
   name: "query/iterate-read-10k-of-20k",
   description: "Read 2 components on 10k matching entities in a 20k-entity world",
+  critical: true,
   setup: () => {
     const runtime = makeRuntime()
     populate(runtime, N, N)
@@ -177,6 +178,7 @@ const iterateOptional: BenchCase = {
 const iterateWrite: BenchCase = {
   name: "query/iterate-write-10k",
   description: "Integrate velocity into position on 10k entities",
+  critical: true,
   setup: () => {
     const runtime = makeRuntime()
     populate(runtime, N, 0)
@@ -369,6 +371,7 @@ const scheduleOverhead: BenchCase = {
 const longOrdered: BenchCase = {
   name: "schedule/150-systems-thistick-x10",
   description: "tryTick a 150-system schedule (12 groups of 10 command writers, each followed by applyDeferred(), and 30 thisTick query and event readers) 10 times: the runtime order check plus the run",
+  critical: true,
   setup: () => {
     const runtime = makeRuntime()
     const entries: Array<ScheduleEntry> = []
@@ -506,7 +509,11 @@ const snapshotRoundTrip: BenchCase = {
   setup: () => {
     const runtime = makeRuntime()
     populate(runtime, N, 0)
+    // A restore logs the old world's despawns, which only a new frame lets go:
+    // without one between runs, every run would keep the previous one's 10k.
+    const frame = Game.Schedule(Game.Schedule.applyDeferred())
     return {
+      prepare: () => runtime.tick(frame),
       run: () => {
         const restored = runtime.restore(JSON.parse(JSON.stringify(worldOf(runtime.snapshot()))))
         if (!restored.ok) throw new Error("snapshot round-trip failed")
@@ -522,6 +529,7 @@ const snapshotRoundTrip: BenchCase = {
 const frame: BenchCase = {
   name: "frame/50-systems-5k",
   description: "A game-like frame: 50 systems, 5k entities, 100 spawns and despawns per frame",
+  critical: true,
   setup: () => {
     const runtime = makeRuntime()
     populate(runtime, 2_500, 2_500)
@@ -699,6 +707,7 @@ const checkpointTick: BenchCase = {
 const rollback: BenchCase = {
   name: "checkpoint/rollback-8-of-5k",
   description: "Tick 8 times with a checkpoint each, rewind to the first, and tick the 8 again: 5k movers among 5k statics",
+  critical: true,
   setup: () => {
     const runtime = makeRuntime()
     populate(runtime, N / 2, N / 2)

@@ -92,49 +92,67 @@ jobs:
       - name: Browser engine tests
         run: pnpm vitest run packages/devtools/test/PlaywrightEngine.test.ts
 
+  # Pull requests only: on main the change is already merged, so a result
+  # there could not stop it.
   bench:
     name: Performance regressions
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
+      # Only code the bench runs can move its results: the packages (without
+      # their docs, skills, type tests, and the version a release writes), the
+      # integration games that have bench cases, the runner, the lockfile, and
+      # this workflow.
+      - name: Check for runtime changes
+        id: changes
+        run: |
+          if git diff --quiet "$BASE_SHA" HEAD -- packages $(dirname integration/*/bench) scripts/bench.ts package.json pnpm-lock.yaml .github/workflows/ci.yml \
+            ':(exclude)**/*.md' ':(exclude)packages/*/dtslint/**' ':(exclude)packages/core/skills/**' \
+            ':(exclude)packages/*/package.json' ':(exclude)packages/devtools/src/internal/version.ts'; then
+            echo "No runtime changes: benchmarks skipped."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Setup pnpm
+        if: steps.changes.outputs.run == 'true'
         uses: pnpm/action-setup@v6
 
       - name: Setup Node
+        if: steps.changes.outputs.run == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
 
       - name: Install dependencies
+        if: steps.changes.outputs.run == 'true'
         run: pnpm install --frozen-lockfile
 
-      # Wall-clock numbers only compare on the same machine, so the base commit
-      # is measured in this job using its own public-API benchmark suite.
-      # Copying the head's suite would make a breaking API addition fail on
-      # the base and silently disable the comparison for every runtime case.
-      # Matching case names compare; new cases start with no runtime reference.
-      - name: Benchmark base commit
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      # Results only compare on one machine, so the base commit is checked out
+      # here and measured in turns with the head, using its own public-API
+      # benchmark cases: copying the head's cases would make a breaking API
+      # addition fail on the base. Only the runner and harness are the head's.
+      # Matching case names compare; new cases start with no reference.
+      - name: Check out the base commit
+        if: steps.changes.outputs.run == 'true'
         run: |
-          mkdir -p .bench
-          if git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
-            git worktree add --detach .bench/base "$BASE_SHA"
-            ln -s "$PWD/node_modules" .bench/base/node_modules
-            cp scripts/bench.ts .bench/base/scripts/bench.ts
-            (cd .bench/base && node --expose-gc --import tsx scripts/bench.ts --json ../base.json) \
-              || echo "::warning::Base commit could not run the benchmark suite; runtime cases are not gated."
-          else
-            echo "::warning::No base commit available; runtime cases are not gated."
-          fi
+          git worktree add --detach .bench/base "$BASE_SHA"
+          ln -s "$PWD/node_modules" .bench/base/node_modules
+          cp scripts/bench.ts .bench/base/scripts/bench.ts
+          cp packages/core/bench/harness.ts .bench/base/packages/core/bench/harness.ts
 
-      # Runtime cases are compared with the base commit; type metrics are
-      # deterministic and compared with packages/core/bench/baseline.json.
-      # Type metric growth is advisory; runtime regressions still fail this job.
-      - name: Benchmark head and compare
-        run: pnpm bench --compare .bench/base.json --warn-types
+      # Every case gates its allocations; critical cases also gate their time.
+      # Type metrics are deterministic and compare with
+      # packages/core/bench/baseline.json; their growth is advisory.
+      - name: Benchmark head against base
+        if: steps.changes.outputs.run == 'true'
+        run: pnpm bench --against .bench/base --warn-types

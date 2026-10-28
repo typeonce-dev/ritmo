@@ -3,236 +3,236 @@
     "tolerance": 0.25,
     "allocationTolerance": 0.1,
     "allocationSlackBytes": 1024,
-    "calibrationMs": 2.9162,
+    "calibrationMs": 2.934,
     "environment": "Apple M1 / node v24.16.0 / darwin",
     "cases": {
       "top-down/frame-x60": {
-        "minMs": 0.3359,
-        "medianMs": 0.3531,
-        "score": 0.1152,
-        "bytesPerRun": 791480
+        "minMs": 0.3499,
+        "medianMs": 0.3679,
+        "score": 0.118,
+        "bytesPerRun": 804466
       },
       "random/next-100k": {
-        "minMs": 0.7788,
-        "medianMs": 0.7979,
-        "score": 0.2659,
-        "bytesPerRun": 799984
+        "minMs": 0.7798,
+        "medianMs": 0.8044,
+        "score": 0.263,
+        "bytesPerRun": 800328
       },
       "random/draw-resource-100k": {
-        "minMs": 3.7643,
-        "medianMs": 3.8112,
-        "score": 1.2902,
-        "bytesPerRun": 3054504
+        "minMs": 3.7762,
+        "medianMs": 3.8254,
+        "score": 1.2736,
+        "bytesPerRun": 3060383
       },
       "ops/steer-10k": {
-        "minMs": 0.8611,
-        "medianMs": 0.8806,
-        "score": 0.2953,
-        "bytesPerRun": 1760080
+        "minMs": 0.8758,
+        "medianMs": 0.8903,
+        "score": 0.2954,
+        "bytesPerRun": 1760392
       },
       "clock/advance-1000": {
-        "minMs": 0.1571,
-        "medianMs": 0.1728,
-        "score": 0.0539,
-        "bytesPerRun": 423592
+        "minMs": 0.1609,
+        "medianMs": 0.1758,
+        "score": 0.0543,
+        "bytesPerRun": 424313
       },
       "spawn/10k-3c": {
-        "minMs": 6.2586,
-        "medianMs": 6.4161,
-        "score": 2.1451,
-        "bytesPerRun": 21637456
+        "minMs": 6.3765,
+        "medianMs": 6.5419,
+        "score": 2.1506,
+        "bytesPerRun": 20749062
       },
       "despawn/10k": {
-        "minMs": 12.5025,
-        "medianMs": 14.5648,
-        "score": 4.2872,
-        "bytesPerRun": 16517840
+        "minMs": 12.9395,
+        "medianMs": 14.7211,
+        "score": 4.4102,
+        "bytesPerRun": 17432400
       },
       "query/iterate-read-10k-of-20k": {
-        "minMs": 0.0984,
-        "medianMs": 0.1047,
-        "score": 0.0337,
-        "bytesPerRun": 1320
+        "minMs": 0.1108,
+        "medianMs": 0.1133,
+        "score": 0.0374,
+        "bytesPerRun": 1649
       },
       "query/optional-read-20k": {
-        "minMs": 0.3588,
-        "medianMs": 0.3707,
-        "score": 0.1225,
-        "bytesPerRun": 1320
+        "minMs": 0.3864,
+        "medianMs": 0.3969,
+        "score": 0.1303,
+        "bytesPerRun": 1631
       },
       "query/iterate-write-10k": {
-        "minMs": 0.3266,
-        "medianMs": 0.3378,
-        "score": 0.1119,
-        "bytesPerRun": 401168
+        "minMs": 0.3241,
+        "medianMs": 0.3348,
+        "score": 0.1105,
+        "bytesPerRun": 401490
       },
       "query/number-write-10k": {
-        "minMs": 0.2151,
-        "medianMs": 0.2159,
-        "score": 0.0737,
-        "bytesPerRun": 1168
+        "minMs": 0.2176,
+        "medianMs": 0.2234,
+        "score": 0.0734,
+        "bytesPerRun": 1479
       },
       "query/set-raw-10k": {
-        "minMs": 0.8639,
-        "medianMs": 0.8885,
-        "score": 0.2961,
-        "bytesPerRun": 1681360
+        "minMs": 0.8486,
+        "medianMs": 0.8804,
+        "score": 0.2862,
+        "bytesPerRun": 1681772
       },
       "entity-state/update-transition-10k": {
-        "minMs": 1.6565,
-        "medianMs": 1.9824,
-        "score": 0.568,
-        "bytesPerRun": 2930456
+        "minMs": 1.6807,
+        "medianMs": 2.0097,
+        "score": 0.5669,
+        "bytesPerRun": 3583365
       },
       "machine/update-10k": {
-        "minMs": 2.7018,
-        "medianMs": 2.7334,
-        "score": 0.926,
-        "bytesPerRun": 5522488
+        "minMs": 2.7307,
+        "medianMs": 2.7548,
+        "score": 0.921,
+        "bytesPerRun": 5522803
       },
       "query/single-in-20k-x1000": {
-        "minMs": 0.1473,
-        "medianMs": 0.1523,
-        "score": 0.0503,
-        "bytesPerRun": 248000
+        "minMs": 0.1519,
+        "medianMs": 0.1525,
+        "score": 0.0512,
+        "bytesPerRun": 257071
       },
       "query/changed-100-of-10k-x20": {
-        "minMs": 0.2429,
-        "medianMs": 0.2561,
-        "score": 0.0833,
-        "bytesPerRun": 362280
+        "minMs": 0.2436,
+        "medianMs": 0.2502,
+        "score": 0.0821,
+        "bytesPerRun": 362766
       },
       "structural/insert-remove-1k": {
-        "minMs": 0.1828,
-        "medianMs": 0.1905,
-        "score": 0.0627,
-        "bytesPerRun": 675904
+        "minMs": 0.1891,
+        "medianMs": 0.199,
+        "score": 0.0638,
+        "bytesPerRun": 696312
       },
       "schedule/100-systems-x10": {
-        "minMs": 0.0415,
-        "medianMs": 0.0425,
-        "score": 0.0142,
-        "bytesPerRun": 9280
+        "minMs": 0.0427,
+        "medianMs": 0.0439,
+        "score": 0.0144,
+        "bytesPerRun": 9627
       },
       "schedule/150-systems-thistick-x10": {
-        "minMs": 0.0826,
-        "medianMs": 0.084,
-        "score": 0.0283,
-        "bytesPerRun": 37200
+        "minMs": 0.0849,
+        "medianMs": 0.0864,
+        "score": 0.0286,
+        "bytesPerRun": 37557
       },
       "lookup/get-10k": {
-        "minMs": 0.6718,
-        "medianMs": 0.7018,
-        "score": 0.2304,
-        "bytesPerRun": 401240
+        "minMs": 0.6894,
+        "medianMs": 0.7131,
+        "score": 0.2337,
+        "bytesPerRun": 401575
       },
       "events/emit-read-10k": {
-        "minMs": 0.0945,
-        "medianMs": 0.0997,
-        "score": 0.0323,
-        "bytesPerRun": 247352
+        "minMs": 0.0956,
+        "medianMs": 0.099,
+        "score": 0.0326,
+        "bytesPerRun": 248165
       },
       "relations/descendants-100x100": {
-        "minMs": 0.2891,
-        "medianMs": 0.2923,
-        "score": 0.0991,
-        "bytesPerRun": 329440
+        "minMs": 0.2933,
+        "medianMs": 0.3013,
+        "score": 0.0989,
+        "bytesPerRun": 329778
       },
       "snapshot/json-roundtrip-10k": {
-        "minMs": 23.88,
-        "medianMs": 26.155,
-        "score": 8.1522,
-        "bytesPerRun": 32709088
+        "minMs": 21.8358,
+        "medianMs": 22.3833,
+        "score": 7.4023,
+        "bytesPerRun": 33779510
       },
       "frame/50-systems-5k": {
-        "minMs": 2.8775,
-        "medianMs": 2.9755,
-        "score": 0.9823,
-        "bytesPerRun": 4471000
+        "minMs": 2.8877,
+        "medianMs": 3.0088,
+        "score": 0.9842,
+        "bytesPerRun": 4518395
       },
       "checkpoint/take-tick-10k": {
-        "minMs": 0.3738,
-        "medianMs": 0.3957,
-        "score": 0.1282,
-        "bytesPerRun": 514200
+        "minMs": 0.3836,
+        "medianMs": 0.4139,
+        "score": 0.13,
+        "bytesPerRun": 514903
       },
       "checkpoint/rollback-8-of-5k": {
-        "minMs": 3.3537,
-        "medianMs": 3.4739,
-        "score": 1.1449,
-        "bytesPerRun": 4517168
+        "minMs": 3.402,
+        "medianMs": 3.6874,
+        "score": 1.1474,
+        "bytesPerRun": 4517881
       },
       "math/vec2-steer-10k": {
-        "minMs": 1.1917,
-        "medianMs": 1.2387,
-        "score": 0.4086,
-        "bytesPerRun": 3566864
+        "minMs": 1.215,
+        "medianMs": 1.2365,
+        "score": 0.4098,
+        "bytesPerRun": 3567291
       },
       "math/scalar-spring-10k": {
-        "minMs": 0.5344,
-        "medianMs": 0.555,
-        "score": 0.1824,
-        "bytesPerRun": 1653520
+        "minMs": 0.5374,
+        "medianMs": 0.5559,
+        "score": 0.1813,
+        "bytesPerRun": 1655525
       },
       "math/flow-field-search": {
-        "minMs": 0.1519,
-        "medianMs": 0.1854,
-        "score": 0.0519,
-        "bytesPerRun": 152
+        "minMs": 0.1531,
+        "medianMs": 0.1863,
+        "score": 0.0516,
+        "bytesPerRun": 456
       },
       "math/flow-field-way-1k": {
-        "minMs": 0.0664,
-        "medianMs": 0.0698,
-        "score": 0.0227,
-        "bytesPerRun": 109680
+        "minMs": 0.067,
+        "medianMs": 0.069,
+        "score": 0.0229,
+        "bytesPerRun": 109984
       },
       "math/collide-move-circle-1k": {
-        "minMs": 0.6119,
-        "medianMs": 0.6298,
-        "score": 0.2097,
-        "bytesPerRun": 274664
+        "minMs": 0.6175,
+        "medianMs": 0.6275,
+        "score": 0.2083,
+        "bytesPerRun": 274464
       },
       "math/collide-move-circle-segments-1k": {
-        "minMs": 5.3718,
-        "medianMs": 5.4587,
-        "score": 1.8411,
-        "bytesPerRun": 272824
+        "minMs": 5.4561,
+        "medianMs": 5.5018,
+        "score": 1.8402,
+        "bytesPerRun": 272558
       },
       "netcode/rollback-frame-2-peers": {
-        "minMs": 0.057,
-        "medianMs": 0.0695,
-        "score": 0.0195,
-        "bytesPerRun": 64168
+        "minMs": 0.0599,
+        "medianMs": 0.0685,
+        "score": 0.0203,
+        "bytesPerRun": 195016
       },
       "netcode/lockstep-frame-2-peers": {
-        "minMs": 0.0077,
-        "medianMs": 0.0086,
-        "score": 0.0026,
-        "bytesPerRun": 12184
+        "minMs": 0.008,
+        "medianMs": 0.0088,
+        "score": 0.0027,
+        "bytesPerRun": 24544
       },
       "render/sync-1k-changed-of-10k": {
-        "minMs": 0.4262,
-        "medianMs": 0.6863,
-        "score": 0.1455,
-        "bytesPerRun": 429832
+        "minMs": 0.4456,
+        "medianMs": 0.4941,
+        "score": 0.1511,
+        "bytesPerRun": 410850
       },
       "render/sync-hierarchy-1k-changed-of-10k": {
-        "minMs": 1.043,
-        "medianMs": 1.2602,
-        "score": 0.356,
-        "bytesPerRun": 469776
+        "minMs": 1.0684,
+        "medianMs": 1.1504,
+        "score": 0.3642,
+        "bytesPerRun": 450902
       },
       "render/sync-spawn-despawn-500": {
-        "minMs": 2.3665,
-        "medianMs": 2.5434,
-        "score": 0.8115,
-        "bytesPerRun": 2367336
+        "minMs": 2.4096,
+        "medianMs": 2.5858,
+        "score": 0.8168,
+        "bytesPerRun": 2477563
       },
       "render/interpolate-10k": {
-        "minMs": 0.2987,
-        "medianMs": 0.3196,
-        "score": 0.1024,
-        "bytesPerRun": 1168
+        "minMs": 0.3042,
+        "medianMs": 0.3119,
+        "score": 0.1026,
+        "bytesPerRun": 1497
       }
     }
   },
