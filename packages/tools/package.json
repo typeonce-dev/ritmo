@@ -22,7 +22,6 @@
     "cli"
   ],
   "type": "module",
-  "sideEffects": false,
   "files": [
     "dist",
     "!dist/pixel/ui",
