@@ -1,6 +1,6 @@
 {
   "name": "@typeonce/ritmo-tools",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "Asset tools for games made with Ritmo, for agents: fixes AI-made pixel art and animation sheets onto a true pixel grid and a palette, from the command line",
   "author": "Sandro Maglione",
   "license": "MIT",
