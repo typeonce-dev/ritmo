@@ -4,7 +4,10 @@ Turns blurry or AI-made pixel art into true pixel art. Image generators draw
 "pixel art" as a large picture whose fake pixels are uneven, blurred, and
 slightly off-color. The fixer finds the hidden pixel grid, gives each cell
 one color from a palette you choose, and exports the result at its true size
-(or any whole scale), as PNG, SVG, or a JSON map.
+(or any whole scale), as PNG, SVG, or a JSON map. It fixes animations too:
+a sheet of frames in boxes, as image generators draw one, becomes frames on
+one grid and one palette that stand still on one spot, exported as a sprite
+sheet with its JSON, a GIF, and each frame.
 
 It comes in two parts that share one core: a web page for people tuning art
 by hand (it runs entirely in the browser; pictures never leave the device),
@@ -29,7 +32,7 @@ pnpm --dir website dev --host     # also reachable from a phone on the same netw
 pnpm --dir website build          # the site, with the page at dist/tools/pixel/
 ```
 
-Open a picture (**Open** in the top bar, drag and drop, or paste), or press
+Open a picture (PNG or JPEG: **Open** in the top bar, drag and drop, or paste), or press
 **Try the demo** for a fake AI picture of a mushroom. The same button opens a sprite source
 (`.txt`) or a JSON map as pixel art at its own size, a recipe (applied to the
 picture open), and a `pixel.config.json` (its rules, palette, and settings).
@@ -141,6 +144,50 @@ or Ctrl+Y) cover every setting: the grid, the palette, the background,
 strokes, and the size. A slider drag, a typed number, or a stroke is one
 step. Opening another picture starts the history over.
 
+## Animations
+
+An image generator asked for an animation draws a sheet: the frames side by
+side (or in rows), each in a box, over a dark background with a painted grid,
+often with a label under each frame. Open it like any picture: when the
+fixer finds several boxes holding about as much art each, it opens the sheet
+as an **Animation** and says so. **Picture** and **Animation** in the top bar
+switch between the two at any time; everything about pictures above stays as
+it is.
+
+- **Frames.** The sheet's background is cleared from its border (the painted
+  grid and the boxes with it), and each run of art is a frame: rows of art
+  are split where the columns empty out, and short rows (the labels) are
+  dropped. The **Sheet** view shows the source with every frame's box,
+  numbered. Choose **Boxes** (F) to drag a box, resize it by its handles, or
+  draw a new one on empty space when something was cut out; Delete removes the
+  selected box. **Frames** on the right lists every frame: **In**/**Out**
+  leaves one out of the animation without losing its box, and **Find again**
+  starts over (boxes changed by hand are dropped).
+- **Grid and palette.** Every frame is read on one cell size (found from all
+  the frames together, or typed), each at its own offset, and fixed with one
+  recipe: the palette, matching, and cleanup are the picture's settings, and
+  **Propose colors** proposes from all the frames at once.
+- **Lining up.** Frames are drawn wherever the generator put them in their
+  boxes, so they jump. **Anchor** keeps one spot still: the **Feet** (the
+  body's lowest row, under its middle; the default), the body's **Center**,
+  or the **Box** as cut. Arrow keys nudge the selected frame by a pixel
+  (Shift: 4). **Margin** sets the empty pixels around the frames.
+- **Playing.** The **Play** view shows the animation running, with the grid
+  if you want it; Space plays and pauses, `,` and `.` step a frame, and the
+  bar under it sets the frame rate, **Loop** or **Ping-pong**, and **Onion**
+  (the previous frame, faint, under the current one). **Frames** shows them
+  all side by side; click one to select it.
+- **Export.** A **Sheet PNG** with every frame in one row or in rows of
+  **Per row** frames, with **Spacing** between them, at any whole scale; its
+  **JSON** in the hash format Pixi (`Spritesheet`), Phaser (`atlas`), and
+  Aseprite share, with each frame's rectangle, duration, and anchor, the
+  animation's frame list, and Aseprite's `frameTags`; a **GIF**; **Frames
+  .zip** (one PNG per frame); the **Recipe** (frames, anchor, frame rate, and
+  loop included); and the palette.
+
+Hand edits (**Erase**, **Paint**) and **Size** are for single pictures and
+are not offered for animations.
+
 ## The CLI
 
 `pixel` runs the page's pipeline from the command line, for agents. It is
@@ -154,6 +201,7 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 | --- | --- |
 | `check <file>` | Clean pixel art, fixable with confidence, or needs a person? Writes nothing. |
 | `fix <png>` | Fixes it, writing `.png` (1x), `@Nx.png` (`--scale N`), `.svg`, `.json` map, `.sprite.txt`, `.recipe.json`, and `.preview.png`. |
+| `sheet <png>` | Fixes an animation sheet: `.png` (the frames in a strip, or `--columns N` per row), its `.json`, a `.gif`, `.frames/` (one PNG each), `.recipe.json`, and `.preview.png` (the boxes found over the source, and the fixed frames). |
 | `pixelate <png> -w N` | Cuts a picture that is not pixel art into N pixels across, on the palette (or `--colors N` proposed from it). |
 | `render <sprite>` | Renders a sprite source or JSON map to PNG and SVG, and lints it. |
 | `lint <file>` | The project's rules on the pixels as they are. |
@@ -165,7 +213,9 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 `fix`, `check`, `pixelate`, and `preview` take the page's settings as flags
 (`--palette`, `--cell 8x8 --offset 2,3`, `--follow`, `--cleanup`,
 `--remove-background`, `--crop`, `--dither`, `--metric`, `--shrink-to`), over a
-`--recipe` file, over the config. `pixel <command> --help` lists them.
+`--recipe` file, over the config. `pixel <command> --help` lists them. `sheet` takes them too, plus
+`--boxes`, `--skip`, `--anchor`, `--fps`, `--pingpong`, `--columns`, and
+`--spacing`. Every command reads PNG and JPEG.
 
 **`pixel.config.json`**, found from the working directory up (or
 `--config`), holds a project's rules: `palette` (a preset's name, a list of
@@ -194,7 +244,9 @@ KYYK
 
 **Recipes** are every setting as JSON (`src/core/recipe.ts`): the grid (found,
 given as cells, or a size to pixelate to), the palette with its locked
-colors, cleanup, background, size, and the hand edits. Missing settings take
+colors, cleanup, background, size, the hand edits, and for an animation its
+`sheet` (each frame's box, whether it is in, and its nudge; the anchor, frame
+rate, loop, and margin). Missing settings take
 their defaults, so `{"palette": "sweetie-16"}` is a recipe.
 
 `skills/pixel-art/SKILL.md` is the skill for agents: which command for which
@@ -236,8 +288,13 @@ of the true size, which are as clean but have half their lines mid-cell.
   `pipeline.ts` (the whole fix, from a picture and a recipe: what the page and
   the CLI both run), `recipe.ts` (recipes as JSON), `sprite.ts` (sprite
   sources), `lint.ts` (the rules), `report.ts` (the check and its verdict),
-  `preview.ts` (pictures to look at).
-- `src/ui/`: the page (plain DOM and a canvas, no framework), exported as
+  `preview.ts` (pictures to look at), `sheet.ts` (clearing a sheet, finding
+  its frames, anchors, and laying frames on one canvas), `animation.ts` (the
+  whole fix for a sheet), `spritesheet.ts` (sheet layouts and their JSON),
+  `gif.ts` (animated GIFs), `zip.ts` (stored ZIP files).
+- `src/ui/`: the page (plain DOM and a canvas, no framework; `player.ts` plays
+  animations), exported as
   `@typeonce/pixel-fixer/page` and `/page.css` for the website to mount on `#app`.
-- `src/cli/`: the `pixel` CLI (Effect), with PNG files through `pngjs`;
+- `src/cli/`: the `pixel` CLI (Effect), with PNG files through `pngjs` and
+  JPEG through `jpeg-js`;
   `bin/pixel.mjs` runs it from its TypeScript source.
