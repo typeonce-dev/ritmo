@@ -157,7 +157,10 @@ it is.
 - **Frames.** The sheet's background is cleared from its border (the painted
   grid and the boxes with it), and each run of art is a frame: rows of art
   are split where the columns empty out, and short rows (the labels) are
-  dropped. The **Sheet** view shows the source with every frame's box,
+  dropped. A grid painted behind the frames is painted out first, where it
+  runs over the background, so lines as dark as the art's outline never
+  flood into the art; how close a color must be to the background follows
+  how noisy the background is. The **Sheet** view shows the source with every frame's box,
   numbered. Choose **Boxes** (F) to drag a box, resize it by its handles, or
   draw a new one on empty space when something was cut out; Delete removes the
   selected box. **Frames** on the right lists every frame: **In**/**Out**
@@ -168,9 +171,11 @@ it is.
   recipe: the palette, matching, and cleanup are the picture's settings, and
   **Propose colors** proposes from all the frames at once.
 - **Lining up.** Frames are drawn wherever the generator put them in their
-  boxes, so they jump. **Anchor** keeps one spot still: the **Feet** (the
-  body's lowest row, under its middle; the default), the body's **Center**,
-  or the **Box** as cut. Arrow keys nudge the selected frame by a pixel
+  boxes, so they drift. **Anchor** says what lines them up: **Ground** (the
+  default) lines up the body's middle column and keeps each frame at the
+  height it was drawn, so a hop or a bob stays; **Feet** pins the body's
+  lowest row to one spot (hops are flattened); **Center** pins the body's
+  middle, for things that float; **Box** places frames as cut. Arrow keys nudge the selected frame by a pixel
   (Shift: 4). **Margin** sets the empty pixels around the frames.
 - **Playing.** The **Play** view shows the animation running, with the grid
   if you want it; Space plays and pauses, `,` and `.` step a frame, and the

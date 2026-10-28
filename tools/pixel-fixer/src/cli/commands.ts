@@ -334,7 +334,7 @@ const sheetCommand = Command.make(
     boxes: Flag.String("boxes").pipe(Flag.withDescription('The frames\' boxes, "x,y,w,h;x,y,w,h" in source pixels, instead of finding them.'), Flag.optional),
     skip: Flag.String("skip").pipe(Flag.withDescription('Frames to leave out of the animation, by number from 1: "1,6".'), Flag.optional),
     keepBackground: Flag.Boolean("keep-background").pipe(Flag.withDefault(false), Flag.withDescription("Keep the sheet's background (by default it is cleared, with any painted grid and labels).")),
-    anchor: Flag.Literals("anchor", ["feet", "center", "box"]).pipe(Flag.withDescription("What stays still from frame to frame: the feet (default), the body's center, or nothing (frames as in their boxes)."), Flag.optional),
+    anchor: Flag.Literals("anchor", ["ground", "feet", "center", "box"]).pipe(Flag.withDescription("What lines frames up: the ground (default: each frame at its height as drawn, hops kept, sideways drift removed), the feet (pinned to one row), the body's center, or nothing (frames as in their boxes)."), Flag.optional),
     fps: Flag.Finite("fps").pipe(Flag.withDescription("Frames per second (default 8)."), Flag.optional),
     pingpong: Flag.Boolean("pingpong").pipe(Flag.withDefault(false), Flag.withDescription("Play there and back instead of looping from the start.")),
     columns: Flag.Int("columns").pipe(Flag.withDescription("Frames per row on the sheet written (default: one row)."), Flag.optional),
@@ -401,7 +401,7 @@ const sheetCommand = Command.make(
         image,
         sheet.frames.map((frame) => ({ ...frame.box, include: frame.include })),
         arts,
-        sheet.anchor === "feet" ? anchor.y : undefined
+        sheet.anchor === "feet" || sheet.anchor === "ground" ? anchor.y : undefined
       )
     )
     yield* printJson({ file: flags.input, ...report, files })

@@ -16,6 +16,7 @@ import { lintArt, type Issue, type LintRules } from "./lint.ts"
 import { runRecipe, type Outcome } from "./pipeline.ts"
 import type { Recipe } from "./recipe.ts"
 import { sheetArt } from "./spritesheet.ts"
+import { defaultSheet } from "./sheet.ts"
 import { artOfImage } from "./sprite.ts"
 
 export type Verdict = "clean" | "fixable" | "needs-person"
@@ -332,7 +333,7 @@ export const reportOfSheet = (image: RgbaImage, recipe: Recipe, outcome: Animati
       included: count,
       fps: sheet?.fps ?? 0,
       loop: sheet?.loop ?? "forward",
-      anchor: sheet?.anchor ?? "feet",
+      anchor: sheet?.anchor ?? defaultSheet.anchor,
       boxes: outcome.frames.map((frame) => ({
         frame: frame.index + 1,
         ...frame.box,

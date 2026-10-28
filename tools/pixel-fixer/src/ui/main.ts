@@ -1847,7 +1847,7 @@ const framesPanel = (): HTMLElement | false => {
     {
       action: button("Find again", findFramesAgain, { variant: "ghost", small: true, icon: "wand", title: "Find the frames again (drops boxes changed by hand)" }),
       help:
-        "Each box on the sheet is one frame, fixed with the same settings. Choose Boxes in the toolbar over the sheet to move a box, drag its edges, or draw a new one on empty space; a box left out keeps its place but is not in the animation. Every frame is placed so its anchor stays on one spot; nudge a frame by a pixel with the arrow keys when it looks off."
+        "Each box on the sheet is one frame, fixed with the same settings. Choose Boxes in the toolbar over the sheet to move a box, drag its edges, or draw a new one on empty space; a box left out keeps its place but is not in the animation. Frames are lined up by the anchor: Ground keeps each frame at the height it was drawn (hops stay), Feet pins the feet to one row. Nudge a frame by a pixel with the arrow keys when it looks off."
     },
     callout(
       included >= 2 ? "good" : "warn",
