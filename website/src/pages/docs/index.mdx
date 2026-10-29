@@ -224,21 +224,15 @@ the world you just wrote:
 - **[Give it every controller](/features/devices/)**: keyboard, gamepad,
   mouse, and touch as one player, or [two on one
   screen](/features/multiplayer/).
+- **[Give it art, sound, and music](/tools/)**: your agent fixes pixel art
+  and animation sheets, and writes sound effects and songs with
+  `ritmo-tools`; you review them on a page.
 
 To understand the pieces first, read [Concepts](/docs/concepts/) in order.
 
 ## Add-ons
 
 Every package is released with the same version. Install one when the game
-needs it:
-
-| Package | What it gives you |
-|---|---|
-| `@typeonce/ritmo` | The runtime, the fixed step, seeded `Random`, and `Ops` math that returns the same bits everywhere |
-| `@typeonce/ritmo-math` | 2D helpers on plain data: vectors, angles, swept circles, a flow field |
-| `@typeonce/ritmo-browser` | The browser loop, keyboard, gamepad, pointer, and touch input |
-| `@typeonce/ritmo-render` | One renderer node per entity, kept in sync |
-| `@typeonce/ritmo-pixi` | The Pixi adapter for `ritmo-render` |
-| `@typeonce/ritmo-netcode` | [Online multiplayer](/features/rollback/) with rollback or lockstep |
-| `@typeonce/ritmo-devtools` | Headless sessions, the fuzzer, determinism checks, `ritmo-devtools lint` |
-| `@typeonce/oxlint-plugin-ritmo` | Lint rules that keep game logic deterministic and headless |
+needs it: input and rendering for a page, netcode for online play, devtools
+and lint rules for checks, and `ritmo-tools` for pixel art, sound, and music.
+[Packages and tools](/docs/packages/) lists them all.

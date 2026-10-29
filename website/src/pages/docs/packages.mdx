@@ -1,0 +1,41 @@
+---
+layout: ../../layouts/Docs.astro
+title: Packages and tools
+description: Start with the core. Add a package when the game needs it, and give your agent the tools for art, sound, and music.
+---
+
+import PackageList from "../../components/PackageList.astro"
+
+## In the game
+
+Install `@typeonce/ritmo` first. Every other package plugs into it, and all
+of them share one version.
+
+<PackageList
+  items={[
+    { title: "The core", name: "@typeonce/ritmo", body: "The ECS runtime: world, systems, schedules, states, seeded randomness.", href: "/docs/concepts/", wide: true },
+    { title: "Input and the loop", name: "@typeonce/ritmo-browser", body: "Keyboard, gamepad, mouse, and touch as one player; couch co-op.", href: "/features/devices/" },
+    { title: "Online multiplayer", name: "@typeonce/ritmo-netcode", body: "Rollback or lockstep over any transport.", href: "/features/rollback/" },
+    { title: "Rendering", name: "@typeonce/ritmo-render · ritmo-pixi", body: "One node per entity, kept in sync. Pixi ready to use.", href: "/docs/browser/" },
+    { title: "2D math", name: "@typeonce/ritmo-math", body: "Vectors, angles, swept collision, a flow field.", href: "/features/determinism/" },
+    { title: "Debugging", name: "@typeonce/ritmo-devtools", body: "Run headless, ask why a value changed, fuzz, replay.", href: "/docs/devtools/" },
+    { title: "Lint rules", name: "@typeonce/oxlint-plugin-ritmo", body: "Keeps game logic deterministic; each message names the fix.", href: "/docs/with-an-agent/" }
+  ]}
+/>
+
+## For your agent
+
+`@typeonce/ritmo-tools` runs locally, not in the game: a CLI your agent
+runs, and a web UI where you look, listen, and tweak.
+
+```sh
+npx @typeonce/ritmo-tools --help
+```
+
+<PackageList
+  items={[
+    { title: "Pixel fixer", name: "ritmo-tools pixel", body: "Fixes AI pixel art and animation sheets onto a true grid and a palette.", href: "/tools/pixel/" },
+    { title: "Sound lab", name: "ritmo-tools sound", body: "Sound effects as JSON recipes, checked, varied, and reviewed by ear.", href: "/tools/sound/" },
+    { title: "Music lab", name: "ritmo-tools music", body: "Hum a tune; the agent writes the song around it.", href: "/tools/music/" }
+  ]}
+/>

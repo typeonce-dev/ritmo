@@ -1,0 +1,37 @@
+---
+// The sound lab's review page (packages/tools, `@typeonce/ritmo-tools`) with an
+// example bank, Spirit call's sounds, kept in the tab: the page
+// `ritmo-tools sound review` serves, to try without the CLI. Like the pixel
+// fixer, it owns the whole window and skips the guide's layout.
+import Meta from "../../../components/Meta.astro"
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <Meta
+      title="Sound lab · Ritmo"
+      description="Game sound effects as JSON recipes: listen, compare takes, tune, and note them. Your coding agent writes and checks them with ritmo-tools sound; you review them here. A free tool from Ritmo."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
+    />
+  </head>
+  <body data-pagefind-ignore="all">
+    <div id="app"></div>
+    <script>
+      // The pixel fixer's styles first: the two tools share one look.
+      import "@typeonce/ritmo-tools/pixel/page.css"
+      import "@typeonce/ritmo-tools/sound/page.css"
+      import { startDemo } from "@typeonce/ritmo-tools/sound/demo"
+      import bank from "@typeonce/ritmo-tools/sound/example.json?raw"
+
+      startDemo("spirit-call.sounds.json", bank, "heavyHit")
+    </script>
+  </body>
+</html>

@@ -40,7 +40,18 @@
   "exports": {
     "./package.json": "./package.json",
     "./pixel/page": "./src/pixel/ui/main.ts",
-    "./pixel/page.css": "./src/pixel/ui/style.css"
+    "./pixel/page.css": "./src/pixel/ui/style.css",
+    "./sound/demo": "./src/sound/ui/demo.ts",
+    "./sound/page.css": "./src/sound/ui/style.css",
+    "./sound/render": "./src/sound/core/render.ts",
+    "./sound/recipe": "./src/sound/core/recipe.ts",
+    "./sound/example.json": "./examples/spirit-call.sounds.json",
+    "./music/demo": "./src/music/ui/demo.ts",
+    "./music/page.css": "./src/music/ui/style.css",
+    "./music/render": "./src/music/core/render.ts",
+    "./music/song": "./src/music/core/song.ts",
+    "./music/example.json": "./examples/village.song.json",
+    "./music/example.wav": "./examples/village.song.reference.wav"
   },
   "publishConfig": {
     "access": "public",

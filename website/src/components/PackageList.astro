@@ -1,0 +1,96 @@
+---
+// A list of packages or tools, one spaced card each: what it is for, its
+// package name to install, and the page that shows it.
+interface Item {
+  readonly title: string
+  readonly name: string
+  readonly body: string
+  readonly href: string
+  /** Takes the whole row: the one to start with. */
+  readonly wide?: boolean
+}
+
+interface Props {
+  items: ReadonlyArray<Item>
+}
+
+const { items } = Astro.props
+---
+
+<ul class="package-list">
+  {
+    items.map((item) => (
+      <li class:list={{ wide: item.wide === true }}>
+        <a href={item.href}>
+          <span class="title">{item.title}</span>
+          <code class="name">{item.name}</code>
+          <span class="body">{item.body}</span>
+        </a>
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  .package-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin: 32px 0 56px;
+    padding: 0;
+    list-style: none;
+  }
+
+  .package-list li {
+    margin: 0;
+  }
+
+  .package-list .wide {
+    grid-column: 1 / -1;
+  }
+
+  .wide a {
+    border-color: color-mix(in srgb, var(--tick) 55%, var(--border));
+  }
+
+  .package-list a {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    height: 100%;
+    padding: 22px 24px;
+    color: var(--fg);
+    text-decoration: none;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    transition: border-color 0.15s;
+  }
+
+  .package-list a:hover {
+    border-color: color-mix(in srgb, var(--fg) 38%, transparent);
+  }
+
+  .title {
+    font: 600 1.02rem var(--mono);
+  }
+
+  .package-list .name {
+    align-self: flex-start;
+    font-size: 0.78rem;
+    color: var(--accent);
+    background: none;
+    padding: 0;
+  }
+
+  .body {
+    font-size: 0.94rem;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+
+  @media (max-width: 640px) {
+    .package-list {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>

@@ -1,0 +1,87 @@
+---
+// A shell command to copy: one line, a prompt, and a copy button.
+interface Props {
+  command: string
+}
+const { command } = Astro.props
+---
+
+<div class="command">
+  <span class="prompt" aria-hidden="true">$</span>
+  <code>{command}</code>
+  <button type="button" class="copy" data-command={command} aria-label="Copy the command" title="Copy">
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+      ><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"></path></svg
+    >
+  </button>
+</div>
+
+<script>
+  for (const button of document.querySelectorAll<HTMLButtonElement>(".command .copy")) {
+    button.addEventListener("click", () => {
+      void navigator.clipboard?.writeText(button.dataset.command ?? "").then(() => {
+        button.classList.add("copied")
+        setTimeout(() => button.classList.remove("copied"), 1200)
+      })
+    })
+  }
+</script>
+
+<style>
+  .command {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 100%;
+    padding: 6px 6px 6px 14px;
+    line-height: 1.5;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font: 0.85rem var(--mono);
+    color: var(--paper);
+  }
+
+  .prompt {
+    align-self: flex-start;
+    padding-top: 5px;
+    color: var(--steel);
+  }
+
+  .command code {
+    padding: 5px 0 !important;
+  }
+
+  .command code {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    background: none;
+    padding: 0;
+    color: inherit;
+    scrollbar-width: none;
+  }
+
+  .copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    flex: none;
+    color: var(--steel);
+    background: none;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .copy:hover {
+    color: var(--paper);
+    background: color-mix(in srgb, var(--paper) 10%, transparent);
+  }
+
+  .copy:global(.copied) {
+    color: var(--tick);
+  }
+</style>

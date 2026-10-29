@@ -36,6 +36,7 @@ const paths = {
   image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/>',
   close: '<path d="M18 6 6 18M6 6l12 12"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
+  copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>',
   alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/>',
   sparkle: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
   lines: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
@@ -353,6 +354,53 @@ export const badge = (text: string, tone: Tone, iconName?: IconName): HTMLElemen
 /** A callout: a status line with an icon, for notes that matter (the grid found, a check's verdict). */
 export const callout = (tone: Tone, ...children: Array<Child>): HTMLElement =>
   h("div", { class: `callout ${tone}` }, icon(tone === "good" ? "check" : tone === "neutral" || tone === "accent" ? "info" : "alert"), h("div", {}, ...children))
+
+/** A shell command to copy, for the agent or the terminal: the page's link to its CLI. */
+export const command = (text: string): HTMLElement => {
+  const copy = button(
+    "Copy",
+    () => {
+      void navigator.clipboard?.writeText(text).then(() => {
+        copy.classList.add("copied")
+        setTimeout(() => copy.classList.remove("copied"), 1200)
+      })
+    },
+    { variant: "ghost", icon: "copy", iconOnly: true, small: true, title: "Copy the command" }
+  )
+  return h("div", { class: "command" }, h("code", {}, text), copy)
+}
+
+/**
+ * A small "CLI" pill for a tool's top bar. It opens a short dialog: your
+ * coding agent can drive the tool from the terminal (`what` says how), and
+ * here is the command to copy.
+ */
+export const cliChip = (text: string, what: string): HTMLElement => {
+  const chip = h(
+    "button",
+    { class: "cli-chip hide-narrow", title: "Ask your agent instead", attrs: { type: "button" } },
+    h("span", { class: "cli-prompt", attrs: { "aria-hidden": "true" } }, ">_"),
+    "CLI"
+  )
+  chip.addEventListener("click", () => {
+    const close = button("Close", () => dialog.close(), { variant: "ghost", icon: "close", iconOnly: true, small: true })
+    const dialog = h(
+      "dialog",
+      { class: "cli-dialog", attrs: { "aria-label": "Ask your agent instead" } },
+      h("div", { class: "cli-dialog-head" }, mark(), h("h2", {}, "Ask your agent instead"), close),
+      h("p", {}, what),
+      command(text)
+    )
+    dialog.addEventListener("close", () => dialog.remove())
+    // A click on the backdrop (the dialog itself, outside its content) closes it.
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) dialog.close()
+    })
+    document.body.append(dialog)
+    dialog.showModal()
+  })
+  return chip
+}
 
 /** A color square. */
 export const chip = (hex: string, extra: { readonly class?: string; readonly title?: string } = {}): HTMLElement =>

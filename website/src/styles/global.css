@@ -214,3 +214,54 @@ pre code {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Calls to action: the home page's and the tools page's buttons. */
+
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin: 36px 0 0;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 22px;
+  font: 600 0.9rem var(--mono);
+  text-decoration: none;
+  color: var(--fg);
+  border: 1px solid color-mix(in srgb, var(--fg) 38%, transparent);
+  border-radius: 6px;
+}
+
+button.button {
+  background: none;
+  cursor: pointer;
+}
+
+.button:hover {
+  border-color: var(--fg);
+}
+
+.button.ghost {
+  border-color: var(--border);
+  color: var(--muted);
+}
+
+.button.ghost:hover {
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--fg) 38%, transparent);
+}
+
+.button.primary {
+  background: var(--tick);
+  border-color: var(--tick);
+  color: var(--ink);
+}
+
+.button.primary:hover {
+  background: #ff6f50;
+}

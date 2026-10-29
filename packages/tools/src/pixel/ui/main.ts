@@ -84,6 +84,8 @@ import {
   button,
   callout,
   chip,
+  cliChip,
+  command,
   group,
   hint,
   icon,
@@ -794,6 +796,7 @@ const empty = h(
     ),
     h("p", { class: "empty-note" }, "Animation sheets open as animations: every frame found, fixed, lined up, and played."),
     h("p", { class: "empty-note" }, "Project PNGs, sprite sources (.txt), JSON maps, recipes, and pixel.config.json open here too."),
+    h("p", { class: "empty-note" }, "The same fixes run from the command line, for you or your coding agent: ", h("code", {}, "npx @typeonce/ritmo-tools pixel"), "."),
     h("p", { class: "empty-note" }, "A free tool from Ritmo, the agent-first ECS runtime.")
   )
 )
@@ -1670,11 +1673,21 @@ const exportPanel = (): HTMLElement | false => {
         button("Palette .hex", () => download(`${name}-palette.hex`, toHexFile(paletteOf())), { variant: "secondary", small: true }),
         button("Palette .gpl", () => download(`${name}-palette.gpl`, toGpl(paletteOf())), { variant: "secondary", small: true })
       )
-    )
+    ),
+    cliGroup("fix", name)
   )
 }
 
 const RITMO_URL = "https://ritmo.typeonce.dev/"
+
+/** The same fix from the command line: the saved recipe runs on the next picture, or in an agent's hands. */
+const cliGroup = (kind: "fix" | "sheet", name: string): HTMLElement =>
+  group(
+    "From the command line",
+    hint("Save the recipe, then run it on this picture or the next one. Your coding agent can run it too."),
+    command(`npx @typeonce/ritmo-tools pixel ${kind} ${name}.png --recipe ${name}.recipe.json`),
+    hint(h("a", { attrs: { href: `${RITMO_URL}tools/`, target: "_blank", rel: "noopener" } }, "All the CLI commands →"))
+  )
 
 /** Where the tool comes from, at the end of the settings. */
 const aboutPanel = (): HTMLElement =>
@@ -2274,7 +2287,8 @@ const animationExportPanel = (): HTMLElement | false => {
         button("Palette .hex", () => download(`${name}-palette.hex`, toHexFile(paletteOf())), { variant: "secondary", small: true }),
         button("Palette .gpl", () => download(`${name}-palette.gpl`, toGpl(paletteOf())), { variant: "secondary", small: true })
       )
-    )
+    ),
+    cliGroup("sheet", name)
   )
 }
 
@@ -2325,7 +2339,8 @@ const renderTopbar = (): void => {
         { class: "brand" },
         mark(),
         h("span", {}, "Pixel fixer"),
-        h("a", { class: "by", title: "Ritmo, the agent-first type safe ECS runtime", attrs: { href: RITMO_URL, target: "_blank", rel: "noopener" } }, "by ", h("b", {}, "ritmo"))
+        h("a", { class: "by", title: "Ritmo, the agent-first type safe ECS runtime", attrs: { href: RITMO_URL, target: "_blank", rel: "noopener" } }, "by ", h("b", {}, "ritmo")),
+        cliChip("npx @typeonce/ritmo-tools pixel fix art.png --recipe art.recipe.json", "Your coding agent can run the same fixes from the command line: it fixes pictures and animation sheets, reads the report, and asks you to look only when it is unsure.")
       ),
       source !== undefined &&
         h(

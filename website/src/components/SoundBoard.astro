@@ -1,0 +1,239 @@
+---
+// The sound lab's idea on a page: a few of Spirit call's sounds, each a JSON
+// recipe the agent wrote, rendered in the browser by the same renderer the
+// CLI measures with. A pad plays its sound and shows the recipe that is all
+// of it.
+import bank from "@typeonce/ritmo-tools/sound/example.json"
+
+interface Props {
+  /** Names in `examples/spirit-call.sounds.json`. */
+  sounds?: ReadonlyArray<string>
+  /** Only the pads, filling the box they are in: no recipe under them. */
+  compact?: boolean
+}
+
+const { sounds = ["slash", "hit", "block", "zap", "charged", "victory"], compact = false } = Astro.props
+const recipes: Readonly<Record<string, { readonly about?: string }>> = bank.sounds
+---
+
+<div class:list={["board", { compact }]}>
+  <div class="pads">
+    {
+      sounds.map((name, index) => (
+        <button type="button" class="pad" data-sound={name} aria-pressed={index === 0 ? "true" : "false"}>
+          <canvas aria-hidden="true" />
+          <span class="name">{name}</span>
+        </button>
+      ))
+    }
+  </div>
+  {
+    !compact && (
+      <div class="recipe">
+        <p class="about">{recipes[sounds[0] ?? ""]?.about ?? ""}</p>
+        <pre><code /></pre>
+      </div>
+    )
+  }
+</div>
+
+<script>
+  import bankText from "@typeonce/ritmo-tools/sound/example.json?raw"
+
+  const board = document.querySelector<HTMLElement>(".board")
+
+  const start = async (board: HTMLElement): Promise<void> => {
+    const [{ decodeBank }, { render }] = await Promise.all([import("@typeonce/ritmo-tools/sound/recipe"), import("@typeonce/ritmo-tools/sound/render")])
+    const decoded = decodeBank(bankText)
+    if (!decoded.ok) return
+    const bank = decoded.value
+    const pads = [...board.querySelectorAll<HTMLButtonElement>(".pad")]
+    const about = board.querySelector<HTMLElement>(".about")
+    const code = board.querySelector<HTMLElement>(".recipe code")
+    const tick = getComputedStyle(document.documentElement).getPropertyValue("--tick").trim() || "#ff5a36"
+
+    const rendered = new Map(pads.map((pad) => {
+      const recipe = bank.sounds[pad.dataset.sound ?? ""]
+      return [pad, recipe === undefined ? undefined : { recipe, sound: render(recipe, { master: bank.master }) }] as const
+    }))
+    // Each pad's wave, filling its pad; the playing one lit up to where it is.
+    const draw = (pad: HTMLButtonElement, playhead: number | undefined): void => {
+      const entry = rendered.get(pad)
+      const canvas = pad.querySelector("canvas")
+      const context = canvas?.getContext("2d")
+      if (entry === undefined || canvas === null || context === null || context === undefined) return
+      const ratio = Math.min(2, devicePixelRatio || 1)
+      canvas.width = Math.round(canvas.clientWidth * ratio)
+      canvas.height = Math.round(canvas.clientHeight * ratio)
+      const { samples, sampleRate } = entry.sound
+      const length = samples.length / sampleRate
+      const perPixel = samples.length / canvas.width
+      const middle = canvas.height / 2
+      const muted = getComputedStyle(pad).color
+      const peaks = Array.from({ length: canvas.width }, (_, x) => {
+        let peak = 0
+        for (let i = Math.floor(x * perPixel); i < Math.min(samples.length, (x + 1) * perPixel); i += 2) peak = Math.max(peak, Math.abs(samples[i]!))
+        return peak
+      })
+      const loudest = Math.max(1e-6, ...peaks)
+      context.clearRect(0, 0, canvas.width, canvas.height)
+      for (let x = 0; x < canvas.width; x++) {
+        const height = Math.max(ratio / 2, Math.sqrt(peaks[x]! / loudest) * middle * 0.95)
+        context.fillStyle = playhead !== undefined && x / canvas.width <= playhead / length ? tick : muted
+        context.fillRect(x, middle - height, 1, height * 2)
+      }
+    }
+
+    const show = (pad: HTMLButtonElement): void => {
+      const entry = rendered.get(pad)
+      if (entry === undefined) return
+      for (const other of pads) other.setAttribute("aria-pressed", String(other === pad))
+      if (about !== null) about.textContent = entry.recipe.about ?? ""
+      // The recipe as the bank file holds it: one line per setting, one per layer.
+      const lines = Object.entries(entry.recipe)
+        .filter(([key, value]) => key !== "about" && value !== undefined)
+        .map(([key, value]) =>
+          Array.isArray(value) ? `  "${key}": [\n${value.map((item) => `    ${JSON.stringify(item)}`).join(",\n")}\n  ]` : `  "${key}": ${JSON.stringify(value)}`
+        )
+      if (code !== null) code.textContent = `{\n${lines.join(",\n")}\n}`
+    }
+
+    let context: AudioContext | undefined
+    let playing: { readonly source: AudioBufferSourceNode; readonly pad: HTMLButtonElement; readonly start: number } | undefined
+    const play = (pad: HTMLButtonElement): void => {
+      const entry = rendered.get(pad)
+      if (entry === undefined) return
+      context ??= new AudioContext()
+      playing?.source.stop()
+      const buffer = context.createBuffer(1, entry.sound.samples.length, entry.sound.sampleRate)
+      buffer.copyToChannel(entry.sound.samples, 0)
+      const source = context.createBufferSource()
+      source.buffer = buffer
+      source.connect(context.destination)
+      source.start()
+      const now = { source, pad, start: context.currentTime }
+      playing = now
+      const frame = (): void => {
+        if (playing !== now || context === undefined) return draw(pad, undefined)
+        draw(pad, context.currentTime - now.start)
+        requestAnimationFrame(frame)
+      }
+      source.onended = () => {
+        if (playing === now) playing = undefined
+        draw(pad, undefined)
+      }
+      requestAnimationFrame(frame)
+    }
+
+    for (const pad of pads) {
+      draw(pad, undefined)
+      pad.addEventListener("click", () => {
+        show(pad)
+        play(pad)
+      })
+    }
+    if (pads[0] !== undefined) show(pads[0])
+    addEventListener("resize", () => pads.forEach((pad) => draw(pad, undefined)))
+  }
+
+  // The sounds render when the board is about to be seen.
+  if (board !== null) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return
+        observer.disconnect()
+        void start(board)
+      },
+      { rootMargin: "200px" }
+    )
+    observer.observe(board)
+  }
+</script>
+
+<style>
+  .board {
+    display: grid;
+    gap: 14px;
+    width: 100%;
+    max-width: 460px;
+    margin: 0 auto;
+  }
+
+  .compact {
+    height: 100%;
+    max-width: none;
+    padding: 14px;
+  }
+
+  .compact .pads {
+    height: 100%;
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+
+  .compact .pad {
+    min-height: 0;
+  }
+
+  .compact .pad canvas {
+    flex: 1 1 0;
+    height: 0;
+    min-height: 0;
+  }
+
+  .pads {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .pad {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 12px 10px;
+    text-align: left;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--raised) 55%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  .pad:hover {
+    border-color: var(--muted);
+  }
+
+  .pad[aria-pressed="true"] {
+    border-color: var(--tick);
+  }
+
+  .pad canvas {
+    display: block;
+    width: 100%;
+    height: 40px;
+  }
+
+  .name {
+    font: 600 0.82rem var(--mono);
+    color: var(--fg);
+  }
+
+  .recipe {
+    min-width: 0;
+  }
+
+  .about {
+    min-height: 3em;
+    margin: 0 0 8px;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+
+  .recipe pre {
+    height: 168px;
+    margin: 0;
+    font-size: 0.74rem;
+    line-height: 1.5;
+    overflow: auto;
+  }
+</style>

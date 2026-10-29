@@ -1,0 +1,285 @@
+---
+// The front door to `@typeonce/ritmo-tools`: the command an agent runs for
+// art, sound, and music, and the three pages a person reviews on. The tools'
+// own pages (/tools/pixel/, /tools/sound/, /tools/music/) own the whole
+// window; this one is a guide.
+import Command from "../../components/Command.astro"
+import MusicShowcase from "../../components/MusicShowcase.astro"
+import PixelShowcase from "../../components/PixelShowcase.astro"
+import SheetShowcase from "../../components/SheetShowcase.astro"
+import SoundBoard from "../../components/SoundBoard.astro"
+import ToolsMark from "../../components/ToolsMark.astro"
+import Base from "../../layouts/Base.astro"
+
+const tools = [
+  {
+    id: "pixel",
+    title: "Pixel fixer",
+    body: "Image generators fake pixel art and draw uneven animation sheets. The fixer turns both into real pixel art: a true grid, one palette, frames that play smooth.",
+    href: "/tools/pixel/",
+    open: "Open the pixel fixer",
+    command: "npx @typeonce/ritmo-tools pixel fix art.png",
+    commands: [
+      { name: "check", body: "Clean, fixable, or needs a person?" },
+      { name: "fix", body: "The art at its true size, and its recipe." },
+      { name: "sheet", body: "Frames on one grid, a sprite sheet, a GIF." }
+    ]
+  },
+  {
+    id: "sound",
+    title: "Sound lab",
+    body: "Sound effects as JSON recipes your agent writes and checks. You listen, compare takes, and leave notes.",
+    href: "/tools/sound/",
+    open: "Try the sound lab",
+    command: "npx @typeonce/ritmo-tools sound review game.sounds.json",
+    commands: [
+      { name: "check", body: "Clipping, silence, late starts, clicks." },
+      { name: "vary", body: "Takes nudged heavier, brighter, shorter…" },
+      { name: "notes", body: "What you said, for the agent to act on." }
+    ]
+  },
+  {
+    id: "music",
+    title: "Music lab",
+    body: "Hum a tune. Your agent arranges it into a song; you edit notes, swap instruments, and comment on bars.",
+    href: "/tools/music/",
+    open: "Try the music lab",
+    command: "npx @typeonce/ritmo-tools music review theme.song.json",
+    commands: [
+      { name: "listen", body: "A hum's tempo, key, and melody." },
+      { name: "check", body: "Off-key notes, buried tracks, clipping." },
+      { name: "render", body: "The song as WAV, MIDI, and stems." }
+    ]
+  }
+]
+---
+
+<Base
+  title="Tools"
+  description="ritmo-tools: the command your coding agent runs for pixel art, sound effects, and music, with a local web UI where you look, listen, and tweak. Free and open source."
+>
+  <main class="tools-page">
+    <section class="hero">
+      <ToolsMark />
+      <h1>All the support you need to<br />create full game experiences</h1>
+      <p class="sub">Pixel art, animations, sounds, and music tools for agent-first games.</p>
+      <div class="install">
+        <Command command="npx @typeonce/ritmo-tools --help" />
+      </div>
+      <div class="cta">
+        {tools.map((tool, index) => <a class:list={["button", { primary: index === 0 }]} href={tool.href}>{tool.title}</a>)}
+      </div>
+    </section>
+
+    {
+      tools.map((tool) => (
+        <section class="tool">
+          <div class="visual">
+            {tool.id === "pixel" && (
+              <div class="pair">
+                <PixelShowcase />
+                <SheetShowcase />
+              </div>
+            )}
+            {tool.id === "sound" && <SoundBoard compact sounds={["slash", "spin", "hit", "block", "zap", "victory"]} />}
+            {tool.id === "music" && <MusicShowcase />}
+          </div>
+          <div class="copy">
+            <h2>{tool.title}</h2>
+            <p>{tool.body}</p>
+            <dl class="commands">
+              {tool.commands.map((command) => (
+                <div>
+                  <dt>{command.name}</dt>
+                  <dd>{command.body}</dd>
+                </div>
+              ))}
+            </dl>
+            <Command command={tool.command} />
+            <a class="button open" href={tool.href}>
+              {tool.open} →
+            </a>
+          </div>
+        </section>
+      ))
+    }
+
+    <section class="agent">
+      <h2>Your agent already knows them</h2>
+      <p>The skills that teach each command ship inside <code>@typeonce/ritmo</code>. Pin the tools to the game's version:</p>
+      <Command command="pnpm add -D @typeonce/ritmo-tools" />
+      <div class="cta">
+        <a class="button" href="/docs/with-an-agent/">Set up a project</a>
+        <a class="button ghost" href="https://github.com/typeonce-dev/ritmo/blob/main/packages/tools/README.md">Tools README</a>
+      </div>
+    </section>
+  </main>
+</Base>
+
+<style>
+  .tools-page {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  .hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 104px 0 120px;
+  }
+
+  h1 {
+    font-size: clamp(1.9rem, 4.2vw, 2.8rem);
+    line-height: 1.25;
+    letter-spacing: -0.03em;
+    margin: 40px 0 20px;
+  }
+
+  .sub {
+    font-size: 1.15rem;
+    color: var(--muted);
+    margin: 0;
+  }
+
+  .install {
+    width: min(100%, 380px);
+    margin: 36px 0 0;
+    text-align: left;
+  }
+
+  .tool {
+    display: grid;
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    gap: 72px;
+    align-items: center;
+    padding: 120px 0;
+    border-top: 1px solid var(--border);
+  }
+
+  /* The sound lab's picture sits on the right, between the other two on the left. */
+  .tool:nth-of-type(3) .visual {
+    order: 2;
+  }
+
+  .visual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--raised) 45%, transparent);
+  }
+
+  .pair {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+    gap: 16px;
+    align-items: center;
+    width: 100%;
+    padding: 24px;
+  }
+
+  .pair :global(.showcase),
+  .pair :global(.sheet-showcase) {
+    max-width: none;
+  }
+
+  h2 {
+    font-size: clamp(1.5rem, 2.6vw, 2rem);
+    letter-spacing: -0.02em;
+    margin: 0 0 12px;
+    padding: 0;
+    border: 0;
+  }
+
+  .copy > p {
+    margin: 0 0 28px;
+    color: var(--muted);
+    font-size: 1.05rem;
+  }
+
+  .commands {
+    display: grid;
+    margin: 0 0 28px;
+  }
+
+  .commands div {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    gap: 16px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .commands div:first-child {
+    border-top: 1px solid var(--border);
+  }
+
+  .commands dt {
+    font: 600 0.85rem var(--mono);
+  }
+
+  .commands dd {
+    margin: 0;
+    font-size: 0.92rem;
+    color: var(--muted);
+  }
+
+  .open {
+    margin-top: 20px;
+  }
+
+  .agent {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 120px 0 144px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+  }
+
+  .agent p {
+    color: var(--muted);
+    margin: 0 0 28px;
+  }
+
+  .agent :global(.command) {
+    max-width: 380px;
+    margin: 0 auto;
+    text-align: left;
+  }
+
+  @media (max-width: 900px) {
+    .tool {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 40px;
+      padding: 80px 0;
+    }
+
+    .tool:nth-of-type(3) .visual {
+      order: 0;
+    }
+
+    h1 br {
+      display: none;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .tools-page {
+      padding: 0 16px;
+    }
+
+    .visual {
+      aspect-ratio: auto;
+    }
+
+    .pair {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>

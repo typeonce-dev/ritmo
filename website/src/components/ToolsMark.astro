@@ -1,0 +1,115 @@
+---
+// Ritmo's mark, square for square (brand/assets/ritmo-icon.svg), with a tool
+// in each of its three large squares: a pixel heart coming into focus, a
+// sound's three levels, and a song's notes under a playhead. The Tick
+// square stays as the mark has it.
+const heart = ["01010", "11111", "11111", "01110", "00100"]
+const PIXEL = 4.4
+---
+
+<svg class="tools-mark" viewBox="0 0 100 100" role="img" aria-label="The Ritmo mark, with pixel art, a sound, and a song in its squares">
+  <rect class="square" x="6" y="6" width="40" height="40" rx="6"></rect>
+  <rect class="square" x="54" y="6" width="40" height="40" rx="6"></rect>
+  <rect class="square" x="6" y="54" width="40" height="40" rx="6"></rect>
+  <rect class="tick" x="62" y="62" width="24" height="24" rx="4"></rect>
+
+  <g class="pixels">
+    {
+      heart.flatMap((row, y) =>
+        [...row].map((on, x) =>
+          on === "1" ? <rect x={26 - (5 * PIXEL) / 2 + x * PIXEL} y={26 - (5 * PIXEL) / 2 + y * PIXEL} width={PIXEL} height={PIXEL} /> : null
+        )
+      )
+    }
+  </g>
+
+  <g class="levels">
+    {[0, 1, 2].map((i) => <rect class={`level v${i}`} x={74 - 11 + i * 9} y="14" width="4" height="24" rx="2" />)}
+  </g>
+
+  <g class="roll">
+    <rect x="14" y="64" width="10" height="4" rx="2"></rect>
+    <rect x="22" y="72" width="8" height="4" rx="2"></rect>
+    <rect x="28" y="80" width="10" height="4" rx="2"></rect>
+    <rect class="playhead" x="13" y="60" width="2" height="28" rx="1"></rect>
+  </g>
+</svg>
+
+<style>
+  .tools-mark {
+    width: min(200px, 46vw);
+    height: auto;
+    overflow: visible;
+  }
+
+  .square {
+    fill: var(--fg);
+  }
+
+  .tick {
+    fill: var(--tick);
+  }
+
+  .pixels rect {
+    fill: var(--tick);
+  }
+
+  /* Soft, then sharp: what the fixer does, slowly, in place. */
+  .pixels {
+    animation: focus 7s ease-in-out infinite;
+  }
+
+  @keyframes focus {
+    0%,
+    10%,
+    90%,
+    100% {
+      filter: blur(1.2px);
+    }
+    30%,
+    70% {
+      filter: none;
+    }
+  }
+
+  .level {
+    fill: var(--bg);
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: level 2.4s ease-in-out infinite alternate;
+  }
+
+  .v1 { animation-delay: -1.2s; }
+  .v2 { animation-delay: -0.6s; }
+
+  @keyframes level {
+    from {
+      transform: scaleY(0.3);
+    }
+    to {
+      transform: scaleY(1);
+    }
+  }
+
+  .roll rect {
+    fill: var(--bg);
+  }
+
+  /* The playhead crosses the notes, slowly, and starts over. */
+  .roll .playhead {
+    fill: var(--tick);
+    animation: sweep 5s linear infinite;
+  }
+
+  @keyframes sweep {
+    to {
+      transform: translateX(24px);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tools-mark * {
+      animation: none !important;
+    }
+  }
+</style>

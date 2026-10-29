@@ -1,0 +1,39 @@
+---
+// The music lab's review page (packages/tools, `@typeonce/ritmo-tools`) with an
+// example song built around a hum, kept in the tab: the page
+// `ritmo-tools music review` serves, to try without the CLI. Like the other
+// tools, it owns the whole window and skips the guide's layout.
+import Meta from "../../../components/Meta.astro"
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <Meta
+      title="Music lab · Ritmo"
+      description="Game music built around a hum: play the song, edit notes on a grid, swap instruments, and comment on bars. Your coding agent writes and checks songs with ritmo-tools music; you review them here. A free tool from Ritmo."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
+    />
+  </head>
+  <body data-pagefind-ignore="all">
+    <div id="app"></div>
+    <script>
+      // The pixel fixer's and the sound lab's styles first: the tools share one look.
+      import "@typeonce/ritmo-tools/pixel/page.css"
+      import "@typeonce/ritmo-tools/sound/page.css"
+      import "@typeonce/ritmo-tools/music/page.css"
+      import { startDemo } from "@typeonce/ritmo-tools/music/demo"
+      import song from "@typeonce/ritmo-tools/music/example.json?raw"
+      import hum from "@typeonce/ritmo-tools/music/example.wav?url"
+
+      startDemo("village.song.json", song, new Map([["village.song.reference.wav", async () => (await fetch(hum)).arrayBuffer()]]))
+    </script>
+  </body>
+</html>

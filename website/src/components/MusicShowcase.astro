@@ -1,0 +1,208 @@
+---
+// The music lab's idea on a page: the example song built around a hum, drawn
+// as its arrangement (a lane per track, each note a bar, the drums as ticks)
+// with the hum's notes dashed over the melody. Play renders it in the browser
+// with the same renderer the CLI measures with.
+import song from "@typeonce/ritmo-tools/music/example.json"
+import { midiOf } from "@typeonce/ritmo-tools/music/song"
+
+const WIDTH = 640
+const LANE = 36
+const GAP = 8
+const beats = song.bars * 4
+const x = (beat: number): number => (beat / beats) * WIDTH
+
+const lanes = song.tracks.map((track, index) => {
+  const pitched = track.instrument !== "drums"
+  const midis = pitched ? track.notes.map((note) => midiOf(note.pitch) ?? 60) : []
+  const low = Math.min(...midis, 127)
+  const high = Math.max(...midis, 0)
+  const top = index * (LANE + GAP)
+  const y = (midi: number): number => (high === low ? top + LANE / 2 : top + 4 + (1 - (midi - low) / (high - low)) * (LANE - 10))
+  return {
+    name: track.name,
+    top,
+    pitched,
+    notes: track.notes.map((note) => ({ x: x(note.at), width: Math.max(2, x(note.length) - 1.5), y: pitched ? y(midiOf(note.pitch) ?? 60) : top + 6 }))
+  }
+})
+const melody = lanes[0]
+const hum =
+  melody === undefined
+    ? []
+    : (song.reference?.notes ?? []).map((note) => {
+        const midis = song.tracks[0]!.notes.map((entry) => midiOf(entry.pitch) ?? 60)
+        const low = Math.min(...midis)
+        const high = Math.max(...midis)
+        // The hum sits an octave or two under the flute: drawn in the melody's octave.
+        let midi = midiOf(note.pitch) ?? low
+        while (midi < low) midi += 12
+        return { x: x(note.at), width: Math.max(2, x(note.length) - 1.5), y: melody.top + 4 + (1 - (midi - low) / Math.max(1, high - low)) * (LANE - 10) }
+      })
+const height = lanes.length * (LANE + GAP) - GAP
+---
+
+<div class="music" data-seconds={(beats * 60) / song.tempo}>
+  <svg viewBox={`-2 -2 ${WIDTH + 4} ${height + 4}`} aria-hidden="true">
+    {Array.from({ length: song.bars + 1 }, (_, bar) => <line class="bar-line" x1={x(bar * 4)} x2={x(bar * 4)} y1="0" y2={height} />)}
+    {
+      lanes.map((lane, index) => (
+        <g class={`lane t${index}`}>
+          <rect class="lane-bg" x="0" y={lane.top} width={WIDTH} height={LANE} rx="4" />
+          {lane.pitched
+            ? lane.notes.map((note) => <rect class="note" x={note.x} y={note.y - 3} width={note.width} height="6" rx="1.5" />)
+            : lane.notes.map((note) => <rect class="hit" x={note.x} y={lane.top + 8} width="2" height={LANE - 16} rx="1" />)}
+        </g>
+      ))
+    }
+    {hum.map((note) => <rect class="hum" x={note.x} y={note.y - 4} width={note.width} height="8" rx="2" />)}
+    <line class="playhead" x1="0" x2="0" y1="-2" y2={height + 2} />
+  </svg>
+  <button type="button" class="play" aria-label="Play the song">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path class="icon-play" d="M7 4v16l13-8Z" fill="currentColor"></path><path class="icon-stop" d="M6 6h12v12H6Z" fill="currentColor"></path></svg>
+    <span class="label">Play</span>
+  </button>
+</div>
+
+<script>
+  const root = document.querySelector<HTMLElement>(".music")
+  if (root !== null) {
+    const button = root.querySelector<HTMLButtonElement>(".play")!
+    const label = button.querySelector<HTMLElement>(".label")!
+    const playhead = root.querySelector<SVGLineElement>(".playhead")!
+    const seconds = Number(root.dataset.seconds)
+    let context: AudioContext | undefined
+    let buffer: AudioBuffer | undefined
+    let playing: { readonly source: AudioBufferSourceNode; readonly start: number } | undefined
+
+    const stop = (): void => {
+      if (playing === undefined) return
+      playing.source.onended = null
+      playing.source.stop()
+      playing = undefined
+      root.classList.remove("playing")
+      label.textContent = "Play"
+      playhead.style.transform = ""
+    }
+
+    const frame = (): void => {
+      if (playing === undefined || context === undefined) return
+      const at = ((context.currentTime - playing.start) % seconds) / seconds
+      playhead.style.transform = `translateX(${at * 640}px)`
+      requestAnimationFrame(frame)
+    }
+
+    button.addEventListener("click", async () => {
+      if (playing !== undefined) return stop()
+      context ??= new AudioContext()
+      if (buffer === undefined) {
+        label.textContent = "Rendering…"
+        button.disabled = true
+        // A beat for the label to show before the work.
+        await new Promise((done) => setTimeout(done, 30))
+        const [{ decodeSong }, { renderSong }, { default: text }] = await Promise.all([
+          import("@typeonce/ritmo-tools/music/song"),
+          import("@typeonce/ritmo-tools/music/render"),
+          import("@typeonce/ritmo-tools/music/example.json?raw")
+        ])
+        const decoded = decodeSong(text)
+        button.disabled = false
+        if (!decoded.ok) return void (label.textContent = "Play")
+        const mix = renderSong(decoded.value)
+        buffer = context.createBuffer(2, mix.left.length, mix.sampleRate)
+        buffer.copyToChannel(mix.left, 0)
+        buffer.copyToChannel(mix.right, 1)
+      }
+      const source = context.createBufferSource()
+      source.buffer = buffer
+      source.loop = true
+      source.loopEnd = seconds
+      source.connect(context.destination)
+      source.start()
+      playing = { source, start: context.currentTime }
+      root.classList.add("playing")
+      label.textContent = "Stop"
+      requestAnimationFrame(frame)
+    })
+  }
+</script>
+
+<style>
+  .music {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    padding: 18px;
+    color: var(--muted);
+  }
+
+  .music > svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  .bar-line {
+    stroke: var(--border);
+    stroke-width: 1;
+  }
+
+  .lane-bg {
+    fill: color-mix(in srgb, var(--fg) 4%, transparent);
+  }
+
+  .note,
+  .hit {
+    fill: currentColor;
+  }
+
+  .t0 .note {
+    fill: var(--tick);
+  }
+
+  .hum {
+    fill: none;
+    stroke: var(--fg);
+    stroke-width: 1;
+    stroke-dasharray: 2 2;
+    opacity: 0.6;
+  }
+
+  .playhead {
+    stroke: var(--fg);
+    stroke-width: 2;
+    opacity: 0;
+  }
+
+  .playing .playhead {
+    opacity: 1;
+  }
+
+  .play {
+    position: absolute;
+    right: 14px;
+    bottom: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    font: 600 0.8rem var(--mono);
+    color: var(--ink);
+    background: var(--tick);
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .icon-stop,
+  .playing .icon-play {
+    display: none;
+  }
+
+  .playing .icon-stop {
+    display: inline;
+  }
+</style>

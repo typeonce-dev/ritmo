@@ -35,18 +35,24 @@ const source = Astro.url.pathname === "/docs/" ? "docs/index" : Astro.url.pathna
                       </a>
                     </li>
                   ))}
-                  {section.title === "Start" &&
-                    tools.map((tool) => (
-                      <li>
-                        <a class="tool-link" href={tool.href}>
-                          {tool.title} <span aria-hidden="true">↗</span>
-                        </a>
-                      </li>
-                    ))}
                 </ul>
               </div>
             ))
           }
+          <div class="section">
+            <p class="section-title">Tools</p>
+            <ul>
+              {
+                tools.map((tool) => (
+                  <li>
+                    <a class="tool-link" href={tool.href}>
+                      {tool.title} <span aria-hidden="true">↗</span>
+                    </a>
+                  </li>
+                ))
+              }
+            </ul>
+          </div>
         </nav>
       </details>
     </aside>

@@ -7,9 +7,9 @@
 
 # Ritmo
 
-**The agent-first, type-safe ECS runtime for games.**
+**The all-in-one toolkit for agent-first game development.**
 
-🎮 You direct the mechanics and feel. Your coding agent writes the simulation.
+🎮 You direct the mechanics and feel. Your coding agent writes the game.
 
 Ritmo keeps the agent on track: wrong code does not compile and the error
 names the fix, and headless runs show lints, invariants, and why each value
@@ -111,7 +111,10 @@ All packages are released together with the same version.
 | `@typeonce/ritmo-netcode` | Online multiplayer: rollback and lockstep sessions over WebSocket, WebRTC, or any transport, with resyncs and desync checks |
 | `@typeonce/ritmo-devtools` | Headless debug sessions, reports, and `ritmo-devtools lint` |
 | `@typeonce/oxlint-plugin-ritmo` | Lint rules for deterministic, headless simulation code |
-| `@typeonce/ritmo-tools` | `ritmo-tools`, the asset command for agents: pixel art, animation sheets, and sound effects |
+| `@typeonce/ritmo-tools` | `ritmo-tools`, the asset command for agents: pixel art, animation sheets, sound effects, and music |
+
+Try the tools' pages in the browser: the [pixel fixer](https://ritmo.typeonce.dev/tools/pixel/),
+the [sound lab](https://ritmo.typeonce.dev/tools/sound/), and the [music lab](https://ritmo.typeonce.dev/tools/music/).
 
 ## Get started with your agent
 

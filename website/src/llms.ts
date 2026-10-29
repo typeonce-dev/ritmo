@@ -99,7 +99,7 @@ const games = Object.entries(demos).map(
 
 const intro = `# Ritmo
 
-> ${core.description}. Coding agents write the game; wrong code does not compile and the error names the fix, and headless devtools sessions show lints, invariants, and why a value changed. Ritmo runs the simulation; the game's own renderer draws it.
+> ${core.description}. Coding agents write the game; wrong code does not compile and the error names the fix, and headless devtools sessions show lints, invariants, and why a value changed. Ritmo runs the simulation; the game's own renderer draws it. Around the core: browser input and local multiplayer, renderer bridges, rollback and lockstep netcode, devtools, lint rules, and \`ritmo-tools\`, the command for pixel art, animation sheets, sound effects, and music.
 
 These links are for version ${core.version}. In a project that has Ritmo installed, read the same files in \`node_modules/@typeonce/*\` instead: they match the installed version, and the API changes between versions. The API reference is the JSDoc in \`node_modules/@typeonce/*/src\`; read a module's header and an export's JSDoc before using it, and each package's \`CHANGELOG.md\` when upgrading. Compiler errors and lint messages name the fix: apply it, never cast around it.
 
