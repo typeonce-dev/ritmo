@@ -1,0 +1,387 @@
+---
+// The packages around the core, each drawn as what it does (a gamepad, two
+// players, two peers agreeing, a debugger's answer, a node per entity, a lint
+// message) with its name and package, linked to its page.
+---
+
+<div class="box">
+  <a class="tile" href="/features/devices/">
+    <div class="art">
+      <svg viewBox="0 0 120 64" aria-hidden="true">
+        <path class="stroke" d="M44 10h32c11 0 18 5 21 15l5 17c2 9-3 15-10 13-4-1-7-4-10-8l-4-5H42l-4 5c-3 4-6 7-10 8-7 2-12-4-10-13l5-17c3-10 10-15 21-15Z"></path>
+        <rect class="pad" x="30" y="23" width="12" height="4" rx="1.2"></rect>
+        <rect class="pad" x="34" y="19" width="4" height="12" rx="1.2"></rect>
+        <circle class="stroke stick" cx="51" cy="34" r="3.5"></circle>
+        <circle class="stroke stick" cx="69" cy="34" r="3.5"></circle>
+        <circle class="btn b1" cx="84" cy="20" r="2.6"></circle>
+        <circle class="btn b2" cx="89" cy="25" r="2.6"></circle>
+        <circle class="btn b3" cx="79" cy="25" r="2.6"></circle>
+        <circle class="btn b4" cx="84" cy="30" r="2.6"></circle>
+      </svg>
+    </div>
+    <div class="copy">
+      <span class="pkg">ritmo-browser</span>
+      <h3>Every device, one player</h3>
+    </div>
+  </a>
+  <a class="tile" href="/features/multiplayer/">
+    <div class="art">
+      <svg viewBox="0 0 120 64" aria-hidden="true">
+        <rect class="stroke" x="24" y="8" width="72" height="44" rx="4"></rect>
+        <circle class="p1" cx="48" cy="30" r="5"></circle>
+        <circle class="p2" cx="72" cy="30" r="5"></circle>
+        <path class="stroke" d="M50 58h20"></path>
+      </svg>
+    </div>
+    <div class="copy">
+      <span class="pkg">ritmo-browser</span>
+      <h3>Local multiplayer</h3>
+    </div>
+  </a>
+  <a class="tile" href="/features/rollback/">
+    <div class="art">
+      <svg viewBox="0 0 120 64" aria-hidden="true">
+        <text class="peer" x="6" y="21">A</text>
+        <text class="peer" x="6" y="49">B</text>
+        <g class="ticks">
+          {Array.from({ length: 9 }, (_, i) => <rect class={`tk t${i}`} x={18 + i * 11} y="12" width="8" height="12" rx="1.5" />)}
+          {Array.from({ length: 9 }, (_, i) => <rect class={`tk t${i}`} x={18 + i * 11} y="40" width="8" height="12" rx="1.5" />)}
+        </g>
+        <path class="agree" d="M84 8v48"></path>
+      </svg>
+    </div>
+    <div class="copy">
+      <span class="pkg">ritmo-netcode</span>
+      <h3>Online multiplayer</h3>
+    </div>
+  </a>
+  <a class="tile" href="/docs/devtools/">
+    <div class="art">
+      <div class="term" aria-hidden="true">
+        <p><span class="dim">session.why(</span>player, Position<span class="dim">)</span></p>
+        <p class="dim">f120 MovePlayer write {"{x:144…}"}</p>
+        <p class="dim">f121 MovePlayer write {"{x:139…}"}<span class="cursor">▍</span></p>
+      </div>
+    </div>
+    <div class="copy">
+      <span class="pkg">ritmo-devtools</span>
+      <h3>Headless debugging</h3>
+    </div>
+  </a>
+  <a class="tile" href="/docs/browser/">
+    <div class="art">
+      <svg viewBox="0 0 120 64" aria-hidden="true">
+        {[14, 32, 50].map((y) => <rect class="ent" x="14" y={y - 5} width="22" height="10" rx="2" />)}
+        {[14, 32, 50].map((y, i) => <path class={`link l${i}`} d={`M38 ${y}H80`} />)}
+        {[14, 32, 50].map((y, i) => <rect class={`node n${i}`} x="82" y={y - 6} width="12" height="12" rx="2" />)}
+      </svg>
+    </div>
+    <div class="copy">
+      <span class="pkg">ritmo-render · ritmo-pixi</span>
+      <h3>Bring your renderer</h3>
+    </div>
+  </a>
+  <a class="tile" href="/docs/with-an-agent/">
+    <div class="art">
+      <div class="term" aria-hidden="true">
+        <p><span class="bad">Math.random()</span></p>
+        <p class="dim">ritmo/use-random-for-randomness:</p>
+        <p class="dim">draw from <span class="good">Random.draw(rng)</span></p>
+      </div>
+    </div>
+    <div class="copy">
+      <span class="pkg">oxlint-plugin-ritmo</span>
+      <h3>Lint rules with the fix</h3>
+    </div>
+  </a>
+</div>
+
+<style>
+  .box {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+  }
+
+  .tile {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    padding: 28px;
+    color: var(--fg);
+    text-decoration: none;
+    background: color-mix(in srgb, var(--raised) 40%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    transition: border-color 0.15s;
+  }
+
+  .tile:hover {
+    border-color: color-mix(in srgb, var(--fg) 38%, transparent);
+  }
+
+  .art {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 120px;
+    color: var(--muted);
+  }
+
+  .art svg {
+    height: 100%;
+    max-width: 100%;
+    overflow: visible;
+  }
+
+  .copy h3 {
+    margin: 6px 0 0;
+    font-size: 1.1rem;
+  }
+
+  .pkg {
+    font: 600 0.72rem var(--mono);
+    color: var(--accent);
+  }
+
+  /* Text tiles: a few lines of a terminal. */
+
+  .term {
+    width: 100%;
+    padding: 12px 14px;
+    background: var(--code-bg);
+    border: 1px solid #2f343c;
+    border-radius: 6px;
+    font: 0.78rem/1.7 var(--mono);
+    color: var(--paper);
+  }
+
+  .term p {
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .dim {
+    color: var(--steel);
+  }
+
+  .bad {
+    text-decoration: underline wavy var(--tick);
+    text-underline-offset: 3px;
+  }
+
+  .good {
+    color: #c3e88d;
+  }
+
+  .cursor {
+    color: var(--tick);
+    animation: blink 1s steps(1) infinite;
+  }
+
+  @keyframes blink {
+    50% {
+      opacity: 0;
+    }
+  }
+
+  /* Drawings */
+
+  .stroke {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .pad {
+    fill: currentColor;
+  }
+
+  .stick {
+    stroke-width: 1.8;
+  }
+
+  .btn {
+    fill: currentColor;
+    animation: press 2.4s infinite;
+  }
+
+  .b2 {
+    animation-delay: 0.6s;
+  }
+
+  .b3 {
+    animation-delay: 1.2s;
+  }
+
+  .b4 {
+    animation-delay: 1.8s;
+  }
+
+  @keyframes press {
+    0%,
+    20% {
+      fill: var(--tick);
+    }
+    30%,
+    100% {
+      fill: currentColor;
+    }
+  }
+
+  .p1,
+  .p2 {
+    fill: var(--tick);
+  }
+
+  .p2 {
+    fill: var(--fg);
+  }
+
+  .p1 {
+    animation: walk-a 3s ease-in-out infinite;
+  }
+
+  .p2 {
+    animation: walk-b 3s ease-in-out infinite;
+  }
+
+  @keyframes walk-a {
+    50% {
+      transform: translate(-8px, 5px);
+    }
+  }
+
+  @keyframes walk-b {
+    50% {
+      transform: translate(8px, -5px);
+    }
+  }
+
+  .peer {
+    font: 700 11px var(--mono);
+    fill: currentColor;
+  }
+
+  .tk {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.2;
+    animation: tick 3.6s infinite;
+  }
+
+  .t0 { animation-delay: 0s; }
+
+  .t1 { animation-delay: 0.2s; }
+
+  .t2 { animation-delay: 0.4s; }
+
+  .t3 { animation-delay: 0.6s; }
+
+  .t4 { animation-delay: 0.8s; }
+
+  .t5 { animation-delay: 1s; }
+
+  .t6 { animation-delay: 1.2s; }
+
+  .t7 { animation-delay: 1.4s; }
+
+  .t8 { animation-delay: 1.6s; }
+
+  @keyframes tick {
+    0%,
+    10% {
+      fill: transparent;
+    }
+    16%,
+    70% {
+      fill: currentColor;
+    }
+    76%,
+    100% {
+      fill: transparent;
+    }
+  }
+
+  .agree {
+    stroke: #4ade80;
+    stroke-width: 2;
+    stroke-dasharray: 3 3;
+    animation: agree 3.6s infinite;
+  }
+
+  @keyframes agree {
+    0%,
+    40% {
+      opacity: 0;
+    }
+    48%,
+    70% {
+      opacity: 1;
+    }
+    78%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  .ent {
+    fill: currentColor;
+    opacity: 0.5;
+  }
+
+  .link {
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-dasharray: 4 4;
+    animation: flow 1s linear infinite;
+  }
+
+  @keyframes flow {
+    to {
+      stroke-dashoffset: -8;
+    }
+  }
+
+  .node {
+    fill: var(--tick);
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: nudge 2.4s ease-in-out infinite;
+  }
+
+  .n1 {
+    animation-delay: 0.4s;
+  }
+
+  .n2 {
+    animation-delay: 0.8s;
+  }
+
+  @keyframes nudge {
+    50% {
+      transform: translateX(8px);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .box * {
+      animation: none !important;
+    }
+  }
+
+  @media (max-width: 960px) {
+    .box {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 640px) {
+    .box {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>

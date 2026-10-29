@@ -4,7 +4,9 @@ import { repository } from "../nav.ts"
 
 const path = Astro.url.pathname
 const links = [
-  { href: "/docs/", label: "Docs", active: path.startsWith("/docs/") },
+  { href: "/docs/", label: "Docs", active: path.startsWith("/docs/") && !path.startsWith("/docs/packages/") },
+  { href: "/docs/packages/", label: "Packages", active: path.startsWith("/docs/packages/") },
+  { href: "/tools/", label: "Tools", active: path.startsWith("/tools/") },
   { href: "/examples/", label: "Examples", active: path.startsWith("/examples/") }
 ]
 ---

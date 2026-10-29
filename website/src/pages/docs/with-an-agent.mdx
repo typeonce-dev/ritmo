@@ -136,6 +136,26 @@ The skill also holds the principles for where code and state belong:
   has its entry.
 - **Make the next mistake fail loudly.** As a type, a lint, or a test.
 
+## Art, sound, and music
+
+The agent makes the assets too, with `ritmo-tools`, and three more skills
+that ship with Ritmo teach it how. You look and listen:
+
+- **Pixel art.** The agent fixes AI-made pictures and animation sheets
+  with `ritmo-tools pixel` and reads the report. When the grid is unsure,
+  the command says a person should look: open the picture in the
+  [pixel fixer](/tools/pixel/), tune it, and save the recipe it runs next.
+- **Sound.** The agent writes each sound as a JSON recipe, checks it, and
+  offers takes. `ritmo-tools sound review` opens the
+  [sound lab](/tools/sound/) on the game's bank: you listen, pick, tune,
+  and leave notes, and the agent reads them with `ritmo-tools sound notes`.
+- **Music.** Hum the tune you have in mind. `ritmo-tools music listen`
+  writes down its tempo, key, and melody, and the agent builds a song
+  around it. In the [music lab](/tools/music/) you play it, move notes,
+  swap instruments, and comment on bars.
+
+[Tools](/tools/) shows all three at work.
+
 ## What the agent reads
 
 The agent reads what npm ships: the JSDoc in each package's source, the

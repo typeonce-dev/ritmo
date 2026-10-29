@@ -1,18 +1,28 @@
 ---
+import Command from "../components/Command.astro"
+import Ecosystem from "../components/Ecosystem.astro"
 import Game from "../components/Game.astro"
 import HeroMotion from "../components/HeroMotion.astro"
+import MusicShowcase from "../components/MusicShowcase.astro"
 import PixelShowcase from "../components/PixelShowcase.astro"
+import SheetShowcase from "../components/SheetShowcase.astro"
+import SoundBoard from "../components/SoundBoard.astro"
 import Base from "../layouts/Base.astro"
 import { Content as Complete } from "../snippets/home-complete.mdx"
 import { Content as Declared } from "../snippets/home-declared.mdx"
 import { Content as Order } from "../snippets/home-order.mdx"
-import { Content as Render } from "../snippets/home-render.mdx"
 import { Content as Result } from "../snippets/home-result.mdx"
 import { Content as Services } from "../snippets/home-services.mdx"
 import { Content as Run } from "../snippets/home-step-run.mdx"
 import { Content as System } from "../snippets/home-step-system.mdx"
 import { Content as World } from "../snippets/home-step-world.mdx"
-import { Content as Why } from "../snippets/home-why.mdx"
+
+const assets = [
+  { id: "pixel", title: "Pixel art", body: "Image generators fake pixel art. The fixer turns it into the real thing: a true grid, one palette.", href: "/tools/pixel/", link: "Pixel fixer" },
+  { id: "animation", title: "Animations", body: "AI animation sheets come out uneven. The fixer finds every frame and makes them play smooth.", href: "/tools/pixel/", link: "Pixel fixer" },
+  { id: "sound", title: "Sound effects", body: "Recipes your agent writes and checks. You listen and pick the takes. Click a pad.", href: "/tools/sound/", link: "Sound lab" },
+  { id: "music", title: "Music", body: "Hum a tune. Your agent arranges it; you edit the notes and say what to change.", href: "/tools/music/", link: "Music lab" }
+]
 
 const steps = [
   { title: "Describe the world", body: "Components, resources and events, each with a name and a type. Bound once into Game.", code: World },
@@ -29,15 +39,16 @@ const checks = [
 ]
 ---
 
-<Base title="Ritmo · The type-safe ECS runtime for TypeScript" bare>
+<Base
+  title="Ritmo · The all-in-one toolkit for agent-first game development"
+  description="A type-safe ECS runtime for TypeScript, with input, multiplayer, rollback netcode, debugging, and tools for pixel art, sound, and music."
+  bare
+>
   <main data-pagefind-ignore>
     <section class="hero">
       <HeroMotion />
-      <h1>The type-safe ECS runtime<br />for TypeScript</h1>
-      <p class="sub">
-        What if a bug in your game logic broke the build instead of the playtest?<br />
-        Yes, it's possible, with Ritmo
-      </p>
+      <h1>The all-in-one toolkit for<br />agent-first game development</h1>
+      <p class="sub">Type-safe ECS runtime, pixel art, animations, sounds, music,<br />and everything a game needs around it.</p>
       <div class="cta">
         <a class="button primary" href="/docs/">Get started</a>
         <button type="button" class="button" data-play="town">Play the demo</button>
@@ -48,19 +59,31 @@ const checks = [
       <Game id="town" ratio="3 / 2" />
     </section>
 
-    <section class="section pixel">
-      <div class="pixel-copy">
-        <h2>Fix your AI pixel art</h2>
-        <p>
-          Image generators fake pixel art: blurry, off the grid, off the palette. The pixel fixer finds the real grid, gives every
-          pixel one palette color, and drops the background.
-        </p>
-        <p class="muted-note">Free, all running locally in your browser.</p>
-        <div class="cta">
-          <a class="button primary" href="/tools/pixel/">Open the pixel fixer</a>
-        </div>
+    <section class="section">
+      <div class="heading">
+        <h2>All the support you need to create full game experiences</h2>
+        <p>Pixel art, animations, sounds, and music tools for agent-first games.</p>
+        <div class="heading-command"><Command command="npx @typeonce/ritmo-tools" /></div>
       </div>
-      <PixelShowcase />
+      <div class="assets">
+        {
+          assets.map((asset) => (
+            <article class="asset">
+              <div class="asset-visual">
+                {asset.id === "pixel" && <PixelShowcase />}
+                {asset.id === "animation" && <SheetShowcase />}
+                {asset.id === "sound" && <SoundBoard compact sounds={["slash", "hit", "block", "zap", "charged", "victory"]} />}
+                {asset.id === "music" && <MusicShowcase />}
+              </div>
+              <div class="asset-copy">
+                <h3>{asset.title}</h3>
+                <p>{asset.body}</p>
+                <a href={asset.href}>{asset.link} →</a>
+              </div>
+            </article>
+          ))
+        }
+      </div>
     </section>
 
     <section class="section">
@@ -124,27 +147,11 @@ const checks = [
 
     <section class="section">
       <div class="heading">
-        <h2>Built to be debugged and drawn</h2>
-        <p>The simulation never touches the page, so it runs headless and draws with anything.</p>
+        <h2>Out of the box</h2>
+        <p>Packages that plug into the core. Add one when the game needs it.</p>
       </div>
-      <ol class="steps">
-        <li class="step">
-          <div class="step-copy">
-            <h3>Ask why a value changed</h3>
-            <p>Play the game in Node with scripted input, check rules every frame, and read the answer as text.</p>
-            <a href="/docs/devtools/">Headless debugging →</a>
-          </div>
-          <div class="step-code"><Why /></div>
-        </li>
-        <li class="step">
-          <div class="step-copy">
-            <h3>Bring your renderer</h3>
-            <p>Ritmo does not draw. It keeps one node per entity in sync, and ships the loop and input adapters.</p>
-            <a href="/docs/browser/">Loop, input, rendering →</a>
-          </div>
-          <div class="step-code"><Render /></div>
-        </li>
-      </ol>
+      <Ecosystem />
+      <p class="more"><a class="button" href="/docs/packages/">All packages and tools</a></p>
     </section>
 
     <section class="end">
@@ -213,55 +220,6 @@ const checks = [
     color: var(--muted);
     max-width: 58ch;
     margin: 0;
-  }
-
-  .cta {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 12px;
-    margin: 36px 0 0;
-  }
-
-  .button {
-    display: inline-flex;
-    align-items: center;
-    height: 44px;
-    padding: 0 22px;
-    font: 600 0.9rem var(--mono);
-    text-decoration: none;
-    color: var(--fg);
-    border: 1px solid color-mix(in srgb, var(--fg) 38%, transparent);
-    border-radius: 6px;
-  }
-
-  button.button {
-    background: none;
-    cursor: pointer;
-  }
-
-  .button:hover {
-    border-color: var(--fg);
-  }
-
-  .button.ghost {
-    border-color: var(--border);
-    color: var(--muted);
-  }
-
-  .button.ghost:hover {
-    color: var(--fg);
-    border-color: color-mix(in srgb, var(--fg) 38%, transparent);
-  }
-
-  .button.primary {
-    background: var(--tick);
-    border-color: var(--tick);
-    color: var(--ink);
-  }
-
-  .button.primary:hover {
-    background: #ff6f50;
   }
 
   .play {
@@ -417,29 +375,75 @@ const checks = [
     margin: 0;
   }
 
-  /* The pixel fixer: copy on the left, its effect on the right. */
+  /* Assets: four tools, two by two, each its effect over a line. */
 
-  .pixel {
+  .heading-command {
+    max-width: 380px;
+    margin-top: 24px;
+  }
+
+  .assets {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+  }
+
+  .asset {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .asset-visual {
+    display: flex;
     align-items: center;
-    gap: 64px;
+    justify-content: center;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--raised) 45%, transparent);
+    border-bottom: 1px solid var(--border);
   }
 
-  .pixel-copy p {
-    margin: 0 0 12px;
+  /* The picture tools fill the box as a picture does, without their own frame. */
+  .asset-visual :global(.showcase) {
+    width: auto;
+    height: 100%;
+    max-width: none;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .asset-visual :global(.sheet-showcase) {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    aspect-ratio: auto;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .asset-copy {
+    padding: 22px 24px 26px;
+  }
+
+  .asset-copy h3 {
+    margin: 0 0 6px;
+  }
+
+  .asset-copy p {
+    margin: 0 0 14px;
     color: var(--muted);
-    font-size: 1.05rem;
-    max-width: 46ch;
   }
 
-  .pixel-copy .muted-note {
-    font-size: 0.92rem;
+  .asset-copy a {
+    font: 600 0.88rem var(--mono);
   }
 
-  .pixel-copy .cta {
-    justify-content: flex-start;
-    margin-top: 28px;
+  .more {
+    margin: 56px 0 0;
+    text-align: center;
   }
 
   /* End */
@@ -454,11 +458,13 @@ const checks = [
     margin-bottom: 0;
   }
 
-  @media (max-width: 900px) {
-    .pixel {
+  @media (max-width: 760px) {
+    .assets {
       grid-template-columns: minmax(0, 1fr);
-      gap: 40px;
     }
+  }
+
+  @media (max-width: 900px) {
 
     .step,
     .checks {

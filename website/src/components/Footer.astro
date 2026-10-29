@@ -1,6 +1,6 @@
 ---
 import { brand } from "../brand.ts"
-import { repository, tools } from "../nav.ts"
+import { repository } from "../nav.ts"
 ---
 
 <footer class="footer">
@@ -11,7 +11,7 @@ import { repository, tools } from "../nav.ts"
   <a href={repository}>GitHub</a>
   <a href="https://www.npmjs.com/package/@typeonce/ritmo">npm</a>
   <a href="/brand/">Brand</a>
-  {tools.map((tool) => <a href={tool.href}>{tool.title}</a>)}
+  <a href="/tools/">Tools</a>
   <a href="/llms.txt">llms.txt</a>
 </footer>
 

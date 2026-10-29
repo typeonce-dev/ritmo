@@ -453,6 +453,9 @@ Ctrl/Cmd+Z undoes. Every change is written to the bank and its review as it
 happens, and changes the agent writes while the page is open show up in it.
 `--host` serves it on the network too, to listen on a phone.
 
+The website hosts the same page with Spirit call's bank, kept in the tab, to
+try without the CLI: https://ritmo.typeonce.dev/tools/sound/.
+
 ### Code
 
 - `src/sound/core/`: recipes (`recipe.ts`), the renderer (`render.ts`, plain
@@ -461,7 +464,9 @@ happens, and changes the agent writes while the page is open show up in it.
   files (`wav.ts`).
 - `src/sound/cli/`: the `sound` command (Effect), and the review page's
   server (`serve.ts`).
-- `src/sound/ui/`: the review page, built from the pixel fixer's kit. The
+- `src/sound/ui/`: the review page, built from the pixel fixer's kit
+  (`lab.ts`), reading and writing through a store (`store.ts`): the CLI's
+  server (`main.ts`), or the tab for the website's demo (`demo.ts`). The
   published package carries it built (`dist/sound/page`, made by `prepack`);
   inside the repository Vite serves it from source.
 
@@ -592,6 +597,9 @@ and Ctrl/Cmd+Z undoes. MIDI and WAV download the song. Every change is
 written to the song and its review as it happens, and a song the agent
 rewrites while the page is open shows up in it.
 
+The website hosts the same page with the village song and its hum, kept in
+the tab, to try without the CLI: https://ritmo.typeonce.dev/tools/music/.
+
 ### Code
 
 - `src/music/core/`: songs (`song.ts`), the instruments (`instruments.ts`),
@@ -601,7 +609,9 @@ rewrites while the page is open shows up in it.
   browser.
 - `src/music/cli/`: the `music` command (Effect), and the review page's
   server (`serve.ts`).
-- `src/music/ui/`: the review page: the canvases (`grid.ts`), playing
-  (`player.ts`), recording (`record.ts`). The published package carries it
+- `src/music/ui/`: the review page (`lab.ts`): the canvases (`grid.ts`),
+  playing (`player.ts`), recording (`record.ts`), reading and writing
+  through a store (`store.ts`): the CLI's server (`main.ts`), or the tab for
+  the website's demo (`demo.ts`). The published package carries it
   built (`dist/music/page`, made by `prepack`); inside the repository Vite
   serves it from source.

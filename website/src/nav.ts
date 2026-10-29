@@ -9,7 +9,8 @@ export const sections = [
     title: "Start",
     pages: [
       { href: "/docs/", title: "Getting started" },
-      { href: "/docs/with-an-agent/", title: "With a coding agent" }
+      { href: "/docs/with-an-agent/", title: "With a coding agent" },
+      { href: "/docs/packages/", title: "Packages and tools" }
     ]
   },
   {
@@ -47,7 +48,12 @@ export const sections = [
 
 export const pages: ReadonlyArray<Page> = sections.flatMap((section) => section.pages)
 
-/** Tools with pages of their own, outside the guide: linked at the end of the sidebar's Start section, not in the reading order. */
-export const tools: ReadonlyArray<Page> = [{ href: "/tools/pixel/", title: "Pixel fixer" }]
+/** Tools with pages of their own, outside the guide: linked in the sidebar's Tools section and the footer, not in the reading order. */
+export const tools: ReadonlyArray<Page> = [
+  { href: "/tools/", title: "All tools" },
+  { href: "/tools/pixel/", title: "Pixel fixer" },
+  { href: "/tools/sound/", title: "Sound lab" },
+  { href: "/tools/music/", title: "Music lab" }
+]
 
 export const repository = "https://github.com/typeonce-dev/ritmo"
