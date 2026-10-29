@@ -52,20 +52,200 @@ export interface SheetFrame {
   readonly nudge: { readonly x: number; readonly y: number }
 }
 
-/** Everything that makes a sheet into an animation, beyond the recipe every frame shares. */
-export interface Sheet {
-  readonly frames: ReadonlyArray<SheetFrame>
-  readonly anchor: Anchor
+/**
+ * One animation on a sheet: a name a game plays it by, its frames (indices
+ * into the sheet's frames, in the order they play), whether it is exported,
+ * and how it plays.
+ */
+export interface SheetAnimation {
+  readonly name: string
+  readonly frames: ReadonlyArray<number>
+  readonly include: boolean
   /** Frames per second. */
   readonly fps: number
   readonly loop: Loop
-  /** Empty pixels kept around the frames, on every side. */
+}
+
+/**
+ * Everything that makes a sheet into animations, beyond the recipe every
+ * frame shares. Every frame belongs to exactly one animation: change frames
+ * and animations with `withFrames`, `insertFrame`, `removeFrame`,
+ * `splitAnimation`, `joinAnimation`, and `renameAnimation`, which keep that so.
+ */
+export interface Sheet {
+  readonly frames: ReadonlyArray<SheetFrame>
+  readonly animations: ReadonlyArray<SheetAnimation>
+  readonly anchor: Anchor
+  /** Empty pixels kept around each animation's frames, on every side. */
   readonly padding: number
 }
 
-export const defaultSheet: Sheet = { frames: [], anchor: "ground", fps: 8, loop: "forward", padding: 1 }
+export const DEFAULT_FPS = 8
+
+export const defaultSheet: Sheet = { frames: [], animations: [], anchor: "ground", padding: 1 }
 
 export const frameOf = (box: FrameBox): SheetFrame => ({ box, include: true, nudge: { x: 0, y: 0 } })
+
+/** An animation of these frames, exported, at the default speed, looping. */
+export const animationOf = (name: string, frames: ReadonlyArray<number>): SheetAnimation => ({ name, frames, include: true, fps: DEFAULT_FPS, loop: "forward" })
+
+/** Two boxes on one row: their middles at about one height and their heights alike (a quarter of the smaller apart). */
+const sameRow = (a: FrameBox, b: FrameBox): boolean => {
+  const least = Math.min(a.height, b.height)
+  return Math.abs(a.y + a.height / 2 - (b.y + b.height / 2)) <= 0.25 * least && Math.max(a.height, b.height) <= 1.5 * least
+}
+
+/** Boxes in rows: each row's indices left to right, the rows top to bottom (a row level with another, left first). */
+const rowsOf = (boxes: ReadonlyArray<FrameBox>): Array<Array<number>> => {
+  const rows: Array<Array<number>> = []
+  boxes.forEach((box, i) => {
+    const row = rows.find((other) => sameRow(boxes[other[0]!]!, box))
+    if (row === undefined) rows.push([i])
+    else row.push(i)
+  })
+  for (const row of rows) row.sort((a, b) => boxes[a]!.x - boxes[b]!.x)
+  const top = (row: ReadonlyArray<number>): FrameBox => boxes[row[0]!]!
+  return rows.sort((a, b) => {
+    const first = top(a)
+    const second = top(b)
+    return Math.abs(first.y - second.y) <= 0.25 * Math.min(first.height, second.height) ? first.x - second.x : first.y - second.y
+  })
+}
+
+/** Boxes in reading order: row by row, left to right, a row level with another after the one on its left. */
+export const readingOrder = (boxes: ReadonlyArray<FrameBox>): Array<FrameBox> => rowsOf(boxes).flatMap((row) => row.map((i) => boxes[i]!))
+
+/**
+ * The animations a sheet's frames make, by default: one per row. Image
+ * generators often put two blocks side by side (walking on the left,
+ * throwing on the right), and where their rows do not line up the blocks
+ * show; a row across both is split where the blocks meet, when its two
+ * parts hold as many frames as the blocks' rows (a row of a different count,
+ * like an explosion under both, stays whole). Named "animation-1", ... in
+ * reading order.
+ */
+export const groupFrames = (boxes: ReadonlyArray<FrameBox>): Array<SheetAnimation> => {
+  const rows = rowsOf(boxes)
+  const left = (row: ReadonlyArray<number>): number => Math.min(...row.map((i) => boxes[i]!.x))
+  const right = (row: ReadonlyArray<number>): number => Math.max(...row.map((i) => boxes[i]!.x + boxes[i]!.width))
+  const span = (row: ReadonlyArray<number>): { top: number; bottom: number } => ({
+    top: Math.min(...row.map((i) => boxes[i]!.y)),
+    bottom: Math.max(...row.map((i) => boxes[i]!.y + boxes[i]!.height))
+  })
+  const widths = boxes.map((box) => box.width).sort((a, b) => a - b)
+  const reach = 0.5 * (widths[Math.floor(widths.length / 2)] ?? 0)
+  // Where two rows sit side by side: the blocks' meeting line, and how many frames each block's rows hold.
+  const seams: Array<{ readonly x: number; readonly before: number; readonly after: number }> = []
+  for (const a of rows) {
+    for (const b of rows) {
+      if (a === b) continue
+      const sa = span(a)
+      const sb = span(b)
+      const overlap = Math.min(sa.bottom, sb.bottom) - Math.max(sa.top, sb.top)
+      if (overlap > 0.3 * Math.min(sa.bottom - sa.top, sb.bottom - sb.top) && right(a) <= left(b) + reach) {
+        seams.push({ x: (right(a) + left(b)) / 2, before: a.length, after: b.length })
+      }
+    }
+  }
+  const parts = rows.flatMap((row): Array<Array<number>> => {
+    for (const seam of seams) {
+      const at = row.findIndex((i) => boxes[i]!.x + boxes[i]!.width / 2 > seam.x)
+      if (at !== seam.before || row.length - at !== seam.after) continue
+      const edge = boxes[row[at]!]!.x
+      if (Math.abs(edge - seam.x) <= reach) return [row.slice(0, at), row.slice(at)]
+    }
+    return [row]
+  })
+  return parts.map((frames, i) => animationOf(`animation-${i + 1}`, frames))
+}
+
+/** The sheet with these frames, grouped into animations by `groupFrames` (anchor and margin kept). */
+export const withFrames = (sheet: Sheet, frames: ReadonlyArray<SheetFrame>): Sheet => ({
+  ...sheet,
+  frames,
+  animations: groupFrames(frames.map((frame) => frame.box))
+})
+
+/** A name no other animation has: `name`, or `name-2`, `name-3`, ... */
+const freeName = (animations: ReadonlyArray<SheetAnimation>, name: string, skip = -1): string => {
+  const taken = new Set(animations.filter((_, i) => i !== skip).map((animation) => animation.name))
+  if (!taken.has(name)) return name
+  let n = 2
+  while (taken.has(`${name}-${n}`)) n++
+  return `${name}-${n}`
+}
+
+/**
+ * The sheet with a frame added at `index` (later frames move up one), in
+ * the animation of the frame before it, right after that frame; the first
+ * frame of all joins the first animation, and a sheet with none gets one.
+ */
+export const insertFrame = (sheet: Sheet, index: number, frame: SheetFrame): Sheet => {
+  const frames = [...sheet.frames]
+  frames.splice(index, 0, frame)
+  const shifted = sheet.animations.map((animation) => ({ ...animation, frames: animation.frames.map((i) => (i >= index ? i + 1 : i)) }))
+  if (shifted.length === 0) return { ...sheet, frames, animations: [animationOf("animation-1", [index])] }
+  const before = index - 1
+  const owner = shifted.findIndex((animation) => animation.frames.includes(before))
+  const animations = shifted.map((animation, a) => {
+    if (owner < 0 ? a !== 0 : a !== owner) return animation
+    const list = [...animation.frames]
+    list.splice(owner < 0 ? 0 : list.indexOf(before) + 1, 0, index)
+    return { ...animation, frames: list }
+  })
+  return { ...sheet, frames, animations }
+}
+
+/** The sheet without the frame at `index` (later frames move down one); an animation left with no frames is dropped. */
+export const removeFrame = (sheet: Sheet, index: number): Sheet => ({
+  ...sheet,
+  frames: sheet.frames.filter((_, i) => i !== index),
+  animations: sheet.animations
+    .map((animation) => ({ ...animation, frames: animation.frames.filter((i) => i !== index).map((i) => (i > index ? i - 1 : i)) }))
+    .filter((animation) => animation.frames.length > 0)
+})
+
+/** The animation at `animation` cut in two before its frame at position `at` (1 or more): the second part is a new animation after it. */
+export const splitAnimation = (sheet: Sheet, animation: number, at: number): Sheet => {
+  const current = sheet.animations[animation]
+  if (current === undefined || at < 1 || at >= current.frames.length) return sheet
+  const animations = [...sheet.animations]
+  const second = { ...current, frames: current.frames.slice(at), name: "" }
+  animations.splice(animation, 1, { ...current, frames: current.frames.slice(0, at) }, { ...second, name: freeName(animations, current.name) })
+  return { ...sheet, animations }
+}
+
+/** The animation at `animation` and the one after it as one, keeping the first one's name and settings. */
+export const joinAnimation = (sheet: Sheet, animation: number): Sheet => {
+  const current = sheet.animations[animation]
+  const next = sheet.animations[animation + 1]
+  if (current === undefined || next === undefined) return sheet
+  const animations = [...sheet.animations]
+  animations.splice(animation, 2, { ...current, frames: [...current.frames, ...next.frames] })
+  return { ...sheet, animations }
+}
+
+/** A name an animation can take: letters, digits, "-", "_", and ".", as games look it up. */
+export const isAnimationName = (name: string): boolean => /^[A-Za-z0-9_.-]+$/.test(name)
+
+/** The animation renamed; a name that is taken gets a number, and a name that is not `isAnimationName` leaves it as it is. */
+export const renameAnimation = (sheet: Sheet, animation: number, name: string): Sheet => {
+  const current = sheet.animations[animation]
+  const wanted = name.trim().replace(/\s+/g, "-")
+  if (current === undefined || !isAnimationName(wanted)) return sheet
+  const animations = [...sheet.animations]
+  animations[animation] = { ...current, name: freeName(sheet.animations, wanted, animation) }
+  return { ...sheet, animations }
+}
+
+/** The animation with some of its settings changed (whether it is exported, its speed, how it loops). */
+export const setAnimation = (sheet: Sheet, animation: number, change: Partial<Pick<SheetAnimation, "include" | "fps" | "loop">>): Sheet => {
+  const current = sheet.animations[animation]
+  if (current === undefined) return sheet
+  const animations = [...sheet.animations]
+  animations[animation] = { ...current, ...change, fps: Math.min(60, Math.max(0.5, change.fps ?? current.fps)) }
+  return { ...sheet, animations }
+}
 
 // ---------------------------------------------------------------------------
 // Clearing the background
@@ -368,7 +548,7 @@ export const findFrames = (image: RgbaImage): Array<FrameBox> => {
     const inner = framesIn(image, box, usual, [])
     return inner.length > 1 ? inner.flatMap((part) => again(part, depth + 1)) : [box]
   }
-  return top.flatMap((box) => again(box, 0))
+  return readingOrder(top.flatMap((box) => again(box, 0)))
 }
 
 /** How many times a box is cut into rows again: blocks within blocks are rare. */

@@ -18,6 +18,8 @@ export interface MatchOptions {
   readonly inputDelay?: number
   readonly adaptiveDelay?: Netcode.AdaptiveDelay
   readonly maxRollback?: number
+  /** The runtime's checkpoint window (the runtime's default when omitted). */
+  readonly checkpoints?: number
   /** Frames each seat presses input on; idle afterwards. */
   readonly frames?: number
   /** Idle frames played after `frames`, so every guess settles. */
@@ -48,7 +50,7 @@ export const setUpMatch = (options: MatchOptions) => {
   })
   if (!links.ok) throw new Error(links.error.field)
   const peers: Array<MatchPeer> = Array.from({ length: count }, (_, seat) => {
-    const peer = makePeer({ count, setUp: seat === 0 })
+    const peer = makePeer({ count, setUp: seat === 0, ...(options.checkpoints === undefined ? {} : { checkpoints: options.checkpoints }) })
     const shared = {
       seats: peer.seats,
       seat,

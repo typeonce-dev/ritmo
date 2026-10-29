@@ -15,6 +15,7 @@ import { detectGrid, fitOffsets, type Detection, type GridSpec, type RgbaImage }
 import { lostColors, type LostColor } from "./lost.ts"
 import { runWithSpec, type Outcome, type PipelineCache } from "./pipeline.ts"
 import type { Recipe } from "./recipe.ts"
+import type { AtlasClip } from "./spritesheet.ts"
 import {
   anchorOf,
   clearSheet,
@@ -63,6 +64,19 @@ export interface FixedFrame {
   readonly anchor: Point | undefined
 }
 
+/** One animation of the sheet, its frames on one canvas with their anchors on one spot. */
+export interface ClipOutcome {
+  /** Its position in the sheet's animations. */
+  readonly animation: number
+  readonly name: string
+  /** Whether it is exported. */
+  readonly include: boolean
+  /** Its included frames, in the order they play. */
+  readonly placed: ReadonlyArray<Placed & { readonly index: number }>
+  readonly width: number
+  readonly height: number
+}
+
 export interface AnimationOutcome {
   /** The background colors cleared from the sheet (empty when it is not cleared). */
   readonly backgroundFound: ReadonlyArray<Rgb>
@@ -74,11 +88,9 @@ export interface AnimationOutcome {
   readonly confidence: number | undefined
   /** Every frame, included or not. */
   readonly frames: ReadonlyArray<FixedFrame>
-  /** The included frames, in order, on one canvas. */
-  readonly placed: ReadonlyArray<Placed & { readonly index: number }>
-  readonly width: number
-  readonly height: number
-  /** Colors the palette has no match for, across the included frames. */
+  /** Every animation, exported or not, in the sheet's order. */
+  readonly clips: ReadonlyArray<ClipOutcome>
+  /** Colors the palette has no match for, across the included frames of the exported animations. */
   readonly lost: ReadonlyArray<LostColor & { readonly frame: number }>
 }
 
@@ -199,7 +211,35 @@ export const runSheet = (image: RgbaImage, recipe: Recipe, sheet: Sheet, cache: 
   const shared = sharePalette(fixed.map((frame) => frame.outcome.art))
   const frames: Array<FixedFrame> = fixed.map((frame, i) => ({ ...frame, art: shared[i]!, anchor: anchorOf(shared[i]!, sheet.anchor) }))
 
-  const included = frames.filter((frame) => sheet.frames[frame.index]!.include)
+  const clips = sheet.animations.map((animation, a): ClipOutcome => {
+    const included = animation.frames.flatMap((i) => {
+      const fixedFrame = frames[i]
+      return sheet.frames[i]?.include === true && fixedFrame !== undefined ? [fixedFrame] : []
+    })
+    const laid = placeFrames(included, sheet, cell)
+    return { animation: a, name: animation.name, include: animation.include, placed: laid.frames.map((placed, i) => ({ ...placed, index: included[i]!.index })), width: laid.width, height: laid.height }
+  })
+  const exported = new Set(sheet.animations.flatMap((animation) => (animation.include ? animation.frames : [])))
+  const lost =
+    recipe.palette === undefined
+      ? []
+      : frames
+          .filter((frame) => exported.has(frame.index) && sheet.frames[frame.index]!.include)
+          .flatMap((frame) => lostColors(frame.outcome.samples, frame.outcome.art, recipe.lostThreshold).map((entry) => ({ ...entry, frame: frame.index })))
+  return {
+    backgroundFound: colors,
+    cleared,
+    cell,
+    confidence: given !== undefined ? undefined : found?.confidence,
+    frames,
+    clips,
+    lost
+  }
+}
+
+/** One animation's frames on one canvas, lined up by the sheet's anchor. */
+const placeFrames = (included: ReadonlyArray<FixedFrame>, sheet: Sheet, cell: { readonly width: number; readonly height: number }) => {
+  if (included.length === 0) return { frames: [], width: 0, height: 0 }
   // On the ground, each frame keeps its height as drawn on the sheet (a hop stays a hop): its
   // top, in cells, above the bottom of its row of boxes; the lowest feet of all set the ground.
   const drawn = included.map((frame) => {
@@ -215,35 +255,20 @@ export const runSheet = (image: RgbaImage, recipe: Recipe, sheet: Sheet, cache: 
     if (sheet.anchor === "ground") return { x: nudge.x - frame.anchor.x, y: nudge.y + drawn[i]! - ground }
     return { x: nudge.x - frame.anchor.x, y: nudge.y - frame.anchor.y }
   })
-  const laid = layOut(
+  return layOut(
     included.map((frame) => frame.art),
     offsets,
     sheet.padding
   )
-  const lost =
-    recipe.palette === undefined
-      ? []
-      : included.flatMap((frame) => lostColors(frame.outcome.samples, frame.outcome.art, recipe.lostThreshold).map((entry) => ({ ...entry, frame: frame.index })))
-  return {
-    backgroundFound: colors,
-    cleared,
-    cell,
-    confidence: given !== undefined ? undefined : found?.confidence,
-    frames,
-    placed: laid.frames.map((placed, i) => ({ ...placed, index: included[i]!.index })),
-    width: laid.width,
-    height: laid.height,
-    lost
-  }
 }
 
 /** Whether two boxes share most of their height: frames on one row of the sheet. */
 const overlapsVertically = (a: FrameBox, b: FrameBox): boolean =>
   Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y) >= 0.5 * Math.min(a.height, b.height)
 
-/** Every opaque cell color of every included frame, for proposing one palette for the whole animation. */
+/** Every opaque cell color of every included frame of the exported animations, for proposing one palette for them all. */
 export const sheetColors = (outcome: AnimationOutcome): Array<Rgb> =>
-  outcome.placed.flatMap((frame) => {
+  exportedClips(outcome).flatMap((clip) => clip.placed).flatMap((frame) => {
     const colors: Array<Rgb> = []
     frame.art.indices.forEach((index) => {
       if (index !== TRANSPARENT) colors.push(frame.art.palette[index]!)
@@ -260,3 +285,16 @@ export const proposeForSheet = (
   method: ProposeMethod,
   cache: AnimationCache = {}
 ): Array<Proposal> => proposePalette(sheetColors(runSheet(image, { ...recipe, palette: undefined }, sheet, cache)), count, method)
+
+/** The animations that are exported, with at least one frame. */
+export const exportedClips = (outcome: AnimationOutcome): Array<ClipOutcome> => outcome.clips.filter((clip) => clip.include && clip.placed.length > 0)
+
+/** The exported animations as `atlasOf` and `spritesheetJson` take them: their frames, anchors, and how they play. */
+export const atlasClips = (outcome: AnimationOutcome, sheet: Sheet): Array<AtlasClip> =>
+  exportedClips(outcome).map((clip) => ({
+    name: clip.name,
+    frames: clip.placed.map((placed) => placed.art),
+    anchor: clip.placed[0]!.anchor,
+    fps: sheet.animations[clip.animation]!.fps,
+    loop: sheet.animations[clip.animation]!.loop
+  }))

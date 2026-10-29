@@ -8,14 +8,14 @@
  * measure; it rarely fools both, and when either is low the answer is
  * "needs-person", never a confident bad fix.
  */
-import type { AnimationOutcome } from "./animation.ts"
+import { atlasClips, type AnimationOutcome } from "./animation.ts"
 import { pack, toHex, toOklab, unpack, type Lab } from "./color.ts"
 import { medianColor, usedColors, type CellSamples, type PixelArt } from "./fix.ts"
 import type { GridSpec, RgbaImage } from "./grid.ts"
 import { lintArt, type Issue, type LintRules } from "./lint.ts"
 import { runRecipe, type Outcome } from "./pipeline.ts"
 import type { Recipe } from "./recipe.ts"
-import { sheetArt } from "./spritesheet.ts"
+import { atlasOf } from "./spritesheet.ts"
 import { defaultSheet } from "./sheet.ts"
 import { artOfImage } from "./sprite.ts"
 
@@ -43,10 +43,19 @@ export interface Report {
   /** For an animation sheet: its frames, where they are in the source, and how sure each frame's own grid was. */
   readonly animation?: {
     readonly frames: number
+    /** Frames in the exported animations. */
     readonly included: number
-    readonly fps: number
-    readonly loop: string
     readonly anchor: string
+    /** Every animation on the sheet: its frames (numbered from 1, in play order), whether it is exported, and its size. */
+    readonly animations: ReadonlyArray<{
+      readonly name: string
+      readonly frames: ReadonlyArray<number>
+      readonly include: boolean
+      readonly fps: number
+      readonly loop: string
+      readonly width: number
+      readonly height: number
+    }>
     readonly boxes: ReadonlyArray<{
       readonly frame: number
       readonly x: number
@@ -272,21 +281,31 @@ const OTHER_SCALE = 0.05
  * when the grid is unsure or a frame came out empty.
  */
 export const reportOfSheet = (image: RgbaImage, recipe: Recipe, outcome: AnimationOutcome, rules: LintRules = {}): Report => {
-  const sheet = recipe.sheet
-  const placed = outcome.placed.map((frame) => frame.art)
-  const strip = sheetArt(placed, { columns: placed.length, spacing: 1 })
+  const sheet = recipe.sheet ?? defaultSheet
+  const clips = atlasClips(outcome, sheet)
+  const placed = clips.flatMap((clip) => clip.frames)
+  const strip = atlasOf(clips, { columns: Number.MAX_SAFE_INTEGER, spacing: 1 }).art
   const issues: Array<Issue> = lintArt(strip, { ...rules, sizes: undefined, palette: rules.palette ?? recipe.palette?.colors }).filter(
     // Sparks and dust around a body are single pixels on purpose: stray pixels are judged on single pictures only.
     (issue) => issue.rule !== "stray-pixel"
   )
-  const first = placed[0]
-  if (first !== undefined && rules.sizes !== undefined && rules.sizes.length > 0) {
-    issues.unshift(...lintArt(first, { sizes: rules.sizes }).filter((issue) => issue.rule === "size"))
+  if (rules.sizes !== undefined && rules.sizes.length > 0) {
+    for (const clip of clips) {
+      issues.unshift(
+        ...lintArt(clip.frames[0]!, { sizes: rules.sizes })
+          .filter((issue) => issue.rule === "size")
+          .map((issue) => ({ ...issue, message: `${clip.name}: ${issue.message}` }))
+      )
+    }
   }
-  if (outcome.placed.length < 2) {
-    issues.push({ rule: "one-frame", severity: "warning", message: `${outcome.placed.length} frame${outcome.placed.length === 1 ? "" : "s"} in the animation: check the frames found, or add boxes by hand`, count: 0, at: [] })
+  if (clips.length === 0) {
+    issues.push({ rule: "one-frame", severity: "warning", message: "No animation is exported: check the frames found, add boxes by hand, or put an animation back in", count: 0, at: [] })
   }
-  const empty = outcome.frames.filter((frame) => sheet?.frames[frame.index]?.include === true && !frame.art.indices.some((index) => index >= 0))
+  for (const clip of clips.filter((entry) => entry.frames.length === 1)) {
+    issues.push({ rule: "one-frame", severity: "warning", message: `${clip.name} has 1 frame: check its frames, or join it to the animation it belongs to`, count: 0, at: [] })
+  }
+  const exported = new Set(sheet.animations.flatMap((animation) => (animation.include ? animation.frames : [])))
+  const empty = outcome.frames.filter((frame) => exported.has(frame.index) && sheet.frames[frame.index]?.include === true && !frame.art.indices.some((index) => index >= 0))
   for (const frame of empty) {
     issues.push({ rule: "empty-frame", severity: "error", message: `Frame ${frame.index + 1} has nothing in it: move its box onto the art, or leave it out`, count: 0, at: [] })
   }
@@ -309,14 +328,14 @@ export const reportOfSheet = (image: RgbaImage, recipe: Recipe, outcome: Animati
   const sure = confidence === undefined || confidence >= CONFIDENT.confidence
   const verdict: Verdict = sure && errors(issues) === 0 ? "fixable" : "needs-person"
   const colors = usedColors(strip).length
-  const count = outcome.placed.length
-  const frameSize = `${outcome.width}×${outcome.height}`
+  const count = placed.length
+  const what = `${clips.length} animation${clips.length === 1 ? "" : "s"} of ${count} frame${count === 1 ? "" : "s"}`
   const summary =
     verdict === "fixable"
-      ? `Animation of ${count} frame${count === 1 ? "" : "s"}, ${frameSize} each, ${colors} colors (cells ${round(size)} px${confidence === undefined ? "" : `, confidence ${Math.round(confidence * 100)}%`}).`
+      ? `${what}, ${colors} colors (cells ${round(size)} px${confidence === undefined ? "" : `, confidence ${Math.round(confidence * 100)}%`}).`
       : !sure
         ? `Unsure of the grid (confidence ${Math.round((confidence ?? 0) * 100)}%): look at the preview, or set the cell size by hand.`
-        : `Animation of ${count} frames, but rules are still broken: see issues.`
+        : `${what}, but rules are still broken: see issues.`
   return {
     verdict,
     summary,
@@ -330,17 +349,25 @@ export const reportOfSheet = (image: RgbaImage, recipe: Recipe, outcome: Animati
       ...(confidence === undefined ? {} : { confidence: round(confidence) }),
       fit: round(outcome.frames.length === 0 ? 0 : outcome.frames.reduce((sum, frame) => sum + gridFit(frame.outcome.samples), 0) / outcome.frames.length)
     },
-    output: { width: outcome.width, height: outcome.height, colors },
+    // The sheet written: every exported animation, each from a new row of frames.
+    output: { width: strip.width, height: strip.height, colors },
     animation: {
       frames: outcome.frames.length,
       included: count,
-      fps: sheet?.fps ?? 0,
-      loop: sheet?.loop ?? "forward",
-      anchor: sheet?.anchor ?? defaultSheet.anchor,
+      anchor: sheet.anchor,
+      animations: sheet.animations.map((animation, a) => ({
+        name: animation.name,
+        frames: animation.frames.map((i) => i + 1),
+        include: animation.include,
+        fps: animation.fps,
+        loop: animation.loop,
+        width: outcome.clips[a]?.width ?? 0,
+        height: outcome.clips[a]?.height ?? 0
+      })),
       boxes: outcome.frames.map((frame) => ({
         frame: frame.index + 1,
         ...frame.box,
-        include: sheet?.frames[frame.index]?.include ?? true,
+        include: sheet.frames[frame.index]?.include ?? true,
         ...(frame.detection === undefined ? {} : { cell: round((frame.detection.spec.cellWidth + frame.detection.spec.cellHeight) / 2), confidence: round(frame.detection.confidence) })
       }))
     },

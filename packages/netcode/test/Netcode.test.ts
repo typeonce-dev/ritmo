@@ -50,6 +50,18 @@ describe("Netcode.rollback", () => {
     for (const peer of match.peers) expect(checksumOf(peer)).toBe(sums[peer.session.status().tick])
   })
 
+  it("rolls back many times inside a runtime window of exactly maxRollback checkpoints", () => {
+    // Every rollback rewinds to a checkpoint the runtime keeps; running that tick again must not take a second one,
+    // or the window covers fewer ticks than maxRollback after a few corrections and the session ends in CheckpointLost.
+    const match = play({ mode: "rollback", count: 3, maxRollback: 8, checkpoints: 8, latencyMS: 30, jitterMS: 150, frames: 600, tail: 120 })
+    const sums = truth(match.peers, Math.max(...match.peers.map((peer) => peer.session.status().tick)))
+    for (const peer of match.peers) {
+      const status = peer.session.status()
+      expect(status.rollbacks).toBeGreaterThan(50)
+      expect(checksumOf(peer)).toBe(sums[status.tick])
+    }
+  })
+
   it("waits for every seat before the first save, then starts every peer from seat 0's world", () => {
     const match = setUpMatch({ mode: "rollback", latencyMS: 20, jitterMS: 0 })
     // Seat 1 is not there yet: seat 0 waits.

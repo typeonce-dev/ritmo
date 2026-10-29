@@ -55,10 +55,26 @@ import { describeDetection, gridKeyOf, resolveGrid, runWithSpec, type PipelineCa
 import { isPng, readProjectRecipe, withProjectRecipe } from "../core/project.ts"
 import { decodeRecipe, encodeRecipe, presetPalette, type Recipe } from "../core/recipe.ts"
 import { isNative, reportOfArt, reportOfFix, reportOfSheet, type Report } from "../core/report.ts"
-import { detectFrames, isAnimationSheet, proposeForSheet, runSheet, type AnimationCache, type AnimationOutcome } from "../core/animation.ts"
+import { atlasClips, detectFrames, exportedClips, isAnimationSheet, proposeForSheet, runSheet, type AnimationCache, type AnimationOutcome, type ClipOutcome } from "../core/animation.ts"
 import { toGif } from "../core/gif.ts"
-import { anchors, defaultSheet, frameOf, playOrder, type Sheet } from "../core/sheet.ts"
-import { sheetArt, spritesheetJson, type SheetLayout } from "../core/spritesheet.ts"
+import {
+  anchors,
+  DEFAULT_FPS,
+  defaultSheet,
+  frameOf,
+  insertFrame,
+  isAnimationName,
+  joinAnimation,
+  playOrder,
+  removeFrame as withoutFrame,
+  renameAnimation,
+  setAnimation,
+  splitAnimation,
+  withFrames,
+  type Sheet,
+  type SheetAnimation
+} from "../core/sheet.ts"
+import { atlasOf, spritesheetJson, type SheetLayout } from "../core/spritesheet.ts"
 import { toZip } from "../core/zip.ts"
 import { formatSprite, parseJsonMap, parseSprite } from "../core/sprite.ts"
 import { reduceModes, type ReduceMode } from "../core/reduce.ts"
@@ -101,8 +117,10 @@ interface State {
   source: { readonly image: RgbaImage; readonly canvas: HTMLCanvasElement; readonly name: string; readonly png?: Uint8Array | undefined } | undefined
   /** Fixed as one picture, or as an animation of the frames on it. */
   kind: "picture" | "animation"
-  /** The animation's frames and how they play, when `kind` is "animation". */
+  /** The sheet's frames and the animations they make, when `kind` is "animation". */
   sheet: Sheet
+  /** The animation chosen in the Animations panel: what plays, what Frames shows, and what the GIF holds. */
+  selectedAnimation: number
   /** The animation's cell size typed by hand; undefined finds it in the frames. */
   sheetCell: number | undefined
   animationView: AnimationView
@@ -113,7 +131,7 @@ interface State {
   onion: boolean
   /** The sheet as it is, or with its background cleared, in the sheet view. */
   sheetShows: "cleared" | "original"
-  /** How the exported sheet lays its frames out. */
+  /** How the exported sheet lays each animation's frames out. */
   exportLayout: { kind: "strip" | "grid"; columns: number; spacing: number }
   spec: GridSpec
   linked: boolean
@@ -172,6 +190,7 @@ const state: State = {
   source: undefined,
   kind: "picture",
   sheet: defaultSheet,
+  selectedAnimation: 0,
   sheetCell: undefined,
   animationView: "play",
   selectedFrame: undefined,
@@ -362,10 +381,7 @@ const recompute = (): void => {
     painted = []
     backgroundFound = [...animation.backgroundFound]
     result = undefined
-    exported = sheetArt(
-      animation.placed.map((frame) => frame.art),
-      exportLayout()
-    )
+    exported = atlasOf(atlasClips(animation, state.sheet), exportLayout()).art
     report = reportOfSheet(source.image, recipe, animation, rulesOf())
     return
   }
@@ -425,6 +441,7 @@ const setSource = (image: RgbaImage, canvas: HTMLCanvasElement, name: string, sp
   state.proposals = []
   state.kind = "picture"
   state.sheet = defaultSheet
+  state.selectedAnimation = 0
   state.selectedFrame = undefined
   if (state.tool === "frames") state.tool = "move"
   cache = {}
@@ -461,14 +478,16 @@ const openAsAnimation = (): boolean => {
   if (!isAnimationSheet(source.image, recipe, frames, animationCache)) return false
   state.kind = "animation"
   state.removeBackground = true
-  state.sheet = { ...defaultSheet, frames }
+  state.sheet = withFrames(defaultSheet, frames)
+  state.selectedAnimation = 0
   state.sheetCell = undefined
   state.animationView = "play"
   state.playing = true
   frame = 0
   state.keepCount = 16
   propose()
-  state.message = `Found ${frames.length} frames: opened as an animation. Choose Picture in the top bar to fix it as one picture.`
+  const count = state.sheet.animations.length
+  state.message = `Found ${frames.length} frames${count > 1 ? ` in ${count} animations (one per row)` : ""}: opened as ${count > 1 ? "animations" : "an animation"}. Choose Picture in the top bar to fix it as one picture.`
   return true
 }
 
@@ -479,7 +498,8 @@ const setKind = (kind: State["kind"]): void => {
   if (kind === "animation" && state.sheet.frames.length === 0) {
     const found = detectFrames(source.image, { ...recipeOf(), removeBackground: true }, animationCache)
     // Nothing found: one box around the whole picture, to move and add to by hand.
-    state.sheet = { ...state.sheet, frames: found.length > 0 ? found : [frameOf({ x: 0, y: 0, width: source.image.width, height: source.image.height })] }
+    state.sheet = withFrames(state.sheet, found.length > 0 ? found : [frameOf({ x: 0, y: 0, width: source.image.width, height: source.image.height })])
+    state.selectedAnimation = 0
     state.removeBackground = true
   }
   state.kind = kind
@@ -602,6 +622,7 @@ const applyRecipe = (recipe: Recipe, name: string, message = `Applied ${name}.`)
   if (recipe.sheet !== undefined) {
     state.kind = "animation"
     state.sheet = recipe.sheet
+    state.selectedAnimation = 0
     state.sheetCell = recipe.grid.kind === "cells" ? recipe.grid.spec.cellWidth : undefined
     state.selectedFrame = undefined
     if (state.tool !== "move" && state.tool !== "frames") state.tool = "move"
@@ -688,6 +709,9 @@ const viewer = makeViewer(canvas, {
   viewChanged: () => renderZoom(),
   selectBox: (index) => {
     state.selectedFrame = index
+    // Its animation is the one chosen, so the panel shows the frame.
+    const owner = index === undefined ? -1 : state.sheet.animations.findIndex((entry) => entry.frames.includes(index))
+    if (owner >= 0) state.selectedAnimation = owner
     update()
   },
   changeBox: (index, box) => setFrameBox(index, box),
@@ -726,12 +750,11 @@ const viewer = makeViewer(canvas, {
 const playerCanvas = h("canvas", { class: "view", attrs: { "aria-label": "Animation view", hidden: true } })
 const player = makePlayer(playerCanvas, {
   choose: (index) => {
-    const placed = animation?.placed[index]
+    const placed = selectedClip()?.placed[index]
     if (placed === undefined) return
     state.selectedFrame = placed.index
     state.playing = false
-    const order = playOrder(animation!.placed.length, state.sheet.loop)
-    frame = Math.max(0, order.indexOf(index))
+    frame = Math.max(0, playing().indexOf(index))
     update()
   },
   viewChanged: () => renderZoom()
@@ -1692,10 +1715,31 @@ const introPanel = (): HTMLElement =>
 // ---------------------------------------------------------------------------
 // Animation: frames, playback, and the frames' panel
 
-/** The animation's frames on the canvas, in the order they play, as positions in `animation.placed`. */
-const playing = (): Array<number> => playOrder(animation?.placed.length ?? 0, state.sheet.loop)
+/** The animation chosen in the Animations panel, fixed. */
+const selectedClip = (): ClipOutcome | undefined => animation?.clips[state.selectedAnimation]
 
-/** The frame on screen, as a position in `animation.placed`. */
+/** How the chosen animation plays. */
+const selectedSettings = (): SheetAnimation | undefined => state.sheet.animations[state.selectedAnimation]
+
+/** The chosen animation's frames on its canvas, in the order they play, as positions in its `placed`. */
+const playing = (): Array<number> => playOrder(selectedClip()?.placed.length ?? 0, selectedSettings()?.loop ?? "forward")
+
+/** Chooses an animation: it plays from its first frame. */
+const chooseAnimation = (index: number): void => {
+  state.selectedAnimation = index
+  state.selectedFrame = undefined
+  frame = 0
+  update()
+}
+
+/** The sheet's animations, changed with `change` (a function from `../core/sheet.ts`). */
+const setSheet = (change: (sheet: Sheet) => Sheet): void => {
+  state.sheet = change(state.sheet)
+  state.selectedAnimation = Math.min(state.selectedAnimation, Math.max(0, state.sheet.animations.length - 1))
+  update()
+}
+
+/** The frame on screen, as a position in the chosen animation's `placed`. */
 const shownFrame = (): number => {
   const order = playing()
   return order.length === 0 ? 0 : order[((frame % order.length) + order.length) % order.length]!
@@ -1725,12 +1769,12 @@ const addFrame = (box: Box): void => {
   const index = at < 0 ? state.sheet.frames.length : at
   state.selectedFrame = index
   state.message = `Frame ${index + 1} added.`
-  setFrames((frames) => frames.splice(index, 0, frameOf({ x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) })))
+  setSheet((sheet) => insertFrame(sheet, index, frameOf({ x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) })))
 }
 
 const removeFrame = (index: number): void => {
   state.selectedFrame = undefined
-  setFrames((frames) => frames.splice(index, 1))
+  setSheet((sheet) => withoutFrame(sheet, index))
 }
 
 const toggleFrame = (index: number): void =>
@@ -1753,14 +1797,15 @@ const findFramesAgain = (): void => {
   const found = detectFrames(source.image, { ...recipeOf(), removeBackground: true }, animationCache)
   state.selectedFrame = undefined
   state.message = found.length === 0 ? "No frames found: draw boxes with the Boxes tool." : `Found ${found.length} frame${found.length === 1 ? "" : "s"}.`
-  setFrames((frames) => frames.splice(0, frames.length, ...found))
+  state.selectedAnimation = 0
+  setSheet((sheet) => withFrames(sheet, found))
 }
 
 /** Steps the animation by `by` frames, stopping playback. */
 const step = (by: number): void => {
   state.playing = false
   frame += by
-  const placed = animation?.placed[shownFrame()]
+  const placed = selectedClip()?.placed[shownFrame()]
   if (placed !== undefined) state.selectedFrame = placed.index
   update()
 }
@@ -1776,7 +1821,7 @@ const tick = (now: number): void => {
     lastTick = undefined
     return
   }
-  const every = 1000 / Math.max(0.5, state.sheet.fps)
+  const every = 1000 / Math.max(0.5, selectedSettings()?.fps ?? DEFAULT_FPS)
   if (lastTick === undefined) lastTick = now
   else if (now - lastTick >= every) {
     // A slow frame skips ahead instead of slowing the animation down.
@@ -1800,13 +1845,12 @@ const counter = h("span", { class: "frame-counter" })
 
 const renderCounter = (): void => {
   const count = playing().length
-  const placed = animation?.placed[shownFrame()]
+  const placed = selectedClip()?.placed[shownFrame()]
   counter.textContent = count === 0 ? "No frames" : `Frame ${placed === undefined ? "" : placed.index + 1} · ${(frame % count + count) % count + 1}/${count}`
 }
 
 const renderPlayer = (): void => {
-  const outcome = animation
-  if (outcome === undefined) return
+  const outcome = selectedClip() ?? { placed: [] }
   const order = playing()
   const position = order.length === 0 ? 0 : ((frame % order.length) + order.length) % order.length
   const chosen = state.selectedFrame === undefined ? -1 : outcome.placed.findIndex((placed) => placed.index === state.selectedFrame)
@@ -1839,21 +1883,21 @@ const renderPlayback = (): void => {
     h(
       "label",
       { class: "fps", title: "Frames per second" },
-      numberInput(state.sheet.fps, (value) => {
-        state.sheet = { ...state.sheet, fps: Math.min(60, Math.max(0.5, value)) }
-        update()
-      }, { min: 0.5, max: 60, step: 1, label: "Frames per second", suffix: "fps" })
+      numberInput(selectedSettings()?.fps ?? DEFAULT_FPS, (value) => setSheet((sheet) => setAnimation(sheet, state.selectedAnimation, { fps: value })), {
+        min: 0.5,
+        max: 60,
+        step: 1,
+        label: "Frames per second",
+        suffix: "fps"
+      })
     ),
     segmented(
-      state.sheet.loop,
+      selectedSettings()?.loop ?? "forward",
       [
         { id: "forward", label: "Loop", title: "Plays start to end, then again" },
         { id: "pingpong", label: "Ping-pong", title: "Plays there and back" }
       ],
-      (loop) => {
-        state.sheet = { ...state.sheet, loop }
-        update()
-      },
+      (loop) => setSheet((sheet) => setAnimation(sheet, state.selectedAnimation, { loop })),
       { label: "Loop" }
     ),
     segmented(
@@ -1868,54 +1912,150 @@ const renderPlayback = (): void => {
   )
 }
 
+/** A row of a list in the Animations panel: a number, a text, and an In/Out switch. */
+const listRow = (options: {
+  readonly number: number
+  readonly text: string
+  readonly on: boolean
+  readonly include: boolean
+  readonly choose: () => void
+  readonly toggle: () => void
+  readonly toggleTitle: string
+}): HTMLElement =>
+  h(
+    "div",
+    { class: `frame-row${options.on ? " on" : ""}${options.include ? "" : " out"}`, on: { click: options.choose } },
+    h("span", { class: "frame-number" }, String(options.number)),
+    h("span", { class: "list-text" }, options.text),
+    button(options.include ? "In" : "Out", (event) => {
+      event.stopPropagation()
+      options.toggle()
+    }, { variant: "ghost", small: true, title: options.toggleTitle })
+  )
+
+/** " · W × H" for an animation's canvas, or nothing when it has no frames in it. */
+const clipSize = (clip: ClipOutcome | undefined): string => (clip === undefined || clip.placed.length === 0 ? "" : ` · ${clip.width} × ${clip.height}`)
+
+/** The sheet's animations: which are exported, their names and speed, and the frames of the chosen one. */
 const framesPanel = (): HTMLElement | false => {
   const outcome = animation
   if (outcome === undefined) return false
-  const frames = state.sheet.frames
-  const included = frames.filter((entry) => entry.include).length
+  const { frames, animations } = state.sheet
+  const chosen = animations[state.selectedAnimation]
+  const clip = selectedClip()
+  const exportedCount = animations.filter((entry) => entry.include).length
   const selected = state.selectedFrame === undefined ? undefined : frames[state.selectedFrame]
   return sectionOf(
     "frames",
-    "Frames",
+    "Animations",
     {
-      action: button("Find again", findFramesAgain, { variant: "ghost", small: true, icon: "wand", title: "Find the frames again (drops boxes changed by hand)" }),
+      action: button("Find again", findFramesAgain, { variant: "ghost", small: true, icon: "wand", title: "Find the frames again, one animation per row (drops boxes and animations changed by hand)" }),
       help:
-        "Each box on the sheet is one frame, fixed with the same settings. Choose Boxes in the toolbar over the sheet to move a box, drag its edges, or draw a new one on empty space; a box left out keeps its place but is not in the animation. Frames are lined up by the anchor: Ground keeps each frame at the height it was drawn (hops stay), Feet pins the feet to one row. Nudge a frame by a pixel with the arrow keys when it looks off."
+        "Each box on the sheet is one frame, and each row of frames is one animation, named so a game can play it by name. In or Out chooses which animations are exported; the others keep their frames and settings. Choose one to play it, rename it, and set its speed. Its frames are listed under it: Split here, between two frames, cuts it in two there; Join puts it together with the next one. Choose Boxes in the toolbar over the sheet to move a box, drag its edges, or draw a new one. Frames are lined up by the anchor: Ground keeps each frame at the height it was drawn (hops stay), Feet pins the feet to one row. Nudge a frame by a pixel with the arrow keys when it looks off."
     },
     callout(
-      included >= 2 ? "good" : "warn",
-      `${frames.length} frame${frames.length === 1 ? "" : "s"} on the sheet, ${included} in the animation, ${outcome.width} × ${outcome.height} each.`
+      exportedCount > 0 ? "good" : "warn",
+      `${animations.length} animation${animations.length === 1 ? "" : "s"}, ${exportedCount} exported, from ${frames.length} frame${frames.length === 1 ? "" : "s"} on the sheet.`
     ),
     h(
       "div",
       { class: "frame-list" },
-      frames.map((entry, i) => {
-        const nudged = entry.nudge.x !== 0 || entry.nudge.y !== 0
-        return h(
+      animations.map((entry, a) =>
+        listRow({
+          number: a + 1,
+          text: `${entry.name} · ${entry.frames.length} frame${entry.frames.length === 1 ? "" : "s"}${clipSize(outcome.clips[a])}`,
+          on: a === state.selectedAnimation,
+          include: entry.include,
+          choose: () => chooseAnimation(a),
+          toggle: () => setSheet((sheet) => setAnimation(sheet, a, { include: !entry.include })),
+          toggleTitle: entry.include ? "Exported: click to leave it out" : "Left out: click to export it"
+        })
+      )
+    ),
+    chosen !== undefined &&
+      group(
+        chosen.name,
+        prop(
+          "Name",
+          textInput(chosen.name, (value) => {
+            if (!isAnimationName(value.trim().replace(/\s+/g, "-"))) state.message = `"${value}" cannot name an animation: use letters, digits, "-", "_", and ".".`
+            setSheet((sheet) => renameAnimation(sheet, state.selectedAnimation, value))
+          }, { label: "Animation name" }),
+          "What a game plays it by: the JSON's animations and frame tags use it."
+        ),
+        prop(
+          "Speed",
+          numberInput(chosen.fps, (value) => setSheet((sheet) => setAnimation(sheet, state.selectedAnimation, { fps: value })), { min: 0.5, max: 60, step: 1, suffix: "fps", label: "Speed" }),
+          "Frames per second, saved in the JSON and the GIF."
+        ),
+        prop(
+          "Loop",
+          segmented(
+            chosen.loop,
+            [
+              { id: "forward", label: "Loop" },
+              { id: "pingpong", label: "Ping-pong" }
+            ],
+            (loop) => setSheet((sheet) => setAnimation(sheet, state.selectedAnimation, { loop })),
+            { label: "Loop", class: "fill" }
+          )
+        ),
+        h(
           "div",
-          {
-            class: `frame-row${state.selectedFrame === i ? " on" : ""}${entry.include ? "" : " out"}`,
-            on: {
-              click: () => {
+          { class: "frame-list" },
+          chosen.frames.flatMap((i, position) => {
+            const entry = frames[i]!
+            const nudged = entry.nudge.x !== 0 || entry.nudge.y !== 0
+            // Between two frames: cuts the animation there, the frames below becoming a new one.
+            const seam =
+              position > 0 &&
+              h(
+                "button",
+                {
+                  class: "split-seam",
+                  props: { type: "button" },
+                  attrs: { title: `Split ${chosen.name} here: frames ${chosen.frames.slice(position).map((frame) => frame + 1).join(", ")} become a new animation` },
+                  on: {
+                    click: () => {
+                      state.selectedFrame = undefined
+                      setSheet((sheet) => splitAnimation(sheet, state.selectedAnimation, position))
+                    }
+                  }
+                },
+                icon("split"),
+                h("span", {}, "Split here")
+              )
+            const row = listRow({
+              number: i + 1,
+              text: `${entry.box.width} × ${entry.box.height} px${nudged ? ` · moved ${entry.nudge.x}, ${entry.nudge.y}` : ""}`,
+              on: state.selectedFrame === i,
+              include: entry.include,
+              choose: () => {
                 state.selectedFrame = i
-                const position = outcome.placed.findIndex((placed) => placed.index === i)
+                const position = clip?.placed.findIndex((placed) => placed.index === i) ?? -1
                 if (position >= 0) {
                   state.playing = false
                   frame = Math.max(0, playing().indexOf(position))
                 }
                 update()
-              }
-            }
-          },
-          h("span", { class: "frame-number" }, String(i + 1)),
-          h("span", { class: "list-text" }, `${entry.box.width} × ${entry.box.height} px${nudged ? ` · moved ${entry.nudge.x}, ${entry.nudge.y}` : ""}`),
-          button(entry.include ? "In" : "Out", (event) => {
-            event.stopPropagation()
-            toggleFrame(i)
-          }, { variant: "ghost", small: true, title: entry.include ? "In the animation: click to leave it out" : "Left out: click to put it back" })
-        )
-      })
-    ),
+              },
+              toggle: () => toggleFrame(i),
+              toggleTitle: entry.include ? "In the animation: click to leave it out" : "Left out: click to put it back"
+            })
+            return seam === false ? [row] : [seam, row]
+          })
+        ),
+        state.selectedAnimation < animations.length - 1 &&
+          h(
+            "div",
+            { class: "inline-action" },
+            button(`Join with ${animations[state.selectedAnimation + 1]!.name}`, () => setSheet((sheet) => joinAnimation(sheet, state.selectedAnimation)), {
+              variant: "ghost",
+              small: true,
+              title: `Puts ${animations[state.selectedAnimation + 1]!.name}'s frames at the end of ${chosen.name}, as one animation`
+            })
+          )
+      ),
     selected !== undefined &&
       h(
         "div",
@@ -1925,42 +2065,23 @@ const framesPanel = (): HTMLElement | false => {
           button("Reset", () => nudgeFrame(state.selectedFrame!, -selected.nudge.x, -selected.nudge.y), { variant: "ghost", small: true }),
         button("Remove", () => removeFrame(state.selectedFrame!), { variant: "ghost", small: true, icon: "trash", title: "Remove this frame's box (Delete)" })
       ),
-    prop(
-      "Anchor",
-      segmented(state.sheet.anchor, anchors.map((entry) => ({ id: entry.id, label: entry.label, title: entry.hint })), (anchor) => {
-        state.sheet = { ...state.sheet, anchor }
-        update()
-      }, { label: "Anchor", class: "fill" }),
-      anchors.find((entry) => entry.id === state.sheet.anchor)!.hint
-    ),
-    prop(
-      "Margin",
-      numberInput(state.sheet.padding, (value) => {
-        state.sheet = { ...state.sheet, padding: Math.max(0, Math.round(value)) }
-        update()
-      }, { min: 0, max: 64, step: 1, suffix: "px", label: "Margin" }),
-      "Empty pixels kept around the frames, on every side."
-    ),
     group(
-      "Playback",
-      prop("Speed", numberInput(state.sheet.fps, (value) => {
-        state.sheet = { ...state.sheet, fps: Math.min(60, Math.max(0.5, value)) }
-        update()
-      }, { min: 0.5, max: 60, step: 1, suffix: "fps", label: "Speed" }), "Frames per second, saved in the JSON and the GIF."),
+      "Lining up",
       prop(
-        "Loop",
-        segmented(
-          state.sheet.loop,
-          [
-            { id: "forward", label: "Loop" },
-            { id: "pingpong", label: "Ping-pong" }
-          ],
-          (loop) => {
-            state.sheet = { ...state.sheet, loop }
-            update()
-          },
-          { label: "Loop", class: "fill" }
-        )
+        "Anchor",
+        segmented(state.sheet.anchor, anchors.map((entry) => ({ id: entry.id, label: entry.label, title: entry.hint })), (anchor) => {
+          state.sheet = { ...state.sheet, anchor }
+          update()
+        }, { label: "Anchor", class: "fill" }),
+        anchors.find((entry) => entry.id === state.sheet.anchor)!.hint
+      ),
+      prop(
+        "Margin",
+        numberInput(state.sheet.padding, (value) => {
+          state.sheet = { ...state.sheet, padding: Math.max(0, Math.round(value)) }
+          update()
+        }, { min: 0, max: 64, step: 1, suffix: "px", label: "Margin" }),
+        "Empty pixels kept around each animation's frames, on every side."
       )
     )
   )
@@ -2049,7 +2170,7 @@ const sheetBackgroundPanel = (): HTMLElement =>
   )
 
 const exportLayout = (): SheetLayout => ({
-  columns: state.exportLayout.kind === "strip" ? Math.max(1, animation?.placed.length ?? 1) : Math.max(1, state.exportLayout.columns),
+  columns: state.exportLayout.kind === "strip" ? Number.MAX_SAFE_INTEGER : Math.max(1, state.exportLayout.columns),
   spacing: state.exportLayout.spacing
 })
 
@@ -2058,23 +2179,24 @@ const bytesOf = async (blob: Blob): Promise<Uint8Array> => new Uint8Array(await 
 const animationExportPanel = (): HTMLElement | false => {
   const outcome = animation
   const art = exported
-  if (outcome === undefined || art === undefined || outcome.placed.length === 0) return false
+  const clips = outcome === undefined ? [] : atlasClips(outcome, state.sheet)
+  if (outcome === undefined || art === undefined || clips.length === 0) return false
   const name = state.source === undefined ? "animation" : baseName(state.source.name)
   drawPreview()
   const scale = state.exportScale
   const layout = exportLayout()
-  const frames = outcome.placed.map((placed) => placed.art)
-  const anchor = outcome.placed[0]!.anchor
+  const frameCount = clips.reduce((sum, clip) => sum + clip.frames.length, 0)
+  // The GIF is the animation playing; when it is left out, the first one exported.
+  const playingClip = clips.find((clip) => clip.name === selectedSettings()?.name) ?? clips[0]!
   const sheetName = scale === 1 ? `${name}-sheet.png` : `${name}-sheet-${scale}x.png`
-  const json = (): string =>
-    spritesheetJson({ name, image: sheetName, frameWidth: outcome.width, frameHeight: outcome.height, count: frames.length, layout, scale, fps: state.sheet.fps, loop: state.sheet.loop, anchor })
+  const json = (): string => spritesheetJson({ image: sheetName, clips, atlas: atlasOf(clips, layout), scale })
   const paletteOf = (): Palette => ({ name: state.paletteName === ORIGINAL ? name : state.paletteName, colors: usedColors(art).map((entry) => entry.color) })
   return sectionOf(
     "export",
     "Export",
     {
-      action: h("span", { class: "meta" }, `${frames.length} × ${outcome.width} × ${outcome.height} · ${usedColors(art).length} colors`),
-      help: "The sheet holds every frame on one picture, as a strip or in rows, with a JSON file saying where each frame is, how long it shows, and where it stands (its anchor): Pixi's Spritesheet, Phaser's atlas, and Aseprite's JSON read it. The GIF plays the animation to share it. Frames gives each frame as its own PNG, in a ZIP. The recipe holds every setting and every box: open it here again, or run it with pixel sheet --recipe."
+      action: h("span", { class: "meta" }, `${clips.length} animation${clips.length === 1 ? "" : "s"} · ${frameCount} frames · ${usedColors(art).length} colors`),
+      help: "The sheet holds every exported animation on one picture, each from a new row, its frames in one row or in rows of a few, with a JSON file naming each animation and saying where each frame is, how long it shows, and where it stands (its anchor): Pixi's Spritesheet, Phaser's atlas, and Aseprite's JSON read it. The GIF plays the chosen animation to share it. Frames gives each frame as its own PNG, in a ZIP with a folder per animation. The recipe holds every setting, every box, and every animation: open it here again, or run it with pixel sheet --recipe."
     },
     h("div", { class: "preview-box" }, preview),
     prop(
@@ -2091,7 +2213,7 @@ const animationExportPanel = (): HTMLElement | false => {
         },
         { label: "Layout", class: "fill" }
       ),
-      "One row of frames, or rows of a few frames each."
+      "Each animation in one row of frames, or in rows of a few frames each."
     ),
     state.exportLayout.kind === "grid" &&
       prop("Per row", numberInput(state.exportLayout.columns, (value) => {
@@ -2101,7 +2223,7 @@ const animationExportPanel = (): HTMLElement | false => {
     prop("Spacing", numberInput(state.exportLayout.spacing, (value) => {
       state.exportLayout = { ...state.exportLayout, spacing: Math.max(0, Math.round(value)) }
       update()
-    }, { min: 0, step: 1, suffix: "px", label: "Spacing" }), "Empty pixels between frames on the sheet."),
+    }, { min: 0, step: 1, suffix: "px", label: "Spacing" }), "Empty pixels between frames, and between animations, on the sheet."),
     prop(
       "Scale",
       selectInput(
@@ -2121,7 +2243,7 @@ const animationExportPanel = (): HTMLElement | false => {
       button("JSON", () => download(`${name}-sheet${scale === 1 ? "" : `-${scale}x`}.json`, json(), "application/json"), {
         variant: "secondary",
         icon: "download",
-        title: "Where each frame is on the sheet PNG at this scale, its duration, and its anchor"
+        title: "Each animation's frames by name, where each frame is on the sheet PNG at this scale, its duration, and its anchor"
       })
     ),
     group(
@@ -2130,14 +2252,15 @@ const animationExportPanel = (): HTMLElement | false => {
         "div",
         { class: "export-grid" },
         button("GIF", () => {
-          const order = playOrder(frames.length, state.sheet.loop).map((i) => frames[i]!)
-          download(`${name}.gif`, new Blob([toGif(order, { scale: Math.max(scale, 1), delay: 1000 / state.sheet.fps })], { type: "image/gif" }))
-        }, { variant: "secondary", small: true, title: "The animation playing, at this scale, looping" }),
+          const order = playOrder(playingClip.frames.length, playingClip.loop).map((i) => playingClip.frames[i]!)
+          download(`${name}-${playingClip.name}.gif`, new Blob([toGif(order, { scale: Math.max(scale, 1), delay: 1000 / playingClip.fps })], { type: "image/gif" }))
+        }, { variant: "secondary", small: true, title: `${playingClip.name}, the animation playing, at this scale, looping` }),
         button("Frames .zip", () => {
-          void Promise.all(frames.map(async (frameArt, i) => ({ name: `${name}-${i}.png`, bytes: await bytesOf(await pngOf(frameArt, scale)) }))).then((entries) =>
+          const files = clips.flatMap((clip) => clip.frames.map((frameArt, i) => ({ name: `${clip.name}/${i}.png`, art: frameArt })))
+          void Promise.all(files.map(async (file) => ({ name: file.name, bytes: await bytesOf(await pngOf(file.art, scale)) }))).then((entries) =>
             download(`${name}-frames.zip`, new Blob([toZip(entries)], { type: "application/zip" }))
           )
-        }, { variant: "secondary", small: true, title: "Each frame as its own PNG, at this scale" }),
+        }, { variant: "secondary", small: true, title: "Each frame as its own PNG, at this scale, in a folder per animation" }),
         button("Recipe", () => download(`${name}.recipe.json`, encodeRecipe(animationRecipe()), "application/json"), {
           variant: "secondary",
           small: true,
@@ -2213,7 +2336,7 @@ const renderTopbar = (): void => {
             "span",
             { class: "file-meta" },
             state.kind === "animation" && animation !== undefined
-              ? `${source.image.width} × ${source.image.height} → ${animation.placed.length} × ${animation.width} × ${animation.height}`
+              ? `${source.image.width} × ${source.image.height} → ${exportedClips(animation).length} animation${exportedClips(animation).length === 1 ? "" : "s"}`
               : `${source.image.width} × ${source.image.height}${out === undefined ? "" : ` → ${out.width} × ${out.height}`}`
           )
         ),
@@ -2276,7 +2399,7 @@ const renderTopbar = (): void => {
       h("span", { class: "divider" }),
       button("Demo", openDemo, { variant: "ghost", class: "hide-narrow", title: "Open the demo picture" }),
       button("Open", () => fileInput.click(), { variant: "secondary", icon: "open", title: "Open a picture, project PNG, sprite source, recipe, or pixel.config.json" }),
-      button("Export", () => reveal("export", () => update()), { variant: "primary", icon: "download", disabled: result === undefined && (animation?.placed.length ?? 0) === 0 })
+      button("Export", () => reveal("export", () => update()), { variant: "primary", icon: "download", disabled: result === undefined && (animation === undefined || exportedClips(animation).length === 0) })
     )
   )
 }
@@ -2430,7 +2553,7 @@ window.addEventListener("keydown", (event) => {
   if (event.altKey || state.source === undefined) return
   if (state.kind === "animation") {
     // Space plays, comma and period step, arrows move the chosen (or shown) frame by a pixel, Delete removes a box.
-    const target = state.selectedFrame ?? (state.animationView === "play" ? animation?.placed[shownFrame()]?.index : undefined)
+    const target = state.selectedFrame ?? (state.animationView === "play" ? selectedClip()?.placed[shownFrame()]?.index : undefined)
     const arrows: Record<string, readonly [number, number]> = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] }
     const arrow = arrows[key]
     const keys: Record<string, () => void> = {
@@ -2542,7 +2665,10 @@ const render = (rebuildPanels: boolean): void => {
       highlight: [],
       marked: [],
       painted: [],
-      boxes: state.sheet.frames.map((entry) => ({ ...entry.box, include: entry.include })),
+      boxes: state.sheet.frames.map((entry, i) => {
+        const group = state.sheet.animations.findIndex((other) => other.frames.includes(i))
+        return { ...entry.box, include: entry.include && state.sheet.animations[group]?.include === true, group: Math.max(0, group) }
+      }),
       frameGrids: animation.frames.map((entry) => {
         const dx = Math.max(0, Math.round(entry.box.x))
         const dy = Math.max(0, Math.round(entry.box.y))

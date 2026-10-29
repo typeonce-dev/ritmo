@@ -17,11 +17,11 @@ import { toJson, toRgba, toSvg } from "../core/export.ts"
 import type { LintRules } from "../core/lint.ts"
 import { presets, proposePalette, type ProposeMethod } from "../core/palette.ts"
 import { runRecipe, type Outcome } from "../core/pipeline.ts"
-import { detectFrames, proposeForSheet, runSheet, type AnimationCache } from "../core/animation.ts"
+import { atlasClips, detectFrames, proposeForSheet, runSheet, type AnimationCache } from "../core/animation.ts"
 import { toGif } from "../core/gif.ts"
 import { fitScale, previewArt, previewFix, previewSheet } from "../core/preview.ts"
-import { defaultSheet, playOrder, type Sheet } from "../core/sheet.ts"
-import { sheetArt, spritesheetJson } from "../core/spritesheet.ts"
+import { animationOf, defaultSheet, isAnimationName, playOrder, withFrames, type Sheet, type SheetAnimation } from "../core/sheet.ts"
+import { atlasOf, spritesheetJson } from "../core/spritesheet.ts"
 import { encodeRecipe, type GridChoice, type Recipe } from "../core/recipe.ts"
 import { checkImage, compareReports, reportOfArt, reportOfFix, reportOfSheet, type Report, type Verdict } from "../core/report.ts"
 import { artOfImage, formatSprite } from "../core/sprite.ts"
@@ -342,6 +342,37 @@ const parseBoxes = (text: string): Effect.Effect<Sheet["frames"], CliFailure> =>
   return Effect.succeed(boxes.map(([x, y, width, height]) => ({ box: { x: x!, y: y!, width: width!, height: height! }, include: true, nudge: { x: 0, y: 0 } })))
 }
 
+/** Reads "walk=1-4;throw=5,6,7;9-12" as animations: every frame (numbered from 1) in exactly one. */
+const parseAnimations = (text: string, count: number): Effect.Effect<Array<SheetAnimation>, CliFailure> => {
+  const fail = (message: string) => Effect.fail(new CliFailure({ message }))
+  const parts = text.split(";").map((part) => part.trim()).filter((part) => part !== "")
+  const seen = new Set<number>()
+  const animations: Array<SheetAnimation> = []
+  for (const [a, part] of parts.entries()) {
+    const named = /^([^=]+)=(.+)$/.exec(part)
+    const name = named === null ? `animation-${a + 1}` : named[1]!.trim()
+    if (!isAnimationName(name)) return fail(`"${name}" cannot name an animation: use letters, digits, "-", "_", and "."`)
+    if (animations.some((animation) => animation.name === name)) return fail(`two animations are named "${name}"`)
+    const frames: Array<number> = []
+    for (const range of (named === null ? part : named[2]!).split(",")) {
+      const bounds = /^\s*(\d+)\s*(?:-\s*(\d+)\s*)?$/.exec(range)
+      if (bounds === null) return fail(`"${range.trim()}" is not a frame number or a range like "1-4"`)
+      const from = Number(bounds[1])
+      const to = bounds[2] === undefined ? from : Number(bounds[2])
+      for (let n = from; from <= to ? n <= to : n >= to; n += from <= to ? 1 : -1) {
+        if (n < 1 || n > count) return fail(`frame ${n} is not on the sheet: its frames are 1 to ${count}`)
+        if (seen.has(n)) return fail(`frame ${n} is in more than one animation`)
+        seen.add(n)
+        frames.push(n - 1)
+      }
+    }
+    animations.push(animationOf(name, frames))
+  }
+  const missing = Array.from({ length: count }, (_, i) => i + 1).filter((n) => !seen.has(n))
+  if (missing.length > 0) return fail(`frames ${missing.join(", ")} are in no animation: every frame must be in one`)
+  return Effect.succeed(animations)
+}
+
 const sheetCommand = Command.make(
   "sheet",
   {
@@ -352,13 +383,20 @@ const sheetCommand = Command.make(
     colors: Flag.Int("colors").pipe(Flag.withDescription("Without a palette, how many colors to propose from all the frames together."), Flag.withDefault(16)),
     cell: Flag.String("cell").pipe(Flag.withDescription('The cell size in source pixels, "11.5", instead of finding it (each frame finds its own offset).'), Flag.optional),
     boxes: Flag.String("boxes").pipe(Flag.withDescription('The frames\' boxes, "x,y,w,h;x,y,w,h" in source pixels, instead of finding them.'), Flag.optional),
-    skip: Flag.String("skip").pipe(Flag.withDescription('Frames to leave out of the animation, by number from 1: "1,6".'), Flag.optional),
+    skip: Flag.String("skip").pipe(Flag.withDescription('Frames to leave out of their animation, by number from 1: "1,6".'), Flag.optional),
+    animations: Flag.String("animations").pipe(
+      Flag.withDescription(
+        'How the frames make animations, by frame number from 1: "walk=1-4;throw=5-8;explode=9-18" (a name is optional: "1-4;5-8"). Every frame must be in one. Default: one per row of frames, as the report lists them.'
+      ),
+      Flag.optional
+    ),
+    only: Flag.String("only").pipe(Flag.withDescription('The animations to write, by name: "walk,explode" (the others stay in the recipe, left out).'), Flag.optional),
     keepBackground: Flag.Boolean("keep-background").pipe(Flag.withDefault(false), Flag.withDescription("Keep the sheet's background (by default it is cleared, with any painted grid and labels).")),
     anchor: Flag.Literals("anchor", ["ground", "feet", "center", "box"]).pipe(Flag.withDescription("What lines frames up: the ground (default: each frame at its height as drawn, hops kept, sideways drift removed), the feet (pinned to one row), the body's center, or nothing (frames as in their boxes)."), Flag.optional),
-    fps: Flag.Finite("fps").pipe(Flag.withDescription("Frames per second (default 8)."), Flag.optional),
-    pingpong: Flag.Boolean("pingpong").pipe(Flag.withDefault(false), Flag.withDescription("Play there and back instead of looping from the start.")),
-    columns: Flag.Int("columns").pipe(Flag.withDescription("Frames per row on the sheet written (default: one row)."), Flag.optional),
-    spacing: Flag.Int("spacing").pipe(Flag.withDescription("Empty pixels between frames on the sheet written."), Flag.withDefault(0)),
+    fps: Flag.Finite("fps").pipe(Flag.withDescription("Frames per second, for every animation (default 8)."), Flag.optional),
+    pingpong: Flag.Boolean("pingpong").pipe(Flag.withDefault(false), Flag.withDescription("Every animation plays there and back instead of looping from the start.")),
+    columns: Flag.Int("columns").pipe(Flag.withDescription("Frames per row on the sheet written; each animation starts a new row (default: one row per animation)."), Flag.optional),
+    spacing: Flag.Int("spacing").pipe(Flag.withDescription("Empty pixels between frames, and between animations, on the sheet written."), Flag.withDefault(0)),
     out,
     scale
   },
@@ -372,19 +410,34 @@ const sheetCommand = Command.make(
     const image = yield* readPicture(flags.input)
     const cache: AnimationCache = {}
     const start = recipe.sheet ?? defaultSheet
-    let frames = Option.isSome(flags.boxes) ? yield* parseBoxes(flags.boxes.value) : start.frames.length > 0 ? start.frames : detectFrames(image, recipe, cache)
+    let sheet: Sheet = Option.isSome(flags.boxes)
+      ? withFrames(start, yield* parseBoxes(flags.boxes.value))
+      : start.frames.length > 0
+        ? start
+        : withFrames(start, detectFrames(image, recipe, cache))
+    if (sheet.frames.length === 0) return yield* new CliFailure({ message: "no frames found in the sheet: give them with --boxes" })
     if (Option.isSome(flags.skip)) {
       const skipped = new Set(flags.skip.value.split(",").map((part) => Number(part.trim()) - 1))
-      frames = frames.map((frame, i) => ({ ...frame, include: !skipped.has(i) }))
+      sheet = { ...sheet, frames: sheet.frames.map((frame, i) => ({ ...frame, include: !skipped.has(i) })) }
     }
-    const sheet: Sheet = {
-      ...start,
-      frames,
-      anchor: Option.getOrElse(flags.anchor, () => start.anchor),
-      fps: Option.getOrElse(flags.fps, () => start.fps),
-      loop: flags.pingpong ? "pingpong" : start.loop
+    if (Option.isSome(flags.animations)) sheet = { ...sheet, animations: yield* parseAnimations(flags.animations.value, sheet.frames.length) }
+    if (Option.isSome(flags.only)) {
+      const wanted = flags.only.value.split(",").map((part) => part.trim()).filter((part) => part !== "")
+      const unknown = wanted.filter((name) => !sheet.animations.some((animation) => animation.name === name))
+      if (unknown.length > 0) {
+        return yield* new CliFailure({ message: `no animation named ${unknown.join(", ")}: the sheet has ${sheet.animations.map((animation) => animation.name).join(", ")}` })
+      }
+      sheet = { ...sheet, animations: sheet.animations.map((animation) => ({ ...animation, include: wanted.includes(animation.name) })) }
     }
-    if (sheet.frames.length === 0) return yield* new CliFailure({ message: "no frames found in the sheet: give them with --boxes" })
+    sheet = {
+      ...sheet,
+      anchor: Option.getOrElse(flags.anchor, () => sheet.anchor),
+      animations: sheet.animations.map((animation) => ({
+        ...animation,
+        fps: Option.getOrElse(flags.fps, () => animation.fps),
+        loop: flags.pingpong ? "pingpong" : animation.loop
+      }))
+    }
     recipe = { ...recipe, sheet }
     if (recipe.palette === undefined && flags.colors > 0) {
       const proposed = proposeForSheet(image, recipe, sheet, flags.colors, "dominant", cache).map((proposal) => proposal.color)
@@ -395,34 +448,37 @@ const sheetCommand = Command.make(
     const base = yield* outputBase(flags.input, Option.getOrUndefined(flags.out), "sheet")
     const path = yield* Path.Path
     const name = path.basename(base)
-    const arts = outcome.placed.map((frame) => frame.art)
-    const layout = { columns: Option.getOrElse(flags.columns, () => arts.length), spacing: flags.spacing }
-    const art = sheetArt(arts, layout)
-    const anchor = outcome.placed[0]?.anchor ?? { x: 0, y: 0 }
-    const info = (image: string, scale: number) =>
-      spritesheetJson({ name, image, frameWidth: outcome.width, frameHeight: outcome.height, count: arts.length, layout, scale, fps: sheet.fps, loop: sheet.loop, anchor })
+    const clips = atlasClips(outcome, sheet)
+    const layout = { columns: Option.getOrElse(flags.columns, () => Number.MAX_SAFE_INTEGER), spacing: flags.spacing }
+    const atlas = atlasOf(clips, layout)
+    const info = (image: string, scale: number) => spritesheetJson({ image, clips, atlas, scale })
     const files: Record<string, string | ReadonlyArray<string>> = {}
-    if (arts.length > 0) {
-      files.png = yield* writePng(`${base}.png`, toRgba(art))
+    if (clips.length > 0) {
+      files.png = yield* writePng(`${base}.png`, toRgba(atlas.art))
       files.json = yield* writeText(`${base}.json`, info(`${name}.png`, 1))
       if (flags.scale > 1) {
-        files.scaled = yield* writePng(`${base}@${flags.scale}x.png`, toRgba(art, flags.scale))
+        files.scaled = yield* writePng(`${base}@${flags.scale}x.png`, toRgba(atlas.art, flags.scale))
         files.scaledJson = yield* writeText(`${base}@${flags.scale}x.json`, info(`${name}@${flags.scale}x.png`, flags.scale))
       }
-      const order = playOrder(arts.length, sheet.loop).map((i) => arts[i]!)
-      files.gif = yield* writeBytes(`${base}.gif`, toGif(order, { scale: Math.max(flags.scale, fitScale(arts[0]!, 256)), delay: 1000 / sheet.fps }))
+      // One GIF and one folder of frames per animation.
+      const gifs: Array<string> = []
       const written: Array<string> = []
-      for (const [i, frame] of arts.entries()) written.push(yield* writePng(path.join(`${base}.frames`, `${name}-${i}.png`), toRgba(frame, flags.scale)))
+      for (const clip of clips) {
+        const order = playOrder(clip.frames.length, clip.loop).map((i) => clip.frames[i]!)
+        gifs.push(yield* writeBytes(`${base}.${clip.name}.gif`, toGif(order, { scale: Math.max(flags.scale, fitScale(clip.frames[0]!, 256)), delay: 1000 / clip.fps })))
+        for (const [i, frame] of clip.frames.entries()) written.push(yield* writePng(path.join(`${base}.frames`, clip.name, `${i}.png`), toRgba(frame, flags.scale)))
+      }
+      files.gifs = gifs
       files.frames = written
     }
     files.recipe = yield* writeText(`${base}.recipe.json`, encodeRecipe(recipe))
+    const groupOf = new Map(sheet.animations.flatMap((animation, a) => animation.frames.map((i) => [i, a] as const)))
     files.preview = yield* writePng(
       `${base}.preview.png`,
       previewSheet(
         image,
-        sheet.frames.map((frame) => ({ ...frame.box, include: frame.include })),
-        arts,
-        sheet.anchor === "feet" || sheet.anchor === "ground" ? anchor.y : undefined
+        sheet.frames.map((frame, i) => ({ ...frame.box, include: frame.include && sheet.animations[groupOf.get(i) ?? 0]?.include === true, group: groupOf.get(i) ?? 0 })),
+        clips.map((clip) => ({ frames: clip.frames, anchorY: sheet.anchor === "feet" || sheet.anchor === "ground" ? clip.anchor.y : undefined }))
       )
     )
     yield* printJson({ file: flags.input, ...storedNote(resolved.stored), ...report, files })
