@@ -1,5 +1,11 @@
 # @typeonce/ritmo-netcode
 
+## 0.19.1
+
+### Patch Changes
+
+- @typeonce/ritmo@0.19.1
+
 ## 0.19.0
 
 ### Patch Changes

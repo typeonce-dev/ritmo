@@ -1,6 +1,6 @@
 {
   "name": "@typeonce/ritmo-tools",
-  "version": "0.19.0",
+  "version": "0.19.1",
   "description": "Asset tools for games made with Ritmo, for agents: fixes AI-made pixel art and animation sheets onto a true pixel grid and a palette, keeps game sounds as JSON recipes, and writes game music as JSON songs built around a hum, each with a review page for a person",
   "author": "Sandro Maglione",
   "license": "MIT",
