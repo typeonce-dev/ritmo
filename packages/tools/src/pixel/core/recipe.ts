@@ -13,7 +13,7 @@ import { defaultSampleOptions, type Dither, type SampleOptions } from "./fix.ts"
 import type { GridSpec } from "./grid.ts"
 import { presets } from "./palette.ts"
 import type { ReduceMode } from "./reduce.ts"
-import { anchors, defaultSheet, type Sheet, type SheetFrame } from "./sheet.ts"
+import { anchors, animationOf, DEFAULT_FPS, defaultSheet, isAnimationName, type Sheet, type SheetAnimation, type SheetFrame } from "./sheet.ts"
 
 /**
  * Where the grid comes from: found in the picture ("auto"), given as a cell
@@ -265,13 +265,46 @@ export const decodeRecipe = (text: string): Decoded<Recipe> => {
         }
       ]
     })
-    const fps = number(value.fps, "sheet.fps", defaultSheet.fps)
-    if (!(fps > 0)) errors.push("sheet.fps must be more than 0")
+    const playing = (entry: Record<string, unknown>, where: string): Pick<SheetAnimation, "fps" | "loop"> => {
+      const fps = number(entry.fps, `${where}.fps`, DEFAULT_FPS)
+      if (!(fps > 0)) errors.push(`${where}.fps must be more than 0`)
+      return { fps, loop: oneOf(entry.loop, `${where}.loop`, ["forward", "pingpong"], "forward") }
+    }
+    // A recipe from before sheets held animations: every frame is one animation, played as the sheet said.
+    const animations = ((): Array<SheetAnimation> => {
+      if (value.animations === undefined) {
+        const played = playing(value, "sheet")
+        return read.length === 0 ? [] : [{ ...animationOf("animation-1", read.map((_, i) => i)), ...played }]
+      }
+      if (!Array.isArray(value.animations)) {
+        errors.push("sheet.animations must be a list")
+        return []
+      }
+      const seen = new Set<number>()
+      const names = new Set<string>()
+      const list = value.animations.flatMap((entry, a): Array<SheetAnimation> => {
+        const where = `sheet.animations[${a}]`
+        if (!isRecord(entry) || typeof entry.name !== "string" || !isAnimationName(entry.name) || !Array.isArray(entry.frames)) {
+          errors.push(`${where} needs a name (letters, digits, "-", "_", ".") and a list of frames`)
+          return []
+        }
+        if (names.has(entry.name)) errors.push(`${where}: another animation is named "${entry.name}"`)
+        names.add(entry.name)
+        const frames = entry.frames.filter((i): i is number => Number.isInteger(i) && i >= 0 && i < read.length)
+        if (frames.length !== entry.frames.length || frames.length === 0) errors.push(`${where}.frames must be frame numbers from 0 to ${read.length - 1}, at least one`)
+        for (const i of frames) {
+          if (seen.has(i)) errors.push(`frame ${i} is in more than one animation`)
+          seen.add(i)
+        }
+        return [{ name: entry.name, frames, include: boolean(entry.include, `${where}.include`, true), ...playing(entry, where) }]
+      })
+      if (seen.size !== read.length) errors.push(`every frame must be in an animation (${read.length - seen.size} are not)`)
+      return list
+    })()
     return {
       frames: read,
+      animations,
       anchor: oneOf(value.anchor, "sheet.anchor", anchors.map((entry) => entry.id), defaultSheet.anchor),
-      fps,
-      loop: oneOf(value.loop, "sheet.loop", ["forward", "pingpong"], defaultSheet.loop),
       padding: Math.max(0, Math.round(number(value.padding, "sheet.padding", defaultSheet.padding)))
     }
   })()

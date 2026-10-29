@@ -52,6 +52,8 @@ export interface Box {
 export interface SceneBox extends Box {
   /** Left out of the animation: drawn dashed and dimmed. */
   readonly include: boolean
+  /** Which animation the frame is in: neighbouring animations are drawn in different colors. */
+  readonly group: number
 }
 
 export interface ViewerEvents {
@@ -106,7 +108,8 @@ const MOVED_COLOR = "rgba(255, 200, 0, 0.95)"
 const HOVER_COLOR = "rgba(0, 220, 255, 1)"
 /** Pixels painted by hand: white, apart from the yellow of cleaned specks and moved lines. */
 const PAINTED_COLOR = "rgba(255, 255, 255, 0.95)"
-const BOX_COLOR = "rgba(0, 220, 255, 0.95)"
+/** One color per animation, in turn. */
+const BOX_COLORS = ["rgba(0, 220, 255, 0.95)", "rgba(120, 255, 120, 0.95)", "rgba(255, 110, 200, 0.95)", "rgba(180, 150, 255, 0.95)"]
 const BOX_SELECTED = "rgba(255, 200, 0, 1)"
 const BOX_OUT = "rgba(200, 200, 210, 0.8)"
 
@@ -326,14 +329,15 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
       const box = shown[i]!
       const selected = scene.selectedBox === i
       const hovered = boxHover?.index === i
-      context.strokeStyle = !box.include ? BOX_OUT : selected ? BOX_SELECTED : hovered ? HOVER_COLOR : BOX_COLOR
+      const color = BOX_COLORS[box.group % BOX_COLORS.length]!
+      context.strokeStyle = !box.include ? BOX_OUT : selected ? BOX_SELECTED : hovered ? HOVER_COLOR : color
       context.lineWidth = selected ? 2.5 : 1.5
       context.setLineDash(box.include ? [] : [6, 4])
       context.strokeRect(Math.round(rect.left) + 0.5, Math.round(rect.top) + 0.5, Math.round(rect.width), Math.round(rect.height))
       context.setLineDash([])
       const label = String(i + 1)
       const tag = Math.max(20, context.measureText(label).width + 12)
-      context.fillStyle = !box.include ? BOX_OUT : selected ? BOX_SELECTED : BOX_COLOR
+      context.fillStyle = !box.include ? BOX_OUT : selected ? BOX_SELECTED : color
       context.beginPath()
       context.roundRect(Math.round(rect.left), Math.round(rect.top) - 20, tag, 18, 4)
       context.fill()

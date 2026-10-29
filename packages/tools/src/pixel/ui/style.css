@@ -1684,3 +1684,45 @@ input + .affix {
     display: none;
   }
 }
+
+/* Between two frames of an animation: a faint line that cuts it in two there. */
+.split-seam {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: 500 11px/1 var(--font);
+  cursor: pointer;
+  opacity: 0.45;
+}
+
+.split-seam::before,
+.split-seam::after {
+  content: "";
+  flex: 1;
+  border-top: 1px dashed currentColor;
+}
+
+.split-seam:hover,
+.split-seam:focus-visible {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.split-seam .icon {
+  order: 1;
+}
+
+.split-seam span {
+  order: 2;
+}
+
+.split-seam::after {
+  order: 3;
+}

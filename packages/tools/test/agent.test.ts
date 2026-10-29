@@ -16,7 +16,7 @@ import { decodeRecipe, defaultRecipe, encodeRecipe, presetPalette, type Recipe }
 import { checkImage, compareReports, isNative, reportOfArt } from "@typeonce/ritmo-tools/pixel/core/report.ts"
 import { artOfImage, formatSprite, parseJsonMap, parseSprite } from "@typeonce/ritmo-tools/pixel/core/sprite.ts"
 import { encodePng } from "@typeonce/ritmo-tools/pixel/cli/png.ts"
-import { makeSprite, upscale } from "./synthetic.ts"
+import { fakeSheet, makeSprite, place, upscale } from "./synthetic.ts"
 
 const sweetie = presetPalette("sweetie-16")!
 
@@ -239,6 +239,40 @@ describe("the pixel CLI", () => {
     expect(readFileSync(join(dir, "from-project.sprite.txt"), "utf8")).toBe(readFileSync(join(dir, "demo.fixed.sprite.txt"), "utf8"))
     const given = run("check", "demo.project.png", "--recipe", "demo.fixed.recipe.json")
     expect(given.json.storedRecipe).toBeUndefined()
+  })
+
+  it("fixes a sheet of two rows as two animations, and writes only the ones asked for", { timeout: 60_000 }, () => {
+    // Two rows of five frames, as two fake sheets one over the other: two animations.
+    const fire = [sweetie.colors[2]!, sweetie.colors[3]!, sweetie.colors[4]!, sweetie.colors[1]!]
+    const row = (seed: number) => fakeSheet(Array.from({ length: 5 }, (_, f) => place(makeSprite(10, 12, fire, seed, true), 12, 16, 1, 2 + (f % 2))), 6, seed).image
+    const top = row(3)
+    const bottom = row(4)
+    const data = new Uint8ClampedArray(top.data.length + bottom.data.length)
+    data.set(top.data)
+    data.set(bottom.data, top.data.length)
+    writeFileSync(join(dir, "two.png"), encodePng({ width: top.width, height: top.height + bottom.height, data }))
+
+    const found = run("sheet", "two.png", "--colors", "6")
+    expect(found.json.animation.animations.map((animation: { name: string; frames: Array<number> }) => [animation.name, animation.frames])).toEqual([
+      ["animation-1", [1, 2, 3, 4, 5]],
+      ["animation-2", [6, 7, 8, 9, 10]]
+    ])
+    expect(found.json.files.gifs).toHaveLength(2)
+
+    const only = run("sheet", "two.png", "--colors", "6", "--animations", "walk=1-5;idle=6-10", "--only", "idle", "-o", "idle")
+    const json = JSON.parse(readFileSync(join(dir, "idle.json"), "utf8"))
+    expect(Object.keys(json.animations)).toEqual(["idle"])
+    expect(only.json.files.gifs).toEqual(["idle.idle.gif"])
+    // The animation left out stays in the recipe, to put back later.
+    const recipe = decodeRecipe(readFileSync(join(dir, "idle.recipe.json"), "utf8"))
+    expect(recipe.ok && recipe.value.sheet?.animations.map((animation) => [animation.name, animation.include])).toEqual([
+      ["walk", false],
+      ["idle", true]
+    ])
+
+    const missing = run("sheet", "two.png", "--animations", "1-4;6-10")
+    expect(missing.code).toBe(2)
+    expect(missing.stderr + JSON.stringify(missing.json ?? {})).toContain("frames 5 are in no animation")
   })
 
   it("reads the project's rules from pixel.config.json", { timeout: 60_000 }, () => {

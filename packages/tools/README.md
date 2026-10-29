@@ -171,7 +171,8 @@ step. Opening another picture starts the history over.
 ### Animations
 
 An image generator asked for an animation draws a sheet: the frames side by
-side (or in rows), each in a box, over a dark background with a painted grid,
+side (or in rows, often one animation per row: walking each way, throwing,
+exploding), each in a box, over a dark background with a painted grid,
 often with a label under each frame. Open it like any picture: when the
 fixer finds several boxes, most of them holding about as much art each (a
 few faint ones, like the last smoke of an explosion, do not count against
@@ -191,9 +192,20 @@ it is.
   how noisy the background is. The **Sheet** view shows the source with every frame's box,
   numbered. Choose **Boxes** (F) to drag a box, resize it by its handles, or
   draw a new one on empty space when something was cut out; Delete removes the
-  selected box. **Frames** on the right lists every frame: **In**/**Out**
-  leaves one out of the animation without losing its box, and **Find again**
-  starts over (boxes changed by hand are dropped).
+  selected box. Each box is tinted with its animation's color.
+- **Animations.** Each row of frames is one animation, named
+  `animation-1`, `animation-2`, ... in reading order; where two blocks sit
+  side by side (walking on the left, throwing on the right), a row across
+  both is split where they meet, when its two parts hold as many frames as
+  the blocks' rows. **Animations** on the right lists them: **In**/**Out**
+  chooses which are exported (the others keep their frames and settings);
+  choose one to play it, rename it (the name a game plays it by), and set its
+  speed and loop. Its frames are listed under it: **In**/**Out** leaves one
+  out without losing its box. **Split here**, on the line between two of
+  its frames, cuts the animation in two there (the frames after it become a
+  new animation), and **Join with** puts it together with the next one, for
+  a sheet whose rows are not its animations. **Find again** starts over
+  (boxes and animations changed by hand are dropped).
 - **Grid and palette.** Every frame is read on one cell size (found from all
   the frames together, or typed), each at its own offset, and fixed with one
   recipe: the palette, matching, and cleanup are the picture's settings, and
@@ -204,19 +216,23 @@ it is.
   height it was drawn, so a hop or a bob stays; **Feet** pins the body's
   lowest row to one spot (hops are flattened); **Center** pins the body's
   middle, for things that float; **Box** places frames as cut. Arrow keys nudge the selected frame by a pixel
-  (Shift: 4). **Margin** sets the empty pixels around the frames.
-- **Playing.** The **Play** view shows the animation running, with the grid
+  (Shift: 4). Each animation gets its own canvas, the smallest that holds
+  its frames; **Margin** sets the empty pixels around them.
+- **Playing.** The **Play** view shows the chosen animation running, with the grid
   if you want it; Space plays and pauses, `,` and `.` step a frame, and the
   bar under it sets the frame rate, **Loop** or **Ping-pong**, and **Onion**
   (the previous frame, faint, under the current one). **Frames** shows them
   all side by side; click one to select it.
-- **Export.** A **Sheet PNG** with every frame in one row or in rows of
-  **Per row** frames, with **Spacing** between them, at any whole scale; its
+- **Export.** A **Sheet PNG** with every exported animation, each from a
+  new row, its frames in one row or in rows of **Per row** frames, with
+  **Spacing** between frames and animations, at any whole scale; its
   **JSON** in the hash format Pixi (`Spritesheet`), Phaser (`atlas`), and
-  Aseprite share, with each frame's rectangle, duration, and anchor, the
-  animation's frame list, and Aseprite's `frameTags`; a **GIF**; **Frames
-  .zip** (one PNG per frame); the **Recipe** (frames, anchor, frame rate, and
-  loop included); and the palette.
+  Aseprite share, with each frame's rectangle, duration, and anchor (frames
+  are named `<animation> 0`, `<animation> 1`, ...), each animation's frame
+  list under `animations`, and Aseprite's `frameTags`; a **GIF** of the
+  chosen animation; **Frames .zip** (one PNG per frame, a folder per
+  animation); the **Recipe** (frames, animations, and anchor included); and
+  the palette.
 
 Hand edits (**Erase**, **Paint**) and **Size** are for single pictures and
 are not offered for animations.
@@ -258,7 +274,7 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 | --- | --- |
 | `check <file>` | Clean pixel art, fixable with confidence, or needs a person? Writes nothing. |
 | `fix <png>` | Fixes it, writing `.png` (1x), `@Nx.png` (`--scale N`), `.svg`, `.json` map, `.sprite.txt`, `.recipe.json`, and `.preview.png`; `--project` also writes `<name>.project.png`. |
-| `sheet <png>` | Fixes an animation sheet: `.png` (the frames in a strip, or `--columns N` per row), its `.json`, a `.gif`, `.frames/` (one PNG each), `.recipe.json`, and `.preview.png` (the boxes found over the source, and the fixed frames). |
+| `sheet <png>` | Fixes an animation sheet: `.png` (each animation's frames in a strip from a new row, or `--columns N` per row), its `.json`, a `.<animation>.gif` each, `.frames/<animation>/` (one PNG per frame), `.recipe.json`, and `.preview.png` (the boxes found over the source, and each animation's fixed frames). The report lists the animations with their frame numbers. |
 | `pixelate <png> -w N` | Cuts a picture that is not pixel art into N pixels across, on the palette (or `--colors N` proposed from it). |
 | `render <sprite>` | Renders a sprite source or JSON map to PNG and SVG, and lints it. |
 | `lint <file>` | The project's rules on the pixels as they are. |
@@ -271,8 +287,10 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 (`--palette`, `--cell 8x8 --offset 2,3`, `--follow`, `--cleanup`,
 `--remove-background`, `--crop`, `--dither`, `--metric`, `--shrink-to`), over a
 `--recipe` file (or the recipe a project PNG holds), over the config. `ritmo-tools pixel <command> --help` lists them. `sheet` takes them too, plus
-`--boxes`, `--skip`, `--anchor`, `--fps`, `--pingpong`, `--columns`, and
-`--spacing`. Every command reads PNG and JPEG.
+`--boxes`, `--skip`, `--animations` (which frames make which animation:
+`"walk=1-4;throw=5-8;explode=9-18"`, every frame in one), `--only` (the
+animations to write, by name: `"walk,explode"`), `--anchor`, `--fps`,
+`--pingpong`, `--columns`, and `--spacing`. Every command reads PNG and JPEG.
 
 **`pixel.config.json`**, found from the working directory up (or
 `--config`), holds a project's rules: `palette` (a preset's name, a list of
