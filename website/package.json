@@ -18,7 +18,7 @@
     "@typeonce/ritmo-netcode": "workspace:*",
     "@typeonce/ritmo-pixi": "workspace:*",
     "@typeonce/ritmo-render": "workspace:*",
-    "effect": "4.0.2",
+    "effect": "4.1.0",
     "pixi.js": "8.22.0"
   },
   "devDependencies": {
