@@ -14,7 +14,7 @@ import { makeHistory } from "../../pixel/ui/history.ts"
 import { monoWav, stereoWav } from "../core/audio.ts"
 import { checkSong, type SongReport } from "../core/check.ts"
 import { instrumentIds, instruments, type InstrumentId } from "../core/instruments.ts"
-import { listen, referenceOf } from "../core/listen.ts"
+import { isSparse, listen, referenceOf } from "../core/listen.ts"
 import { toMidi } from "../core/midi.ts"
 import { noteSamples, renderSong, SAMPLE_RATE, type NoteCache, type Stereo } from "../core/render.ts"
 import { decodeReview, describeEdits, emptyReview, encodeReview, type Comment, type Status } from "../core/review.ts"
@@ -72,8 +72,13 @@ let songDirty = false
 let reviewDirty = false
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 
+/** What a save failure says when the server cannot be reached at all. */
+const SERVER_GONE = "the review server is not running. Start `ritmo-tools music review` again, then reload this page"
+
 const put = async (path: string, body: BodyInit): Promise<unknown> => {
-  const response = await fetch(`/api/${path}`, { method: "PUT", body })
+  const response = await fetch(`/api/${path}`, { method: "PUT", body }).catch(() => {
+    throw new Error(SERVER_GONE)
+  })
   const answer: unknown = await response.json()
   if (!response.ok) throw new Error(typeof answer === "object" && answer !== null && "error" in answer ? String(answer.error) : response.statusText)
   if (typeof answer === "object" && answer !== null && "version" in answer && typeof answer.version === "string") state.version = answer.version
@@ -364,11 +369,15 @@ const hear = async (bytes: ArrayBuffer, label: string): Promise<void> => {
       say(
         heardNow.notes.length === 0
           ? `Heard a beat at ${heardNow.tempo} BPM, and no tune. Ask your agent to build the song on that beat.`
-          : `Heard ${heardNow.notes.length} notes at ${heardNow.tempo} BPM in ${heardNow.key}. Ask your agent to build the song around it.`
+          : isSparse(heardNow)
+            ? `Heard only ${heardNow.notes.length} notes in ${Math.round(heardNow.found.seconds)} seconds: the listener follows one voice, so a full song or a noisy room loses the tune. Hum the part alone, close to the microphone.`
+            : `Heard ${heardNow.notes.length} notes at ${heardNow.tempo} BPM in ${heardNow.key}. Ask your agent to build the song around it.`
       )
     }
   } catch (error) {
-    say(`Could not listen to the ${label}: ${error instanceof Error ? error.message : String(error)}`)
+    const message = error instanceof Error ? error.message : String(error)
+    // The listening happens here in the page; only keeping the audio needs the server.
+    say(message === SERVER_GONE ? `Heard the ${label}, but could not keep it: ${message}.` : `Could not listen to the ${label}: ${message}`)
   }
   state.listening = false
   update()

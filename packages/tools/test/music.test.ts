@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest"
 import { monoWav, readWav, stereoWav } from "@typeonce/ritmo-tools/music/core/audio.ts"
 import { checkSong } from "@typeonce/ritmo-tools/music/core/check.ts"
 import { instrumentIds, instruments } from "@typeonce/ritmo-tools/music/core/instruments.ts"
-import { listen } from "@typeonce/ritmo-tools/music/core/listen.ts"
+import { isSparse, listen } from "@typeonce/ritmo-tools/music/core/listen.ts"
 import { toMidi } from "@typeonce/ritmo-tools/music/core/midi.ts"
 import { loudnessOf, peakOf, renderSong, SAMPLE_RATE } from "@typeonce/ritmo-tools/music/core/render.ts"
 import { describeEdits, reviewSummary } from "@typeonce/ritmo-tools/music/core/review.ts"
@@ -28,7 +28,8 @@ const song = (instrument: Song["tracks"][number]["instrument"] = "piano", notes 
 })
 
 /** A voice-like hum (a buzz through two resonances, slightly off pitch and time), as `music listen` would get from a microphone. */
-const hum = (notes: ReadonlyArray<readonly [string, number]>, tempo: number, rate = 22050): Float32Array => {
+/** `off` moves each note's pitch, in semitones, by its index: a voice off pitch, by more on some notes than others. */
+const hum = (notes: ReadonlyArray<readonly [string, number]>, tempo: number, rate = 22050, off: (index: number) => number = () => 0): Float32Array => {
   const beat = 60 / tempo
   const total = notes.reduce((sum, [, beats]) => sum + beats, 0) * beat + 1
   const out = new Float32Array(Math.ceil(total * rate))
@@ -36,14 +37,14 @@ const hum = (notes: ReadonlyArray<readonly [string, number]>, tempo: number, rat
   let phase = 0
   let low1 = 0
   let low2 = 0
-  for (const [pitch, beats] of notes) {
+  for (const [index, [pitch, beats]] of notes.entries()) {
     const length = beats * beat
     const midi = midiOf(pitch)
     if (midi !== undefined) {
       const held = length * 0.88
       for (let i = 0; i < held * rate; i++) {
         const t = i / rate
-        const bend = 0.15 * Math.sin(2 * Math.PI * 5.5 * t) * Math.min(1, t * 3) - 0.6 * Math.exp(-t / 0.03) + 0.2
+        const bend = 0.15 * Math.sin(2 * Math.PI * 5.5 * t) * Math.min(1, t * 3) - 0.6 * Math.exp(-t / 0.03) + 0.2 + off(index)
         phase = (phase + 440 * Math.pow(2, (midi + bend - 69) / 12) / rate) % 1
         low1 += 0.08 * (2 * phase - 1 - low1)
         low2 += 0.08 * (low1 - low2)
@@ -157,6 +158,23 @@ describe("listening", () => {
     expect(heard.key).toBe("D minor")
     expect(heard.notes.map((note) => note.pitch)).toEqual(notes.filter(([pitch]) => pitch !== "-").map(([pitch]) => pitch))
     expect(heard.notes.map((note) => note.at)).toEqual([0, 1, 1.5, 2, 3, 4, 4.5, 5, 8, 8.5, 9, 10, 10.5, 11, 12])
+  })
+
+  it("hears a voice that is off pitch the whole way in tune", () => {
+    const tune = notes.filter(([pitch]) => pitch !== "-").map(([pitch]) => pitch)
+    // The hum sits 18 cents sharp by itself: these put it 40 cents flat, then 40 sharp, each note 15 cents either side, so half the notes are nearer the next one.
+    for (const center of [-0.58, 0.22]) {
+      const heard = listen(hum(notes, 92, 22050, (index) => center + (index % 2 === 0 ? 0.15 : -0.15)), 22050)
+      expect(heard.notes.map((note) => note.pitch), `${center}`).toEqual(tune)
+      expect(Math.abs(heard.found.tuning - Math.round((center + 0.18) * 100)), `${center}`).toBeLessThanOrEqual(10)
+      expect(heard.key).toBe("D minor")
+    }
+  })
+
+  it("says when it heard too few notes to be one voice", () => {
+    expect(isSparse(listen(hum(notes, 92), 22050))).toBe(false)
+    // Three notes in twelve seconds: what a full song played in the room gives.
+    expect(isSparse(listen(hum([["D4", 0.5], ["-", 7.5], ["A4", 0.5], ["-", 7.5], ["F4", 0.5], ["-", 7.5]], 120), 22050))).toBe(true)
   })
 
   it("takes a tempo it is given", () => {

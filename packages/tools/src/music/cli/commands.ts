@@ -14,7 +14,7 @@ import { CliFailure, printJson, readText, writeBytes, writeText } from "../../so
 import { monoWav, readWav, stereoWav } from "../core/audio.ts"
 import { checkSong } from "../core/check.ts"
 import { drums, instrumentIds, instruments } from "../core/instruments.ts"
-import { listen, referenceOf } from "../core/listen.ts"
+import { isSparse, listen, referenceOf } from "../core/listen.ts"
 import { toMidi } from "../core/midi.ts"
 import { renderSong } from "../core/render.ts"
 import { reviewPath, reviewSummary } from "../core/review.ts"
@@ -74,7 +74,7 @@ const listenCommand = Command.make(
   "listen",
   {
     song: songArgument,
-    audio: Argument.String("audio").pipe(Argument.withDescription("A WAV file: the person humming, whistling, tapping a beat, or a recorded tune.")),
+    audio: Argument.String("audio").pipe(Argument.withDescription("A WAV file of one voice: the person humming, whistling, tapping a beat, or a recorded lead line (a full song gives a tempo and a key, not its tune).")),
     tempo: Flag.Finite("tempo").pipe(Flag.withDescription("The tempo, when it is known: only the melody and key are listened for."), Flag.optional)
   },
   Effect.fn("listen")(function* (flags) {
@@ -101,14 +101,25 @@ const listenCommand = Command.make(
       song: flags.song,
       created,
       heard: { tempo: heard.tempo, key: heard.key, beats: heard.length, notes: heard.notes.map((note) => `${note.pitch}@${note.at}/${note.length}`), ...heard.found },
-      next: created
-        ? `A new song at ${heard.tempo} BPM in ${heard.key}, with the reference and no tracks. Write tracks around the reference's notes (keep its melody, cleaned up and in key), then \`music check\`.`
-        : `The reference is in the song. Build or adjust the tracks around it${song.tempo === heard.tempo ? "" : ` (the song is at ${song.tempo} BPM, the reference at ${heard.tempo}: set the song's tempo to match, or the reference sits off the grid)`}, then \`music check\`.`
+      next: [
+        isSparse(heard)
+          ? `Only ${heard.notes.length} notes in ${heard.found.seconds} seconds: this is not one voice (a full recording, or a noisy room), and its notes are not its tune. Use its tempo and key at most; ask the person to hum the part alone, close to the microphone.`
+          : undefined,
+        created
+          ? `A new song at ${heard.tempo} BPM in ${heard.key}, with the reference and no tracks. Write tracks around the reference's notes (keep its melody, cleaned up and in key), then \`music check\`.`
+          : `The reference is in the song. Build or adjust the tracks around it${
+              song.tempo === heard.tempo || Option.isSome(flags.tempo)
+                ? ""
+                : ` (the song is at ${song.tempo} BPM, the reference at ${heard.tempo}: if the person hummed along to this song, listen again with \`--tempo ${song.tempo}\`; otherwise set the song's tempo to match, or the reference sits off the grid)`
+            }, then \`music check\`.`
+      ]
+        .filter((line) => line !== undefined)
+        .join(" ")
     })
   })
 ).pipe(
   Command.withDescription(
-    "Listens to a hum, a whistle, a tapped beat, or a recorded tune and writes what it heard into the song as its reference: the tempo, the key, and the melody as notes on the song's grid. Makes the song if it does not exist yet."
+    "Listens to a hum, a whistle, a tapped beat, or a recorded lead line and writes what it heard into the song as its reference: the tempo, the key, and the melody as notes on the song's grid. Makes the song if it does not exist yet."
   )
 )
 

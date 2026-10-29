@@ -524,9 +524,15 @@ hum (`examples/village.song.reference.wav`, a synthesized test hum).
 standard pitch tracker for one voice), cuts it into notes where the pitch
 jumps or the voice restarts, finds the tempo whose beats line up best with
 where the notes start, and the key whose notes match how long each pitch
-sounds (Krumhansl's key profiles, over the whole spectrum). It is best on
-one voice (a hum, a whistle, a lead line); under a full band it follows
-whatever is loudest. A tapped beat with no tune gives a tempo and no notes.
+sounds (Krumhansl's key profiles, over the whole spectrum). A voice that
+sits off pitch the whole way, as most people's do, is heard in tune: the
+offset (`tuning`, in cents, in the report) is measured over all its notes
+and taken out before they are named. It hears one voice (a hum, a
+whistle, a lead line): on a full song or in a noisy room it finds a tempo
+and a key but few notes, and says so (hum the part alone instead). A tapped
+beat with no tune gives a tempo and no notes. When the song already has a
+tempo and the hum was sung along to it, `--tempo` puts the notes on the
+song's grid.
 
 ### The command line
 
@@ -537,7 +543,7 @@ or 3 (the song clips or is silent).
 
 | Command | Does |
 | --- | --- |
-| `ritmo-tools music listen <song> <audio.wav> [--tempo 96]` | Hears a hum, a beat, or a tune and writes its tempo, key, and melody into the song as its reference; makes the song if it does not exist. |
+| `ritmo-tools music listen <song> <audio.wav> [--tempo 96]` | Hears a hum, a whistle, or a tapped beat and writes its tempo, key, and melody into the song as its reference; makes the song if it does not exist. |
 | `ritmo-tools music instruments` | Lists the instruments (what each is for, its range), the drums, and the scales. |
 | `ritmo-tools music init [song]` | Writes a starting song: four bars of piano chords, a bass line, and a beat. |
 | `ritmo-tools music check <song>` | Measures the song (length, peak, loudness, each track's loudness and range) and lists what usually sounds wrong: clipping, silence, notes outside the key or an instrument's range, a buried track, a doubled note, and with a reference, how closely the melody follows it. |

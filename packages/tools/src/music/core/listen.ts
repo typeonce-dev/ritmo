@@ -12,6 +12,9 @@
  * - The key is the major or minor key whose notes match how long each
  *   pitch sounds (Krumhansl's key profiles), from the whole spectrum, so it
  *   works on chords and full recordings too.
+ * - A voice that sits off pitch the whole way (most people hum a little
+ *   flat or sharp) is heard in tune: the offset is measured over all its
+ *   notes and taken out before they are named.
  */
 import { fft } from "../../sound/core/render.ts"
 import { nameOf, type HeardNote, type Reference } from "./song.ts"
@@ -26,6 +29,8 @@ export interface Heard extends Reference {
     readonly range: readonly [string, string] | undefined
     /** How much better the chosen tempo fits than the next best, 0 (a guess) to 1 (clear). */
     readonly tempoConfidence: number
+    /** How far off pitch the voice sat the whole way, in cents (-50 to 50; negative is flat), taken out of the notes. */
+    readonly tuning: number
   }
 }
 
@@ -226,7 +231,7 @@ const correlation = (a: ReadonlyArray<number>, b: ReadonlyArray<number>): number
 }
 
 /** How much each of the twelve pitch classes sounds, from the spectrum (chords and full recordings) and the heard notes. */
-const chroma = (samples: Float32Array, rate: number, notes: ReadonlyArray<RawNote>): Array<number> => {
+const chroma = (samples: Float32Array, rate: number, notes: ReadonlyArray<RawNote>, tuning: number): Array<number> => {
   const classes = Array.from({ length: 12 }, () => 0)
   const size = 4096
   const re = new Float64Array(size)
@@ -240,18 +245,17 @@ const chroma = (samples: Float32Array, rate: number, notes: ReadonlyArray<RawNot
     for (let bin = 1; bin < size / 2; bin++) {
       const frequency = (bin * rate) / size
       if (frequency < 65 || frequency > 2100) continue
-      const midi = 69 + 12 * Math.log2(frequency / 440)
+      const midi = 69 + 12 * Math.log2(frequency / 440) - tuning
       classes[((Math.round(midi) % 12) + 12) % 12]! += Math.sqrt(re[bin]! ** 2 + im[bin]! ** 2)
     }
   }
   const total = classes.reduce((s, x) => s + x, 0) || 1
-  const fromNotes = Array.from({ length: 12 }, () => 0)
-  for (const note of notes) fromNotes[((Math.round(note.pitch) % 12) + 12) % 12]! += note.end - note.start
+  const fromNotes = classesOf(notes, 0)
   const noteTotal = fromNotes.reduce((s, x) => s + x, 0) || 1
   return classes.map((value, i) => value / total + fromNotes[i]! / noteTotal)
 }
 
-const findKey = (weights: ReadonlyArray<number>): string => {
+const bestKey = (weights: ReadonlyArray<number>): { readonly score: number; readonly key: string } => {
   let best = { score: -2, key: "C major" }
   for (let root = 0; root < 12; root++) {
     const rotated = weights.map((_, i) => weights[(i + root) % 12]!)
@@ -260,7 +264,37 @@ const findKey = (weights: ReadonlyArray<number>): string => {
     if (major > best.score) best = { score: major, key: `${NAMES[root]} major` }
     if (minor > best.score) best = { score: minor, key: `${NAMES[root]} minor` }
   }
-  return best.key
+  return best
+}
+
+/** How long each pitch class sounds in `notes`, their pitches moved by `shift` semitones. */
+const classesOf = (notes: ReadonlyArray<RawNote>, shift: number): Array<number> => {
+  const classes = Array.from({ length: 12 }, () => 0)
+  for (const note of notes) classes[((Math.round(note.pitch - shift) % 12) + 12) % 12]! += note.end - note.start
+  return classes
+}
+
+/**
+ * How far off pitch the voice sits, in semitones: the average of how far
+ * each note is from its nearest semitone, weighted by how long it is held
+ * (a mean on a circle, so -0.45 and +0.45 are close). Near half a semitone
+ * the voice is between two notes everywhere: the smaller shift is kept,
+ * unless the other reading's notes fit a key clearly better.
+ */
+const tuningOf = (notes: ReadonlyArray<RawNote>): number => {
+  if (notes.length < 3) return 0
+  let x = 0
+  let y = 0
+  for (const note of notes) {
+    const angle = 2 * Math.PI * (note.pitch - Math.round(note.pitch))
+    x += Math.cos(angle) * (note.end - note.start)
+    y += Math.sin(angle) * (note.end - note.start)
+  }
+  const offset = Math.atan2(y, x) / (2 * Math.PI)
+  if (Math.abs(offset) < 0.35) return offset
+  // The smaller shift, unless the other reading fits a key clearly better.
+  const other = offset - Math.sign(offset)
+  return bestKey(classesOf(notes, other)).score > bestKey(classesOf(notes, offset)).score + 0.05 ? other : offset
 }
 
 /** The grid notes snap to: sixteenth notes. */
@@ -270,7 +304,10 @@ const GRID = 0.25
 export const listen = (input: Float32Array, sampleRate: number, options: ListenOptions = {}): Heard => {
   const { samples, rate } = downsample(input, sampleRate)
   const frames = track(samples, rate)
-  const { notes: raw, voiced } = segment(frames, rate)
+  const { notes: heardRaw, voiced } = segment(frames, rate)
+  // Heard in tune: the voice's own offset taken out of every pitch.
+  const tuning = tuningOf(heardRaw)
+  const raw = heardRaw.map((note) => ({ ...note, pitch: note.pitch - tuning }))
   const onsets = raw.length >= 3 ? raw.map((note) => note.start) : hits(frames)
   const found = options.tempo === undefined ? findTempo(onsets) : { tempo: options.tempo, confidence: 1 }
   const tempo = Math.round(found.tempo)
@@ -304,13 +341,13 @@ export const listen = (input: Float32Array, sampleRate: number, options: ListenO
   for (let b = 0; b < length; b += 0.125) {
     const time = start + b * beat
     const near = frames.filter((frame, i) => voiced[i] && Math.abs(frame.time - time) < (beat * 0.125) / 2 + 0.003)
-    contour.push(near.length === 0 ? 0 : Math.round(median(near.map((frame) => frame.pitch)) * 10) / 10)
+    contour.push(near.length === 0 ? 0 : Math.round((median(near.map((frame) => frame.pitch)) - tuning) * 10) / 10)
   }
   const midis = raw.map((note) => Math.round(note.pitch))
   return {
     audio: options.audio,
     tempo,
-    key: findKey(chroma(samples, rate, raw)),
+    key: bestKey(chroma(samples, rate, raw, tuning)).key,
     length,
     notes,
     contour,
@@ -320,10 +357,18 @@ export const listen = (input: Float32Array, sampleRate: number, options: ListenO
       seconds: Math.round((input.length / sampleRate) * 100) / 100,
       voiced: Math.round((voiced.filter(Boolean).length / Math.max(1, voiced.length)) * 100) / 100,
       range: midis.length === 0 ? undefined : [nameOf(Math.min(...midis)), nameOf(Math.max(...midis))],
-      tempoConfidence: Math.round(found.confidence * 100) / 100
+      tempoConfidence: Math.round(found.confidence * 100) / 100,
+      tuning: Math.round(tuning * 100)
     }
   }
 }
+
+/**
+ * Whether the listening found too few notes for its length to be one voice:
+ * a full recording (a band, a song played in the room) or a noisy one, which
+ * the melody tracker cannot follow. Hum the part alone instead.
+ */
+export const isSparse = (heard: Heard): boolean => heard.notes.length > 0 && heard.found.seconds > 5 && heard.notes.length / heard.found.seconds < 0.4
 
 /** The reference as the song keeps it (what was found is for the agent's eyes only). */
 export const referenceOf = (heard: Heard): Reference => {
