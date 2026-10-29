@@ -37,7 +37,7 @@
     "@vitest/coverage-v8": "4.0.18",
     "@vitest/expect": "4.0.18",
     "arktype": "^2.2.9",
-    "effect": "4.0.2",
+    "effect": "4.1.0",
     "oxlint": "1.88.0",
     "oxlint-tsgolint": "7.0.2005",
     "pixi.js": "^8.17.1",
