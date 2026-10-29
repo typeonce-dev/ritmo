@@ -8,6 +8,7 @@ tool per kind of asset:
 | --- | --- |
 | `ritmo-tools pixel` | Pixel art: fixes AI-made or blurry pictures and animation sheets onto a true pixel grid and a palette, renders sprites drawn as text, and checks a project's art against its rules. |
 | `ritmo-tools sound` | Sound effects: keeps them as JSON recipes, measures and varies them, writes WAV files, and opens a local page where a person listens, picks, tunes, and notes. |
+| `ritmo-tools music` | Game music: hears a person's hum for its tune, tempo, and key, keeps songs as JSON tracks of notes, checks them, writes WAV and MIDI files, and opens a local page where a person plays, edits notes, records, and comments. |
 
 ```sh
 npx @typeonce/ritmo-tools pixel check art.png
@@ -16,7 +17,8 @@ pnpm add -D @typeonce/ritmo-tools   # pins it to the game's Ritmo version
 
 Every command prints JSON on stdout and exits with a code that says what
 to do next. A game's agent learns them from the skills that ship with
-`@typeonce/ritmo` (`skills/ritmo-pixel-art`, `skills/ritmo-sounds`), linked by
+`@typeonce/ritmo` (`skills/ritmo-pixel-art`, `skills/ritmo-sounds`,
+`skills/ritmo-music`), linked by
 its `SETUP.md`.
 The tools are built on Effect; nothing a game imports depends on this
 package.
@@ -462,3 +464,144 @@ happens, and changes the agent writes while the page is open show up in it.
 - `src/sound/ui/`: the review page, built from the pixel fixer's kit. The
   published package carries it built (`dist/sound/page`, made by `prepack`);
   inside the repository Vite serves it from source.
+
+## Music lab (`ritmo-tools music`)
+
+Game music as JSON songs, for agents and the people they make games with,
+most of whom are not musicians. The person hums the tune they have in mind
+(or gives a recording); the tool listens and writes down its tempo, key, and
+melody; the agent builds a song around it; the person plays it, edits notes
+on a grid, swaps instruments, and comments on bars, on a local page in the
+pixel fixer's look. One renderer serves the page, the checks, and the WAV,
+so what the person hears is what the agent measured.
+
+### Songs
+
+```json
+{
+  "version": 1,
+  "about": "Village at dusk: the hum's tune on a flute over picked guitar.",
+  "tempo": 93,
+  "key": "D minor",
+  "bars": 8,
+  "master": 0.65,
+  "tracks": [
+    { "name": "Melody", "instrument": "flute", "volume": 0.6, "reverb": 0.35, "notes": [
+      { "at": 0, "length": 1, "pitch": "D5" },
+      { "at": 1, "length": 0.5, "pitch": "F5", "velocity": 0.7 }
+    ] },
+    { "name": "Drums", "instrument": "drums", "volume": 0.9, "reverb": 0.15, "notes": [
+      { "at": 0, "length": 0.5, "pitch": "kick" }
+    ] }
+  ]
+}
+```
+
+Time is in beats from the start (`at: 4` is bar 2 in 4/4); `length` is in
+beats; `pitch` is a note name (`"C4"` is middle C, `"F#3"`, `"Bb2"`) or, on a
+drum track, a drum (`kick`, `snare`, `hat`, `openHat`, `clap`, `tomLow`,
+`tomHigh`, `crash`, `rim`, `shaker`); `velocity` (0 to 1, default 0.8) is how
+hard a note is played. A song has `beatsPerBar` (default 4), `loop` (default
+true: the WAV is one pass long and its tail wraps into its start, so it
+repeats without a seam), `master`, and `compressor` (default false: true
+squeezes the whole mix louder and punchier, its peaks held under -1 dBFS,
+for rock, drum & bass, and electronic songs; stems stay uncompressed, for
+the game to mix); a track has `volume`, `pan` (-1 to
+1), `reverb` (0 to 1), and `mute`. The key is a note and a scale: `major`,
+`minor`, `harmonic minor`, `dorian`, `phrygian`, `lydian`, `mixolydian`,
+`major pentatonic`, `minor pentatonic`, `blues`.
+
+The instruments are synthesized from small models of the real ones (a
+plucked string, struck strings, a breath through a tube), so they need no
+sample files and play the same bits everywhere:
+
+| Instrument | For |
+| --- | --- |
+| `piano`, `epiano` | Chords, melodies; the electric piano for mellow, lo-fi tunes. |
+| `guitar`, `bass` | Picked or strummed chords; the low line under them. |
+| `rockGuitar` | An overdriven electric guitar: riffs and power chords (a note and the one seven semitones up). |
+| `reese` | The drum & bass bass: detuned saws, a sub, and grit; long notes. |
+| `strings`, `pad` | Long held chords that swell in. |
+| `flute`, `marimba`, `bells` | Melodies; short bright patterns; sparkle. |
+| `synthLead` | A supersaw: modern electronic leads and riffs. |
+| `chipLead`, `chipBass` | Chiptune: a retro console's square and triangle waves. |
+| `drums`, `breaks` | A clean drum kit; a punchy, driven one for rock and drum & bass (the same drums). |
+
+A song's `reference` is what `music listen` heard: its `tempo`, `key`, the
+melody as `notes` rounded to the grid, the raw pitch line (`contour`), and the
+audio file it came from. The review lives next to the song
+(`theme.song.json` → `theme.song.review.json`): the status (`new`,
+`approved`, `changes`), a note, comments pinned to bars (and a track), and
+the person's edits since the agent last wrote the song, a line each.
+`examples/village.song.json` in the repository is a song built around a
+hum (`examples/village.song.reference.wav`, a synthesized test hum).
+
+### Listening
+
+`music listen` follows the strongest pitch moment to moment (YIN, the
+standard pitch tracker for one voice), cuts it into notes where the pitch
+jumps or the voice restarts, finds the tempo whose beats line up best with
+where the notes start, and the key whose notes match how long each pitch
+sounds (Krumhansl's key profiles, over the whole spectrum). A voice that
+sits off pitch the whole way, as most people's do, is heard in tune: the
+offset (`tuning`, in cents, in the report) is measured over all its notes
+and taken out before they are named. It hears one voice (a hum, a
+whistle, a lead line): on a full song or in a noisy room it finds a tempo
+and a key but few notes, and says so (hum the part alone instead). A tapped
+beat with no tune gives a tempo and no notes. When the song already has a
+tempo and the hum was sung along to it, `--tempo` puts the notes on the
+song's grid.
+
+### The command line
+
+`npx @typeonce/ritmo-tools music <command>` (inside the Ritmo repository,
+`node packages/tools/bin/ritmo-tools.mjs music <command>`). Every command
+prints JSON and exits 0 (clean), 2 (usage error, missing file, broken song),
+or 3 (the song clips or is silent).
+
+| Command | Does |
+| --- | --- |
+| `ritmo-tools music listen <song> <audio.wav> [--tempo 96]` | Hears a hum, a whistle, or a tapped beat and writes its tempo, key, and melody into the song as its reference; makes the song if it does not exist. |
+| `ritmo-tools music instruments` | Lists the instruments (what each is for, its range), the drums, and the scales. |
+| `ritmo-tools music init [song]` | Writes a starting song: four bars of piano chords, a bass line, and a beat. |
+| `ritmo-tools music check <song>` | Measures the song (length, peak, loudness, each track's loudness and range) and lists what usually sounds wrong: clipping, silence, notes outside the key or an instrument's range, a buried track, a doubled note, and with a reference, how closely the melody follows it. |
+| `ritmo-tools music render <song> [-o file.wav] [--stems]` | Writes the song as a stereo WAV and a MIDI file, and with `--stems` each track alone. |
+| `ritmo-tools music review <song> [--port 5191] [--host]` | Serves the review page and prints its address; runs until stopped. |
+| `ritmo-tools music notes <song>` | What the person said: the status, the note, comments in song order with their bars, and their edits. |
+
+### The review page
+
+`ritmo-tools music review` opens the song on a local page: the reference and
+the tracks on the left (mute and solo each), the arrangement (every track
+as a lane under the bar numbers, with the hum's pitch line above them) and
+the chosen track's note grid on the stage, and on the right the review, the
+comments, the track (instrument, volume, pan, room), the song (tempo, key,
+bars, loop, compressor, master), the reference, and the check. On the grid, a click
+places a note (and plays it), a drag moves it, dragging its end stretches
+it, and a double-click or right-click removes it; the key's notes are a
+shade lighter, and the hum's notes show as dashed outlines with its pitch
+line through them. A click on the bar numbers, or on a lane of the
+arrangement, puts the start marker there (while playing, the bar numbers
+jump the music there); dragging across the bar numbers picks bars to
+comment on, and Play starts from them. Record a hum records from the microphone (the page must be on
+localhost or HTTPS); Audio file, or dropping a file on the stage, takes any
+audio the browser plays. Space plays and pauses (Play goes on from where
+it paused), Stop goes back to the start, the microphone
+button plays the hum along with the song, Delete removes the chosen note,
+and Ctrl/Cmd+Z undoes. MIDI and WAV download the song. Every change is
+written to the song and its review as it happens, and a song the agent
+rewrites while the page is open shows up in it.
+
+### Code
+
+- `src/music/core/`: songs (`song.ts`), the instruments (`instruments.ts`),
+  the renderer (`render.ts`), listening (`listen.ts`), checks (`check.ts`),
+  reviews and edits in words (`review.ts`), WAV (`audio.ts`) and MIDI
+  (`midi.ts`) files. Plain TypeScript that runs the same in Node and the
+  browser.
+- `src/music/cli/`: the `music` command (Effect), and the review page's
+  server (`serve.ts`).
+- `src/music/ui/`: the review page: the canvases (`grid.ts`), playing
+  (`player.ts`), recording (`record.ts`). The published package carries it
+  built (`dist/music/page`, made by `prepack`); inside the repository Vite
+  serves it from source.

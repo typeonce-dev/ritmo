@@ -1,7 +1,7 @@
 {
   "name": "@typeonce/ritmo-tools",
   "version": "0.18.0",
-  "description": "Asset tools for games made with Ritmo, for agents: fixes AI-made pixel art and animation sheets onto a true pixel grid and a palette, and keeps game sounds as JSON recipes with a review page for a person",
+  "description": "Asset tools for games made with Ritmo, for agents: fixes AI-made pixel art and animation sheets onto a true pixel grid and a palette, keeps game sounds as JSON recipes, and writes game music as JSON songs built around a hum, each with a review page for a person",
   "author": "Sandro Maglione",
   "license": "MIT",
   "repository": {
@@ -19,6 +19,7 @@
     "pixel-art",
     "sprite-sheet",
     "sound-effects",
+    "music",
     "agents",
     "cli"
   ],
@@ -27,6 +28,7 @@
     "dist",
     "!dist/pixel/ui",
     "!dist/sound/ui",
+    "!dist/music/ui",
     "!dist/**/*.tsbuildinfo",
     "README.md",
     "CHANGELOG.md",
@@ -53,7 +55,7 @@
   "scripts": {
     "build": "tsc -b tsconfig.json --pretty false",
     "check": "tsc -b tsconfig.json --pretty false",
-    "build:page": "vite build src/sound/ui --outDir ../../../dist/sound/page --emptyOutDir --base ./ --logLevel warn",
+    "build:page": "vite build src/sound/ui --outDir ../../../dist/sound/page --emptyOutDir --base ./ --logLevel warn && vite build src/music/ui --outDir ../../../dist/music/page --emptyOutDir --base ./ --logLevel warn",
     "prepack": "pnpm run build:page"
   },
   "dependencies": {
