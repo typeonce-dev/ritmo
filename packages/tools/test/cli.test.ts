@@ -19,5 +19,6 @@ describe("ritmo-tools", () => {
     const result = spawnSync(process.execPath, [bin, "--help"], { encoding: "utf8" })
     expect(result.stdout).toContain("pixel")
     expect(result.stdout).toContain("sound")
+    expect(result.stdout).toContain("music")
   })
 })
