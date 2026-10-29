@@ -35,11 +35,19 @@ export const instruments = {
   pad: { label: "Warm pad", kind: "melodic", about: "A soft synth pad: a cushion of held chords behind everything; slow to swell.", range: [36, 96], program: 89, color: "#c678dd" },
   chipLead: { label: "Chip lead", kind: "melodic", about: "A retro game-console square wave: chiptune melodies, one note at a time.", range: [48, 96], program: 80, color: "#4cc38a" },
   chipBass: { label: "Chip bass", kind: "melodic", about: "A retro game-console triangle wave: chiptune bass lines.", range: [28, 72], program: 38, color: "#2fb3a3" },
-  drums: { label: "Drum kit", kind: "drums", about: "A drum kit. Its notes are drums, not pitches: kick, snare, hat, openHat, clap, tomLow, tomHigh, crash, rim, shaker.", range: [0, 127], program: 0, color: "#bdbab3" }
+  rockGuitar: { label: "Distorted guitar", kind: "melodic", about: "An electric guitar through an overdriven amp: rock riffs, power chords (a note and the one seven semitones up), crunchy rhythm parts.", range: [40, 88], program: 30, color: "#ff7b54" },
+  reese: { label: "Reese bass", kind: "melodic", about: "Detuned saws, a sub, and grit, slowly moving: the drum & bass bass, also for dark electronic lines. One note at a time; hold notes long.", range: [28, 60], program: 38, color: "#b4475a" },
+  synthLead: { label: "Synth lead", kind: "melodic", about: "A wide stack of detuned saws (a supersaw): modern electronic leads and riffs, bright and big. One note at a time.", range: [48, 96], program: 81, color: "#3fb6f2" },
+  drums: { label: "Drum kit", kind: "drums", about: "A clean drum kit. Its notes are drums, not pitches: kick, snare, hat, openHat, clap, tomLow, tomHigh, crash, rim, shaker.", range: [0, 127], program: 0, color: "#bdbab3" },
+  breaks: { label: "Punchy kit", kind: "drums", about: "A hard-hitting kit for rock, drum & bass, and electronic music: a clicky, driven kick, a cracking snare, crisp hats. The same drums as the drum kit.", range: [0, 127], program: 0, color: "#e8e3d5" }
 } as const satisfies Record<string, Instrument>
 
 export type InstrumentId = keyof typeof instruments
-export const instrumentIds: ReadonlyArray<InstrumentId> = ["piano", "epiano", "guitar", "bass", "strings", "flute", "marimba", "bells", "pad", "chipLead", "chipBass", "drums"]
+export const instrumentIds: ReadonlyArray<InstrumentId> = ["piano", "epiano", "guitar", "rockGuitar", "bass", "reese", "strings", "flute", "marimba", "bells", "pad", "synthLead", "chipLead", "chipBass", "drums", "breaks"]
+
+/** The instruments whose notes are drums. */
+export type KitId = "drums" | "breaks"
+export const isKit = (id: InstrumentId): id is KitId => instruments[id].kind === "drums"
 
 export type DrumName = "kick" | "snare" | "hat" | "openHat" | "clap" | "tomLow" | "tomHigh" | "crash" | "rim" | "shaker"
 /** The drums, top to bottom as the page lists them, with their General MIDI numbers. */
@@ -118,6 +126,9 @@ const gate = (t: number, attack: number, held: number, release: number): number 
   if (t <= held) return rise
   return rise * Math.max(0, 1 - (t - held) / release)
 }
+
+/** Overdrive: soft clipping that keeps the level near 1 at any `amount`. */
+const drive = (x: number, amount: number): number => Math.tanh(x * amount) / Math.tanh(amount)
 
 const frequency = (midi: number): number => 440 * Math.pow(2, (midi - 69) / 12)
 
@@ -369,6 +380,78 @@ const chipBass = ({ midi, held, velocity, rate }: NoteInput): Float32Array => {
   return out
 }
 
+/**
+ * An electric guitar into an overdriven amp: the plucked string, its lows
+ * trimmed so the drive stays tight, clipped hard (which also holds the note
+ * up, as a real amp does), then the speaker cabinet's top cut.
+ */
+const rockGuitar = (input: NoteInput): Float32Array => {
+  const out = pluck(input, 0.85, 4, 0.1)
+  const tight = svf(input.rate, 0.7)
+  tight.set(110)
+  const cabinet = svf(input.rate, 0.9)
+  cabinet.set(4200)
+  const presence = svf(input.rate, 1.6)
+  presence.set(1800)
+  const amount = 10 + 14 * input.velocity
+  for (let i = 0; i < out.length; i++) {
+    const driven = drive(tight.step(out[i]! * 3).high, amount)
+    const shaped = cabinet.step(driven).low
+    out[i] = (shaped + presence.step(shaped).band * 0.35) * gate(i / input.rate, 0.002, input.held, 0.1) * 0.3
+  }
+  return out
+}
+
+/** Three saws a few cents apart beating slowly, a sine under them for weight, a lowpass that drifts, and some drive: the reese. */
+const reese = ({ midi, held, velocity, rate, random }: NoteInput): Float32Array => {
+  const f = frequency(midi)
+  const release = 0.06
+  const out = new Float32Array(Math.ceil((held + release) * rate))
+  const filter = svf(rate, 1.1)
+  const detunes = [-10, 0, 9]
+  const phases = detunes.map(() => random())
+  const drift = random() * TAU
+  let sub = 0
+  for (let i = 0; i < out.length; i++) {
+    const t = i / rate
+    let x = 0
+    detunes.forEach((cents, v) => {
+      const step = (f * Math.pow(2, cents / 1200)) / rate
+      x += saw(phases[v]!, step)
+      phases[v] = (phases[v]! + step) % 1
+    })
+    if (i % 32 === 0) filter.set(f * 3 + (500 + 700 * velocity) * (1 + 0.6 * Math.sin(TAU * 0.35 * t + drift)))
+    const body = drive(filter.step(x / 3).low * 1.6, 2.2)
+    out[i] = (body * 0.55 + Math.sin(sub) * 0.6) * gate(t, 0.004, held, release) * (0.2 + 0.08 * velocity)
+    sub += (TAU * f) / rate
+  }
+  return out
+}
+
+/** Seven saws spread across about 40 cents, through a lowpass that opens on the attack and settles: a supersaw lead. */
+const synthLead = ({ midi, held, velocity, rate, random }: NoteInput): Float32Array => {
+  const f = frequency(midi)
+  const release = 0.12
+  const out = new Float32Array(Math.ceil((held + release) * rate))
+  const filter = svf(rate, 0.9)
+  const detunes = [-21, -13, -6, 0, 6, 13, 21]
+  const phases = detunes.map(() => random())
+  for (let i = 0; i < out.length; i++) {
+    const t = i / rate
+    const wobble = 1 + 0.004 * Math.min(1, Math.max(0, t - 0.25) * 3) * Math.sin(TAU * 5.5 * t)
+    let x = 0
+    detunes.forEach((cents, v) => {
+      const step = (f * wobble * Math.pow(2, cents / 1200)) / rate
+      x += saw(phases[v]!, step) * (cents === 0 ? 1.4 : 1)
+      phases[v] = (phases[v]! + step) % 1
+    })
+    if (i % 32 === 0) filter.set(f * 2 + (2500 + 4000 * velocity) * (0.45 + 0.55 * Math.exp(-t * 6)))
+    // Detuned saws add up like noise, not like one wave: divided by the square root of their count, the stack is as loud as one saw.
+    out[i] = filter.step(x / Math.sqrt(detunes.length)).low * gate(t, 0.004, held, release) * (0.17 + 0.07 * velocity)
+  }
+  return out
+}
+
 // ---------------------------------------------------------------------------
 // Drums
 
@@ -441,13 +524,56 @@ const drum = (name: DrumName, velocity: number, rate: number, random: () => numb
   return out
 }
 
+/**
+ * The punchy kit: a kick with a click on top and a lower, longer boom, a
+ * snare with two body tones and a wide crack, tighter hats, and every drum
+ * driven a little, so it hits like a produced record rather than a drum
+ * machine.
+ */
+const breaks = (name: DrumName, velocity: number, rate: number, random: () => number): Float32Array => {
+  const v = 0.4 + 0.6 * velocity
+  let out: Float32Array
+  let amount = 1.6
+  switch (name) {
+    case "kick":
+      out = new Float32Array(Math.ceil(0.45 * rate))
+      sweep(out, rate, { from: 240, to: 46, glide: 0.022, decay: 0.4, gain: 1 * v })
+      noiseBurst(out, rate, random, { from: 9000, to: 4000, decay: 0.006, gain: 0.5 * v, type: "high" })
+      amount = 2.6
+      break
+    case "snare":
+      out = new Float32Array(Math.ceil(0.3 * rate))
+      sweep(out, rate, { from: 330, to: 200, glide: 0.015, decay: 0.1, gain: 0.45 * v })
+      sweep(out, rate, { from: 520, to: 330, glide: 0.01, decay: 0.05, gain: 0.2 * v })
+      noiseBurst(out, rate, random, { from: 7000, to: 2500, decay: 0.22, gain: 0.7 * v, type: "band", q: 0.6 })
+      amount = 2.4
+      break
+    case "hat":
+      out = new Float32Array(Math.ceil(0.12 * rate))
+      noiseBurst(out, rate, random, { from: 11000, to: 9000, decay: 0.035, gain: 0.32 * v, type: "high", q: 1.2 })
+      break
+    case "openHat":
+      out = new Float32Array(Math.ceil(0.4 * rate))
+      noiseBurst(out, rate, random, { from: 10000, to: 8000, decay: 0.32, gain: 0.26 * v, type: "high", q: 1.2 })
+      break
+    default:
+      out = drum(name, velocity, rate, random)
+      amount = 1.4
+  }
+  for (let i = 0; i < out.length; i++) out[i] = drive(out[i]!, amount)
+  const fade = Math.floor(rate * 0.01)
+  for (let i = 0; i < fade; i++) out[out.length - 1 - i]! *= i / fade
+  return out
+}
+
 // ---------------------------------------------------------------------------
 
-const voices: Record<Exclude<InstrumentId, "drums">, (input: NoteInput) => Float32Array> = { piano, epiano, guitar, bass, strings, flute, marimba, bells, pad, chipLead, chipBass }
+const voices: Record<Exclude<InstrumentId, KitId>, (input: NoteInput) => Float32Array> = { piano, epiano, guitar, rockGuitar, bass, reese, strings, flute, marimba, bells, pad, synthLead, chipLead, chipBass }
 
 /** One note of a melodic instrument (`midi` a MIDI number), as mono samples from the note's start. */
-export const playVoice = (instrument: Exclude<InstrumentId, "drums">, midi: number, held: number, velocity: number, rate: number, random: () => number): Float32Array =>
+export const playVoice = (instrument: Exclude<InstrumentId, KitId>, midi: number, held: number, velocity: number, rate: number, random: () => number): Float32Array =>
   voices[instrument]({ midi, held: Math.max(0.02, held), velocity, rate, random })
 
-/** One hit of the drum kit, as mono samples from the hit. */
-export const playDrum = (name: DrumName, velocity: number, rate: number, random: () => number): Float32Array => drum(name, velocity, rate, random)
+/** One hit of a drum kit, as mono samples from the hit. */
+export const playDrum = (kit: KitId, name: DrumName, velocity: number, rate: number, random: () => number): Float32Array =>
+  kit === "breaks" ? breaks(name, velocity, rate, random) : drum(name, velocity, rate, random)

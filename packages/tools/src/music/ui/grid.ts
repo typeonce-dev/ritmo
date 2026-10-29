@@ -419,13 +419,18 @@ const rulerDrag = (canvas: HTMLCanvasElement, event: PointerEvent, handlers: Gri
   window.addEventListener("pointerup", onUp)
 }
 
-export const attachArrangement = (canvas: HTMLCanvasElement, handlers: GridHandlers & { readonly pickTrack: (index: number) => void }): void => {
+/** The arrangement: the ruler as on the grid, the reference moves the playhead, and a click on a lane picks its track and puts the start marker there (when stopped). */
+export const attachArrangement = (canvas: HTMLCanvasElement, handlers: GridHandlers & { readonly pickTrack: (index: number) => void; readonly cue: (beat: number) => void }): void => {
   canvas.addEventListener("pointerdown", (event) => {
     const view = handlers.view()
     const box = canvas.getBoundingClientRect()
     const hit = arrangementHit(view.song, event.clientY - box.top)
     if (hit?.kind === "ruler") rulerDrag(canvas, event, handlers)
-    else if (hit?.kind === "track") handlers.pickTrack(hit.index)
+    else if (hit?.kind === "track") {
+      handlers.pickTrack(hit.index)
+      const beat = (event.clientX - box.left - GUTTER) / view.beat
+      if (beat >= 0) handlers.cue(Math.min(beat, lengthInBeats(view.song)))
+    }
     else if (hit?.kind === "reference") handlers.seek(Math.max(0, (event.clientX - box.left - GUTTER) / view.beat))
   })
 }

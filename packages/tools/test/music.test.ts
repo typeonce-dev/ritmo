@@ -10,7 +10,7 @@ import { checkSong } from "@typeonce/ritmo-tools/music/core/check.ts"
 import { instrumentIds, instruments } from "@typeonce/ritmo-tools/music/core/instruments.ts"
 import { listen } from "@typeonce/ritmo-tools/music/core/listen.ts"
 import { toMidi } from "@typeonce/ritmo-tools/music/core/midi.ts"
-import { renderSong, SAMPLE_RATE } from "@typeonce/ritmo-tools/music/core/render.ts"
+import { loudnessOf, peakOf, renderSong, SAMPLE_RATE } from "@typeonce/ritmo-tools/music/core/render.ts"
 import { describeEdits, reviewSummary } from "@typeonce/ritmo-tools/music/core/review.ts"
 import { decodeSong, encodeSong, inKey, midiOf, nameOf, parseKey, type Song } from "@typeonce/ritmo-tools/music/core/song.ts"
 
@@ -23,6 +23,7 @@ const song = (instrument: Song["tracks"][number]["instrument"] = "piano", notes 
   bars: 2,
   loop: false,
   master: 0.8,
+  compressor: false,
   tracks: [{ name: "Melody", instrument, volume: 0.8, pan: 0, reverb: 0, notes: notes.map((pitch, i) => ({ at: i, length: 0.9, pitch, velocity: 0.8 })) }]
 })
 
@@ -74,6 +75,9 @@ describe("songs", () => {
   it("round-trip through their JSON", () => {
     const value = song()
     expect(decodeSong(encodeSong(value))).toEqual({ ok: true, value })
+    const compressed = { ...song(), compressor: true }
+    expect(decodeSong(encodeSong(compressed))).toEqual({ ok: true, value: compressed })
+    expect(encodeSong(value)).not.toContain("compressor")
   })
 
   it("name every problem, with where it is", () => {
@@ -83,6 +87,8 @@ describe("songs", () => {
     expect(decoded.error).toContain("key")
     expect(decoded.error).toContain("tracks[0].instrument")
     expect(decoded.error).toContain("tracks[1].notes[0].pitch")
+    const compressor = decodeSong(JSON.stringify({ tempo: 100, key: "A minor", bars: 2, compressor: "yes", tracks: [] }))
+    expect(!compressor.ok && compressor.error).toContain("compressor must be true or false")
   })
 
   it("keep the example valid", () => {
@@ -113,6 +119,26 @@ describe("rendering", () => {
       const heard = listen(renderSong(song(id, notes)).left, SAMPLE_RATE)
       expect(heard.notes.map((note) => note.pitch), id).toEqual(notes)
     }
+  })
+
+  it("plays every drum of every kit", () => {
+    const names = ["kick", "snare", "hat", "openHat", "clap", "tomLow", "tomHigh", "crash", "rim", "shaker"]
+    for (const kit of ["drums", "breaks"] as const) {
+      for (const pitch of names) {
+        const hit = renderSong({ ...song(), tracks: [{ name: "Drums", instrument: kit, volume: 0.8, pan: 0, reverb: 0, notes: [{ at: 0, length: 0.5, pitch, velocity: 0.9 }] }] })
+        expect(peakOf(hit), `${kit} ${pitch}`).toBeGreaterThan(-30)
+      }
+    }
+  })
+
+  it("squeezes a compressed song louder, its peaks under -1 dBFS", () => {
+    // The tune six times over, at the top of master: it clips without the compressor.
+    const loud = { ...song("synthLead"), master: 2, tracks: Array.from({ length: 6 }, () => song("synthLead").tracks[0]!) }
+    const plain = renderSong(loud)
+    const squeezed = renderSong({ ...loud, compressor: true })
+    expect(peakOf(plain)).toBeGreaterThan(0)
+    expect(peakOf(squeezed)).toBeLessThanOrEqual(-1)
+    expect(loudnessOf(renderSong({ ...song("synthLead"), compressor: true }))).toBeGreaterThan(loudnessOf(renderSong(song("synthLead"))))
   })
 
   it("leaves muted tracks out, unless asked for", () => {

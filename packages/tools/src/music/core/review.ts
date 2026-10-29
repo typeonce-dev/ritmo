@@ -114,6 +114,7 @@ export const describeEdits = (before: Song, after: Song): Array<string> => {
   if (before.beatsPerBar !== after.beatsPerBar) lines.push(`Beats per bar ${before.beatsPerBar} → ${after.beatsPerBar}.`)
   if (Math.abs(before.master - after.master) > 0.005) lines.push(`Master volume ${before.master.toFixed(2)} → ${after.master.toFixed(2)}.`)
   if (before.loop !== after.loop) lines.push(after.loop ? "Made it loop." : "Made it play once (no loop).")
+  if (before.compressor !== after.compressor) lines.push(after.compressor ? "Turned the compressor on." : "Turned the compressor off.")
   // Tracks are matched by position: renaming one is an edit of it, not a new track.
   const shared = Math.min(before.tracks.length, after.tracks.length)
   for (let i = 0; i < shared; i++) lines.push(...trackEdits(after, before.tracks[i]!, after.tracks[i]!))

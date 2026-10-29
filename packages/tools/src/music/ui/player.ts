@@ -12,6 +12,10 @@ export interface Player {
   readonly stop: () => void
   /** Seconds into the song, or undefined when stopped. */
   readonly position: () => number | undefined
+  /** Plays a recording once, alone (the hum): stops the song, and `stop` or `play` stops it. `onEnded` runs when it ends by itself. */
+  readonly playAlone: (buffer: AudioBuffer, onEnded: () => void) => void
+  /** Whether a recording plays alone. */
+  readonly playingAlone: () => boolean
   /** Plays a short sound once, over whatever plays (a note being placed). */
   readonly audition: (samples: Float32Array, sampleRate: number) => void
   /** Decodes any audio file the browser can play. */
@@ -23,6 +27,7 @@ export interface Player {
 export const makePlayer = (onChange: () => void): Player => {
   let context: AudioContext | undefined
   let current: { readonly sources: ReadonlyArray<AudioBufferSourceNode>; readonly start: number; readonly offset: number; readonly length: number; readonly loop: boolean } | undefined
+  let alone: AudioBufferSourceNode | undefined
   let frame: number | undefined
 
   const audio = (): AudioContext => {
@@ -44,6 +49,11 @@ export const makePlayer = (onChange: () => void): Player => {
   }
 
   const halt = (): void => {
+    if (alone !== undefined) {
+      alone.onended = null
+      alone.stop()
+      alone = undefined
+    }
     if (current === undefined) return
     for (const source of current.sources) {
       source.onended = null
@@ -93,6 +103,22 @@ export const makePlayer = (onChange: () => void): Player => {
       onChange()
     },
     position,
+    playAlone: (buffer, onEnded) => {
+      const ctx = audio()
+      halt()
+      onChange()
+      const source = ctx.createBufferSource()
+      source.buffer = buffer
+      source.connect(ctx.destination)
+      source.onended = () => {
+        if (alone !== source) return
+        alone = undefined
+        onEnded()
+      }
+      source.start()
+      alone = source
+    },
+    playingAlone: () => alone !== undefined,
     audition: (samples, sampleRate) => {
       const ctx = audio()
       const buffer = ctx.createBuffer(1, Math.max(1, samples.length), sampleRate)

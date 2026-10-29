@@ -28,7 +28,7 @@ const RITMO_URL = "https://ritmo.typeonce.dev/"
 // ---------------------------------------------------------------------------
 // State
 
-const emptySong: Song = { tempo: 100, key: "C major", beatsPerBar: 4, bars: 4, loop: true, master: 0.8, tracks: [] }
+const emptySong: Song = { tempo: 100, key: "C major", beatsPerBar: 4, bars: 4, loop: true, master: 0.8, compressor: false, tracks: [] }
 
 const state = {
   songFile: "",
@@ -40,6 +40,8 @@ const state = {
   track: 0,
   chosen: undefined as number | undefined,
   selection: undefined as { from: number; to: number } | undefined,
+  /** Seconds into the song where Play starts when stopped: where Pause left it, or where a click on the bar numbers put it. */
+  cue: undefined as number | undefined,
   snap: 0.25,
   zoom: 1,
   showReference: true,
@@ -237,13 +239,33 @@ const currentMix = (): Stereo => {
 
 const play = (at?: number): void => {
   const reference = state.song.reference
+  const humAlone = player.playingAlone()
   player.play(currentMix(), { loop: state.song.loop, at, extra: state.withHum ? hum : undefined, extraAt: (reference?.start ?? 0) - (reference?.offset ?? 0) * secondsPerBeat(state.song) })
+  if (humAlone) renderList()
   renderTransport()
 }
 
+const startOf = (): number => (state.selection === undefined ? 0 : state.selection.from * secondsPerBeat(state.song))
+
+/** Play from the cue, or Pause where the song is (which leaves the cue there). */
 const toggle = (): void => {
-  if (player.position() !== undefined) player.stop()
-  else play(state.selection === undefined ? 0 : state.selection.from * secondsPerBeat(state.song))
+  const position = player.position()
+  if (position !== undefined) {
+    state.cue = position
+    player.stop()
+  } else {
+    play(state.cue ?? startOf())
+    state.cue = undefined
+  }
+  draw()
+  renderTransport()
+}
+
+/** Stop: back to the start (of the picked bars, when bars are picked). */
+const stop = (): void => {
+  state.cue = undefined
+  player.stop()
+  draw()
   renderTransport()
 }
 
@@ -259,7 +281,7 @@ const replay = (): void => {
 }
 
 const audition = (instrument: InstrumentId, pitch: string, velocity: number): void => {
-  const samples = noteSamples(instrument, { pitch, velocity }, instrument === "drums" ? 0.2 : 0.45, SAMPLE_RATE, cache)
+  const samples = noteSamples(instrument, { pitch, velocity }, instruments[instrument].kind === "drums" ? 0.2 : 0.45, SAMPLE_RATE, cache)
   const level = (state.song.tracks[state.track]?.volume ?? 0.8) * state.song.master
   player.audition(samples.map((x) => x * level), SAMPLE_RATE)
 }
@@ -274,14 +296,16 @@ const loadHum = async (): Promise<void> => {
   } catch {
     hum = undefined
   }
+  renderList()
   renderPanels()
 }
 
+/** Plays the hum alone, or stops it when it already plays. */
 const playHum = (): void => {
-  if (hum === undefined) return
-  const samples = monoOf(hum)
-  player.stop()
-  player.audition(samples, hum.sampleRate)
+  if (player.playingAlone()) player.stop()
+  else if (hum !== undefined) player.playAlone(hum, renderList)
+  renderList()
+  renderTransport()
 }
 
 const download = (bytes: Uint8Array<ArrayBuffer>, file: string, type: string): void => {
@@ -419,6 +443,7 @@ const clock = (seconds: number): string => `${Math.floor(seconds / 60)}:${String
 
 const view = (): View => {
   const playing = player.position()
+  const marker = playing ?? state.cue
   const available = Math.max(320, scroller.clientWidth - 2)
   const beat = Math.max(8, ((available - GUTTER - 8) / Math.max(1, lengthInBeats(state.song))) * state.zoom)
   return {
@@ -427,7 +452,7 @@ const view = (): View => {
     beat,
     snap: state.snap,
     selection: state.selection,
-    playhead: playing === undefined ? undefined : playing / secondsPerBeat(state.song),
+    playhead: marker === undefined ? undefined : marker / secondsPerBeat(state.song),
     showReference: state.showReference,
     chosen: state.chosen,
     comments: state.review.comments,
@@ -551,12 +576,12 @@ const renderList = (): void => {
           ),
       reference !== undefined &&
         row({
-          on: false,
+          on: player.playingAlone(),
           color: "#f3f1ec",
           name: "Hum",
           meta: `${reference.tempo} BPM · ${reference.key} · ${reference.notes.length} notes`,
           click: playHum,
-          extra: [hum !== undefined && toggleButton("▶", false, "Play the hum alone", playHum)]
+          extra: [hum !== undefined && (player.playingAlone() ? toggleButton("■", true, "Stop the hum", playHum) : toggleButton("▶", false, "Play the hum alone", playHum))]
         })
     ),
     h(
@@ -670,17 +695,20 @@ const song = (): Song => state.song
 const renderTransport = (): void => {
   const position = player.position()
   const playing = position !== undefined
-  const beats = (position ?? (state.selection?.from ?? 0) * secondsPerBeat(state.song)) / secondsPerBeat(state.song)
+  const beats = (position ?? state.cue ?? startOf()) / secondsPerBeat(state.song)
   const bar = Math.floor(beats / state.song.beatsPerBar) + 1
   const beat = Math.floor(beats % state.song.beatsPerBar) + 1
   const label = `${bar}.${beat} / ${state.song.bars}`
-  if (transport.dataset.label === label && transport.dataset.on === String(playing) && transport.dataset.hum === String(state.withHum)) return
+  const stopped = !playing && state.cue === undefined
+  if (transport.dataset.label === label && transport.dataset.on === String(playing) && transport.dataset.stopped === String(stopped) && transport.dataset.hum === String(state.withHum)) return
   transport.dataset.label = label
   transport.dataset.on = String(playing)
+  transport.dataset.stopped = String(stopped)
   transport.dataset.hum = String(state.withHum)
   replace(
     transport,
-    button(playing ? "Stop" : "Play", toggle, { variant: "ghost", icon: playing ? "stop" : "play", iconOnly: true, title: "Play (Space)" }),
+    button(playing ? "Pause" : "Play", toggle, { variant: "ghost", icon: playing ? "pause" : "play", iconOnly: true, title: playing ? "Pause (Space)" : state.cue === undefined ? "Play (Space)" : "Play from the marker (Space)" }),
+    button("Stop", stop, { variant: "ghost", icon: "stop", iconOnly: true, disabled: stopped, title: "Stop and go back to the start" }),
     h("span", { class: "frame-counter", title: "Bar.beat / bars" }, label),
     h("span", { class: "divider" }),
     state.song.reference?.audio !== undefined &&
@@ -804,6 +832,7 @@ const commentsPanel = (): HTMLElement => {
             button("Add comment", add, { small: true, variant: "primary", icon: "comment" }),
             button("Clear bars", () => {
               state.selection = undefined
+              state.cue = undefined
               update()
             }, { small: true, variant: "ghost" })
           )
@@ -821,6 +850,7 @@ const commentsPanel = (): HTMLElement => {
                 on: {
                   click: () => {
                     state.selection = { from: comment.from, to: comment.to }
+                    state.cue = undefined
                     update()
                   }
                 }
@@ -871,6 +901,10 @@ const songPanel = (): HTMLElement => {
       setSong({ ...song, loop })
       changed()
     }, "Game music mostly loops: the end wraps into the start without a seam"),
+    switchRow("Compressor", song.compressor, (compressor) => {
+      setSong({ ...song, compressor })
+      changed()
+    }, "Squeezes the whole mix louder and punchier, its peaks held under -1 dBFS: for rock, drum & bass, and electronic songs"),
     sliderRow("Master", song.master, { min: 0, max: 1.5, step: 0.01 }, (v) => `${Math.round(v * 100)}%`, (master) => {
       setSong({ ...state.song, master })
     }, () => changed(), "The volume over the whole song")
@@ -1053,14 +1087,17 @@ const handlers = {
   },
   seek: (beat: number): void => {
     state.selection = undefined
-    if (player.position() !== undefined) play(beat * secondsPerBeat(state.song))
+    // On a beat, so the music starts where a beat does.
+    const at = Math.floor(beat) * secondsPerBeat(state.song)
+    if (player.position() !== undefined) play(at)
     else {
-      state.selection = undefined
+      state.cue = at
       update()
     }
   },
   region: (from: number, to: number): void => {
     state.selection = { from, to }
+    state.cue = undefined
     draw()
     renderPanels()
     renderTransport()
@@ -1068,7 +1105,16 @@ const handlers = {
 }
 
 attachGrid(grid, handlers)
-attachArrangement(arrangement, { ...handlers, pickTrack })
+attachArrangement(arrangement, {
+  ...handlers,
+  pickTrack,
+  // While the song plays, picking a track does not move the music.
+  cue: (beat) => {
+    if (player.position() !== undefined) return
+    state.cue = Math.floor(beat) * secondsPerBeat(state.song)
+    update()
+  }
+})
 
 // ---------------------------------------------------------------------------
 // Messages
@@ -1113,6 +1159,7 @@ window.addEventListener("keydown", (event) => {
   } else if (event.key === "Escape") {
     state.chosen = undefined
     state.selection = undefined
+    state.cue = undefined
     update()
   }
 })

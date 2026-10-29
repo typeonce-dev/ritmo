@@ -117,7 +117,8 @@ export const checkSong = (song: Song, cache?: NoteCache): SongReport => {
       for (let j = i + 1; j < sorted.length && sorted[j]!.at < sorted[i]!.at + sorted[i]!.length - 1e-6; j++) if (sorted[j]!.pitch === sorted[i]!.pitch) doubled++
     }
     if (doubled > 0) issues.push({ rule: "overlap", severity: "warning", track: track.name, message: `${doubled} note${doubled === 1 ? " starts" : "s start"} while the same note is still held. Shorten the first, or remove one.` })
-    const alone = loudnessOf(renderSong(song, { tracks: [index], cache }))
+    // Each track alone, uncompressed: the compressor would lift a buried track and hide it.
+    const alone = loudnessOf(renderSong({ ...song, compressor: false }, { tracks: [index], cache }))
     return {
       name: track.name,
       instrument: track.instrument,

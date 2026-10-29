@@ -485,7 +485,10 @@ drum track, a drum (`kick`, `snare`, `hat`, `openHat`, `clap`, `tomLow`,
 `tomHigh`, `crash`, `rim`, `shaker`); `velocity` (0 to 1, default 0.8) is how
 hard a note is played. A song has `beatsPerBar` (default 4), `loop` (default
 true: the WAV is one pass long and its tail wraps into its start, so it
-repeats without a seam), and `master`; a track has `volume`, `pan` (-1 to
+repeats without a seam), `master`, and `compressor` (default false: true
+squeezes the whole mix louder and punchier, its peaks held under -1 dBFS,
+for rock, drum & bass, and electronic songs; stems stay uncompressed, for
+the game to mix); a track has `volume`, `pan` (-1 to
 1), `reverb` (0 to 1), and `mute`. The key is a note and a scale: `major`,
 `minor`, `harmonic minor`, `dorian`, `phrygian`, `lydian`, `mixolydian`,
 `major pentatonic`, `minor pentatonic`, `blues`.
@@ -498,10 +501,13 @@ sample files and play the same bits everywhere:
 | --- | --- |
 | `piano`, `epiano` | Chords, melodies; the electric piano for mellow, lo-fi tunes. |
 | `guitar`, `bass` | Picked or strummed chords; the low line under them. |
+| `rockGuitar` | An overdriven electric guitar: riffs and power chords (a note and the one seven semitones up). |
+| `reese` | The drum & bass bass: detuned saws, a sub, and grit; long notes. |
 | `strings`, `pad` | Long held chords that swell in. |
 | `flute`, `marimba`, `bells` | Melodies; short bright patterns; sparkle. |
+| `synthLead` | A supersaw: modern electronic leads and riffs. |
 | `chipLead`, `chipBass` | Chiptune: a retro console's square and triangle waves. |
-| `drums` | A drum kit. |
+| `drums`, `breaks` | A clean drum kit; a punchy, driven one for rock and drum & bass (the same drums). |
 
 A song's `reference` is what `music listen` heard: its `tempo`, `key`, the
 melody as `notes` rounded to the grid, the raw pitch line (`contour`), and the
@@ -546,14 +552,17 @@ the tracks on the left (mute and solo each), the arrangement (every track
 as a lane under the bar numbers, with the hum's pitch line above them) and
 the chosen track's note grid on the stage, and on the right the review, the
 comments, the track (instrument, volume, pan, room), the song (tempo, key,
-bars, loop, master), the reference, and the check. On the grid, a click
+bars, loop, compressor, master), the reference, and the check. On the grid, a click
 places a note (and plays it), a drag moves it, dragging its end stretches
 it, and a double-click or right-click removes it; the key's notes are a
 shade lighter, and the hum's notes show as dashed outlines with its pitch
-line through them. Dragging across the bar numbers picks bars to comment
-on. Record a hum records from the microphone (the page must be on
+line through them. A click on the bar numbers, or on a lane of the
+arrangement, puts the start marker there (while playing, the bar numbers
+jump the music there); dragging across the bar numbers picks bars to
+comment on, and Play starts from them. Record a hum records from the microphone (the page must be on
 localhost or HTTPS); Audio file, or dropping a file on the stage, takes any
-audio the browser plays. Space plays from the picked bars, the microphone
+audio the browser plays. Space plays and pauses (Play goes on from where
+it paused), Stop goes back to the start, the microphone
 button plays the hum along with the song, Delete removes the chosen note,
 and Ctrl/Cmd+Z undoes. MIDI and WAV download the song. Every change is
 written to the song and its review as it happens, and a song the agent

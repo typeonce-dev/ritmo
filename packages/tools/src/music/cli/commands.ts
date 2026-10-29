@@ -58,7 +58,8 @@ const renderCommand = Command.make(
       const folder = wav.replace(/\.wav$/, "") + ".stems"
       for (const [index, track] of song.tracks.entries()) {
         const name = `${String(index + 1).padStart(2, "0")}-${track.name.replace(/[^\w-]+/g, "-").toLowerCase()}.wav`
-        files.push(yield* writeBytes(path.join(folder, name), stereoWav(renderSong(song, { tracks: [index] }))))
+        // Stems stay uncompressed: the game mixes them, and a compressor on each alone would pump on its own.
+        files.push(yield* writeBytes(path.join(folder, name), stereoWav(renderSong({ ...song, compressor: false }, { tracks: [index] }))))
       }
     }
     yield* printJson({ file: flags.song, loop: song.loop, seconds: Math.round(song.bars * song.beatsPerBar * (60 / song.tempo) * 100) / 100, files })
@@ -93,7 +94,7 @@ const listenCommand = Command.make(
     } else {
       // No song yet: one at the reference's tempo and key, long enough to hold it, with no tracks.
       created = true
-      song = { tempo: heard.tempo, key: heard.key, beatsPerBar: 4, bars: Math.max(4, Math.ceil(heard.length / 16) * 4), loop: true, master: 0.8, tracks: [], reference }
+      song = { tempo: heard.tempo, key: heard.key, beatsPerBar: 4, bars: Math.max(4, Math.ceil(heard.length / 16) * 4), loop: true, master: 0.8, compressor: false, tracks: [], reference }
     }
     yield* writeText(flags.song, encodeSong(song))
     yield* printJson({
@@ -172,6 +173,7 @@ const STARTER: Song = {
   bars: 4,
   loop: true,
   master: 0.8,
+  compressor: false,
   tracks: [
     {
       name: "Chords",

@@ -8,7 +8,7 @@
  * (a last chord, the room) folded back over its start: played on repeat, it
  * has no seam.
  */
-import { isDrum, playDrum, playVoice, type InstrumentId } from "./instruments.ts"
+import { isDrum, isKit, playDrum, playVoice, type InstrumentId } from "./instruments.ts"
 import { lengthInSeconds, midiOf, secondsPerBeat, type Note, type Song, type Track } from "./song.ts"
 
 export const SAMPLE_RATE = 44100
@@ -56,9 +56,9 @@ export const noteSamples = (instrument: InstrumentId, note: Pick<Note, "pitch" |
   const random = seeded(hash(key))
   const midi = midiOf(note.pitch)
   const samples =
-    instrument === "drums"
+    isKit(instrument)
       ? isDrum(note.pitch)
-        ? playDrum(note.pitch, velocity, rate, random)
+        ? playDrum(instrument, note.pitch, velocity, rate, random)
         : new Float32Array(0)
       : midi === undefined
         ? new Float32Array(0)
@@ -106,6 +106,39 @@ const room = (input: Float32Array, rate: number, offset: number): Float32Array =
     }
   }
   return out
+}
+
+// ---------------------------------------------------------------------------
+// The compressor: one gain for both sides, following the louder one
+
+const THRESHOLD = 0.18
+const RATIO = 4
+const MAKEUP = 2.2
+const CEILING = 0.89
+
+/**
+ * Squeezes the mix: above the threshold, every 4 dB in becomes 1 dB out
+ * (fast to clamp down, slower to let go), the result is raised back up, and
+ * a soft clip holds the peaks under -1 dBFS. A looping song is run through
+ * its own end first, so the start is squeezed as it is when the loop comes round.
+ */
+const compress = (left: Float32Array, right: Float32Array, rate: number, loop: boolean): void => {
+  const attack = Math.exp(-1 / (0.004 * rate))
+  const release = Math.exp(-1 / (0.15 * rate))
+  let level = 0
+  const follow = (i: number): number => {
+    const x = Math.max(Math.abs(left[i]!), Math.abs(right[i]!))
+    level = x > level ? x + (level - x) * attack : x + (level - x) * release
+    return level
+  }
+  if (loop) for (let i = Math.max(0, left.length - Math.round(rate)); i < left.length; i++) follow(i)
+  const clip = (x: number): number => (Math.abs(x) < CEILING * 0.7 ? x : Math.sign(x) * (CEILING * 0.7 + CEILING * 0.3 * Math.tanh((Math.abs(x) - CEILING * 0.7) / (CEILING * 0.3))))
+  for (let i = 0; i < left.length; i++) {
+    const env = follow(i)
+    const gain = (env > THRESHOLD ? Math.pow(env / THRESHOLD, 1 / RATIO - 1) : 1) * MAKEUP
+    left[i] = clip(left[i]! * gain)
+    right[i] = clip(right[i]! * gain)
+  }
 }
 
 /** How long the room rings past the last note, in seconds. */
@@ -161,7 +194,9 @@ export const renderSong = (song: Song, options: RenderOptions = {}): Stereo => {
   if (!song.loop) {
     let end = total
     while (end > pass && Math.abs(left[end - 1]!) < 0.0001 && Math.abs(right[end - 1]!) < 0.0001) end--
-    return { sampleRate: rate, left: left.slice(0, end), right: right.slice(0, end) }
+    const out = { sampleRate: rate, left: left.slice(0, end), right: right.slice(0, end) }
+    if (song.compressor) compress(out.left, out.right, rate, false)
+    return out
   }
   // The tail wraps into the start: the loop's seam is filled by its own end.
   for (let i = pass; i < total; i++) {
@@ -169,7 +204,9 @@ export const renderSong = (song: Song, options: RenderOptions = {}): Stereo => {
     left[at]! += left[i]!
     right[at]! += right[i]!
   }
-  return { sampleRate: rate, left: left.slice(0, pass), right: right.slice(0, pass) }
+  const out = { sampleRate: rate, left: left.slice(0, pass), right: right.slice(0, pass) }
+  if (song.compressor) compress(out.left, out.right, rate, true)
+  return out
 }
 
 /** The loudest sample in dBFS (0 is full scale). */

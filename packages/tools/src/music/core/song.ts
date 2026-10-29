@@ -94,6 +94,8 @@ export interface Song {
   readonly loop: boolean
   /** The volume over the whole song, 0 to 2. */
   readonly master: number
+  /** Squeezes the whole mix louder and punchier, its peaks held under -1 dBFS: for rock, drum & bass, and electronic songs. Off by default. */
+  readonly compressor: boolean
   readonly tracks: ReadonlyArray<Track>
   readonly reference?: Reference | undefined
 }
@@ -283,6 +285,7 @@ export const decodeSongValue = (raw: unknown): Decoded<Song> => {
   if (!Array.isArray(raw.tracks)) errors.push("tracks must be a list")
   const tracks = (Array.isArray(raw.tracks) ? raw.tracks : []).flatMap((track: unknown, i: number) => decodeTrack(track, `tracks[${i}]`, errors) ?? [])
   if (raw.loop !== undefined && typeof raw.loop !== "boolean") errors.push("loop must be true or false")
+  if (raw.compressor !== undefined && typeof raw.compressor !== "boolean") errors.push("compressor must be true or false")
   if (raw.about !== undefined && typeof raw.about !== "string") errors.push("about must be text")
   const song: Song = {
     about: typeof raw.about === "string" ? raw.about : undefined,
@@ -292,6 +295,7 @@ export const decodeSongValue = (raw: unknown): Decoded<Song> => {
     bars,
     loop: raw.loop !== false,
     master: number(raw.master, "master", 0.8, 0, 2),
+    compressor: raw.compressor === true,
     tracks,
     reference: decodeReference(raw.reference, "reference", errors)
   }
@@ -323,7 +327,8 @@ export const encodeSong = (song: Song): string => {
     ...(song.beatsPerBar === 4 ? {} : { beatsPerBar: song.beatsPerBar }),
     bars: song.bars,
     ...(song.loop ? {} : { loop: false }),
-    master: round(song.master, 3)
+    master: round(song.master, 3),
+    ...(song.compressor ? { compressor: true } : {})
   }
   const lines: Array<string> = ["{"]
   for (const [name, value] of Object.entries(head)) lines.push(`  ${JSON.stringify(name)}: ${JSON.stringify(value)},`)
