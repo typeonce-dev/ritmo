@@ -331,7 +331,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       const snapshot = options.keepSnapshots === true ? runtime.snapshot() : undefined
       sums.set(tick, { sum: sum.value, snapshot: snapshot?.ok === true ? snapshot.value : undefined })
     }
-    if (mode === "rollback") history.set(tick, runtime.checkpoint(options.simulate))
+    // After a rollback the checkpoint it rewound to is still held and is this tick's: taking another would spend a slot of the runtime's window for nothing.
+    if (mode === "rollback" && !history.has(tick)) history.set(tick, runtime.checkpoint(options.simulate))
     const current: Array<unknown> = []
     for (let other = 0; other < count; other++) {
       const input = inputFor(other, tick)
@@ -589,6 +590,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       halted ??= { _tag: "CheckpointLost", error: rewound.error }
       return
     }
+    // The rewind released every checkpoint newer than `from` and kept this one: the ticks run again take theirs.
+    for (const tick of history.keys()) if (tick > from) history.delete(tick)
     for (const ledger of ledgers.values()) ledger.rewind(from)
     const present = next
     next = from

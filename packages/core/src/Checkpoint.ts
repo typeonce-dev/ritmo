@@ -15,7 +15,10 @@
  * runtime keeps the last `checkpoints` checkpoints (an option of
  * `Game.Runtime.make`, {@link defaultWindow} by default); an older one,
  * one newer than a checkpoint the runtime rewound to, and every one taken
- * before a `restore` can no longer be rewound to (`Released`).
+ * before a `restore` can no longer be rewound to (`Released`). The window
+ * counts every checkpoint taken, and a rewind keeps the one it went to: take
+ * no second checkpoint for that tick when it runs again, or each rollback
+ * spends a slot and the window covers fewer ticks than `checkpoints`.
  *
  * Checkpoints are cheap: taking one copies nothing but resources, machines,
  * and queues. From then on, the first change to a page of component values,
@@ -72,7 +75,8 @@
  * const rewound = runtime.rewind(history.get(wrongTick)!)
  * if (rewound.ok) {
  *   for (let at = wrongTick; at <= tick; at++) {
- *     history.set(at, runtime.checkpoint(simulate))
+ *     // The one rewound to is still held, and is this tick's.
+ *     if (at > wrongTick) history.set(at, runtime.checkpoint(simulate))
  *     runtime.tick(simulate)
  *   }
  * }
