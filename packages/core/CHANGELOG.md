@@ -1,5 +1,32 @@
 # @typeonce/ritmo
 
+## 0.20.0
+
+### Minor Changes
+
+- b5f78e7: `ritmo-tools fx`: pixel art effects as code. Each effect in a bank (`game.fx.json`) has a few drafts, each a small JavaScript module that draws one frame at a time with the palette's color names (`fx.px`, `fx.line`, `fx.disc`, `fx.ring`, `fx.ramp`, `fx.random()` from the draft's seed), and params the person can tune. Circles are drawn as pixel artists draw them: no doubles, even steps, and `fx.ring` takes a width with no pinholes.
+
+  `fx check` runs every draft and lists what an agent cannot see by reading code, with the frames and pixels where: errors (a module that does not load or throws, nothing drawn, randomness not from the seed, colors outside the project's `pixel.config.json` palette or over its `maxColors`) and warnings (cut off at the canvas edge, a one-shot that starts late or does not end empty, a loop that jumps, blinking, lone-pixel noise, jaggies, doubles, pinholes, flicker, and an effect too faint on one of the game's backgrounds, listed in the bank's `backdrops`). A draft's `accept` records a warning judged deliberate, with why. `fx look` writes a contact sheet of every frame for the agent to look at, with the person's comments or a rule's spots ringed. `fx review` opens a local page where a person watches the drafts side by side, slowed down or frame by frame, picks one, tunes it, and clicks a pixel to pin a comment to it; `fx notes` reads it all back. `fx resolve` marks comments done with a reply the person sees. `fx render` writes the chosen draft as a sprite sheet PNG with its JSON (Pixi, Phaser, Aseprite; each frame's anchor from the draft's `anchor`, and `meta.loop`) and a GIF. The page also runs on the website with an example bank: https://ritmo.typeonce.dev/tools/fx/.
+
+  `@typeonce/ritmo` ships a new skill, `skills/ritmo-fx`, with the pixel art craft the checks measure. Link it next to the others:
+
+  ```sh
+  ln -s ../../node_modules/@typeonce/ritmo/skills/ritmo-fx .agents/skills/ritmo-fx
+  ```
+
+### Patch Changes
+
+- 7b0dcd2: `ritmo-tools fx`: ramps, recolor, palette editing, a stand-in sprite, draft comparison, and reach across seeds.
+
+  - A bank's `ramps` name fades through its palette (`"fire": ["white", "yellow", "orange", "red"]`), and drafts draw with them by name: `fx.ramp("fire", v)`. A draft's `recolor` draws one ramp with another's colors (`{"fire": "frost"}`), so a blue fire is the same file with one line in the bank; the review page's Tune section picks it too. A ramp the bank does not have is an error.
+  - A bank's `standIn` is a PNG of one of the game's sprites with the pixel at its feet (`{"file": "art/hero.png", "anchor": [10, 45]}`). The page and `fx look` draw it behind every effect, so its size reads against a body. It stands on the effect's anchor, moved by the effect's `standIn` offset (`[0, 24]` for a hit's target), or not at all with `false`. `fx look --alone` and the page's Background section leave it out.
+  - `fx look --compare` writes one picture of every draft of an effect, a row each, the same moments in each column, to weigh the drafts against each other.
+  - `fx check` also runs each draft with seeds 2, 3, and 7, and warns (`clipped-seed`) when the draft's own seed keeps it inside the canvas only by luck.
+  - The review page's Palette section lets the person change the bank's colors (picked from the project's `pixel.config.json` palette when it has one) and its ramps (steps picked, reordered, added, removed; new ramps), for every effect at once. `fx notes` lists the palette and ramps as they are now.
+  - New shapes: `fx.oval` and `fx.ovalRing` (ellipses with clean steps, for pools and shock rings flat on the floor), `fx.sparkle` (a star glint), and `fx.streak` (a moving spark's trail along a ramp).
+
+  The `ritmo-fx` skill adds the bank's stand-in and ramps to its loop, `--compare` before showing drafts, open-source effects to read for choreography, phases with a white hero frame, and a table of what you see and the usual fix.
+
 ## 0.19.1
 
 ## 0.19.0
