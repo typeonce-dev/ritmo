@@ -1,0 +1,146 @@
+---
+// The effects lab's idea on a page: one effect, four drafts the agent wrote as
+// code, playing side by side on one clock, drawn in the browser by the same
+// runner the CLI checks with. The person picks one; the picked draft is ringed.
+interface Props {
+  /** An effect in `examples/fx/effects.fx.json`. */
+  effect?: string
+  /** The draft shown as picked. */
+  picked?: string
+}
+
+const { effect = "heavy-slash", picked = "a" } = Astro.props
+---
+
+<div class="fx-showcase" data-effect={effect} data-picked={picked}>
+  <div class="drafts"></div>
+</div>
+
+<script>
+  import { exampleBank, exampleSources } from "@typeonce/ritmo-tools/fx/example"
+  import { decodeEffect, runEffect, type Run } from "@typeonce/ritmo-tools/fx/effect"
+
+  /** How long a one-shot rests empty between plays, in milliseconds: short, so the drafts are mostly seen playing. */
+  const REST = 250
+  const SCALE = 3
+
+  const load = async (source: string) => {
+    const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }))
+    try {
+      return decodeEffect(await import(/* @vite-ignore */ url))
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }
+
+  for (const root of document.querySelectorAll<HTMLElement>(".fx-showcase")) {
+    const bank = JSON.parse(exampleBank) as {
+      palette: Record<string, string>
+      effects: Record<string, { drafts: Record<string, { file: string; seed?: number; tune?: Record<string, number> }> }>
+    }
+    const entry = bank.effects[root.dataset.effect ?? ""]
+    const holder = root.querySelector(".drafts")
+    if (entry === undefined || holder === null) continue
+    const colors = Object.values(bank.palette)
+    const cards: Array<{ readonly canvas: HTMLCanvasElement; readonly run: Run }> = []
+    for (const [id, draft] of Object.entries(entry.drafts)) {
+      const source = exampleSources[draft.file]
+      if (source === undefined) continue
+      const decoded = await load(source)
+      if (!decoded.ok) continue
+      const run = runEffect(decoded.value, bank.palette, { seed: draft.seed, tune: draft.tune })
+      const card = document.createElement("figure")
+      card.className = id === root.dataset.picked ? "draft picked" : "draft"
+      const canvas = document.createElement("canvas")
+      canvas.width = run.width * SCALE
+      canvas.height = run.height * SCALE
+      const caption = document.createElement("figcaption")
+      caption.innerHTML = `<b>${id}</b> <span class="label">${decoded.value.label}</span>`
+      if (id === root.dataset.picked) card.title = "The draft the person picked"
+      card.append(canvas, caption)
+      holder.append(card)
+      cards.push({ canvas, run })
+    }
+    const start = performance.now()
+    const draw = (now: number): void => {
+      for (const { canvas, run } of cards) {
+        const context = canvas.getContext("2d")
+        if (context === null) continue
+        const step = 1000 / run.fps
+        const length = run.frames.length * step
+        const at = (now - start) % (run.loop ? length : length + REST)
+        const frame = at < length ? Math.floor(at / step) : -1
+        context.clearRect(0, 0, canvas.width, canvas.height)
+        const pixels = run.frames[frame]
+        if (pixels === undefined) continue
+        for (let i = 0; i < pixels.length; i++) {
+          const v = pixels[i]!
+          if (v === 0) continue
+          context.fillStyle = colors[v - 1] ?? "#ff00ff"
+          context.fillRect((i % run.width) * SCALE, Math.floor(i / run.width) * SCALE, SCALE, SCALE)
+        }
+      }
+      requestAnimationFrame(draw)
+    }
+    requestAnimationFrame(draw)
+  }
+</script>
+
+<style>
+  .fx-showcase {
+    width: 100%;
+    padding: 20px;
+  }
+
+  .drafts {
+    display: grid;
+    /* One row, so the four drafts compare side by side and fit any frame. */
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .drafts :global(.draft) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 6px;
+    border-radius: 10px;
+    background: #1a1c2c;
+    box-shadow: 0 0 0 1px rgba(243, 241, 236, 0.08);
+  }
+
+  .drafts :global(.draft.picked) {
+    box-shadow: 0 0 0 2px #ff5a36;
+  }
+
+  .drafts :global(canvas) {
+    display: block;
+    width: 100%;
+    height: auto;
+    image-rendering: pixelated;
+  }
+
+  .drafts :global(figcaption) {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    max-width: 100%;
+    color: #bdbab3;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  .drafts :global(figcaption .label) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .drafts :global(figcaption b) {
+    color: #f3f1ec;
+    font-family: var(--mono, monospace);
+  }
+
+</style>

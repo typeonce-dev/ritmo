@@ -65,6 +65,7 @@ const skillFiles = Object.keys(markdown)
     if (file === "skills/ritmo-prototype/SKILL.md") return shipped(core, file, "Ritmo prototype skill", "replaces the checks while a game is a prototype: a playable build every round, the human as playtester, and graduation")
     if (file === "skills/ritmo-sounds/SKILL.md") return shipped(core, file, "Ritmo sounds skill", "sound effects with `ritmo-tools sound` from `@typeonce/ritmo-tools`: recipes, checks, takes, and the review page a person listens on")
     if (file === "skills/ritmo-music/SKILL.md") return shipped(core, file, "Ritmo music skill", "game music with `ritmo-tools music` from `@typeonce/ritmo-tools`: songs built around a hum, checks, and the review page a person edits on")
+    if (file === "skills/ritmo-fx/SKILL.md") return shipped(core, file, "Ritmo effects skill", "pixel art effects with `ritmo-tools fx` from `@typeonce/ritmo-tools`: drafts written as code, checks, contact sheets, and the review page a person watches on")
     if (file === "skills/ritmo-pixel-art/SKILL.md") return shipped(core, file, "Ritmo pixel art skill", "pixel art and animation sheets with `ritmo-tools pixel` from `@typeonce/ritmo-tools`: which command for each case, and how to read its report")
     return shipped(core, file, `${file.includes("/references/") ? "Reference" : "Playbook"}: ${heading}`, "")
   })
@@ -99,7 +100,7 @@ const games = Object.entries(demos).map(
 
 const intro = `# Ritmo
 
-> ${core.description}. Coding agents write the game; wrong code does not compile and the error names the fix, and headless devtools sessions show lints, invariants, and why a value changed. Ritmo runs the simulation; the game's own renderer draws it. Around the core: browser input and local multiplayer, renderer bridges, rollback and lockstep netcode, devtools, lint rules, and \`ritmo-tools\`, the command for pixel art, animation sheets, sound effects, and music.
+> ${core.description}. Coding agents write the game; wrong code does not compile and the error names the fix, and headless devtools sessions show lints, invariants, and why a value changed. Ritmo runs the simulation; the game's own renderer draws it. Around the core: browser input and local multiplayer, renderer bridges, rollback and lockstep netcode, devtools, lint rules, and \`ritmo-tools\`, the command for pixel art, animation sheets, sound effects, music, and pixel art effects.
 
 These links are for version ${core.version}. In a project that has Ritmo installed, read the same files in \`node_modules/@typeonce/*\` instead: they match the installed version, and the API changes between versions. The API reference is the JSDoc in \`node_modules/@typeonce/*/src\`; read a module's header and an export's JSDoc before using it, and each package's \`CHANGELOG.md\` when upgrading. Compiler errors and lint messages name the fix: apply it, never cast around it.
 

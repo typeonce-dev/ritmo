@@ -8,6 +8,7 @@ tool per kind of asset:
 | --- | --- |
 | `ritmo-tools pixel` | Pixel art: fixes AI-made or blurry pictures and animation sheets onto a true pixel grid and a palette, renders sprites drawn as text, and checks a project's art against its rules. |
 | `ritmo-tools sound` | Sound effects: keeps them as JSON recipes, measures and varies them, writes WAV files, and opens a local page where a person listens, picks, tunes, and notes. |
+| `ritmo-tools fx` | Pixel art effects: keeps each effect as a few drafts written as code, checks them for pixel art craft and the project's rules, draws contact sheets an agent can look at, writes sprite sheets and GIFs, and opens a local page where a person watches the drafts side by side, picks, tunes, and pins comments to a pixel. |
 | `ritmo-tools music` | Game music: hears a person's hum for its tune, tempo, and key, keeps songs as JSON tracks of notes, checks them, writes WAV and MIDI files, and opens a local page where a person plays, edits notes, records, and comments. |
 
 ```sh
@@ -18,7 +19,7 @@ pnpm add -D @typeonce/ritmo-tools   # pins it to the game's Ritmo version
 Every command prints JSON on stdout and exits with a code that says what
 to do next. A game's agent learns them from the skills that ship with
 `@typeonce/ritmo` (`skills/ritmo-pixel-art`, `skills/ritmo-sounds`,
-`skills/ritmo-music`), linked by
+`skills/ritmo-music`, `skills/ritmo-fx`), linked by
 its `SETUP.md`.
 The tools are built on Effect; nothing a game imports depends on this
 package.
@@ -378,6 +379,173 @@ of the true size, which are as clean but have half their lines mid-cell.
   JPEG through `jpeg-js`;
   `src/cli.ts` is `ritmo-tools` itself, and `bin/ritmo-tools.mjs` runs it from
   its TypeScript source inside the repository.
+
+## Effects lab (`ritmo-tools fx`)
+
+Pixel art effects (hits, explosions, fire, magic) as code, for agents and the
+people they make games with. Code is easy to vary and tune, so an effect is a
+few drafts, each a small JavaScript module; the agent writes and checks
+them, and a person watches them side by side on a local page, picks one,
+tunes it with sliders, and says what to change. One runner draws the frames
+everywhere, so what the person watches, what the agent checks, and the sprite
+sheet the game plays are the same pixels.
+
+The checks measure pixel art craft (jaggies, doubles, pinholes, flicker,
+contrast on the game's own backgrounds) and the project's
+`pixel.config.json`, and say on which frames and pixels; the person can
+click a pixel to pin a comment to it, and the agent sees that pixel ringed.
+
+### Drafts and banks
+
+A draft is a module with no imports whose default export says the effect's
+size, frame count, speed, and tunable params, and draws one frame:
+
+```js
+export default {
+  label: "starburst",
+  size: [24, 24], // pixels, up to 256 × 256
+  frames: 8,
+  fps: 24,
+  loop: false, // true: plays again from the start (a torch); false: plays once and should end empty (a hit)
+  anchor: [12, 12], // the pixel the game places on the effect's spot (where the blow lands); the middle by default
+  params: { rays: { min: 3, max: 10, value: 7, step: 1 }, reach: { min: 5, max: 11, value: 10 } },
+  draw(fx) {
+    if (fx.frame === 0) fx.disc(fx.cx, fx.cy, 3, "white")
+    for (let i = 0; i < fx.p.rays; i++) {
+      const angle = (i / fx.p.rays) * Math.PI * 2 + fx.range(-0.35, 0.35)
+      const far = fx.ease.out(fx.t) * fx.p.reach
+      const near = fx.ease.in(fx.t) * fx.p.reach
+      const color = fx.ramp(["white", "yellow", "orange", "red"], fx.t)
+      fx.line(fx.cx + Math.cos(angle) * near, fx.cy + Math.sin(angle) * near, fx.cx + Math.cos(angle) * far, fx.cy + Math.sin(angle) * far, color)
+    }
+  }
+}
+```
+
+Drafts are code, and every `fx` command that reads a bank runs them (with
+Node's full permissions in the CLI, in the browser on the page): run it on
+banks you trust, as you would `npm run` in a project.
+
+`draw(fx)` runs once per frame, from nothing: an effect is a function of
+time, not a simulation. It gets:
+
+| `fx.` | What it is |
+| --- | --- |
+| `frame`, `frames`, `t` | This frame's number, how many there are, and how far through it is: 0 on the first frame, 1 on the last (a loop never reaches 1, so its last frame leads back to its first). |
+| `w`, `h`, `cx`, `cy` | The canvas's size and its middle pixel. |
+| `p` | The params, with the person's tune laid over them. |
+| `random()`, `range(min, max)` | Numbers from the draft's seed. They start over on every frame, so the n-th number is the same in every frame: draw the n-th particle's direction and speed from it, and its place from `t`. |
+| `px`, `rect`, `line`, `disc`, `ring` | Draw with a palette color's name. Coordinates are rounded down to whole pixels; later shapes cover earlier ones. Circles are drawn as pixel artists draw them: the midpoint circle at the radius rounded to a whole pixel, with no doubles, its steps even; a disc fills the same outline, and `ring(x, y, r, color, width)` thickens inward with no pinholes. A radius of 0 or less draws nothing. |
+| `ramp(colors, v)` | The color at `v` (0 to 1) along a list: hot to cold, bright to dark. |
+| `ease.in`, `ease.out`, `ease.inOut`, `lerp`, `clamp` | Curves and helpers for timing. |
+
+A bank is one file per game naming the palette, the game's own backgrounds
+(`backdrops`, optional: the contrast check and the page use them), and each
+effect's drafts (paths from the bank's folder), with each draft's `seed`,
+`tune`, and `accept` (warnings judged deliberate, each with why: `fx check`
+lists them apart and does not count them; errors cannot be accepted), and
+the draft the game gets in `use` (the first when unset):
+
+```json
+{
+  "version": 1,
+  "palette": { "white": "#ffffff", "yellow": "#fee761", "orange": "#f77622", "red": "#e43b44" },
+  "backdrops": { "dungeon": "#1a1c2c", "meadow": "#5a8f3c" },
+  "effects": {
+    "hit": {
+      "about": "A sword blow lands on an enemy.",
+      "drafts": {
+        "a": { "file": "fx/hit.a.js" },
+        "b": { "file": "fx/hit.b.js", "seed": 3, "tune": { "reach": 8 }, "accept": { "jaggies": "the notches where the sparks overlap are the look" } }
+      },
+      "use": "b"
+    }
+  }
+}
+```
+
+Its review lives next to it (`game.fx.json` → `game.fx.review.json`): each
+effect's status (`new`, `approved`, `changes`), the person's note, and their
+comments, each pinned to a draft, a frame (from 0, as `fx.frame`), and a
+pixel, and resolved by the agent with a reply (`fx resolve`). `examples/fx/effects.fx.json` in the repository is a hit, a heavy
+slash, an explosion, and a torch, with two to four drafts each.
+
+### The checks
+
+`fx check` runs each draft twice. **Errors** (exit 3): a module that does
+not load or throws, a color the palette does not have, nothing drawn,
+randomness that is not the seed's, and against the project's
+`pixel.config.json` (the nearest at or above the bank's folder, or
+`--config`): a bank color outside its palette, or a draft with more colors
+than its `maxColors`. **Warnings**, each with the frames, and for the craft
+rules up to 8 pixels in `at`:
+
+| Code | What it finds |
+| --- | --- |
+| `clipped` | Pixels drawn past the canvas edge. |
+| `late`, `no-end`, `tail` | A one-shot that starts after frame 0, does not end empty, or ends on more than one empty frame. |
+| `seam` | A loop that jumps from its last frame back to its first. |
+| `gap` | Empty frames in the middle. |
+| `noise`, `full` | Mostly lone pixels; one frame covering most of the canvas. |
+| `jaggies` | Uneven steps along an edge: a run of pixels at least 2 shorter or longer than both runs beside it (3, 1, 3). Steady rhythms (2, 1, 2, 1) pass. From 3 spots in a draft. |
+| `doubles` | The corner pixel of an L in a one-pixel line, in shapes of 5 pixels or more. From 3 spots. |
+| `holes` | Single empty pixels with drawn pixels on all four sides. From 3 spots. |
+| `flicker` | Pixels that change for one frame and change back, above 6% of drawn pixels: in motion it boils. |
+| `contrast` | More than half the drawn pixels barely differ (OKLab, under 0.12) from one of the bank's `backdrops`. |
+| `near-duplicate-colors` | Palette colors too close to tell apart. |
+
+`fx look --marks <code>` rings where a craft rule breaks, in magenta.
+
+### The command line
+
+`npx @typeonce/ritmo-tools fx <command>` (inside the Ritmo repository, `node packages/tools/bin/ritmo-tools.mjs fx <command>`).
+Every command prints JSON and exits 0 (clean), 2 (usage error, missing
+file, broken bank), or 3 (a draft has errors).
+
+| Command | Does |
+| --- | --- |
+| `ritmo-tools fx init [bank]` | Writes a starting bank (a six-color palette) and one draft of a hit spark. |
+| `ritmo-tools fx check <bank> [names...] [--config file]` | Runs every draft twice and measures it (frames, length, the box it fills, its colors), and lists errors and warnings (see above), with accepted warnings apart. |
+| `ritmo-tools fx look <bank> <name> [--draft a] [--scale 6] [--backdrop dark] [--marks comments]` | Writes a contact sheet PNG per draft: every frame side by side, enlarged, on a backdrop (`dark`, `light`, `checker`, or one of the bank's by name), for the agent to look at. `--marks` rings the person's comments (the default) or where a craft rule breaks (`jaggies`, `doubles`, `holes`, `flicker`), and the report lists them. |
+| `ritmo-tools fx render <bank> [names...] [-o dir] [--scale 1]` | Writes each effect's draft in use as a sprite sheet PNG (its frames in one row), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the draft's `anchor`, the animation and its fps, and `meta.loop`, whether it loops or plays once), and a GIF. |
+| `ritmo-tools fx review <bank> [--port 5192] [--host] [--config file]` | Serves the review page and prints its address; runs until stopped. |
+| `ritmo-tools fx notes <bank>` | What the person said: each effect's status, note, open comments (numbered, with draft, frame, pixel, and text), how many are resolved, draft in use, and tune, changes asked first. |
+| `ritmo-tools fx resolve <bank> <effect> <numbers...> [--reply "what changed"]` | Marks comments as resolved: `fx notes` and `fx look` stop showing them, and the page shows them done with the reply. The person can reopen one. |
+
+### The review page
+
+`ritmo-tools fx review` opens the bank on a local page: the effects on the
+left with their status, every draft of the selected one playing side by side
+on one clock (one-shots rest a moment between plays), and on the right its
+review (status, note, and comments), the tune sliders of the draft in focus,
+and that draft's check, with the accepted warnings and their reasons. Every
+card is the size of the effect's largest draft, so nothing moves as they
+play. The playback bar pauses, steps frame by frame (the same frame on every
+draft), slows to ½ or ¼, and zooms from 2× to 8×; the Background section
+picks what the drafts play over (the bank's `backdrops` first, then neutral
+ones). Clicking a draft focuses it; clicking a pixel of the
+draft in focus pauses on that frame and pins a comment to it; a comment's number rings its pixel on its frame, and clicking the
+comment goes there. **Show** on a check pauses on its frame with its pixels
+ringed. Resolved comments show greyed, with the agent's reply, and
+**Reopen** puts one back on its list. **Use** picks the draft the game gets. Space plays, ← and → step, ↑
+and ↓ change effect, 1 to 9 focus a draft, and Escape clears rings. Every
+change is written to the bank and its review as it happens, and a draft the
+agent edits while the page is open plays anew.
+
+The website hosts the same page with the example bank, kept in the tab, to
+try without the CLI: https://ritmo.typeonce.dev/tools/fx/.
+
+### Code
+
+- `src/fx/core/`: the runner and what `draw` gets (`effect.ts`), banks and
+  reviews (`bank.ts`), the checks (`check.ts`) and the craft rules they use
+  (`craft.ts`), and frames as pixel art and
+  contact sheets (`export.ts`, through the pixel fixer's sheet and GIF
+  writers).
+- `src/fx/cli/`: the commands, loading drafts as `data:` URLs (`io.ts`),
+  and the page's server (`serve.ts`).
+- `src/fx/ui/`: the review page, which loads drafts as `blob:` URLs, and the
+  website's demo of it (`demo.ts`, `example.ts`).
 
 ## Sound lab (`ritmo-tools sound`)
 

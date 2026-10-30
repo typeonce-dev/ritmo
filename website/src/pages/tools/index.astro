@@ -1,9 +1,10 @@
 ---
 // The front door to `@typeonce/ritmo-tools`: the command an agent runs for
-// art, sound, and music, and the three pages a person reviews on. The tools'
-// own pages (/tools/pixel/, /tools/sound/, /tools/music/) own the whole
+// art, effects, sound, and music, and the four pages a person reviews on. The tools'
+// own pages (/tools/pixel/, /tools/fx/, /tools/sound/, /tools/music/) own the whole
 // window; this one is a guide.
 import Command from "../../components/Command.astro"
+import FxShowcase from "../../components/FxShowcase.astro"
 import MusicShowcase from "../../components/MusicShowcase.astro"
 import PixelShowcase from "../../components/PixelShowcase.astro"
 import SheetShowcase from "../../components/SheetShowcase.astro"
@@ -23,6 +24,19 @@ const tools = [
       { name: "check", body: "Clean, fixable, or needs a person?" },
       { name: "fix", body: "The art at its true size, and its recipe." },
       { name: "sheet", body: "Frames on one grid, a sprite sheet, a GIF." }
+    ]
+  },
+  {
+    id: "fx",
+    title: "Effects lab",
+    body: "Hits, slashes, explosions, and fire, written as code by your agent: a few drafts each. You watch them side by side, pick one, tune it, and pin comments to a pixel.",
+    href: "/tools/fx/",
+    open: "Try the effects lab",
+    command: "npx @typeonce/ritmo-tools fx review game.fx.json",
+    commands: [
+      { name: "check", body: "Jaggies, doubles, flicker, cut-off edges." },
+      { name: "look", body: "Every frame, for the agent to see." },
+      { name: "render", body: "The pick as a sprite sheet and a GIF." }
     ]
   },
   {
@@ -56,13 +70,13 @@ const tools = [
 
 <Base
   title="Tools"
-  description="ritmo-tools: the command your coding agent runs for pixel art, sound effects, and music, with a local web UI where you look, listen, and tweak. Free and open source."
+  description="ritmo-tools: the command your coding agent runs for pixel art, effects, sound effects, and music, with a local web UI where you look, listen, and tweak. Free and open source."
 >
   <main class="tools-page">
     <section class="hero">
       <ToolsMark />
       <h1>All the support you need to<br />create full game experiences</h1>
-      <p class="sub">Pixel art, animations, sounds, and music tools for agent-first games.</p>
+      <p class="sub">Pixel art, animations, effects, sounds, and music tools for agent-first games.</p>
       <div class="install">
         <Command command="npx @typeonce/ritmo-tools --help" />
       </div>
@@ -81,6 +95,7 @@ const tools = [
                 <SheetShowcase />
               </div>
             )}
+            {tool.id === "fx" && <FxShowcase />}
             {tool.id === "sound" && <SoundBoard compact sounds={["slash", "spin", "hit", "block", "zap", "victory"]} />}
             {tool.id === "music" && <MusicShowcase />}
           </div>
@@ -159,8 +174,9 @@ const tools = [
     border-top: 1px solid var(--border);
   }
 
-  /* The sound lab's picture sits on the right, between the other two on the left. */
-  .tool:nth-of-type(3) .visual {
+  /* The pictures alternate sides: the effects lab's and the music lab's sit on the right. */
+  .tool:nth-of-type(3) .visual,
+  .tool:nth-of-type(5) .visual {
     order: 2;
   }
 
@@ -260,7 +276,8 @@ const tools = [
       padding: 80px 0;
     }
 
-    .tool:nth-of-type(3) .visual {
+    .tool:nth-of-type(3) .visual,
+    .tool:nth-of-type(5) .visual {
       order: 0;
     }
 

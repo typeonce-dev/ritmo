@@ -5,6 +5,7 @@
  *   ritmo-tools pixel <command>   checks, fixes, and makes pixel art and animations
  *   ritmo-tools sound <command>   checks, renders, and varies game sounds, and opens the review page
  *   ritmo-tools music <command>   listens to a hum, checks and renders songs, and opens the review page
+ *   ritmo-tools fx <command>      checks, looks at, and renders pixel art effects written as code, and opens the review page
  *
  * Every command prints JSON on stdout and exits with what to do next (see
  * each tool's `--help`). Built on Effect; nothing a game imports depends on it.
@@ -13,14 +14,15 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Console, Effect } from "effect"
 import { CliError, Command } from "effect/cli"
 import { toolsVersion } from "./internal/version.ts"
+import { fx } from "./fx/cli/commands.ts"
 import { Exit, pixel } from "./pixel/cli/commands.ts"
 import { printJson } from "./pixel/cli/io.ts"
 import { music } from "./music/cli/commands.ts"
 import { sound } from "./sound/cli/commands.ts"
 
 const tools = Command.make("ritmo-tools").pipe(
-  Command.withDescription("Ritmo's asset tools for agents: `pixel` for pixel art and animations, `sound` for sound effects, `music` for game music. Each prints JSON and exits with what to do next."),
-  Command.withSubcommands([pixel, sound, music])
+  Command.withDescription("Ritmo's asset tools for agents: `pixel` for pixel art and animations, `sound` for sound effects, `music` for game music, `fx` for pixel art effects. Each prints JSON and exits with what to do next."),
+  Command.withSubcommands([pixel, sound, music, fx])
 )
 
 const program = Command.run(tools, { version: toolsVersion }).pipe(
