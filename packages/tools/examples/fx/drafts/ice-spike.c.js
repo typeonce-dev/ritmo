@@ -47,7 +47,7 @@ function splinters(fx, o) {
     const x = Math.round(sx + dx * d)
     const y = Math.round(Math.min(o.ground - 2, sy + dy * d + life * life * o.gravity))
     const len = Math.max(1, Math.round(length * (1 - life * 0.7)))
-    const color = fx.ramp(["white", "ash", "cyan", "blue", "dusk"], life)
+    const color = fx.ramp("frost", life)
     // Each sliver lies along the way it flies, in whole steps, so it stays one clean shape frame to frame.
     const ux = Math.abs(dx) >= Math.abs(dy) ? Math.sign(dx) : 0
     const uy = ux === 0 ? Math.sign(dy) : 0

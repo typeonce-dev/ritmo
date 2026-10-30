@@ -31,7 +31,7 @@ export default {
       const d = fx.ease.out(life) * speed
       const dx = Math.cos(angle)
       const dy = Math.sin(angle)
-      const color = fx.ramp(["white", "yellow", "gold", "orange", "red"], life)
+      const color = fx.ramp("fire", life)
       fx.line(fx.cx + dx * d, fx.cy + dy * d, fx.cx + dx * (d - length * (1 - life)), fx.cy + dy * (d - length * (1 - life)), color)
     }
   }

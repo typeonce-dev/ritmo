@@ -5,11 +5,11 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 
-import { decodeBank, decodeReview, encodeBank, encodeReview, resolveComments, reviewPath, reviewSummary, usedDraft, type Bank } from "@typeonce/ritmo-tools/fx/core/bank.ts"
-import { checkEffect, paletteIssues } from "@typeonce/ritmo-tools/fx/core/check.ts"
+import { decodeBank, decodeReview, encodeBank, encodeReview, resolveComments, reviewPath, reviewSummary, standInSpot, usedDraft, type Bank } from "@typeonce/ritmo-tools/fx/core/bank.ts"
+import { checkEffect, OTHER_SEEDS, paletteIssues } from "@typeonce/ritmo-tools/fx/core/check.ts"
 import { doubles, faintOn, flicker, holes, jaggies } from "@typeonce/ritmo-tools/fx/core/craft.ts"
-import { decodeEffect, runEffect, tuned, type Effect, type Fx } from "@typeonce/ritmo-tools/fx/core/effect.ts"
-import { contactSheet } from "@typeonce/ritmo-tools/fx/core/export.ts"
+import { decodeEffect, rampsFor, runEffect, tuned, type Effect, type Fx } from "@typeonce/ritmo-tools/fx/core/effect.ts"
+import { compareSheet, contactSheet, momentsOf, placeStandIn, viewOf } from "@typeonce/ritmo-tools/fx/core/export.ts"
 
 const palette = { white: "#ffffff", red: "#e43b44" }
 
@@ -150,13 +150,58 @@ describe("shapes", () => {
 
   it("draw nothing at a radius of 0", () => {
     expect(one((fx) => fx.disc(5, 5, 0, "white")).frames[0]!.every((v) => v === 0)).toBe(true)
+    expect(one((fx) => fx.oval(5, 5, 0, 3, "white")).frames[0]!.every((v) => v === 0)).toBe(true)
+  })
+
+  it("draw ovals, flat on the floor or round, with even steps, no doubles, and no pinholes when thick", () => {
+    for (let rx = 2; rx <= 32; rx += 2)
+      for (const squash of [0.14, 0.3, 0.6]) {
+        const ry = Math.max(1, rx * squash)
+        const ring = one((fx) => fx.ovalRing(35, 35, rx, ry, "white"))
+        const oval = one((fx) => fx.oval(35, 35, rx, ry, "white"))
+        const thick = one((fx) => fx.ovalRing(35, 35, rx, ry, "white", 2))
+        expect([rx, squash, jaggies(ring).length, doubles(ring).length, jaggies(oval).length, holes(thick).length]).toEqual([rx, squash, 0, 0, 0, 0])
+      }
+  })
+
+  it("draw a sparkle as a cross with tipped arms", () => {
+    const run = runEffect(effect((fx) => fx.sparkle(4, 4, 2, "white", "red")), palette)
+    const at = (x: number, y: number) => run.frames[0]![y * 8 + x]
+    expect([at(4, 4), at(5, 4), at(6, 4), at(4, 2), at(5, 5)]).toEqual([1, 1, 2, 2, 0])
+  })
+
+  it("draw a streak from its head back along its motion, along a ramp", () => {
+    const run = runEffect(effect((fx) => fx.streak(6, 2, 4, 0, ["white", "red"])), palette)
+    const row = Array.from(run.frames[0]!.slice(16, 24))
+    // Head at x 6, tail at x 2: white for the first half, red for the rest.
+    expect(row).toEqual([0, 0, 2, 2, 2, 1, 1, 0])
+  })
+})
+
+describe("ramps", () => {
+  const ramps = { hot: ["white", "red"], cold: ["red", "white"] }
+
+  it("draw the bank's ramps by name, and list the ones a draft used", () => {
+    const run = runEffect(effect((fx) => fx.px(0, 0, fx.ramp("hot", 0))), palette, { ramps })
+    expect(run.frames[0]![0]).toBe(1)
+    expect(run.ramps).toEqual(["hot"])
+  })
+
+  it("recolor a ramp with another's colors", () => {
+    const run = runEffect(effect((fx) => fx.px(0, 0, fx.ramp("hot", 0))), palette, { ramps: rampsFor(ramps, { hot: "cold" }) })
+    expect(run.frames[0]![0]).toBe(2)
+  })
+
+  it("report a ramp the bank does not have, once", () => {
+    const run = runEffect(effect((fx) => fx.px(0, 0, fx.ramp("lava", 0))), palette, { ramps })
+    expect(run.errors).toEqual(['no ramp named "lava" in the bank\'s ramps (hot, cold)'])
   })
 })
 
 describe("the craft rules", () => {
   const frame = (rows: ReadonlyArray<string>) => {
     const width = rows[0]!.length
-    return { width, height: rows.length, frames: [Uint8Array.from(rows.join(""), (c) => (c === "#" ? 1 : 0))], fps: 12, loop: false, anchor: { x: 0, y: 0 }, clipped: [0], errors: [] }
+    return { width, height: rows.length, frames: [Uint8Array.from(rows.join(""), (c) => (c === "#" ? 1 : 0))], fps: 12, loop: false, anchor: { x: 0, y: 0 }, clipped: [0], errors: [], ramps: [] }
   }
 
   it("find a jaggy (a short run between long ones) and pass a steady line", () => {
@@ -201,6 +246,20 @@ describe("the project's rules and accepted warnings", () => {
     expect(checkEffect(two, palette, {}, { rules: { maxColors: 1 } }).issues.map((issue) => issue.code)).toContain("too-many-colors")
   })
 
+  it("warn when another seed draws past the edge that the draft's own keeps inside", () => {
+    // One pixel inside or past the right edge, by the seed's first number.
+    const lucky = effect((fx) => fx.px(fx.random() < 0.5 ? 2 : 9, 2, "white"))
+    const clips = (seed: number) => runEffect(lucky, palette, { seed }).clipped.some((count) => count > 0)
+    let seen = 0
+    for (let seed = 1; seed <= 20; seed++) {
+      if (clips(seed)) continue
+      const warned = checkEffect(lucky, palette, { seed }).issues.some((issue) => issue.code === "clipped-seed")
+      expect([seed, warned]).toEqual([seed, OTHER_SEEDS.some((other) => other !== seed && clips(other))])
+      if (warned) seen++
+    }
+    expect(seen).toBeGreaterThan(0)
+  })
+
   it("set accepted warnings apart, never errors", () => {
     const late = effect((fx) => fx.frame > 0 && fx.frame < 3 && fx.disc(fx.cx, fx.cy, 2, "white"))
     const checked = checkEffect(late, palette, { accept: { late: "it waits for the swing", blank: "no" } })
@@ -220,6 +279,13 @@ describe("banks and reviews", () => {
 
   it("round-trip through their JSON", () => {
     expect(decodeBank(encodeBank(bank))).toEqual({ ok: true, value: bank })
+    const full: Bank = {
+      palette,
+      ramps: { hot: ["white", "red"], cold: ["red", "white"] },
+      standIn: { file: "hero.png", anchor: [6, 22] },
+      effects: { hit: { standIn: [0, 11], drafts: { a: { file: "a.js", recolor: { hot: "cold" } } } }, torch: { standIn: false, drafts: { a: { file: "t.js" } } } }
+    }
+    expect(decodeBank(encodeBank(full))).toEqual({ ok: true, value: full })
     const review = { effects: { hit: { status: "changes" as const, note: "faster", comments: [{ draft: "b", frame: 3, x: 4, y: 5, text: "breaks here" }] } } }
     expect(decodeReview(encodeReview(review))).toEqual({ ok: true, value: review })
   })
@@ -229,6 +295,21 @@ describe("banks and reviews", () => {
     expect(decoded.ok).toBe(false)
     if (decoded.ok) return
     for (const where of ["palette.white", "backdrops.cave", "drafts.a needs a file", "accept.jaggies must say why", "use must name one of its drafts"]) expect(decoded.error).toContain(where)
+    const more = decodeBank(
+      JSON.stringify({ palette, ramps: { hot: ["white", "blue"], one: ["white"] }, standIn: { file: "hero.png" }, effects: { hit: { standIn: "feet", drafts: { a: { file: "a.js", recolor: { hot: "lava" } } } } } })
+    )
+    expect(more.ok).toBe(false)
+    if (more.ok) return
+    for (const where of ["ramps.hot names blue", "ramps.one must be a list of at least two", "standIn must be", "effects.hit.standIn must be [dx, dy]", "recolor.hot must map"]) expect(more.error).toContain(where)
+  })
+
+  it("stand the stand-in on the effect's anchor, moved by the effect's offset, or nowhere", () => {
+    const withStandIn: Bank = { ...bank, standIn: { file: "hero.png", anchor: [6, 22] } }
+    const anchor = { x: 10, y: 12 }
+    expect(standInSpot(withStandIn, { drafts: {} }, anchor)).toEqual([10, 12])
+    expect(standInSpot(withStandIn, { standIn: [0, 11], drafts: {} }, anchor)).toEqual([10, 23])
+    expect(standInSpot(withStandIn, { standIn: false, drafts: {} }, anchor)).toBeUndefined()
+    expect(standInSpot(bank, { drafts: {} }, anchor)).toBeUndefined()
   })
 
   it("resolve comments by number with a reply, and list only the open ones", () => {
@@ -262,6 +343,29 @@ describe("contact sheets", () => {
     expect(sheet.width).toBe(3 * 16 + 4 * 2)
     expect(sheet.height).toBe(2 * 16 + 3 * 2)
   })
+
+  it("grow each frame to hold the stand-in, and draw it behind the effect", () => {
+    // A 4 × 10 red sprite, its feet on the canvas's bottom-left pixel: it sticks out 2 above the 8 × 8 canvas.
+    const image = { width: 4, height: 10, data: new Uint8ClampedArray(4 * 10 * 4).map((_, i) => [228, 59, 68, 255][i % 4]!) }
+    const standIn = placeStandIn(image, [0, 9], [0, 7])
+    const run = runEffect(effect((fx) => fx.px(1, 7, "white"), { frames: 1 }), palette)
+    expect(viewOf(run, standIn)).toEqual({ left: 0, top: -2, width: 8, height: 10 })
+    const sheet = contactSheet(run, palette, { scale: 1, columns: 1, backdrop: "dark", standIn })
+    expect(sheet.height).toBe(10 + 2 * 2)
+    const rgb = (x: number, y: number) => Array.from(sheet.data.slice((y * sheet.width + x) * 4, (y * sheet.width + x) * 4 + 3))
+    // Frame 0 starts 2 in; the effect's (0, 7) is the view's (0, 9): the sprite there, the effect's white beside it.
+    expect(rgb(2, 2 + 9)).toEqual([228, 59, 68])
+    expect(rgb(3, 2 + 9)).toEqual([255, 255, 255])
+  })
+
+  it("compare drafts in rows, the same moments in each column", () => {
+    expect(momentsOf(10, 4)).toEqual([0, 3, 6, 9])
+    const rows = [{ run: runEffect(shrinking, palette) }, { run: runEffect(effect(shrinking.draw, { frames: 8, width: 12 }), palette) }]
+    const sheet = compareSheet(rows, palette, { scale: 2, columns: 4, backdrop: "dark" })
+    // Cells as big as the widest draft (12 × 8 at 2×); 4 columns; 2 rows with a wider gap between them.
+    expect(sheet.width).toBe(4 * 24 + 5 * 2)
+    expect(sheet.height).toBe(2 * 16 + 6 + 2 * 2)
+  })
 })
 
 describe("the CLI", () => {
@@ -281,6 +385,9 @@ describe("the CLI", () => {
     const look = run("look", bank, "spark", "-o", join(folder, "look"))
     expect(look.status).toBe(0)
     expect(existsSync(join(folder, "look", "spark.a.png"))).toBe(true)
+    const compare = run("look", bank, "spark", "--compare", "-o", join(folder, "look"))
+    expect(JSON.parse(compare.stdout)).toMatchObject({ rows: ["a"] })
+    expect(existsSync(join(folder, "look", "spark.compare.png"))).toBe(true)
     expect(run("render", bank, "-o", join(folder, "out")).status).toBe(0)
     const sheet = JSON.parse(readFileSync(join(folder, "out", "spark.json"), "utf8")) as {
       animations: Record<string, Array<string>>
@@ -293,7 +400,10 @@ describe("the CLI", () => {
     expect(sheet.frames["spark 0"]!.anchor.y).toBeCloseTo(13 / 24, 4)
     expect(sheet.meta.loop).toEqual({ spark: false })
     expect(existsSync(join(folder, "out", "spark.gif"))).toBe(true)
-    expect(run("notes", bank).stdout).toContain("not reviewed yet")
+    const notes = JSON.parse(run("notes", bank).stdout) as { summary: string; ramps: Record<string, Array<string>> }
+    expect(notes.summary).toContain("not reviewed yet")
+    // The palette and ramps as they are now: the person can change them on the page.
+    expect(notes.ramps).toEqual({ fire: ["white", "yellow", "orange", "red"] })
   })
 
   it("reads the project's pixel.config.json, and rings comments on the contact sheet", () => {

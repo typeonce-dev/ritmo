@@ -17,6 +17,26 @@ A rule that is neither does not go in the skill. When you change the skill, chan
 - The skill says "several" drafts, not a number: a fixed count makes every effect start from the same script (the same choice as `PROTOTYPE.md`).
 - **Ritmo:** the agent looks at contact sheets (`fx look`) where the article renders videos, because an agent reads still pictures, and the person watches the motion on the review page.
 
+### Read open-source effects for choreography and numbers
+
+- Hugo, Sprite Fusion ([link][spritefusion]): "Your taste is built from your references."
+- Patch, pixelfx `docs/AUTHORING.md` ([link][pixelfx-authoring]): "Reference first. Find the closest of his effects, look at it, and read its source for the choreography and numbers."
+- **Ritmo:** the skill says to take timing and shapes, not blending: `fx` draws opaque palette colors only (see "No in-between colors" below), and both libraries glow and blend.
+
+### A stand-in sprite for size
+
+- Patch, pixelfx `README.md` ([link][pixelfx]): "A 24×38 stock character stands in for status effects, auras and hits."
+- **Ritmo:** the stand-in is the game's own sprite, from the bank, not a stock one, so the size it shows is the game's.
+
+### Compare drafts at the same moments
+
+- Patch, pixelfx `tools/compare.mjs` ([link][pixelfx-compare]): "Drafts side by side: one row per effect, the same moments in each column, so you can pick the best."
+
+### Fades through named ramps, so drafts recolor
+
+- Patch, pixelfx `README.md` ([link][pixelfx]): "Any effect takes a `palette` (a dark-to-bright ramp of hex colors), so a fire can burn blue and a heal can glow pink without touching its code".
+- **Ritmo:** ramps are palette names in the bank, not hex colors in the effect, so a recolor keeps to the project palette; see "Fade along one ramp per material" below for the craft.
+
 ### Check before showing; accept a warning only with a reason
 
 - **Ritmo:** the same rule as the repo's lint (`// oxlint-disable-next-line ritmo/<rule> -- <reason>`): a judged exception is written down with why, and errors are never waived.
@@ -60,6 +80,20 @@ A rule that is neither does not go in the skill. When you change the skill, chan
 
 - "Twelve basic principles of animation", Wikipedia, after Thomas and Johnston, *The Illusion of Life*, 1981 ([link][twelve]): "For this reason, more pictures are drawn near the beginning and end of an action, creating a slow in and slow out effect" … "Timing refers to the number of drawings or frames for a given action, which translates to the speed of the action on film." … on exaggeration: "animated motions that strive for a perfect imitation" of reality can look static and lifeless.
 
+### Choreography in phases, with a hero frame
+
+- Patch, pixelfx `docs/AUTHORING.md` ([link][pixelfx-authoring]): "Choreography in phases. Anticipation or charge (things gathering in), release (a 1 to 2 frame white hero frame, a flare, light, a burst), spread, hold (twinkles, glints, embers), break or melt, a long decay. Many small events, each varied in size, speed, timing and life."
+
+### What you see, and the usual fix
+
+- Patch, pixelfx `skills/pixelfx/SKILL.md` ([link][pixelfx-skill]), its table of what to look for: "it reads as mush at 1x | fewer colors, a clear silhouette, one focal point, bigger shapes"; "speckle: lone noise pixels inside shapes | threshold noise less, quantize with `at()`, no noise on small shapes"; "floaty, no punch | fast in, slow out (`ease.outQuart`/`outExpo`), a 1 to 2 frame white hero frame, shorter total time"; "stiff or mechanical | vary every particle (size, speed, delay, life), add secondary motion (sparks, smoke, debris)"; "flat | light from one side: brighter top-left, darker bottom-right step; …"; "a one-shot that pops off | let it shrink, dither out or fall away before t = duration".
+- **Ritmo:** the skill keeps the rows that hold for opaque palette pixels, in `fx`'s terms; the rows about glow, translucency, and dithered smoke do not apply.
+
+### Particles reach further on another seed (clipped-seed)
+
+- Patch, pixelfx `tools/check.mjs` ([link][pixelfx-check]): "other seeds can throw particles further: look for spills with a few more".
+- **Ritmo:** `fx check` uses the same seeds, 2, 3, and 7.
+
 ### Still parts stay still (boil)
 
 - PremiumBeat, "How to Create Line Boil Animations" ([link][boil]): "Line boils occur when the images of a frame-by-frame animation don't align perfectly."
@@ -71,3 +105,8 @@ A rule that is neither does not go in the skill. When you change the skill, chan
 [slynyrd]: https://www.slynyrd.com/blog/2018/1/10/pixelblog-1-color-palettes
 [twelve]: https://en.wikipedia.org/wiki/Twelve_basic_principles_of_animation
 [boil]: https://www.premiumbeat.com/blog/how-to-create-line-boil-animations/
+[pixelfx]: https://github.com/patch-gg/pixelfx
+[pixelfx-authoring]: https://github.com/patch-gg/pixelfx/blob/main/docs/AUTHORING.md
+[pixelfx-skill]: https://github.com/patch-gg/pixelfx/blob/main/skills/pixelfx/SKILL.md
+[pixelfx-compare]: https://github.com/patch-gg/pixelfx/blob/main/tools/compare.mjs
+[pixelfx-check]: https://github.com/patch-gg/pixelfx/blob/main/tools/check.mjs

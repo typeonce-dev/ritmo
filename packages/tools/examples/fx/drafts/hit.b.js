@@ -1,7 +1,7 @@
 // hit, draft b: a crescent slash sweeps through, thick then thin, throwing sparks off its tip.
 export default {
   label: "slash",
-  size: [32, 24],
+  size: [36, 24],
   frames: 8,
   fps: 24,
   loop: false,

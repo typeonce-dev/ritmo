@@ -14,13 +14,13 @@ import { toGif } from "../../pixel/core/gif.ts"
 import { atlasOf, spritesheetJson } from "../../pixel/core/spritesheet.ts"
 import { encodePng } from "../../pixel/cli/png.ts"
 import { Exit } from "../../pixel/cli/commands.ts"
-import { encodeBank, encodeReview, resolveComments, reviewPath, reviewSummary, usedDraft, type Bank } from "../core/bank.ts"
+import { encodeBank, encodeReview, resolveComments, reviewPath, reviewSummary, standInSpot, usedDraft, type Bank } from "../core/bank.ts"
 import { toHex } from "../../pixel/core/color.ts"
 import { checkEffect, paletteIssues } from "../core/check.ts"
 import { doubles, flicker, holes, jaggies } from "../core/craft.ts"
-import { runEffect } from "../core/effect.ts"
-import { contactSheet, framesOf } from "../core/export.ts"
-import { CliFailure, loadDraft, printJson, readBank, readReview, readRules, readText, writeBytes, writeText } from "./io.ts"
+import { rampsFor, runEffect } from "../core/effect.ts"
+import { compareSheet, contactSheet, framesOf, placeStandIn } from "../core/export.ts"
+import { CliFailure, loadDraft, printJson, readBank, readReview, readRules, readStandIn, readText, writeBytes, writeText } from "./io.ts"
 import { serve } from "./serve.ts"
 
 const exitWith = (code: number): Effect.Effect<void, Exit> => (code === 0 ? Effect.void : Effect.fail(new Exit({ code })))
@@ -62,7 +62,7 @@ const check = Command.make(
           results.push({ effect: name, draft: id, file: draft.file, used: id === use, issues: [{ level: "error", code: "load", message: loaded.error }] })
           continue
         }
-        const checked = checkEffect(loaded.effect, bank.palette, { seed: draft.seed, tune: draft.tune, accept: draft.accept }, context)
+        const checked = checkEffect(loaded.effect, bank.palette, { seed: draft.seed, tune: draft.tune, ramps: rampsFor(bank.ramps, draft.recolor), accept: draft.accept }, context)
         errors += checked.issues.filter((issue) => issue.level === "error").length
         warnings += checked.issues.filter((issue) => issue.level === "warning").length
         results.push({
@@ -83,7 +83,7 @@ const check = Command.make(
   })
 ).pipe(
   Command.withDescription(
-    "Runs every draft of every effect (or the named ones) twice and measures it: frames, length, the box it fills, the colors it uses. Lists what breaks the rules, with the frames and pixels where: a module that does not load, throws, or draws nothing, randomness that is not the seed's, pixels past the canvas edge, a one-shot that starts late or does not end empty, a loop that jumps, blinking, lone-pixel noise; the craft (jaggies, doubles, pinholes, flicker, too faint on one of the bank's backdrops); and the project's pixel.config.json (its palette, maxColors)."
+    "Runs every draft of every effect (or the named ones) twice, and with a few other seeds, and measures it: frames, length, the box it fills, the colors it uses. Lists what breaks the rules, with the frames and pixels where: a module that does not load, throws, or draws nothing, randomness that is not the seed's, a ramp the bank does not have, pixels past the canvas edge (on the draft's seed or another), a one-shot that starts late or does not end empty, a loop that jumps, blinking, lone-pixel noise; the craft (jaggies, doubles, pinholes, flicker, too faint on one of the bank's backdrops); and the project's pixel.config.json (its palette, maxColors)."
   )
 )
 
@@ -97,9 +97,14 @@ const look = Command.make(
     columns: Flag.Int("columns").pipe(Flag.withDescription("Frames per row."), Flag.withDefault(8)),
     backdrop: Flag.String("backdrop").pipe(Flag.withDescription("What the frames are drawn over: dark, light, checker, or one of the bank's backdrops by name."), Flag.withDefault("dark")),
     marks: Flag.Literals("marks", ["comments", "jaggies", "doubles", "holes", "flicker", "none"]).pipe(
-      Flag.withDescription("What to ring in orange: the person's comments on the draft (default), or where a craft rule from `fx check` breaks."),
+      Flag.withDescription("What to ring in magenta: the person's comments on the draft (default), or where a craft rule from `fx check` breaks."),
       Flag.withDefault("comments")
     ),
+    compare: Flag.Boolean("compare").pipe(
+      Flag.withDescription("One picture of every draft instead, a row each (in the bank's order), the same moments in each column (--columns of them, first frame to last): to weigh the drafts against each other."),
+      Flag.withDefault(false)
+    ),
+    alone: Flag.Boolean("alone").pipe(Flag.withDescription("Leave out the bank's stand-in sprite."), Flag.withDefault(false)),
     out: Flag.String("out").pipe(Flag.withAlias("o"), Flag.withDescription("The folder to write to (default: <bank>.look/ next to the bank)."), Flag.optional)
   },
   Effect.fn("look")(function* (flags) {
@@ -114,32 +119,40 @@ const look = Command.make(
     const review = yield* readReview(flags.bank)
     // Open comments only: resolved ones are done.
     const comments = (review.effects[flags.name]?.comments ?? []).flatMap((comment, index) => (comment.resolved === true ? [] : [{ ...comment, number: index + 1 }]))
+    const sprite = flags.alone ? undefined : yield* readStandIn(flags.bank, bank)
     const files: Array<string> = []
     const ringed: Array<Record<string, unknown>> = []
+    const rows: Array<Parameters<typeof compareSheet>[0][number]> = []
     for (const id of ids) {
       const draft = entry.drafts[id]
       if (draft === undefined) return yield* new CliFailure({ message: `${flags.name} has no draft ${id}`, details: { drafts: Object.keys(entry.drafts) } })
       const loaded = yield* loadDraft(flags.bank, draft)
       if (!loaded.ok) return yield* new CliFailure({ message: loaded.error })
-      const run = runEffect(loaded.effect, bank.palette, { seed: draft.seed, tune: draft.tune })
+      const run = runEffect(loaded.effect, bank.palette, { seed: draft.seed, tune: draft.tune, ramps: rampsFor(bank.ramps, draft.recolor) })
       const mine = comments.filter((comment) => comment.draft === id)
       const marks = flags.marks === "comments" ? mine : flags.marks === "none" ? [] : flags.marks === "flicker" ? flicker(run).spots : { jaggies, doubles, holes }[flags.marks](run)
       if (flags.marks === "comments") for (const comment of mine) ringed.push({ number: comment.number, draft: id, frame: comment.frame, x: comment.x, y: comment.y, text: comment.text })
       else if (marks.length > 0) ringed.push({ draft: id, [flags.marks]: marks.length })
-      const sheet = contactSheet(run, bank.palette, { scale: flags.scale, columns: flags.columns, backdrop, marks })
-      files.push(yield* writeBytes(path.join(folder, `${flags.name}.${id}.png`), encodePng(sheet)))
+      const spot = standInSpot(bank, entry, run.anchor)
+      const standIn = sprite === undefined || spot === undefined || bank.standIn === undefined ? undefined : placeStandIn(sprite, bank.standIn.anchor, spot)
+      if (flags.compare) rows.push({ run, marks, standIn })
+      else files.push(yield* writeBytes(path.join(folder, `${flags.name}.${id}.png`), encodePng(contactSheet(run, bank.palette, { scale: flags.scale, columns: flags.columns, backdrop, marks, standIn }))))
     }
+    if (flags.compare) files.push(yield* writeBytes(path.join(folder, `${flags.name}.compare.png`), encodePng(compareSheet(rows, bank.palette, { scale: flags.scale, columns: flags.columns, backdrop }))))
     yield* printJson({
       effect: flags.name,
       files,
+      ...(flags.compare ? { rows: ids } : {}),
       marks: flags.marks,
       ringed,
-      next: "Read each picture: its frames left to right, top to bottom (frame 0 first). Orange rings mark the person's comments or where a rule breaks. Judge shape, timing, and how it ends before showing the person."
+      next: flags.compare
+        ? "Read the picture: a row per draft, in the order of rows, each column the same moment (first frame to last). Weigh the drafts' shapes and timing against each other; look at each one alone (without --compare) to see every frame."
+        : "Read each picture: its frames left to right, top to bottom (frame 0 first). Magenta rings mark the person's comments or where a rule breaks. Judge shape, timing, and how it ends before showing the person."
     })
   })
 ).pipe(
   Command.withDescription(
-    "Writes a contact sheet per draft of an effect: every frame side by side, enlarged, on a backdrop, as a PNG to look at, with the person's comments (or where a craft rule breaks) ringed. Use it to see a draft before showing it to the person, and to see the pixel a comment points at."
+    "Writes a contact sheet per draft of an effect: every frame side by side, enlarged, on a backdrop, as a PNG to look at, with the person's comments (or where a craft rule breaks) ringed and the bank's stand-in sprite behind it for size. Use it to see a draft before showing it to the person, and to see the pixel a comment points at; --compare puts every draft in one picture to weigh them."
   )
 )
 
@@ -163,7 +176,7 @@ const renderCommand = Command.make(
       const draft = entry.drafts[id]!
       const loaded = yield* loadDraft(flags.bank, draft)
       if (!loaded.ok) return yield* new CliFailure({ message: loaded.error })
-      const run = runEffect(loaded.effect, bank.palette, { seed: draft.seed, tune: draft.tune })
+      const run = runEffect(loaded.effect, bank.palette, { seed: draft.seed, tune: draft.tune, ramps: rampsFor(bank.ramps, draft.recolor) })
       if (run.errors.length > 0) return yield* new CliFailure({ message: `${name} (draft ${id}) does not draw cleanly: ${run.errors.join("; ")}` })
       const frames = framesOf(run, bank.palette)
       const clip = { name, frames, anchor: run.anchor, fps: run.fps, loop: "forward" as const }
@@ -247,11 +260,12 @@ const notes = Command.make(
   Effect.fn("notes")(function* (flags) {
     const bank = yield* readBank(flags.bank)
     const review = yield* readReview(flags.bank)
-    yield* printJson({ file: flags.bank, review: reviewPath(flags.bank), ...reviewSummary(bank, review) })
+    // The palette and ramps too: the person can change them on the page, and every draft draws with them.
+    yield* printJson({ file: flags.bank, review: reviewPath(flags.bank), ...reviewSummary(bank, review), palette: bank.palette, ramps: bank.ramps ?? {} })
   })
 ).pipe(
   Command.withDescription(
-    "What the person said in the review: each effect's status (new, approved, changes asked), note, open comments (each numbered, on a draft, a frame, and a pixel), chosen draft, and tune, the changes first."
+    "What the person said in the review: each effect's status (new, approved, changes asked), note, open comments (each numbered, on a draft, a frame, and a pixel), chosen draft, and tune, the changes first; and the bank's palette and ramps as they are now (the person can change them on the page)."
   )
 )
 
@@ -279,6 +293,7 @@ const resolve = Command.make(
 
 const STARTER_BANK: Bank = {
   palette: { white: "#ffffff", yellow: "#fee761", orange: "#f77622", red: "#e43b44", smoke: "#8b9bb4", dark: "#3a4466" },
+  ramps: { fire: ["white", "yellow", "orange", "red"] },
   effects: { spark: { about: "A small hit spark: a blow lands.", drafts: { a: { file: "fx/spark.a.js" } } } }
 }
 
@@ -303,7 +318,8 @@ export default {
       const far = fx.ease.out(fx.t) * fx.p.reach * fx.range(0.7, 1)
       const near = fx.ease.in(fx.t) * fx.p.reach
       if (far - near < 1) continue
-      const color = fx.ramp(["white", "yellow", "orange", "red"], fx.t)
+      // The bank's "fire" ramp: hot to cold as the rays burn out.
+      const color = fx.ramp("fire", fx.t)
       fx.line(fx.cx + Math.cos(angle) * near, fx.cy + Math.sin(angle) * near, fx.cx + Math.cos(angle) * far, fx.cy + Math.sin(angle) * far, color)
     }
   }
@@ -325,7 +341,7 @@ const init = Command.make(
     }
     yield* printJson({ bank: yield* writeText(flags.bank, encodeBank(STARTER_BANK)), drafts: [yield* writeText(draft, STARTER_DRAFT)], effects: Object.keys(STARTER_BANK.effects) })
   })
-).pipe(Command.withDescription("Writes a starting bank (a six-color palette) with one effect, a hit spark, and its first draft module to build from."))
+).pipe(Command.withDescription("Writes a starting bank (a six-color palette and a fire ramp) with one effect, a hit spark, and its first draft module to build from."))
 
 export const fx = Command.make("fx").pipe(
   Command.withDescription(

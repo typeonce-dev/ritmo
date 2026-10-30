@@ -99,6 +99,26 @@
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
 }
 
+/* A ramp the draft draws with: its name, what it is drawn as, and those colors. */
+.fx-recolor {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 6px 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.fx-recolor .fx-swatches {
+  grid-column: 2;
+}
+
+.fx-recolor-name {
+  overflow: hidden;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+
 .fx-card.on .fx-canvas {
   cursor: crosshair;
 }
@@ -261,4 +281,150 @@
   grid-column: 2;
   color: var(--muted);
   font-style: italic;
+}
+
+/* The Palette section: the bank's colors as named swatches, the one being edited ringed. */
+.fx-palette {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 4px;
+}
+
+.fx-palette-color {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fx-palette-color:hover,
+.fx-palette-color.on {
+  background: var(--surface-2);
+}
+
+.fx-palette-color.on .fx-swatch {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.fx-palette-color.add {
+  color: var(--muted);
+}
+
+.fx-palette-name {
+  overflow: hidden;
+  font-family: var(--mono, monospace);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fx-color-edit {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.fx-color-input {
+  width: 100%;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.fx-project-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.fx-pick {
+  border: 0;
+  cursor: pointer;
+}
+
+.fx-pick.on {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.fx-ramp {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.fx-ramp-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+  align-items: center;
+}
+
+.fx-ramp-open {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fx-ramp-open:hover,
+.fx-ramp-open.on {
+  background: var(--surface-2);
+}
+
+/* "Earlier": the chevron turned to point up the ramp, toward its hot end. */
+.fx-up .icon {
+  transform: rotate(180deg);
+}
+
+.fx-ramp-name {
+  overflow: hidden;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+
+/* The ramp as one strip, hot to cold, as a draft fades through it. */
+.fx-ramp-strip {
+  display: flex;
+  height: 14px;
+  overflow: hidden;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+
+.fx-ramp-strip span {
+  flex: 1;
+}
+
+.fx-ramp-steps {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fx-ramp-steps li {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: center;
 }
