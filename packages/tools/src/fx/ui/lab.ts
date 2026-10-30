@@ -9,13 +9,15 @@
  * Built from the pixel fixer's kit and the sound lab's layout, so the tools
  * look and work alike.
  */
-import { button, callout, cliChip, group, hint, icon, mark, prop, section, segmented, sliderRow } from "../../pixel/ui/kit.ts"
+import { button, callout, cliChip, group, hint, icon, mark, prop, section, segmented, selectInput, sliderRow, textInput } from "../../pixel/ui/kit.ts"
 import { h, replace } from "../../pixel/ui/dom.ts"
 import { parseHex } from "../../pixel/core/color.ts"
-import { decodeBank, decodeReview, emptyReview, encodeBank, encodeReview, newEffect, usedDraft, type Bank, type Comment, type Draft, type EffectReview, type Review, type Status } from "../core/bank.ts"
+import { decodeBank, decodeReview, emptyReview, encodeBank, encodeReview, newEffect, standInSpot, usedDraft, type Bank, type Comment, type Draft, type EffectReview, type Review, type Status } from "../core/bank.ts"
 import { checkEffect, paletteIssues, type Checked, type Context, type Issue } from "../core/check.ts"
 import type { Spot } from "../core/craft.ts"
-import { decodeEffect, tuned, type Effect } from "../core/effect.ts"
+import { decodeEffect, rampsFor, tuned, type Effect } from "../core/effect.ts"
+import { placeStandIn, viewOf, type Placed, type View } from "../core/export.ts"
+import type { RgbaImage } from "../../pixel/core/grid.ts"
 import type { PageRules, Store } from "./store.ts"
 
 const RITMO_URL = "https://ritmo.typeonce.dev/"
@@ -42,6 +44,13 @@ const state = {
   zoom: 6,
   /** "dark", "light", "checker", or one of the bank's backdrops by name. */
   backdrop: "dark",
+  /** The palette color being edited in the Palette section, by name. */
+  editing: undefined as string | undefined,
+  /** The ramp whose steps are open in the Palette section, by name. */
+  editingRamp: undefined as string | undefined,
+  /** The bank's stand-in sprite, decoded, and whether it is shown behind the drafts. */
+  standIn: undefined as RgbaImage | undefined,
+  showStandIn: true,
   /** The frame shown while paused, the same on every draft (wrapped to each one's length). */
   frame: 0,
   rules: {} as PageRules,
@@ -92,11 +101,11 @@ const checkedOf = (draft: Draft): Checked | { readonly error: string } => {
   const loaded = loadedFiles.get(draft.file)
   if (loaded === undefined) return { error: "loading…" }
   if (!loaded.ok) return { error: loaded.error }
-  const key = JSON.stringify([state.sources[draft.file], draft.seed, draft.tune, draft.accept, state.bank.palette, state.bank.backdrops, state.rules])
+  const key = JSON.stringify([state.sources[draft.file], draft.seed, draft.tune, draft.accept, draft.recolor, state.bank.palette, state.bank.ramps, state.bank.backdrops, state.rules])
   let found = runs.get(key)
   if (found === undefined) {
     if (runs.size > 300) runs.clear()
-    found = checkEffect(loaded.effect, state.bank.palette, { seed: draft.seed, tune: draft.tune, accept: draft.accept }, context())
+    found = checkEffect(loaded.effect, state.bank.palette, { seed: draft.seed, tune: draft.tune, ramps: rampsFor(state.bank.ramps, draft.recolor), accept: draft.accept }, context())
     runs.set(key, found)
   }
   return found
@@ -196,6 +205,8 @@ const open = async (): Promise<void> => {
   state.sources = session.sources
   state.rules = session.rules
   state.version = session.version
+  state.standIn = typeof session.standIn === "string" ? await decodePicture(session.standIn) : undefined
+  if (session.standIn === null) say(`The stand-in ${state.bank.standIn?.file ?? ""} does not read.`)
   if (!(state.backdrop in BUILT_IN) && state.bank.backdrops?.[state.backdrop] === undefined) state.backdrop = "dark"
   await loadAll()
   state.loaded = true
@@ -203,6 +214,33 @@ const open = async (): Promise<void> => {
   const entry = state.bank.effects[state.selected]
   if (entry !== undefined && !(state.focus in entry.drafts)) state.focus = usedDraft(entry) ?? ""
   update()
+}
+
+/** A data URL's picture as RGBA pixels, or `undefined` when it does not decode. */
+const decodePicture = (url: string): Promise<RgbaImage | undefined> =>
+  new Promise((done) => {
+    const image = new Image()
+    image.onload = () => {
+      const canvas = document.createElement("canvas")
+      canvas.width = image.naturalWidth
+      canvas.height = image.naturalHeight
+      const context = canvas.getContext("2d")
+      if (context === null) return done(undefined)
+      context.drawImage(image, 0, 0)
+      const data = context.getImageData(0, 0, canvas.width, canvas.height)
+      done({ width: data.width, height: data.height, data: data.data })
+    }
+    image.onerror = () => done(undefined)
+    image.src = url
+  })
+
+/** Where the stand-in stands on a draft of the selected effect, when it is shown. */
+const standInOn = (checked: Checked): Placed | undefined => {
+  const entry = state.bank.effects[state.selected]
+  const sprite = state.standIn
+  const spot = entry === undefined ? undefined : standInSpot(state.bank, entry, checked.run.anchor)
+  if (!state.showStandIn || sprite === undefined || spot === undefined || state.bank.standIn === undefined) return undefined
+  return placeStandIn(sprite, state.bank.standIn.anchor, spot)
 }
 
 const follow = async (): Promise<void> => {
@@ -345,7 +383,7 @@ const frameNow = (checked: Checked, now: number): number => {
   return at < frames * step ? Math.floor(at / step) : -1
 }
 
-let cards: Array<{ readonly id: string; readonly canvas: HTMLCanvasElement; readonly checked: Checked; readonly counter: HTMLElement | undefined }> = []
+let cards: Array<{ readonly id: string; readonly canvas: HTMLCanvasElement; readonly checked: Checked; readonly counter: HTMLElement | undefined; readonly standIn: Placed | undefined; readonly view: View }> = []
 
 /** The pixels ringed on a draft's frame: the comments pinned there, and the marks shown from the Check section. */
 const ringsOn = (id: string, frame: number): Array<{ readonly x: number; readonly y: number; readonly label?: string }> => {
@@ -358,20 +396,33 @@ const ringsOn = (id: string, frame: number): Array<{ readonly x: number; readonl
   return [...comments, ...composing, ...marks]
 }
 
-const paint = (canvas: HTMLCanvasElement, checked: Checked, frame: number, id: string): void => {
-  const { width, height } = checked.run
+/** Paints a frame over the view: the backdrop, the stand-in, the effect at its place in the view, then the rings. */
+const paint = (canvas: HTMLCanvasElement, checked: Checked, frame: number, id: string, view: View, standIn: Placed | undefined): void => {
+  const { width } = checked.run
   const zoom = state.zoom
-  if (canvas.width !== width * zoom) canvas.width = width * zoom
-  if (canvas.height !== height * zoom) canvas.height = height * zoom
+  if (canvas.width !== view.width * zoom) canvas.width = view.width * zoom
+  if (canvas.height !== view.height * zoom) canvas.height = view.height * zoom
   const context = canvas.getContext("2d")
   if (context === null) return
   const [a, b] = backdropColors(state.backdrop)
-  // The backdrop is in squares of 4 effect pixels, so the pixel size shows.
-  for (let y = 0; y < height; y += 4)
-    for (let x = 0; x < width; x += 4) {
-      context.fillStyle = (x / 4 + y / 4) % 2 === 0 ? a : b
-      context.fillRect(x * zoom, y * zoom, 4 * zoom, 4 * zoom)
+  // The backdrop is in squares of 4 effect pixels, lined up with the effect's canvas, so the pixel size shows.
+  const ox = -view.left
+  const oy = -view.top
+  for (let y = Math.floor(view.top / 4) * 4; y < view.top + view.height; y += 4)
+    for (let x = Math.floor(view.left / 4) * 4; x < view.left + view.width; x += 4) {
+      context.fillStyle = (Math.floor(x / 4) + Math.floor(y / 4)) % 2 === 0 ? a : b
+      context.fillRect((x + ox) * zoom, (y + oy) * zoom, 4 * zoom, 4 * zoom)
     }
+  if (standIn !== undefined) {
+    const { image } = standIn
+    for (let y = 0; y < image.height; y++)
+      for (let x = 0; x < image.width; x++) {
+        const i = (y * image.width + x) * 4
+        if (image.data[i + 3]! < 128) continue
+        context.fillStyle = `rgb(${image.data[i]},${image.data[i + 1]},${image.data[i + 2]})`
+        context.fillRect((standIn.x + x + ox) * zoom, (standIn.y + y + oy) * zoom, zoom, zoom)
+      }
+  }
   const pixels = frame < 0 ? undefined : checked.run.frames[frame]
   if (pixels === undefined) return
   const colors = Object.values(state.bank.palette)
@@ -379,16 +430,16 @@ const paint = (canvas: HTMLCanvasElement, checked: Checked, frame: number, id: s
     const v = pixels[i]!
     if (v === 0) continue
     context.fillStyle = colors[v - 1] ?? "#ff00ff"
-    context.fillRect((i % width) * zoom, Math.floor(i / width) * zoom, zoom, zoom)
+    context.fillRect((i % width + ox) * zoom, (Math.floor(i / width) + oy) * zoom, zoom, zoom)
   }
   for (const ring of ringsOn(id, frame)) {
     context.strokeStyle = MARK
     context.lineWidth = 2
-    context.strokeRect(ring.x * zoom - 2, ring.y * zoom - 2, zoom + 4, zoom + 4)
+    context.strokeRect((ring.x + ox) * zoom - 2, (ring.y + oy) * zoom - 2, zoom + 4, zoom + 4)
     if (ring.label !== undefined) {
       context.fillStyle = MARK
       context.font = "600 11px Inter, system-ui, sans-serif"
-      context.fillText(ring.label, ring.x * zoom + zoom + 4, ring.y * zoom - 3)
+      context.fillText(ring.label, (ring.x + ox) * zoom + zoom + 4, (ring.y + oy) * zoom - 3)
     }
   }
 }
@@ -396,7 +447,7 @@ const paint = (canvas: HTMLCanvasElement, checked: Checked, frame: number, id: s
 const tick = (now: number): void => {
   for (const card of cards) {
     const frame = frameNow(card.checked, now)
-    paint(card.canvas, card.checked, frame, card.id)
+    paint(card.canvas, card.checked, frame, card.id, card.view, card.standIn)
     // Frames count from 0, as in the draft's code, `fx check`, and comments.
     if (card.counter !== undefined) card.counter.textContent = frame < 0 ? "–" : `frame ${frame}`
   }
@@ -417,7 +468,9 @@ const renderStage = (): void => {
   // a counter's changing digits, or a new canvas never move the cards around.
   const sizes = Object.values(entry.drafts).flatMap((draft) => {
     const checked = checkedOf(draft)
-    return "run" in checked ? [{ w: checked.run.width * state.zoom, h: checked.run.height * state.zoom }] : []
+    if (!("run" in checked)) return []
+    const view = viewOf(checked.run, standInOn(checked))
+    return [{ w: view.width * state.zoom, h: view.height * state.zoom }]
   })
   const screen = { w: Math.max(220, ...sizes.map((size) => size.w)), h: Math.max(96, ...sizes.map((size) => size.h)) }
   replace(
@@ -453,15 +506,17 @@ const renderStage = (): void => {
         )
         if ("error" in checked)
           return h("div", { class: `fx-card${id === state.focus ? " on" : ""}`, on: { click: () => focus(id) } }, head, callout("bad", checked.error))
+        const standIn = standInOn(checked)
+        const view = viewOf(checked.run, standIn)
         // Sized now, not on its first paint: a canvas starts at 300 × 150.
         const canvas = h("canvas", {
           class: "fx-canvas",
           title: id === state.focus ? "Click a pixel to comment on it (pauses on this frame)" : "Click to focus this draft",
-          props: { width: checked.run.width * state.zoom, height: checked.run.height * state.zoom },
-          on: { click: (event) => pin(id, checked, event) }
+          props: { width: view.width * state.zoom, height: view.height * state.zoom },
+          on: { click: (event) => pin(id, checked, view, event) }
         })
         const counter = h("span", { class: "fx-counter", title: "Frames count from 0, as in the draft's code" })
-        cards.push({ id, canvas, checked, counter })
+        cards.push({ id, canvas, checked, counter, standIn, view })
         const timing = `${checked.measures.frames} frames · ${checked.measures.fps} fps · ${checked.measures.duration} ms${checked.run.loop ? " · loop" : ""}`
         const errors = checked.issues.filter((issue) => issue.level === "error").length
         const warnings = checked.issues.length - errors
@@ -484,7 +539,7 @@ const renderStage = (): void => {
 }
 
 /** On the draft in focus, pauses on the frame shown and starts a comment on the pixel clicked; on another draft, only focuses it (the card's own click). */
-const pin = (id: string, checked: Checked, event: MouseEvent): void => {
+const pin = (id: string, checked: Checked, view: View, event: MouseEvent): void => {
   const target = event.currentTarget
   if (!(target instanceof HTMLCanvasElement) || state.focus !== id) return
   const frame = state.playing ? frameNow(checked, performance.now()) : ((state.frame % checked.run.frames.length) + checked.run.frames.length) % checked.run.frames.length
@@ -495,10 +550,15 @@ const pin = (id: string, checked: Checked, event: MouseEvent): void => {
     renderStage()
     return
   }
-  state.frame = frame
   const box = target.getBoundingClientRect()
-  const x = Math.floor(((event.clientX - box.left) / box.width) * checked.run.width)
-  const y = Math.floor(((event.clientY - box.top) / box.height) * checked.run.height)
+  // In the effect's pixels: the view may hold the stand-in past the effect's canvas.
+  const x = Math.floor(((event.clientX - box.left) / box.width) * view.width) + view.left
+  const y = Math.floor(((event.clientY - box.top) / box.height) * view.height) + view.top
+  if (x < 0 || y < 0 || x >= checked.run.width || y >= checked.run.height) {
+    say("That pixel is the stand-in's, outside the effect: click a pixel of the effect.")
+    return
+  }
+  state.frame = frame
   state.composing = { draft: id, frame, x, y }
   state.focus = id
   update()
@@ -700,20 +760,21 @@ const tunePanel = (name: string): HTMLElement | undefined => {
     {
       id: "tune",
       title: `Tune draft ${state.focus}`,
-      help: "The params the agent left open in this draft. Moving one saves it to the draft's tune in the bank; the game gets it when this draft is in use. Click a draft to tune it.",
+      help: "The params the agent left open in this draft, and the bank's ramps it draws with: draw one as another to recolor the draft. Changes save to the draft's tune and recolor in the bank; the game gets them when this draft is in use. Click a draft to tune it.",
       onToggle: update,
       action:
-        draft.tune !== undefined &&
+        (draft.tune !== undefined || draft.recolor !== undefined) &&
         button(
           "Reset",
           () => {
-            setDraft(name, state.focus, { tune: undefined })
+            setDraft(name, state.focus, { tune: undefined, recolor: undefined })
             save({ bank: true })
             update()
           },
           { small: true, variant: "ghost", title: "Back to the draft's own values" }
         )
     },
+    recolorGroup(name, draft),
     params.length === 0
       ? hint("This draft has no params to tune.")
       : params.map(([param, spec]) => {
@@ -737,6 +798,40 @@ const tunePanel = (name: string): HTMLElement | undefined => {
             `From ${spec.min} to ${spec.max}; the draft's own value is ${spec.value}`
           )
         })
+  )
+}
+
+/** The bank ramps the draft draws with, each drawn as itself or as another ramp: a recolored copy, saved to the draft's `recolor`. */
+const recolorGroup = (name: string, draft: Draft): HTMLElement | false => {
+  const checked = checkedOf(draft)
+  const all = Object.keys(state.bank.ramps ?? {})
+  const used = "run" in checked ? checked.run.ramps : []
+  if (used.length === 0 || all.length < 2) return false
+  const swatches = (ramp: string): HTMLElement =>
+    h("span", { class: "fx-swatches" }, (state.bank.ramps?.[ramp] ?? []).map((color) => h("span", { class: "fx-swatch", title: color, attrs: { style: `background:${state.bank.palette[color] ?? "#000"}` } })))
+  return group(
+    "Colors",
+    used.map((ramp) => {
+      const now = draft.recolor?.[ramp] ?? ramp
+      return h(
+        "div",
+        { class: "fx-recolor" },
+        h("span", { class: "fx-recolor-name", title: `The draft's "${ramp}" ramp, drawn as:` }, ramp),
+        selectInput(
+          now,
+          all.map((option) => ({ id: option, label: option === ramp ? `${option} (its own)` : option })),
+          (chosen) => {
+            const { [ramp]: _, ...rest } = draft.recolor ?? {}
+            const recolor = chosen === ramp ? rest : { ...rest, [ramp]: chosen }
+            setDraft(name, state.focus, { recolor: Object.keys(recolor).length > 0 ? recolor : undefined })
+            save({ bank: true })
+            update()
+          },
+          `Draw the ${ramp} ramp as`
+        ),
+        swatches(now)
+      )
+    })
   )
 }
 
@@ -860,7 +955,7 @@ const backgroundPanel = (): HTMLElement => {
     {
       id: "background",
       title: "Background",
-      help: "What every draft plays over. The game's own backgrounds come from the bank's backdrops, and `fx check` warns when an effect barely shows on one of them; the neutral ones are for judging the effect alone.",
+      help: "What every draft plays over. The game's own backgrounds come from the bank's backdrops, and `fx check` warns when an effect barely shows on one of them; the neutral ones are for judging the effect alone. The stand-in is one of the game's sprites, from the bank, to judge the effect's size against.",
       onToggle: update
     },
     game.length > 0 && group("The game's", h("div", { class: "fx-backdrops" }, game.map(([name, hex]) => swatch(name, name, `The game's ${name} background (${hex})`)))),
@@ -873,14 +968,273 @@ const backgroundPanel = (): HTMLElement => {
         swatch("light", "Light", "A light background"),
         swatch("checker", "Grey", "A grey checkerboard")
       )
+    ),
+    // Only on effects the stand-in stands on: a torch on a wall has none.
+    state.standIn !== undefined &&
+      state.bank.effects[state.selected]?.standIn !== false &&
+      group(
+        "Stand-in",
+        segmented(
+          state.showStandIn ? "on" : "off",
+          [
+            { id: "on" as const, label: "Show", title: `${state.bank.standIn?.file ?? "The game's sprite"} behind each draft, to judge its size` },
+            { id: "off" as const, label: "Hide", title: "The effect alone" }
+          ],
+          (shown) => {
+            state.showStandIn = shown === "on"
+            renderStage()
+            renderPanels()
+          },
+          { label: "Stand-in", class: "fill" }
+        )
+      )
+  )
+}
+
+// ---------------------------------------------------------------------------
+// The palette: the bank's colors and ramps, the same for every effect
+
+const setBank = (change: Partial<Bank>): void => {
+  state.bank = { ...state.bank, ...change }
+  save({ bank: true })
+  update()
+}
+
+/** The bank ramps some draft draws with, or recolors to or from: removing one would break those drafts. */
+const rampsInUse = (): Set<string> => {
+  const used = new Set<string>()
+  for (const entry of Object.values(state.bank.effects))
+    for (const draft of Object.values(entry.drafts)) {
+      const checked = checkedOf(draft)
+      if ("run" in checked) for (const ramp of checked.run.ramps) used.add(ramp)
+      for (const [from, to] of Object.entries(draft.recolor ?? {})) used.add(from).add(to)
+    }
+  return used
+}
+
+/** A free name like `base-2`, not yet in `taken`. */
+const freeName = (base: string, taken: ReadonlyArray<string>): string => {
+  let n = 2
+  while (taken.includes(`${base}-${n}`)) n++
+  return `${base}-${n}`
+}
+
+/** The colors a palette color can take: the project's palette when pixel.config.json has one (effects share it with the sprites), else any. */
+const colorPicker = (hex: string, label: string, onPick: (hex: string) => void, onLive?: (hex: string) => void): HTMLElement => {
+  const project = state.rules.palette ?? []
+  if (project.length > 0)
+    return h(
+      "div",
+      { class: "fx-project-colors", attrs: { role: "listbox", "aria-label": label } },
+      project.map((color) =>
+        h("button", {
+          class: `fx-swatch fx-pick${color.toLowerCase() === hex.toLowerCase() ? " on" : ""}`,
+          title: color,
+          attrs: { type: "button", style: `background:${color}`, "aria-label": color },
+          on: { click: () => onPick(color.toLowerCase()) }
+        })
+      )
+    )
+  return h("input", {
+    class: "fx-color-input",
+    props: { type: "color", value: hex },
+    attrs: { "aria-label": label },
+    on: {
+      input: (event) => {
+        if (event.currentTarget instanceof HTMLInputElement) onLive?.(event.currentTarget.value)
+      },
+      change: (event) => {
+        if (event.currentTarget instanceof HTMLInputElement) onPick(event.currentTarget.value)
+      }
+    }
+  })
+}
+
+const colorsGroup = (): HTMLElement => {
+  const palette = state.bank.palette
+  const names = Object.keys(palette)
+  const setColor = (name: string, hex: string): void => setBank({ palette: { ...state.bank.palette, [name]: hex.toLowerCase() } })
+  const editing = state.editing !== undefined && state.editing in palette ? state.editing : undefined
+  return group(
+    "Colors",
+    h(
+      "div",
+      { class: "fx-palette" },
+      names.map((name) =>
+        h(
+          "button",
+          {
+            class: `fx-palette-color${name === editing ? " on" : ""}`,
+            title: `${name} ${palette[name]}: click to change it in every effect`,
+            attrs: { type: "button", "aria-pressed": String(name === editing) },
+            on: {
+              click: () => {
+                state.editing = name === editing ? undefined : name
+                renderPanels()
+              }
+            }
+          },
+          h("span", { class: "fx-swatch", attrs: { style: `background:${palette[name]}` } }),
+          h("span", { class: "fx-palette-name" }, name)
+        )
+      ),
+      h(
+        "button",
+        {
+          class: "fx-palette-color add",
+          title: "Add a color to the palette, to use in a ramp",
+          attrs: { type: "button" },
+          on: {
+            click: () => {
+              const name = freeName("color", names)
+              state.editing = name
+              setBank({ palette: { ...palette, [name]: state.rules.palette?.[0]?.toLowerCase() ?? "#808080" } })
+            }
+          }
+        },
+        icon("plus"),
+        h("span", { class: "fx-palette-name" }, "Add")
+      )
+    ),
+    editing !== undefined &&
+      h(
+        "div",
+        { class: "fx-color-edit" },
+        h("p", { class: "hint" }, h("b", {}, editing), ` ${palette[editing]}: every effect drawn with it changes.`),
+        colorPicker(
+          palette[editing]!,
+          `The ${editing} color`,
+          (hex) => setColor(editing, hex),
+          (hex) => {
+            // While dragging: redraw the drafts only, so the picker stays open.
+            state.bank = { ...state.bank, palette: { ...state.bank.palette, [editing]: hex.toLowerCase() } }
+            renderStage()
+          }
+        ),
+        (state.rules.palette?.length ?? 0) > 0 && hint("The project's palette, from pixel.config.json: effects keep to the colors the sprites use.")
+      )
+  )
+}
+
+const rampsGroup = (): HTMLElement => {
+  const ramps = state.bank.ramps ?? {}
+  const colors = Object.keys(state.bank.palette).map((name) => ({ id: name, label: name }))
+  const used = rampsInUse()
+  const setRamp = (name: string, steps: ReadonlyArray<string>): void => setBank({ ramps: { ...ramps, [name]: steps } })
+  return group(
+    "Ramps",
+    Object.keys(ramps).length === 0 && hint("No ramps yet: a ramp is a fade through palette colors, hot to cold, that drafts draw with by name."),
+    Object.entries(ramps).map(([name, steps]) =>
+      h(
+        "div",
+        { class: "fx-ramp" },
+        h(
+          "div",
+          { class: "fx-ramp-head" },
+          h(
+            "button",
+            {
+              class: `fx-ramp-open${state.editingRamp === name ? " on" : ""}`,
+              title: state.editingRamp === name ? "Close its steps" : "Edit its steps",
+              attrs: { type: "button", "aria-expanded": String(state.editingRamp === name) },
+              on: {
+                click: () => {
+                  state.editingRamp = state.editingRamp === name ? undefined : name
+                  renderPanels()
+                }
+              }
+            },
+            h("span", { class: "fx-ramp-name" }, name),
+            h("span", { class: "fx-ramp-strip" }, steps.map((step) => h("span", { attrs: { style: `background:${state.bank.palette[step] ?? "#000"}` } })))
+          ),
+          button(
+            "Delete ramp",
+            () => {
+              const { [name]: _, ...rest } = ramps
+              setBank({ ramps: rest })
+            },
+            {
+              small: true,
+              variant: "ghost",
+              icon: "trash",
+              iconOnly: true,
+              disabled: used.has(name),
+              title: used.has(name) ? "A draft draws with this ramp: it cannot go" : "Delete this ramp"
+            }
+          )
+        ),
+        state.editingRamp === name &&
+        h(
+          "ol",
+          { class: "fx-ramp-steps" },
+          steps.map((step, index) =>
+            h(
+              "li",
+              {},
+              h("span", { class: "fx-swatch", attrs: { style: `background:${state.bank.palette[step] ?? "#000"}` } }),
+              selectInput(step, colors, (color) => setRamp(name, steps.map((other, i) => (i === index ? color : other))), `Step ${index + 1} of ${name}`),
+              button("Earlier", () => setRamp(name, steps.map((other, i) => (i === index - 1 ? step : i === index ? steps[index - 1]! : other))), {
+                small: true,
+                variant: "ghost",
+                icon: "chevron",
+                class: "fx-up",
+                iconOnly: true,
+                disabled: index === 0,
+                title: "Move this step earlier (hotter)"
+              }),
+              button("Remove", () => setRamp(name, steps.filter((_, i) => i !== index)), {
+                small: true,
+                variant: "ghost",
+                icon: "close",
+                iconOnly: true,
+                disabled: steps.length <= 2,
+                title: steps.length <= 2 ? "A ramp has at least two steps" : "Remove this step"
+              })
+            )
+          )
+        ),
+        state.editingRamp === name &&
+          button("Add step", () => setRamp(name, [...steps, steps[steps.length - 1]!]), { small: true, variant: "ghost", icon: "plus", title: "Add a step at the cold end" })
+      )
+    ),
+    h(
+      "div",
+      { class: "fx-ramp-new" },
+      textInput(
+        "",
+        (value) => {
+          const name = value.trim()
+          if (name === "") return
+          if (name in ramps) {
+            say(`There is already a ramp named ${name}.`)
+            return
+          }
+          const [first, second] = Object.keys(state.bank.palette)
+          state.editingRamp = name
+          setBank({ ramps: { ...ramps, [name]: [first ?? "", second ?? first ?? ""] } })
+        },
+        { placeholder: "New ramp's name, then Enter", label: "New ramp" }
+      )
     )
   )
 }
 
+const palettePanel = (): HTMLElement =>
+  section(
+    {
+      id: "palette",
+      title: "Palette",
+      help: "The bank's colors and ramps, the same for every effect. Change a color and every effect drawn with it changes; edit a ramp (a fade through the colors, hot to cold) and every draft that draws with it fades through the new colors. A new ramp can be picked in a draft's Colors to recolor it. Saved to the bank; the agent reads them there.",
+      onToggle: update
+    },
+    colorsGroup(),
+    rampsGroup()
+  )
+
 const renderPanels = (): void => {
   const scroll = panels.scrollTop
   const name = state.selected
-  replace(panels, name in state.bank.effects && [reviewPanel(name), backgroundPanel(), tunePanel(name), checkPanel(name)], aboutPanel())
+  replace(panels, name in state.bank.effects && [reviewPanel(name), backgroundPanel(), tunePanel(name), checkPanel(name), palettePanel()], aboutPanel())
   panels.scrollTop = scroll
 }
 

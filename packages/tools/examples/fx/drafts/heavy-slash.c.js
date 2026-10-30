@@ -61,9 +61,10 @@ export default {
       const ty = Math.cos(a) * 0.7 + Math.sin(a) * 0.5
       const d = fx.ease.out(life) * speed
       const x = startX + tx * d
-      const y = startY + ty * d + life * life * fx.p.gravity
       const size = life < 0.3 ? 3 : life < 0.7 ? 2 : 1
-      fx.rect(x, y, size, size, fx.ramp(["white", "ash", "smoke", "soot"], life))
+      // They fall to the floor (the canvas's bottom) and lie there as they fade.
+      const y = Math.min(fx.h - size, startY + ty * d + life * life * fx.p.gravity)
+      fx.rect(x, y, size, size, fx.ramp("steel", life))
     }
   }
 }

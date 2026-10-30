@@ -19,6 +19,8 @@ export interface Session {
   readonly reviewText: string | null
   /** Each draft file the bank names, by its path in the bank: its source, or `null` when it cannot be read. */
   readonly sources: Readonly<Record<string, string | null>>
+  /** The bank's stand-in sprite as a data URL, `null` when it cannot be read, `undefined` when the bank has none. */
+  readonly standIn?: string | null | undefined
   readonly rules: PageRules
   /** Changes when the bank, the review, or a draft does, so the page can follow the agent's edits. */
   readonly version: string
@@ -67,12 +69,12 @@ export const serverStore: Store = {
 }
 
 /** A bank kept in the tab, with its drafts' sources: what the person changes lasts until the page closes. */
-export const memoryStore = (name: string, bankText: string, sources: Readonly<Record<string, string>>): Store => {
+export const memoryStore = (name: string, bankText: string, sources: Readonly<Record<string, string>>, standIn?: string): Store => {
   let bank = bankText
   let review: string | null = null
   let version = 0
   return {
-    session: async () => ({ bank: name, name, bankText: bank, reviewText: review, sources, rules: {}, version: String(version) }),
+    session: async () => ({ bank: name, name, bankText: bank, reviewText: review, sources, standIn, rules: {}, version: String(version) }),
     version: async () => String(version),
     save: async (file, text) => {
       if (file === "bank") bank = text

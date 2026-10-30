@@ -1,7 +1,7 @@
 /**
  * The effects review page on localhost, and a small API beside it that reads
  * and writes the bank and its review, and hands the page each draft's module
- * source, so what the person picks, tunes, and notes lands in the files the
+ * source (and the stand-in sprite), so what the person picks, tunes, and notes lands in the files the
  * agent reads. The page checks the files' versions (the drafts' too) every
  * moment, so a draft the agent edits while the page is open plays anew.
  *
@@ -54,19 +54,23 @@ const send = (response: ServerResponse, status: number, value: unknown): void =>
   response.end(JSON.stringify(value))
 }
 
-/** The draft files a bank names, from its folder (none when it does not read). */
-const draftFiles = async (bank: string): Promise<ReadonlyArray<string>> => {
+/** The draft files a bank names, from its folder, and its stand-in's (none when it does not read). */
+const filesOf = async (bank: string): Promise<{ readonly drafts: ReadonlyArray<string>; readonly standIn: string | undefined }> => {
   const decoded = decodeBank(await readFile(bank, "utf8").catch(() => ""))
-  if (!decoded.ok) return []
-  return [...new Set(Object.values(decoded.value.effects).flatMap((entry) => Object.values(entry.drafts).map((draft) => draft.file)))]
+  if (!decoded.ok) return { drafts: [], standIn: undefined }
+  return {
+    drafts: [...new Set(Object.values(decoded.value.effects).flatMap((entry) => Object.values(entry.drafts).map((draft) => draft.file)))],
+    standIn: decoded.value.standIn?.file
+  }
 }
 
 const api = (bank: string, rules: PageRules) => {
   const review = reviewPath(bank)
   const folder = dirname(bank)
   const version = async (): Promise<string> => {
-    const drafts = await Promise.all((await draftFiles(bank)).map((file) => mtime(resolve(folder, file))))
-    return [await mtime(bank), await mtime(review), ...drafts].join(":")
+    const files = await filesOf(bank)
+    const times = await Promise.all([...files.drafts, ...(files.standIn === undefined ? [] : [files.standIn])].map((file) => mtime(resolve(folder, file))))
+    return [await mtime(bank), await mtime(review), ...times].join(":")
   }
   return async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     try {
@@ -74,9 +78,18 @@ const api = (bank: string, rules: PageRules) => {
       if (route === "GET /version") return send(response, 200, { version: await version() })
       if (route === "GET /session") {
         const reviewText = await readFile(review, "utf8").catch(() => null)
+        const files = await filesOf(bank)
         const sources: Record<string, string | null> = {}
-        for (const file of await draftFiles(bank)) sources[file] = await readFile(resolve(folder, file), "utf8").catch(() => null)
-        return send(response, 200, { bank, name: basename(bank), bankText: await readFile(bank, "utf8"), reviewText, sources, rules, version: await version() })
+        for (const file of files.drafts) sources[file] = await readFile(resolve(folder, file), "utf8").catch(() => null)
+        // The stand-in as a data URL, so the page draws it as it draws everything else: from the session.
+        const standIn =
+          files.standIn === undefined
+            ? undefined
+            : await readFile(resolve(folder, files.standIn)).then(
+                (bytes) => `data:image/png;base64,${bytes.toString("base64")}`,
+                () => null
+              )
+        return send(response, 200, { bank, name: basename(bank), bankText: await readFile(bank, "utf8"), reviewText, sources, standIn, rules, version: await version() })
       }
       if (route === "PUT /bank") {
         const decoded = decodeBank(await body(request))

@@ -18,7 +18,7 @@ const { effect = "heavy-slash", picked = "a" } = Astro.props
 
 <script>
   import { exampleBank, exampleSources } from "@typeonce/ritmo-tools/fx/example"
-  import { decodeEffect, runEffect, type Run } from "@typeonce/ritmo-tools/fx/effect"
+  import { decodeEffect, rampsFor, runEffect, type Run } from "@typeonce/ritmo-tools/fx/effect"
 
   /** How long a one-shot rests empty between plays, in milliseconds: short, so the drafts are mostly seen playing. */
   const REST = 250
@@ -36,7 +36,8 @@ const { effect = "heavy-slash", picked = "a" } = Astro.props
   for (const root of document.querySelectorAll<HTMLElement>(".fx-showcase")) {
     const bank = JSON.parse(exampleBank) as {
       palette: Record<string, string>
-      effects: Record<string, { drafts: Record<string, { file: string; seed?: number; tune?: Record<string, number> }> }>
+      ramps?: Record<string, Array<string>>
+      effects: Record<string, { drafts: Record<string, { file: string; seed?: number; tune?: Record<string, number>; recolor?: Record<string, string> }> }>
     }
     const entry = bank.effects[root.dataset.effect ?? ""]
     const holder = root.querySelector(".drafts")
@@ -48,7 +49,7 @@ const { effect = "heavy-slash", picked = "a" } = Astro.props
       if (source === undefined) continue
       const decoded = await load(source)
       if (!decoded.ok) continue
-      const run = runEffect(decoded.value, bank.palette, { seed: draft.seed, tune: draft.tune })
+      const run = runEffect(decoded.value, bank.palette, { seed: draft.seed, tune: draft.tune, ramps: rampsFor(bank.ramps, draft.recolor) })
       const card = document.createElement("figure")
       card.className = id === root.dataset.picked ? "draft picked" : "draft"
       const canvas = document.createElement("canvas")

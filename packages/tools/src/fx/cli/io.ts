@@ -1,6 +1,7 @@
 /** Reading banks, reviews, and the drafts' modules, and writing what the CLI makes, through Effect's FileSystem. */
 import { Effect, FileSystem, Option, Path } from "effect"
 import { loadConfig } from "../../pixel/cli/config.ts"
+import { decodePng } from "../../pixel/cli/png.ts"
 import { decodeBank, decodeReview, emptyReview, reviewPath, type Bank, type Draft, type Review } from "../core/bank.ts"
 import type { Rules } from "../core/check.ts"
 import { decodeEffect, type Effect as FxEffect } from "../core/effect.ts"
@@ -54,4 +55,17 @@ export const readRules = Effect.fn("readRules")(function* (bankFile: string, exp
   const path = yield* Path.Path
   const config = yield* loadConfig(explicit, path.dirname(path.resolve(bankFile)))
   return { config: config.path, rules: { palette: config.rules.palette, maxColors: config.rules.maxColors } satisfies Rules }
+})
+
+/** The bank's stand-in sprite, decoded; none when the bank has none. */
+export const readStandIn = Effect.fn("readStandIn")(function* (bankFile: string, bank: Bank) {
+  if (bank.standIn === undefined) return undefined
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const file = path.resolve(path.dirname(bankFile), bank.standIn.file)
+  const bytes = yield* fs.readFile(file).pipe(Effect.mapError(() => new CliFailure({ message: `cannot read the stand-in ${bank.standIn?.file}`, details: { file } })))
+  return yield* Effect.try({
+    try: () => decodePng(bytes),
+    catch: (error) => new CliFailure({ message: `the stand-in ${bank.standIn?.file} is not a PNG: ${error instanceof Error ? error.message : String(error)}` })
+  })
 })

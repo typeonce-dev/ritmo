@@ -19,7 +19,7 @@ export default {
     // A hot core filling the fresh ring, so no gap is left between them.
     if (fx.frame === 1) fx.disc(fx.cx, fx.cy, r - 1, "yellow")
     // Two pixels thick while it is fresh, one as it fades.
-    if (fx.t < 0.75) fx.ring(fx.cx, fx.cy, r, fx.ramp(["white", "ash", "smoke", "soot"], fx.t / 0.75), fx.t < 0.3 ? 2 : 1)
+    if (fx.t < 0.75) fx.ring(fx.cx, fx.cy, r, fx.ramp("steel", fx.t / 0.75), fx.t < 0.3 ? 2 : 1)
     for (let i = 0; i < fx.p.chunks; i++) {
       const angle = fx.range(-Math.PI, 0)
       const speed = fx.range(6, 11)

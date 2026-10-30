@@ -32,7 +32,7 @@ export default {
         // Hot in the middle and low, cool at the edges and the tip.
         const edge = Math.abs(x + 0.5 - (fx.cx + sway)) / half
         const heat = k * 0.75 + edge * 0.45
-        fx.px(x, y, fx.ramp(["white", "yellow", "gold", "orange", "red"], heat))
+        fx.px(x, y, fx.ramp("fire", heat))
       }
     }
     // Embers: each on its own phase, so the loop wraps.
@@ -42,7 +42,8 @@ export default {
       const life = (fx.t * 2 + phase) % 1
       const y = base - fx.p.height * 0.6 - life * (fx.h - fx.p.height)
       const x = fx.cx + drift * life + Math.sin(turn * 2 + phase * 6) * 0.8
-      fx.px(x, y, life < 0.5 ? "gold" : "red")
+      // Along the fire ramp, so they recolor with the flame: gold, then red.
+      fx.px(x, y, fx.ramp("fire", life < 0.5 ? 0.4 : 0.8))
     }
   }
 }

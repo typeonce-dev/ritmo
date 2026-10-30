@@ -12,7 +12,7 @@
  *       for (let i = 0; i < 8; i++) {
  *         const angle = fx.random() * Math.PI * 2
  *         const r = fx.ease.out(fx.t) * fx.p.spread
- *         fx.px(fx.cx + Math.cos(angle) * r, fx.cy + Math.sin(angle) * r, fx.ramp(["white", "yellow", "orange"], fx.t))
+ *         fx.px(fx.cx + Math.cos(angle) * r, fx.cy + Math.sin(angle) * r, fx.ramp("fire", fx.t))
  *       }
  *     }
  *   }
@@ -22,11 +22,18 @@
  * frame, so its n-th number is the same in every frame: draw the n-th
  * particle's direction and speed from it, and its place from `fx.t`.
  *
+ * Colors come from the bank's palette by name, and fades from its ramps
+ * (`fx.ramp("fire", v)`), so a draft recolors without a change to its code:
+ * the bank can draw its "fire" ramp as "frost".
+ *
  * The same runner draws the frames in the CLI and on the review page.
  */
 
 /** A palette's colors by name, each a `#rrggbb`. */
 export type Palette = Readonly<Record<string, string>>
+
+/** Named ramps, each a list of palette color names from `v` 0 to 1 (hot to cold, bright to dark). */
+export type Ramps = Readonly<Record<string, ReadonlyArray<string>>>
 
 /** A param the person tunes with a slider; `value` is the draft's own. */
 export interface Param {
@@ -83,8 +90,16 @@ export interface Fx {
   readonly disc: (x: number, y: number, r: number, color: string) => void
   /** A circle's clean outline (no doubles), its radius rounded to a whole pixel; 0 or less draws nothing. `width` (default 1) thickens it inward, with no gaps. */
   readonly ring: (x: number, y: number, r: number, color: string, width?: number) => void
-  /** The color at `v` (0 to 1) along a list of colors: a ramp from hot to cold, from bright to dark. */
-  readonly ramp: (colors: ReadonlyArray<string>, v: number) => string
+  /** A filled ellipse, its radii rounded to whole pixels: a pool or a scorch on the floor, seen from the side. */
+  readonly oval: (x: number, y: number, rx: number, ry: number, color: string) => void
+  /** An ellipse's clean outline (no doubles): a ring lying on the floor. `width` (default 1) thickens it inward, with no gaps. */
+  readonly ovalRing: (x: number, y: number, rx: number, ry: number, color: string, width?: number) => void
+  /** A star glint: a pixel with four arms `arm` pixels long (0 is the pixel alone), their ends in `tip` (default `color`). */
+  readonly sparkle: (x: number, y: number, arm: number, color: string, tip?: string) => void
+  /** A moving spark's trail: a line from its head at (x, y) back by (dx, dy), colored along a ramp (a bank ramp's name, or colors) from the head to the tail. */
+  readonly streak: (x: number, y: number, dx: number, dy: number, ramp: string | ReadonlyArray<string>) => void
+  /** The color at `v` (0 to 1) along a ramp: one of the bank's by name (`"fire"`), or a list of colors. Name the bank's, so the effect recolors with it. */
+  readonly ramp: (ramp: string | ReadonlyArray<string>, v: number) => string
   readonly ease: Ease
   readonly lerp: (a: number, b: number, t: number) => number
   readonly clamp: (v: number, min: number, max: number) => number
@@ -102,6 +117,8 @@ export interface Run {
   readonly clipped: ReadonlyArray<number>
   /** What went wrong while drawing: a thrown error, a color the palette does not have. */
   readonly errors: ReadonlyArray<string>
+  /** The bank ramps the draft drew with, by name: the ones the person can recolor. */
+  readonly ramps: ReadonlyArray<string>
 }
 
 export type Decoded<A> = { readonly ok: true; readonly value: A } | { readonly ok: false; readonly error: string }
@@ -220,6 +237,13 @@ const circle = (r: number): ReadonlyArray<readonly [number, number]> => {
       d += 2 * (x - y) + 1
     }
   }
+  const outline = withoutDoubles(points)
+  circles.set(radius, outline)
+  return outline
+}
+
+/** An outline's points with every double taken out (a pixel whose only two neighbours sit at a right angle to it). */
+const withoutDoubles = (points: Set<string>): ReadonlyArray<readonly [number, number]> => {
   const has = (a: number, b: number): boolean => points.has(`${a},${b}`)
   for (const key of [...points]) {
     const [a, b] = key.split(",").map(Number) as [number, number]
@@ -227,8 +251,62 @@ const circle = (r: number): ReadonlyArray<readonly [number, number]> => {
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx !== 0 || dy !== 0) && has(a + dx, b + dy)) around++
     if (around === 2 && (has(a - 1, b) || has(a + 1, b)) && (has(a, b - 1) || has(a, b + 1))) points.delete(key)
   }
-  const outline = [...points].map((key) => key.split(",").map(Number) as unknown as readonly [number, number])
-  circles.set(radius, outline)
+  return [...points].map((key) => key.split(",").map(Number) as unknown as readonly [number, number])
+}
+
+/**
+ * An ellipse's one-pixel outline around (0, 0): the midpoint ellipse at the
+ * radii rounded to whole pixels, doubles taken out. Either radius 0 or less
+ * is no pixels; one that rounds to 0 is a flat line.
+ */
+const ellipses = new Map<string, ReadonlyArray<readonly [number, number]>>()
+const ellipse = (rx: number, ry: number): ReadonlyArray<readonly [number, number]> => {
+  if (!(rx > 0) || !(ry > 0)) return []
+  const a = Math.round(rx)
+  const b = Math.round(ry)
+  const id = `${a}:${b}`
+  const known = ellipses.get(id)
+  if (known !== undefined) return known
+  const points = new Set<string>()
+  const plot = (x: number, y: number): void => {
+    for (const [px, py] of [[x, y], [-x, y], [x, -y], [-x, -y]] as const) points.add(`${px},${py}`)
+  }
+  if (a === 0 || b === 0) {
+    for (let i = 0; i <= Math.max(a, b); i++) plot(a === 0 ? 0 : i, b === 0 ? 0 : i)
+  } else {
+    const a2 = a * a
+    const b2 = b * b
+    let x = 0
+    let y = b
+    let dx = 0
+    let dy = 2 * a2 * y
+    let d = b2 - a2 * b + 0.25 * a2
+    while (dx < dy) {
+      plot(x, y)
+      x++
+      dx += 2 * b2
+      if (d < 0) d += b2 + dx
+      else {
+        y--
+        dy -= 2 * a2
+        d += b2 + dx - dy
+      }
+    }
+    d = b2 * (x + 0.5) ** 2 + a2 * (y - 1) ** 2 - a2 * b2
+    while (y >= 0) {
+      plot(x, y)
+      y--
+      dy -= 2 * a2
+      if (d > 0) d += a2 - dy
+      else {
+        x++
+        dx += 2 * b2
+        d += a2 - dy + dx
+      }
+    }
+  }
+  const outline = withoutDoubles(points)
+  ellipses.set(id, outline)
   return outline
 }
 
@@ -245,6 +323,15 @@ const spans = (outline: ReadonlyArray<readonly [number, number]>): Map<number, r
 export interface RunOptions {
   readonly seed?: number | undefined
   readonly tune?: Readonly<Record<string, number>> | undefined
+  /** The bank's ramps, each already recolored as the draft asks (`rampsFor`). */
+  readonly ramps?: Ramps | undefined
+}
+
+/** The bank's ramps as a draft draws them: each one it `recolor`s drawn with another's colors. */
+export const rampsFor = (ramps: Ramps = {}, recolor: Readonly<Record<string, string>> = {}): Ramps => {
+  const out: Record<string, ReadonlyArray<string>> = {}
+  for (const [name, colors] of Object.entries(ramps)) out[name] = ramps[recolor[name] ?? name] ?? colors
+  return out
 }
 
 /** Draws every frame of an effect on a palette. Never throws: what goes wrong is in `errors`. */
@@ -255,12 +342,16 @@ export const runEffect = (effect: Effect, palette: Palette, options: RunOptions 
   const p = tuned(effect, options.tune)
   const seed = options.seed ?? 1
   const errors = new Set<string>()
+  const ramps = options.ramps ?? {}
+  const usedRamps = new Set<string>()
   const frames: Array<Uint8Array> = []
   const clipped: Array<number> = []
   for (let frame = 0; frame < effect.frames; frame++) {
     const pixels = new Uint8Array(w * h)
     let outside = 0
     const slot = (color: string): number => {
+      // A ramp that failed has already said why.
+      if (color === "") return 0
       const found = slots.get(color)
       if (found === undefined) errors.add(`no color named "${color}" in the palette (${names.join(", ")})`)
       return found ?? 0
@@ -276,6 +367,62 @@ export const runEffect = (effect: Effect, palette: Palette, options: RunOptions 
       if (s > 0) pixels[iy * w + ix] = s
     }
     const random = generator(seed)
+    const colorsOf = (ramp: string | ReadonlyArray<string>): ReadonlyArray<string> => {
+      if (typeof ramp !== "string") {
+        if (ramp.length === 0) errors.add("a ramp needs at least one color")
+        return ramp
+      }
+      const colors = ramps[ramp]
+      if (colors === undefined) {
+        errors.add(`no ramp named "${ramp}" in the bank's ramps (${Object.keys(ramps).join(", ") || "none"})`)
+        return []
+      }
+      usedRamps.add(ramp)
+      return colors
+    }
+    const at = (colors: ReadonlyArray<string>, v: number): string => colors[Math.min(colors.length - 1, Math.max(0, Math.floor(clamp(v, 0, 1) * colors.length)))] ?? ""
+    /** Bresenham's line, each pixel with its place along it (0 at the start, 1 at the end). */
+    const trace = (x0: number, y0: number, x1: number, y1: number, plot: (x: number, y: number, along: number) => void): void => {
+      let x = Math.floor(x0)
+      let y = Math.floor(y0)
+      const ex = Math.floor(x1)
+      const ey = Math.floor(y1)
+      if (![x, y, ex, ey].every(Number.isFinite)) return
+      const dx = Math.abs(ex - x)
+      const dy = -Math.abs(ey - y)
+      const sx = x < ex ? 1 : -1
+      const sy = y < ey ? 1 : -1
+      const steps = Math.max(dx, -dy)
+      let err = dx + dy
+      for (let i = 0; i <= Math.min(steps, 4096); i++) {
+        plot(x, y, steps === 0 ? 0 : i / steps)
+        const e2 = 2 * err
+        if (e2 >= dy) {
+          err += dy
+          x += sx
+        }
+        if (e2 <= dx) {
+          err += dx
+          y += sy
+        }
+      }
+    }
+    const fill = (x: number, y: number, outline: ReadonlyArray<readonly [number, number]>, s: number): void => {
+      // Each row filled between the outline's ends, so a filled shape has the same clean edge as its outline.
+      const x0 = Math.floor(x)
+      const y0 = Math.floor(y)
+      for (const [dy, [from, to]] of spans(outline)) for (let dx = from; dx <= to; dx++) put(x0 + dx, y0 + dy, s)
+    }
+    const band = (x: number, y: number, outer: ReadonlyArray<readonly [number, number]>, inner: ReadonlyArray<readonly [number, number]>, s: number): void => {
+      // A thick outline is the shape minus the shape inside it, so it has no gaps (two outlines a pixel apart leave pinholes).
+      const x0 = Math.floor(x)
+      const y0 = Math.floor(y)
+      const holes = spans(inner)
+      for (const [dy, [from, to]] of spans(outer)) {
+        const hole = holes.get(dy)
+        for (let dx = from; dx <= to; dx++) if (hole === undefined || dx < hole[0] || dx > hole[1]) put(x0 + dx, y0 + dy, s)
+      }
+    }
     const fx: Fx = {
       frame,
       frames: effect.frames,
@@ -294,55 +441,43 @@ export const runEffect = (effect: Effect, palette: Palette, options: RunOptions 
       },
       line: (x0, y0, x1, y1, color) => {
         const s = slot(color)
-        let x = Math.floor(x0)
-        let y = Math.floor(y0)
-        const ex = Math.floor(x1)
-        const ey = Math.floor(y1)
-        if (![x, y, ex, ey].every(Number.isFinite)) return
-        const dx = Math.abs(ex - x)
-        const dy = -Math.abs(ey - y)
-        const sx = x < ex ? 1 : -1
-        const sy = y < ey ? 1 : -1
-        let err = dx + dy
-        for (let guard = 0; guard < 4096; guard++) {
-          put(x, y, s)
-          if (x === ex && y === ey) break
-          const e2 = 2 * err
-          if (e2 >= dy) {
-            err += dy
-            x += sx
-          }
-          if (e2 <= dx) {
-            err += dx
-            y += sy
-          }
-        }
+        trace(x0, y0, x1, y1, (x, y) => put(x, y, s))
       },
-      disc: (x, y, r, color) => {
-        const s = slot(color)
-        // Each row filled between the outline's ends, so a disc has the same clean edge as a ring.
-        const x0 = Math.floor(x)
-        const y0 = Math.floor(y)
-        for (const [dy, [from, to]] of spans(circle(r))) for (let dx = from; dx <= to; dx++) put(x0 + dx, y0 + dy, s)
-      },
+      disc: (x, y, r, color) => fill(x, y, circle(r), slot(color)),
       ring: (x, y, r, color, width = 1) => {
         const s = slot(color)
+        const thick = Math.max(1, Math.round(width))
+        if (thick === 1) for (const [dx, dy] of circle(r)) put(Math.floor(x) + dx, Math.floor(y) + dy, s)
+        else band(x, y, circle(r), circle(Math.round(r) - thick), s)
+      },
+      oval: (x, y, rx, ry, color) => fill(x, y, ellipse(rx, ry), slot(color)),
+      ovalRing: (x, y, rx, ry, color, width = 1) => {
+        const s = slot(color)
+        const thick = Math.max(1, Math.round(width))
+        if (thick === 1) for (const [dx, dy] of ellipse(rx, ry)) put(Math.floor(x) + dx, Math.floor(y) + dy, s)
+        else band(x, y, ellipse(rx, ry), ellipse(Math.round(rx) - thick, Math.round(ry) - thick), s)
+      },
+      sparkle: (x, y, arm, color, tip = color) => {
+        const s = slot(color)
+        const end = slot(tip)
+        const length = Math.round(arm)
+        if (!(length >= 0)) return
         const x0 = Math.floor(x)
         const y0 = Math.floor(y)
-        const thick = Math.max(1, Math.round(width))
-        if (thick === 1) {
-          for (const [dx, dy] of circle(r)) put(x0 + dx, y0 + dy, s)
-          return
-        }
-        // A thick ring is the disc minus the disc inside it, so it has no gaps (two outlines a pixel apart leave pinholes).
-        const outer = spans(circle(r))
-        const inner = spans(circle(Math.round(r) - thick))
-        for (const [dy, [from, to]] of outer) {
-          const hole = inner.get(dy)
-          for (let dx = from; dx <= to; dx++) if (hole === undefined || dx < hole[0] || dx > hole[1]) put(x0 + dx, y0 + dy, s)
+        put(x0, y0, s)
+        for (let i = 1; i <= length; i++) {
+          const k = i === length ? end : s
+          put(x0 + i, y0, k)
+          put(x0 - i, y0, k)
+          put(x0, y0 + i, k)
+          put(x0, y0 - i, k)
         }
       },
-      ramp: (colors, v) => colors[Math.min(colors.length - 1, Math.max(0, Math.floor(clamp(v, 0, 1) * colors.length)))] ?? "",
+      streak: (x, y, dx, dy, ramp) => {
+        const colors = colorsOf(ramp)
+        trace(x, y, x - dx, y - dy, (px, py, along) => put(px, py, slot(at(colors, along))))
+      },
+      ramp: (ramp, v) => at(colorsOf(ramp), v),
       ease,
       lerp: (a, b, t) => a + (b - a) * t,
       clamp
@@ -355,5 +490,5 @@ export const runEffect = (effect: Effect, palette: Palette, options: RunOptions 
     frames.push(pixels)
     clipped.push(outside)
   }
-  return { width: w, height: h, fps: effect.fps, loop: effect.loop, anchor: effect.anchor, frames, clipped, errors: [...errors] }
+  return { width: w, height: h, fps: effect.fps, loop: effect.loop, anchor: effect.anchor, frames, clipped, errors: [...errors], ramps: [...usedRamps] }
 }

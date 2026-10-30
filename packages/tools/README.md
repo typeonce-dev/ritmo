@@ -415,7 +415,7 @@ export default {
       const angle = (i / fx.p.rays) * Math.PI * 2 + fx.range(-0.35, 0.35)
       const far = fx.ease.out(fx.t) * fx.p.reach
       const near = fx.ease.in(fx.t) * fx.p.reach
-      const color = fx.ramp(["white", "yellow", "orange", "red"], fx.t)
+      const color = fx.ramp("fire", fx.t) // the bank's "fire" ramp
       fx.line(fx.cx + Math.cos(angle) * near, fx.cy + Math.sin(angle) * near, fx.cx + Math.cos(angle) * far, fx.cy + Math.sin(angle) * far, color)
     }
   }
@@ -436,27 +436,35 @@ time, not a simulation. It gets:
 | `p` | The params, with the person's tune laid over them. |
 | `random()`, `range(min, max)` | Numbers from the draft's seed. They start over on every frame, so the n-th number is the same in every frame: draw the n-th particle's direction and speed from it, and its place from `t`. |
 | `px`, `rect`, `line`, `disc`, `ring` | Draw with a palette color's name. Coordinates are rounded down to whole pixels; later shapes cover earlier ones. Circles are drawn as pixel artists draw them: the midpoint circle at the radius rounded to a whole pixel, with no doubles, its steps even; a disc fills the same outline, and `ring(x, y, r, color, width)` thickens inward with no pinholes. A radius of 0 or less draws nothing. |
-| `ramp(colors, v)` | The color at `v` (0 to 1) along a list: hot to cold, bright to dark. |
+| `oval(x, y, rx, ry, color)`, `ovalRing(x, y, rx, ry, color, width)` | The same for ellipses: a pool, a scorch, or a shock ring lying flat on the floor. |
+| `sparkle(x, y, arm, color, tip)` | A star glint: a pixel with four arms `arm` long, their ends in `tip` (default `color`). |
+| `streak(x, y, dx, dy, ramp)` | A moving spark's trail: a line from its head back by `(dx, dy)` (its motion), colored along a ramp from head to tail. |
+| `ramp(ramp, v)` | The color at `v` (0 to 1) along one of the bank's ramps by name (`"fire"`), or a list of colors: hot to cold, bright to dark. Name the bank's, so the draft recolors with it. |
 | `ease.in`, `ease.out`, `ease.inOut`, `lerp`, `clamp` | Curves and helpers for timing. |
 
-A bank is one file per game naming the palette, the game's own backgrounds
-(`backdrops`, optional: the contrast check and the page use them), and each
-effect's drafts (paths from the bank's folder), with each draft's `seed`,
-`tune`, and `accept` (warnings judged deliberate, each with why: `fx check`
-lists them apart and does not count them; errors cannot be accepted), and
-the draft the game gets in `use` (the first when unset):
+A bank is one file per game naming:
+
+- the palette;
+- `ramps` (optional): fades through palette colors by name, hot to cold, that drafts draw with (`fx.ramp("fire", v)`);
+- the game's own backgrounds (`backdrops`, optional: the contrast check and the page use them);
+- a stand-in (`standIn`, optional): a PNG of one of the game's sprites, `anchor` at its feet, drawn behind every effect on the page and in `fx look` so its size reads against a body. It stands on the effect's anchor, moved by the effect's `standIn` offset (`[0, 24]`: a hit's target stands 24 pixels below where the blow lands), or not at all with `false`;
+- each effect's drafts (paths from the bank's folder), with each draft's `seed`, `tune`, `recolor` (a ramp drawn as another: `{"fire": "frost"}` is a recolored copy with no new code), and `accept` (warnings judged deliberate, each with why: `fx check` lists them apart and does not count them; errors cannot be accepted), and the draft the game gets in `use` (the first when unset):
 
 ```json
 {
   "version": 1,
-  "palette": { "white": "#ffffff", "yellow": "#fee761", "orange": "#f77622", "red": "#e43b44" },
+  "palette": { "white": "#ffffff", "yellow": "#fee761", "orange": "#f77622", "red": "#e43b44", "cyan": "#2ce8f5", "blue": "#0099db" },
+  "ramps": { "fire": ["white", "yellow", "orange", "red"], "frost": ["white", "cyan", "blue"] },
   "backdrops": { "dungeon": "#1a1c2c", "meadow": "#5a8f3c" },
+  "standIn": { "file": "art/hero.png", "anchor": [10, 45] },
   "effects": {
     "hit": {
       "about": "A sword blow lands on an enemy.",
+      "standIn": [0, 24],
       "drafts": {
         "a": { "file": "fx/hit.a.js" },
-        "b": { "file": "fx/hit.b.js", "seed": 3, "tune": { "reach": 8 }, "accept": { "jaggies": "the notches where the sparks overlap are the look" } }
+        "b": { "file": "fx/hit.b.js", "seed": 3, "tune": { "reach": 8 }, "accept": { "jaggies": "the notches where the sparks overlap are the look" } },
+        "c": { "file": "fx/hit.b.js", "recolor": { "fire": "frost" } }
       },
       "use": "b"
     }
@@ -468,12 +476,14 @@ Its review lives next to it (`game.fx.json` → `game.fx.review.json`): each
 effect's status (`new`, `approved`, `changes`), the person's note, and their
 comments, each pinned to a draft, a frame (from 0, as `fx.frame`), and a
 pixel, and resolved by the agent with a reply (`fx resolve`). `examples/fx/effects.fx.json` in the repository is a hit, a heavy
-slash, an explosion, and a torch, with two to four drafts each.
+slash, an ice spike, an explosion, a torch (one draft of it recolored), and a
+heavy landing, with two to four drafts each and a character's silhouette as the stand-in.
 
 ### The checks
 
-`fx check` runs each draft twice. **Errors** (exit 3): a module that does
-not load or throws, a color the palette does not have, nothing drawn,
+`fx check` runs each draft twice, and with seeds 2, 3, and 7 to see how far
+it can reach. **Errors** (exit 3): a module that does not load or throws, a
+color or ramp the bank does not have, nothing drawn,
 randomness that is not the seed's, and against the project's
 `pixel.config.json` (the nearest at or above the bank's folder, or
 `--config`): a bank color outside its palette, or a draft with more colors
@@ -483,6 +493,7 @@ rules up to 8 pixels in `at`:
 | Code | What it finds |
 | --- | --- |
 | `clipped` | Pixels drawn past the canvas edge. |
+| `clipped-seed` | Kept inside by the draft's seed alone: another seed draws past the edge, so a new seed cuts it off. |
 | `late`, `no-end`, `tail` | A one-shot that starts after frame 0, does not end empty, or ends on more than one empty frame. |
 | `seam` | A loop that jumps from its last frame back to its first. |
 | `gap` | Empty frames in the middle. |
@@ -504,12 +515,12 @@ file, broken bank), or 3 (a draft has errors).
 
 | Command | Does |
 | --- | --- |
-| `ritmo-tools fx init [bank]` | Writes a starting bank (a six-color palette) and one draft of a hit spark. |
+| `ritmo-tools fx init [bank]` | Writes a starting bank (a six-color palette and a fire ramp) and one draft of a hit spark. |
 | `ritmo-tools fx check <bank> [names...] [--config file]` | Runs every draft twice and measures it (frames, length, the box it fills, its colors), and lists errors and warnings (see above), with accepted warnings apart. |
-| `ritmo-tools fx look <bank> <name> [--draft a] [--scale 6] [--backdrop dark] [--marks comments]` | Writes a contact sheet PNG per draft: every frame side by side, enlarged, on a backdrop (`dark`, `light`, `checker`, or one of the bank's by name), for the agent to look at. `--marks` rings the person's comments (the default) or where a craft rule breaks (`jaggies`, `doubles`, `holes`, `flicker`), and the report lists them. |
+| `ritmo-tools fx look <bank> <name> [--draft a] [--scale 6] [--columns 8] [--backdrop dark] [--marks comments] [--compare] [--alone]` | Writes a contact sheet PNG per draft: every frame side by side, enlarged, on a backdrop (`dark`, `light`, `checker`, or one of the bank's by name), with the bank's stand-in behind it (`--alone` leaves it out), for the agent to look at. `--marks` rings the person's comments (the default) or where a craft rule breaks (`jaggies`, `doubles`, `holes`, `flicker`), and the report lists them. `--compare` writes one picture instead: a row per draft, each column the same moment (`--columns` of them, first frame to last), to weigh the drafts against each other. |
 | `ritmo-tools fx render <bank> [names...] [-o dir] [--scale 1]` | Writes each effect's draft in use as a sprite sheet PNG (its frames in one row), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the draft's `anchor`, the animation and its fps, and `meta.loop`, whether it loops or plays once), and a GIF. |
 | `ritmo-tools fx review <bank> [--port 5192] [--host] [--config file]` | Serves the review page and prints its address; runs until stopped. |
-| `ritmo-tools fx notes <bank>` | What the person said: each effect's status, note, open comments (numbered, with draft, frame, pixel, and text), how many are resolved, draft in use, and tune, changes asked first. |
+| `ritmo-tools fx notes <bank>` | What the person said: each effect's status, note, open comments (numbered, with draft, frame, pixel, and text), how many are resolved, draft in use, and tune, changes asked first; and the bank's palette and ramps as they are now. |
 | `ritmo-tools fx resolve <bank> <effect> <numbers...> [--reply "what changed"]` | Marks comments as resolved: `fx notes` and `fx look` stop showing them, and the page shows them done with the reply. The person can reopen one. |
 
 ### The review page
@@ -523,7 +534,12 @@ card is the size of the effect's largest draft, so nothing moves as they
 play. The playback bar pauses, steps frame by frame (the same frame on every
 draft), slows to ½ or ¼, and zooms from 2× to 8×; the Background section
 picks what the drafts play over (the bank's `backdrops` first, then neutral
-ones). Clicking a draft focuses it; clicking a pixel of the
+ones) and shows or hides the stand-in. The tune section also lists the bank
+ramps the draft draws with, each drawn as itself or as another ramp: picking
+one saves the draft's `recolor`. The Palette section edits the bank's colors
+(from the project's `pixel.config.json` palette when it has one, so effects
+keep to the sprites' colors) and its ramps (pick, reorder, add, and remove
+steps; add a ramp; delete one no draft draws with), for every effect at once. Clicking a draft focuses it; clicking a pixel of the
 draft in focus pauses on that frame and pins a comment to it; a comment's number rings its pixel on its frame, and clicking the
 comment goes there. **Show** on a check pauses on its frame with its pixels
 ringed. Resolved comments show greyed, with the agent's reply, and

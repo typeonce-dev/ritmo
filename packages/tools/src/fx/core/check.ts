@@ -28,6 +28,8 @@ export const CRAFT_SPOTS = 3
 export const FLICKER = 0.06
 /** Contrast warns when more than this share of drawn pixels barely differ from a background. */
 export const FAINT_SHARE = 0.5
+/** Seeds a draft is also drawn with, to see how far it can reach: particles one seed keeps inside, another throws past the edge. */
+export const OTHER_SEEDS: ReadonlyArray<number> = [2, 3, 7]
 
 export interface Measures {
   readonly frames: number
@@ -249,15 +251,33 @@ export interface Checked {
   readonly accepted: ReadonlyArray<Issue & { readonly why: string }>
 }
 
+/** Where a draft clipped on its own seed fits, another seed may not: the first of `OTHER_SEEDS` that draws past the edge. */
+const reachIssue = (effect: Effect, palette: Palette, options: RunOptions, run: Run): Issue | undefined => {
+  if (run.clipped.some((count) => count > 0)) return undefined
+  for (const seed of OTHER_SEEDS) {
+    if (seed === (options.seed ?? 1)) continue
+    const cut = runEffect(effect, palette, { ...options, seed }).clipped.flatMap((count, f) => (count > 0 ? [f] : []))
+    if (cut.length > 0)
+      return {
+        level: "warning",
+        code: "clipped-seed",
+        message: `with seed ${seed} it is drawn past the canvas edge on frames ${spans(cut)}: this seed keeps it inside by luck, and a new seed cuts it off; make size bigger, or limit how far particles reach`
+      }
+  }
+  return undefined
+}
+
 /**
- * Runs a draft twice (the second to catch randomness that is not the seed's),
- * measures it, and lists its issues; warnings in `accept` (code → why) are
- * set apart. Errors are never accepted.
+ * Runs a draft twice (the second to catch randomness that is not the seed's)
+ * and with a few other seeds (to see how far it can reach), measures it, and
+ * lists its issues; warnings in `accept` (code → why) are set apart. Errors
+ * are never accepted.
  */
 export const checkEffect = (effect: Effect, palette: Palette, options: RunOptions & { readonly accept?: Readonly<Record<string, string>> | undefined } = {}, context: Context = {}): Checked => {
   const run = runEffect(effect, palette, options)
   const again = runEffect(effect, palette, options)
-  const all = issuesOf(run, again, palette, context)
+  const reach = run.errors.length === 0 ? reachIssue(effect, palette, options, run) : undefined
+  const all = [...issuesOf(run, again, palette, context), ...(reach === undefined ? [] : [reach])]
   const why = (issue: Issue): string | undefined => (issue.level === "warning" ? options.accept?.[issue.code] : undefined)
   return {
     run,

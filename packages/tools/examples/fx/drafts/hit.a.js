@@ -19,7 +19,7 @@ export default {
       const far = fx.ease.out(fx.t) * length
       const near = fx.ease.in(fx.t) * length
       if (far - near < 1) continue
-      const color = fx.ramp(["white", "yellow", "gold", "orange", "red"], fx.t)
+      const color = fx.ramp("fire", fx.t)
       fx.line(fx.cx + Math.cos(angle) * near, fx.cy + Math.sin(angle) * near, fx.cx + Math.cos(angle) * far, fx.cy + Math.sin(angle) * far, color)
     }
   }
