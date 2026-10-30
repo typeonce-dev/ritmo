@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "palette": {
+    "white": "#ffffff",
+    "yellow": "#fee761",
+    "gold": "#feae34",
+    "orange": "#f77622",
+    "red": "#e43b44",
+    "crimson": "#a22633",
+    "ash": "#c0cbdc",
+    "smoke": "#8b9bb4",
+    "soot": "#5a6988",
+    "dusk": "#3a4466",
+    "cyan": "#2ce8f5",
+    "blue": "#0099db"
+  },
+  "backdrops": {
+    "dungeon": "#1a1c2c",
+    "meadow": "#5a8f3c"
+  },
+  "effects": {
+    "hit": {
+      "about": "A sword blow lands on an enemy: quick, bright, gone in a third of a second.",
+      "drafts": {
+        "a": {
+          "file": "drafts/hit.a.js"
+        },
+        "b": {
+          "file": "drafts/hit.b.js"
+        },
+        "c": {
+          "file": "drafts/hit.c.js"
+        }
+      }
+    },
+    "heavy-slash": {
+      "about": "A heavy two-handed blow, like the greatsword strikes in Hollow Knight: a wide white crescent that lands at once, holds for a beat, and wears away. Slower and wider than hit.",
+      "drafts": {
+        "a": {
+          "file": "drafts/heavy-slash.a.js"
+        },
+        "b": {
+          "file": "drafts/heavy-slash.b.js"
+        },
+        "c": {
+          "file": "drafts/heavy-slash.c.js",
+          "tune": {
+            "shards": 3
+          }
+        },
+        "d": {
+          "file": "drafts/heavy-slash.d.js",
+          "tune": {
+            "hold": 1
+          }
+        }
+      }
+    },
+    "ice-spike": {
+      "about": "Ice magic: a crystal grows out of the ground into an opponent, then explodes into ice splinters. Reference: the ice effects (spikes, crystals, shattering) linked from Sprite Fusion's effects article; no game named yet.",
+      "drafts": {
+        "a": {
+          "file": "drafts/ice-spike.a.js"
+        },
+        "b": {
+          "file": "drafts/ice-spike.b.js",
+          "accept": {
+            "jaggies": "the hit flash crossing the tallest tip, and the cracked chunks, two frames each"
+          }
+        },
+        "c": {
+          "file": "drafts/ice-spike.c.js"
+        },
+        "d": {
+          "file": "drafts/ice-spike.d.js"
+        }
+      }
+    },
+    "explosion": {
+      "about": "A barrel blows up: a big hit, with smoke that lingers a moment.",
+      "drafts": {
+        "a": {
+          "file": "drafts/explosion.a.js",
+          "accept": {
+            "jaggies": "the notches where round puffs overlap are the lumpy cloud look"
+          }
+        },
+        "b": {
+          "file": "drafts/explosion.b.js"
+        }
+      }
+    },
+    "torch": {
+      "about": "A wall torch in a dungeon, burning forever.",
+      "drafts": {
+        "a": {
+          "file": "drafts/torch.a.js"
+        },
+        "b": {
+          "file": "drafts/torch.b.js",
+          "accept": {
+            "jaggies": "the notches where round blobs overlap are the bubbly look",
+            "flicker": "blobs hand their color to the next as they cool: a shimmer at 7%, not a boil"
+          }
+        }
+      }
+    }
+  }
+}

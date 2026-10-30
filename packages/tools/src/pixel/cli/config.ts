@@ -85,11 +85,11 @@ const findConfig = Effect.fn("findConfig")(function* (from: string) {
   }
 })
 
-/** Reads the config at `explicit`, or the nearest one above the working directory. */
-export const loadConfig = Effect.fn("loadConfig")(function* (explicit: Option.Option<string>) {
+/** Reads the config at `explicit`, or the nearest one at or above `from` (the working directory by default). */
+export const loadConfig = Effect.fn("loadConfig")(function* (explicit: Option.Option<string>, from = ".") {
   const fs = yield* FileSystem.FileSystem
   const path = yield* Path.Path
-  const file = Option.isSome(explicit) ? Option.some(path.resolve(explicit.value)) : yield* findConfig(".")
+  const file = Option.isSome(explicit) ? Option.some(path.resolve(explicit.value)) : yield* findConfig(from)
   if (Option.isNone(file)) return emptyConfig
   const text = yield* fs.readFileString(file.value).pipe(Effect.mapError(() => new CliFailure({ message: `cannot read ${file.value}` })))
   const raw = yield* Effect.try({
