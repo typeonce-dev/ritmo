@@ -66,7 +66,7 @@ const skillFiles = Object.keys(markdown)
     if (file === "skills/ritmo-sounds/SKILL.md") return shipped(core, file, "Ritmo sounds skill", "sound effects with `ritmo-tools sound` from `@typeonce/ritmo-tools`: recipes, checks, takes, and the review page a person listens on")
     if (file === "skills/ritmo-music/SKILL.md") return shipped(core, file, "Ritmo music skill", "game music with `ritmo-tools music` from `@typeonce/ritmo-tools`: songs built around a hum, checks, and the review page a person edits on")
     if (file === "skills/ritmo-fx/SKILL.md") return shipped(core, file, "Ritmo effects skill", "pixel art effects with `ritmo-tools fx` from `@typeonce/ritmo-tools`: drafts written as code, checks, contact sheets, and the review page a person watches on")
-    if (file === "skills/ritmo-pixel-art/SKILL.md") return shipped(core, file, "Ritmo pixel art skill", "pixel art and animation sheets with `ritmo-tools pixel` from `@typeonce/ritmo-tools`: which command for each case, and how to read its report")
+    if (file === "skills/ritmo-pixel-art/SKILL.md") return shipped(core, file, "Ritmo pixel art skill", "the principles that make a game's pixel art read as one game (grid, read order, palette, tiles, light, motion, judging in the game), and pixel art and animation sheets with `ritmo-tools pixel` from `@typeonce/ritmo-tools`: which command for each case, and how to read its report")
     return shipped(core, file, `${file.includes("/references/") ? "Reference" : "Playbook"}: ${heading}`, "")
   })
 
