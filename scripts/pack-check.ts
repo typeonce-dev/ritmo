@@ -249,7 +249,11 @@ if (!song.includes('"verdict": "clean"')) throw new Error(`ritmo-tools music che
 run(toolsBin, ["fx", "init", "game.fx.json"], consumer)
 const effects = run(toolsBin, ["fx", "check", "game.fx.json"], consumer)
 if (!effects.includes('"verdict": "clean"')) throw new Error(`ritmo-tools fx check printed ${effects}`)
-console.log(`${toolsVersion}: pixel palettes, sound check, music check, and fx check ok`)
+// The rig's modules load as files (so they can import each other), from the consumer's folder.
+run(toolsBin, ["rig", "init", "hero.rig.json"], consumer)
+const rig = run(toolsBin, ["rig", "check", "hero.rig.json"], consumer)
+if (!rig.includes('"verdict": "clean"')) throw new Error(`ritmo-tools rig check printed ${rig}`)
+console.log(`${toolsVersion}: pixel palettes, sound check, music check, fx check, and rig check ok`)
 
 step("internal modules are not exported")
 writeFileSync(path.join(consumer, "internal.mjs"), `import("@typeonce/ritmo/internal/world").then(() => process.exit(1), (error) => { if (error.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") process.exit(2) })\n`)

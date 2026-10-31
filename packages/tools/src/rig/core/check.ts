@@ -388,7 +388,7 @@ const frameIssues = (rig: Rig, clip: Clip, frames: ReadonlyArray<Frame>): Array<
       ]
       warn(
         "stance",
-        `frame ${f} is off the ${clip.stance} stance (${words.join("; ")}): key it as \`{ at: ${f}, ...rig.stances.${clip.stance} }\`, so the game can blend this clip with the others on that stance`,
+        `frame ${f} is off the ${clip.stance} stance (${words.join("; ")}): key it as \`{ at: ${f}, ...rig.stances.${clip.stance} }\`, so the game can blend this clip with the others on that stance; a value the stance does not set keeps its nearest key's value there, so give the stance every bone the clip moves`,
         [f],
         [...off.map((entry) => entry.bone), ...extra, ...missing]
       )

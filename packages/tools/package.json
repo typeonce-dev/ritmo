@@ -1,7 +1,7 @@
 {
   "name": "@typeonce/ritmo-tools",
   "version": "0.19.1",
-  "description": "Asset tools for games made with Ritmo, for agents: fixes AI-made pixel art and animation sheets onto a true pixel grid and a palette, keeps game sounds as JSON recipes, writes game music as JSON songs built around a hum, and draws pixel art effects as code, each with a review page for a person",
+  "description": "Asset tools for games made with Ritmo, for agents: fixes AI-made pixel art and animation sheets onto a true pixel grid and a palette, keeps game sounds as JSON recipes, writes game music as JSON songs built around a hum, and draws pixel art effects as code, each with a review page for a person; and animates characters on a skeleton written as code, checked for motion craft and baked into sprite sheets",
   "author": "Sandro Maglione",
   "license": "MIT",
   "repository": {
@@ -21,6 +21,7 @@
     "sound-effects",
     "music",
     "vfx",
+    "skeletal-animation",
     "agents",
     "cli"
   ],

@@ -15,9 +15,11 @@
  * Every value a key sets is its own timeline, a channel (`bones.torso`,
  * `aim.sword`, `reach.legFar.x`, `slots.smear`), made of the keys that set
  * it: a key may move a few bones only, and the sword can arrive a frame
- * after the arm. A channel holds its first value before its first key and
- * its last after its last. Slots, props, draw order, and a goal's bone
- * step: they hold until the next key that sets them.
+ * after the arm. A number holds its first value before its first key and
+ * its last after its last, so a stance keyed on frame 0 should set every
+ * bone the later keys move. Slots, props, and draw order are the rig's own
+ * until a key sets them, and then hold until the next key that does; a
+ * goal's bone steps like them.
  *
  * Mistakes that would key the wrong motion are errors (`KeysError`), each
  * naming the frame and channel: two keys on one frame for one channel, a
@@ -198,6 +200,8 @@ export const keysAt = (list: unknown, frame: number, last: number, chains: Chain
   const z: Record<string, Value> = {}
   for (const [id, points] of channels) {
     const [kind, name, field] = id.split(".") as [string, string, string | undefined]
+    // A slot, prop, or draw order before its first key is the rig's own: the smear a key shows on frame 8 is not there on frame 0.
+    if ((kind === "slots" || kind === "props" || kind === "z") && frame < points[0]!.at) continue
     const v = sample(points, frame)
     if (kind === "bones") (bones[name] ??= {})[field ?? "r"] = v
     else if (kind === "aim") (aim[name] ??= {})[field ?? "angle"] = v

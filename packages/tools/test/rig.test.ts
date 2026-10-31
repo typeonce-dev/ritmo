@@ -190,6 +190,9 @@ describe("keys", () => {
     expect(at([{ at: 0, curve: "linear", bones: { torso: 0 } }, { at: 10, bones: { torso: 10 } }], 3).bones?.torso).toEqual({ r: 3 })
     expect(at([{ at: 0, curve: "stepped", bones: { torso: 0 } }, { at: 10, bones: { torso: 10 } }], 9).bones?.torso).toEqual({ r: 0 })
     expect(at([{ at: 0, slots: { stick: "short" } }, { at: 5, slots: { stick: "default" } }], 4.9).slots).toEqual({ stick: "short" })
+    // A slot, a prop, or a draw order is the rig's own until its first key; a number holds its first key back.
+    const later = at([{ at: 5, slots: { stick: "short" }, props: { stick: null }, z: { arm: 9 }, bones: { torso: 7 } }], 2)
+    expect([later.slots, later.props, later.z, later.bones]).toEqual([{}, {}, {}, { torso: { r: 7 } }])
   })
 
   it("ease into and out of a rest key", () => {
@@ -361,7 +364,7 @@ describe("the checks", () => {
 
   it("hold a clip to its stance on its first frame, and its last when it plays once", () => {
     const stand = rig.stances.stand!
-    const onStance = clip((r, t) => r.keys([{ at: 0, ...stand }, { at: 3, bones: { arm: 60, fore: 90 } }, { at: 7, ...stand }]), { stance: "stand" })
+    const onStance = clip((r) => r.keys([{ at: 0, ...stand }, { at: 3, bones: { arm: 60, fore: 90 } }, { at: 7, ...stand }]), { stance: "stand" })
     expect(codes(onStance).filter((code) => code === "stance")).toEqual([])
     const off = checkClip(rig, clip((r) => r.keys([{ at: 0, ...stand }, { at: 7, bones: { torso: 20, arm: 60, fore: 90 } }]), { stance: "stand" }))
     const stance = off.issues.find((issue) => issue.code === "stance")

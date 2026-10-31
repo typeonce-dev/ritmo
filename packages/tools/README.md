@@ -10,6 +10,7 @@ tool per kind of asset:
 | `ritmo-tools sound` | Sound effects: keeps them as JSON recipes, measures and varies them, writes WAV files, and opens a local page where a person listens, picks, tunes, and notes. |
 | `ritmo-tools fx` | Pixel art effects: keeps each effect as a few drafts written as code, checks them for pixel art craft and the project's rules, draws contact sheets an agent can look at, writes sprite sheets and GIFs, and opens a local page where a person watches the drafts side by side, picks, tunes, and pins comments to a pixel. |
 | `ritmo-tools music` | Game music: hears a person's hum for its tune, tempo, and key, keeps songs as JSON tracks of notes, checks them, writes WAV and MIDI files, and opens a local page where a person plays, edits notes, records, and comments. |
+| `ritmo-tools rig` | Characters animated on a skeleton: keeps a character as a rig module (bones, shapes, IK chains, props, stances) and each clip as a few drafts written as code, checks the motion (feet that slide or float, limbs out of reach, locked or overbent joints, pops in speed, loops that jump, starts off the stance), draws contact sheets an agent can look at, and bakes sprite sheets and GIFs. |
 
 ```sh
 npx @typeonce/ritmo-tools pixel check art.png
@@ -562,6 +563,253 @@ try without the CLI: https://ritmo.typeonce.dev/tools/fx/.
   and the page's server (`serve.ts`).
 - `src/fx/ui/`: the review page, which loads drafts as `blob:` URLs, and the
   website's demo of it (`demo.ts`, `example.ts`).
+
+## Skeleton lab (`ritmo-tools rig`)
+
+Characters animated on a skeleton, as code, for agents. A character is a
+rig module (its bones, the shapes drawn on them, its IK chains, its props,
+and the stances its clips start and end on) and a module per draft of
+each clip (an idle, a walk, an attack) that poses the rig on every frame.
+The agent writes and checks them, looks at the frames as contact sheets,
+and bakes the drafts the game uses into sprite sheets. One runner poses and
+draws the frames everywhere, so what the agent checks and what the game
+plays are the same pixels.
+
+The checks measure what an agent cannot see by reading a pose: parts cut
+off by the frame or under the floor, planted feet that slide or float,
+limbs that cannot reach their goal, joints that never bend or bend the
+wrong way, sudden changes of speed, loops that jump, a start or end off
+the clip's stance. Each names its frames and the bones or parts, and the
+report carries the numbers to judge timing by: every joint's bend, the
+trail bone's spacing, speed, and arc, and, asked for, where any bone is on
+every frame.
+
+### Rigs and clips
+
+A rig module's default export is the character in its setup pose
+(standing straight, arms hanging), seen from the side. Coordinates have y
+up and the origin on the ground under the character; angles are degrees,
+counter-clockwise, 0 pointing along +x:
+
+```js
+export default {
+  size: [128, 120], // the frame, in pixels
+  anchor: [60, 112], // the pixel the ground under the character sits on
+  outline: "#16121d", // every part's outline, unless the part says
+  line: 1.5,
+  back: "torso", // the bone the back runs along, for the peek check
+  bones: {
+    hips: { y: 38, rotation: 90, length: 6 }, // x and y in its parent's frame; rotation from its parent's direction
+    torso: { parent: "hips", length: 26 },
+    arm: { parent: "torso", x: 24, rotation: 180, length: 12 },
+    fore: { parent: "arm", x: 12, length: 11 },
+    sword: { parent: "fore", x: 11, rotation: 90, length: 30 },
+    thigh: { parent: "hips", rotation: 180, length: 18 },
+    shin: { parent: "thigh", x: 18, length: 18 },
+    foot: { parent: "shin", x: 18, rotation: 90, length: 7 }
+  },
+  parts: {
+    thigh: { bone: "thigh", z: 1, fill: "#4b4f6e", shape: { kind: "capsule", r: 4, r2: 3 } }, // a capsule with no ends runs along its bone
+    shin: { bone: "shin", z: 2, fill: "#4b4f6e", shape: { kind: "capsule", r: 3, r2: 2.5 } },
+    foot: { bone: "foot", z: 3, fill: "#6e4b3a", shape: { kind: "capsule", r: 2 } },
+    torso: { bone: "torso", z: 10, fill: "#3f7fb8", shape: { kind: "capsule", r: 6 } },
+    head: { bone: "torso", z: 11, fill: "#f1c09a", shape: { kind: "ellipse", c: [1, 72], rx: 6.5, ry: 7 } }, // in world coordinates, standing
+    smear: { bone: "sword", z: 19, fill: "#e9f6ffa6", outline: null, hidden: true, shape: { kind: "sweep", from: 8, to: 30, frames: 1 } },
+    arm: { bone: "arm", z: 20, fill: "#3f7fb8", shape: { kind: "capsule", r: 3, r2: 2.6 } },
+    fore: { bone: "fore", z: 21, fill: "#f1c09a", shape: { kind: "capsule", r: 2.4, r2: 2 } },
+    blade: { bone: "sword", z: 22, fill: "#dde6ee", shape: { kind: "poly", points: [{ along: 3, across: -1.5 }, { along: 30 }, { along: 3, across: 1.5 }] } } // points on the bone
+  },
+  chains: { leg: { upper: "thigh", lower: "shin", end: "foot", bend: 1, foot: true } },
+  props: { sword: ["blade", "smear"] },
+  // The stance sets every bone its clips move (hips.x too): a clip keyed from it starts and ends exactly on it.
+  stances: { ready: { bones: { hips: { x: 0, y: -3 }, torso: -6, arm: 40, fore: 60 }, aim: { sword: 50 }, reach: { leg: { x: 4, y: 2 } } } }
+}
+```
+
+- `bones`: a tree, each with a `length`, a `parent` (none for the root), where it starts in its parent's frame (`x` along the parent, `y` across it), its `rotation` from the parent's direction, and `scaleX`/`scaleY`. Parents are solved before children, in the order the bones are declared otherwise.
+- `parts`: what is drawn, each on a `bone`, in draw order `z` (higher over lower; equal keeps the declared order), with a `fill` (`#rrggbb` or `#rrggbbaa`), an `outline` (or `null`) and `line` width, `far: true` for the far side of the body (the peek check watches it), `hidden: true` for a part a pose shows only when it says (a smear), and `alt`, other shapes by name. Parts are drawn anti-aliased.
+- Shapes are drawn in the setup pose's world coordinates, and follow their bone from there: `capsule` (`a`, `b`, radius `r` tapering to `r2`; along the bone when `a` and `b` are left out), `ellipse` (`c`, `rx`, `ry`, `angle`; a circle when `ry` is left out), `poly` (`points`, corners rounded by `round`), and `sweep` (the area the bone's segment from `from` to `to` swept over the last `frames` frames: a smear worked out from the clip's own poses). A point is `[x, y]`, or a point on a bone in the setup pose, `{ bone, along, across, dx, dy }` (the part's own bone when `bone` is left out; `across` is to the bone's left, `dx` and `dy` in world axes), so a shape that hangs on a bone is written along it.
+- `chains`: two-bone IK, `upper` then `lower` (which starts at the end of `upper`), ending in `end`; `bend` says which way the middle joint bends (1 counter-clockwise from the line to the goal: a knee facing +x); `foot: true` marks a foot, whose ground contact the checks measure.
+- `props`: groups of parts shown, swapped, or hidden as one (a sword, a shield). A prop's parts cannot be hidden one by one.
+- `stances`: named poses clips start and end on, so the game can blend between them.
+- `look` (optional): the `background`, `ground` line, and `floor` pictures are drawn on; `facing` (optional): `"right"` (the default) or `"left"`.
+
+A clip draft's default export says the clip's length and speed, and poses the rig on each frame:
+
+```js
+export default {
+  label: "overhead chop",
+  frames: 16,
+  fps: 24,
+  loop: false, // true: plays again from the start (an idle, a walk); false: plays once
+  stance: "ready", // frame 0 (and, played once, the last frame) must be the rig's ready stance
+  params: { lean: { min: 5, max: 30, value: 18 } }, // tunable: `p.lean` in pose
+  phases: [{ name: "swing", from: 7, to: 10, fast: true }], // named spans the checks and the person read; fast ones may snap
+  trail: "sword", // the bone whose tip the checks measure for speed and arc
+  pose(rig, t, p) {
+    const ready = rig.stances.ready
+    return rig.keys([
+      { at: 0, ...ready },
+      // Cocked behind the head, and held: the blade at 190°.
+      { at: 6, rest: true, bones: { hips: { x: -3, y: -5 }, torso: 10, arm: 200, fore: 30 }, aim: { sword: 190 } },
+      { at: 8, curve: "linear", slots: { smear: "default" }, bones: { hips: { x: 1, y: -5 }, torso: -p.lean, arm: 130, fore: 10 }, aim: { sword: 80 } },
+      { at: 9, curve: "linear", bones: { hips: { x: 3, y: -6 }, torso: -p.lean, arm: 80, fore: 5 }, aim: { sword: -10 } },
+      { at: 10, slots: { smear: null } },
+      { at: 15, ...ready }
+    ])
+  }
+}
+```
+
+Drafts and rigs are code, and every `rig` command that reads a bank runs
+them with Node's full permissions: run it on banks you trust, as you would
+`npm run` in a project. They are ES modules that import nothing but each
+other: a clip may import the rig module's named exports and other clips
+(shared stances, goals, and constants: `import { GRIP } from "../hero.js"`).
+`.mjs` loads anywhere, `.js` in a package whose `package.json` says
+`"type": "module"`, and `.ts` with Node 22.18 or newer.
+
+`pose(rig, t, p)` runs once per frame, from nothing: a clip is a function
+of time. `t` is how far through the clip the frame is (0 on the first, 1 on
+the last; a loop never reaches 1), `p` the params with the person's tune
+laid over them, and `rig`:
+
+| `rig.` | What it is |
+| --- | --- |
+| `keys(list)` | The pose a list of keys gives on this frame: the one way to key a clip (see below). |
+| `add(base, over)` | `over` laid on `base`, for a pose made of layers (breathing on a stance): turns, moves, and aim angles add up; goals, slots, props, and draw order in `over` win. |
+| `stances` | The rig's stances by name. |
+| `frame`, `frames` | This frame's number (fractional while a smear samples between frames) and how many there are. |
+| `length(bone)` | A bone's length. |
+| `random()`, `range(min, max)` | Numbers from the draft's seed, starting over on every frame. |
+| `ease.in`, `ease.out`, `ease.inOut`, `lerp`, `clamp` | Curves and helpers for timing. |
+
+A pose says what changes from the setup pose. Bones are solved parent
+first, and on each bone an aim wins over a reach and a reach over the
+bone's own turn, each by its `mix` (0 to 1, default 1):
+
+| Pose field | What it does |
+| --- | --- |
+| `bones: { torso: -6, hips: { x: -3, y: -5, r: 2, sx: 1, sy: 1 } }` | Turns a bone from its setup pose (relative to its parent), and moves (in its parent's frame) and scales it. |
+| `aim: { sword: 245, thigh: { angle: -40, mix: 0.5 } }` | A bone's world angle: "the blade at 245°", "the thigh at -40° and the shin hanging (-90°)", whatever its parents do. |
+| `reach: { leg: { x: 4, y: 2, angle: 0 } }` | IK: the chain's end (an ankle, a wrist) on a world point. |
+| `reach: { arm: { bone: "sword", along: -9, across: 3.5, turn: -90 } }` | IK to a point on another bone, moved by `dx` and `dy` in world axes: a hand on a grip, or a fist in front of the shoulder (`{ bone: "torso", along: 35, dx: 24, dy: -4, angle: 45 }`). The end bone keeps its setup world angle unless the goal says `angle` (world) or `turn` (from the goal's bone); the goal's bone must be declared before the chain's upper bone. |
+| `slots: { smear: "default", hand: "fist" }` | A part's shape by `alt` name, `"default"`, or `null` to hide it. |
+| `props: { sword: null }` | A prop shown (`"default"`), swapped to a look its parts have in `alt` (parts without it hide), or hidden, as one. A hidden prop's bones are exempt from every check, and from the trail. |
+| `z: { handFar: 25 }` | A part's draw order, replacing its `z`. |
+
+`rig.keys` takes keys, each a pose on a frame (`at`), with how it moves to
+the next (`curve`: `smooth`, the default, flows through the keys on either
+side; `linear`, `in`, `out`, or `stepped`) and `rest: true` where the
+motion comes to rest (an extreme or a hold: smooth segments ease into and
+out of it). Every value a key sets is its own timeline, a channel
+(`bones.torso`, `aim.sword`, `reach.leg.x`, `slots.smear`), made of the
+keys that set it, so a key may move a few bones only. A number holds its
+first value before its first key and its last after its last, so a stance
+keyed on the first and last frames should set every bone the clip moves
+(the `stance` check says when one does not). Slots, props, and draw order
+are the rig's own until a key sets them, and then hold until the next key
+that does; a goal's bone steps like them. Key lists that would key the
+wrong motion are errors, each naming the clip, the frame, and the
+channel: two keys on one frame setting one channel, a key past the
+clip's frames, an aim or reach that starts after a bone's own turns
+(it would hold back over them from frame 0: key its `mix: 0` there), and
+turns under an aim or reach that never mixes out (they would never show).
+
+A bank is one file per character (`hero.rig.json`) naming the rig module
+and each clip's drafts (paths from the bank's folder), with each draft's
+`seed`, the person's `tune`, and `accept` (warnings judged deliberate,
+each with why: `rig check` lists them apart and does not count them;
+errors cannot be accepted), and the draft the game gets in `use` (the
+first when unset):
+
+```json
+{
+  "version": 1,
+  "rig": "hero.js",
+  "clips": {
+    "idle": { "about": "Ready stance, breathing.", "drafts": { "a": { "file": "clips/idle.js", "accept": { "locked": "a held guard: the far arm only breathes" } } } },
+    "attack": {
+      "about": "Overhead sword chop from the ready stance and back.",
+      "drafts": { "a": { "file": "clips/attack.js" }, "b": { "file": "clips/attack.b.js", "tune": { "overshoot": 18 } } },
+      "use": "a"
+    }
+  }
+}
+```
+
+Its review lives next to it (`hero.rig.json` → `hero.rig.review.json`):
+each clip's status (`new`, `approved`, `changes`), the person's note, and
+their comments, each pinned to a draft, a frame (from 0), and a pixel of
+the frame (with the part there, the bone near it, and the phase), or to a
+span of frames (timing: "frames 6-9 feel slow"), and resolved by the agent
+with a reply (`rig resolve`). `examples/rig/hero.rig.json` in the
+repository is a swordsman with an idle (two drafts: armed, and an
+unarmed fighting stance), a walk, an overhead chop (two drafts), a block,
+a punch, and a kick.
+
+### The checks
+
+`rig check` poses each draft twice. **Errors** (exit 3): a rig or clip
+module that does not load or is not a rig or a clip (each field that is
+wrong named), a pose that throws or names what the rig does not have
+(`pose`), a key list that keys the wrong motion (`keys`, see above), and
+a second run that poses other bones (`random`: use `rig.random()`). A
+draft with errors gets no warnings until they are fixed. **Warnings**,
+each with its frames and the bones or parts:
+
+| Code | What it finds |
+| --- | --- |
+| `off-canvas` | A part (with its outline) past the frame's edge. |
+| `below-ground` | A part other than a foot reaching more than 1 px under the ground line: a blade in the floor. |
+| `floating`, `sinking` | A planted foot's sole more than 1 px above or under the ground. A foot chain is planted on every frame unless the clip's `contacts` say on which (`{ leg: [[0, 3], [9, 18]] }`). |
+| `slide` | A planted foot drifting more than 0.5 px a frame against the clip's `travel` (the speed the game moves the character at, in px/s: planted feet move back at it). |
+| `unreachable` | A chain's goal more than 0.5 px from its end at full mix: the limb is straight and short (an aim on the limb overrules its reach and is not counted). |
+| `peek` | A far-side part seen (3 px or more) behind the middle line of the rig's `back` bone, at its height: an elbow poking out behind the back, or a far limb crossing over it. |
+| `locked` | A chain's middle joint bending less than 5° over the whole clip: the limb never articulates. |
+| `hyperextended` | A joint bending more than 3° past straight the wrong way. |
+| `jerk` | A bone tip's speed changing by more than 8 px a frame from one frame to the next, and by more than half its speed, outside `fast` phases. A move starts and ends at rest (under 1 px a frame, or a dip in speed to under half the faster frame beside it: an extreme the motion slows into), and its first and last 2 frames are not flagged: easing out of a hold or into an extreme is not a pop. |
+| `identical` | Consecutive frames of a loop with the same pose: the loop stops there. |
+| `seam` | A loop whose last frame jumps back to its first (its step more than twice the median step, and 0.5 px). |
+| `gap` | A frame with nothing drawn. |
+| `draw-order` | A part changing draw order between frames (a pose's `z`), passing the parts listed: check it reads. |
+| `stance` | The first frame, and for a one-shot the last, more than 1 px off the clip's `stance` on any shown bone, or showing parts the stance hides (or hiding parts it shows). |
+
+Bones whose parts are all hidden on a frame (a put-away prop) are exempt
+from every check on that frame, and from the trail. With each draft the
+report gives its frames, length, stance, the box it fills, its params,
+each joint's bend range (`look` gives the bend on every frame), the trail
+bone's spacing (how far its tip moves into each frame), peak speed, and
+arc (and with `fast` phases the swing's span, length, and how much of the
+clip comes before it), and a verdict; each clip has a verdict too, so a new
+clip is judged apart. `--positions handNear,sword` adds where each bone
+named starts, its tip, and its angle on every frame, in world units.
+
+### The command line
+
+`npx @typeonce/ritmo-tools rig <command>` (inside the Ritmo repository, `node packages/tools/bin/ritmo-tools.mjs rig <command>`).
+Every command prints JSON and exits 0 (clean), 2 (usage error, missing
+file, broken bank), or 3 (the rig or a draft has errors).
+
+| Command | Does |
+| --- | --- |
+| `ritmo-tools rig init [bank]` | Writes a starting bank, a small figure's rig module (bones, parts, leg and arm chains, a stance), and an idle draft to build from. |
+| `ritmo-tools rig check <bank> [names...] [--positions bones]` | Poses every draft of every clip (or the named ones) twice and measures it, and lists errors and warnings (see above), with accepted warnings apart and a verdict per draft and per clip. |
+| `ritmo-tools rig look <bank> <name> [--draft a] [--frames 5-10] [--scale 1] [--columns n] [--art] [--each] [--onion] [--positions bones]` | Writes a contact sheet PNG per draft for the agent to look at: every frame (or `--frames`) numbered with its phase (`fast` ones in amber), on the rig's backdrop, in rows no wider than 2000 pixels; under each row the same frames with their bones, joints, and the trail bone's path (`--art` leaves them out). `--each` writes one picture per frame, `--onion` draws the frame before faintly under each, and `--scale` draws them bigger. The person's open comments are ringed (a pixel) or framed (a span) in magenta with their numbers. Prints every joint's bend on every frame. |
+| `ritmo-tools rig bake <bank> [names...] [-o dir] [--scale 1]` | Writes each clip's draft in use for the game: a sprite sheet PNG (its frames in one row, anti-aliased on transparency), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the rig's `anchor`, the animation and its fps, and `meta.loop`), and a GIF on the rig's backdrop. Same inputs, same bytes. |
+| `ritmo-tools rig notes <bank>` | What the person said: each clip's status, note, open comments (numbered, each with where it is in words: "draft a, frame 22 (up), pixel (146, 195), on blade, near bone sword"), how many are resolved, draft in use, and tune, changes asked first. |
+| `ritmo-tools rig resolve <bank> <clip> <numbers...> [--reply "what changed"]` | Marks comments as resolved: `rig notes` and `rig look` stop showing them. |
+
+### Code
+
+- `src/rig/core/`: rig modules and poses decoded and checked (`rig.ts`),
+  poses solved (turns, IK, aims) and parts placed (`pose.ts`), keyframes
+  (`keys.ts`), clip modules and the runner that poses every frame
+  (`clip.ts`), the anti-aliased rasterizer (`raster.ts`), banks and reviews
+  (`bank.ts`), the checks (`check.ts`), and contact sheets, sprite sheets,
+  and GIFs (`export.ts`, through the pixel fixer's sheet and GIF writers).
+- `src/rig/cli/`: the commands, loading the rig's and the clips' modules as
+  files so their imports of each other resolve (`io.ts`).
 
 ## Sound lab (`ritmo-tools sound`)
 
