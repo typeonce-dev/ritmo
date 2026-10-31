@@ -1,8 +1,0 @@
----
-"@typeonce/ritmo": minor
-"@typeonce/ritmo-devtools": patch
----
-
-**A skill for the first minute: `skills/ritmo-onboarding`.** When strangers are about to play a game (a playtest, a jam, a release), the agent reads it next to the `ritmo` skill. It says what teaches a game: the rule on screen in action before anything is asked, something at stake that the rule changes from the first seconds (a first contact that costs nothing, a second that is real), the rule told once in the game's own pieces at the player's pace and then the controls taught by doing, one thing per stretch of play, a lesson for what contradicts what a player of the genre expects, a lesson that cannot be passed by chance, a few words where the eyes are and never the only channel, a failure that names the rule, and the controls shown being done (a hand for a gesture, the key or button) with every input the game accepts given a result under the rule. It turns the strangers you watched into the game's checks: a bot per way of skipping the lesson (doing nothing, the obvious thing at full force, one input repeated, the input you did not mean) that must never clear a lesson or win what follows it, the rule's promise as a fuzzed invariant, and a playtest as a replay. After a playtest you tell the agent what the stranger did, not what they said; when rounds keep failing the same way it changes the lesson or the rule instead of the hints. `SETUP.md` step 2 links it; the `ritmo` skill points to it.
-
-`ritmo-devtools lint` notes `ritmo-onboarding` as well when the project does not link it (`note  skill-not-linked  ritmo-onboarding`), without changing the exit code, so a project set up before this release sees it until it adds the link.
