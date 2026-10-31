@@ -47,7 +47,7 @@ const damping = Ops.exp(-friction * dt)
 
 Randomness is `Random`, a generator (mulberry32) whose whole state is one integer, kept in a resource so a run replays and saves with the world: `Descriptor.ConstructedResource(Random.codec)`, started with `Random.seed(n)`, drawn in a system with `Random.draw(resources.rng)`.
 
-Agents: set up a project with `SETUP.md`, then follow the skill at `skills/ritmo/SKILL.md` on every change, or `skills/ritmo-prototype/SKILL.md` while the game is a prototype, and `skills/ritmo-onboarding/SKILL.md` as well when strangers are about to play it; `skills/ritmo-pixel-art/SKILL.md`, `skills/ritmo-sounds/SKILL.md`, `skills/ritmo-music/SKILL.md`, and `skills/ritmo-fx/SKILL.md` cover pixel art, sounds, music, and effects with `@typeonce/ritmo-tools`.
+Agents: set up a project with `SETUP.md`, then follow the skill at `skills/ritmo/SKILL.md` on every change, or `skills/ritmo-prototype/SKILL.md` while the game is a prototype, `skills/ritmo-onboarding/SKILL.md` as well when strangers are about to play it, and `skills/ritmo-polish/SKILL.md` when a finished game gets polished; `skills/ritmo-pixel-art/SKILL.md`, `skills/ritmo-sounds/SKILL.md`, `skills/ritmo-music/SKILL.md`, and `skills/ritmo-fx/SKILL.md` cover pixel art, sounds, music, and effects with `@typeonce/ritmo-tools`.
 
 Related packages, released together with the same version:
 

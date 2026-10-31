@@ -21,7 +21,7 @@
  * A missing or unreadable config, one with `extends`, or one that never turns
  * the rule on prints why the check was skipped and does not fail.
  *
- * Last, it notes each Ritmo skill (`ritmo`, `ritmo-prototype`, `ritmo-onboarding`) the project
+ * Last, it notes each Ritmo skill (`ritmo`, `ritmo-prototype`, `ritmo-onboarding`, `ritmo-polish`) the project
  * does not link from the installed package (`.agents/skills/<skill>` or
  * `.claude/skills/<skill>`, see `SETUP.md`), or holds a copy of it that goes
  * stale on upgrade. The note never fails the lint.
