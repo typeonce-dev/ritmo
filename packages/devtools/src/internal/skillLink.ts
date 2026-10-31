@@ -11,7 +11,8 @@ import { join, sep } from "node:path"
 /** The skills `@typeonce/ritmo` ships, with what an agent misses without each. */
 const skills = {
   ritmo: "reads the playbooks for this Ritmo version",
-  "ritmo-prototype": "can prototype a mechanic with this Ritmo version"
+  "ritmo-prototype": "can prototype a mechanic with this Ritmo version",
+  "ritmo-onboarding": "can teach the game to strangers with this Ritmo version"
 } as const
 
 export type Skill = keyof typeof skills
