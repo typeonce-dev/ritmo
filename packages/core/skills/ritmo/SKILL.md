@@ -21,6 +21,10 @@ When the game has a `PROTOTYPE.md` at its root, follow the [`ritmo-prototype`](.
 
 When the change is about what teaches the game (the title, the first stretch of play, what the game says when the player fails, the controls) or follows a playtest by someone other than the user, read the [`ritmo-onboarding`](../ritmo-onboarding/SKILL.md) skill too: the playbooks here still apply, and it adds the check that a player who never learned the rule cannot win.
 
+## Finishing
+
+When the user asks to polish the game, make it feel better or more finished, or add juice, read the [`ritmo-polish`](../ritmo-polish/SKILL.md) skill too: it audits what the game already has, ranks the gaps from the core verb out, and keeps every effect in host or render code, so the simulation's tests pass with the effects on or off.
+
 ## Pick the playbook
 
 Read it before writing code; a change of several kinds reads each.

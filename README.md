@@ -143,6 +143,12 @@ rule on screen in the first seconds, makes each lesson impossible to pass by
 chance, and proves headless that a player who never learned the rule cannot
 win; after each playtest, you tell it what the stranger did.
 
+When the game is done and you want it to feel finished, ask your agent to polish
+it. The [polish skill](./packages/core/skills/ritmo-polish/SKILL.md) audits what
+the game already has, ranks the gaps (the core verb first), and lets you pick;
+it keeps every effect out of the simulation, so the headless tests pass with the
+effects on or off, and it never claims a touch feels good: you play, it listens.
+
 ## Games built with Ritmo
 
 - [Inkline Town](https://github.com/SandroMaglione/inkline-town): a town
