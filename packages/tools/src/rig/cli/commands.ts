@@ -289,8 +289,8 @@ const resolve = Command.make(
 )
 
 const STARTER_BANK: Bank = {
-  rig: "rig/figure.js",
-  clips: { idle: { about: "Standing, breathing: the stance the other clips start and end on.", drafts: { a: { file: "rig/idle.a.js" } } } }
+  rig: "rig/figure.mjs",
+  clips: { idle: { about: "Standing, breathing: the stance the other clips start and end on.", drafts: { a: { file: "rig/idle.a.mjs" } } } }
 }
 
 const STARTER_RIG = `// A small figure seen from the side, facing right (+x): y is up, the origin is the ground under it, angles are degrees counter-clockwise from +x.
