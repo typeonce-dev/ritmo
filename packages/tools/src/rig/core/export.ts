@@ -115,6 +115,7 @@ const band = (img: RgbaImage, x0: number, y0: number, w: number, h: number, labe
 // ---------------------------------------------------------------------------
 // Looking
 
+/** What `lookSheet` and `framePictures` draw. */
 export interface LookOptions {
   /** Pixels per world unit: 2 draws the frames twice as big. */
   readonly scale: number

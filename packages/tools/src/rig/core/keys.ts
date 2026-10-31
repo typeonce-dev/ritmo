@@ -36,6 +36,7 @@ import type { Pose } from "./rig.ts"
  * (constant speed: a swing's frames), or `stepped` (holds, then jumps).
  */
 export type Curve = "smooth" | "linear" | "stepped" | "in" | "out"
+/** Every curve a key takes. */
 export const curves: ReadonlyArray<Curve> = ["smooth", "linear", "stepped", "in", "out"]
 
 /** A pose on a frame: what `rig.keys` takes. */
@@ -176,7 +177,8 @@ export interface ChainBones {
  * is the clip's last frame a key may be on (its frame count for a loop,
  * which may key the frame it wraps to). Throws `KeysError` on a list that
  * would key the wrong motion; the clip runner reports it with the clip's
- * name.
+ * name. Clips call it as `rig.keys(list)`, the one keyframe helper; for a
+ * pose made of layers, use `rig.add`.
  */
 export const keysAt = (list: unknown, frame: number, last: number, chains: ChainBones): Pose => {
   const channels = channelsOf(list, last)

@@ -46,6 +46,7 @@ const importModule = Effect.fn("importModule")(function* (bankFile: string, rela
 /** The rig module, loaded and checked; a broken one is a list of problems. */
 export type LoadedRig = { readonly ok: true; readonly rig: Rig; readonly file: string } | { readonly ok: false; readonly error: string; readonly file: string }
 
+/** The bank's rig module, imported as a file and decoded; a broken one is a message, so `rig check` can report it (the other commands fail on it). */
 export const loadRig = Effect.fn("loadRig")(function* (bankFile: string, bank: Bank) {
   const imported = yield* importModule(bankFile, bank.rig)
   if (!imported.ok) return imported satisfies LoadedRig
@@ -56,6 +57,7 @@ export const loadRig = Effect.fn("loadRig")(function* (bankFile: string, bank: B
 /** A clip's module, loaded and checked against its rig. */
 export type LoadedClip = { readonly ok: true; readonly clip: Clip; readonly file: string } | { readonly ok: false; readonly error: string; readonly file: string }
 
+/** A draft's clip module, imported as a file (its imports of the rig module and other clips resolve) and decoded against the rig. */
 export const loadClip = Effect.fn("loadClip")(function* (bankFile: string, draft: Draft, rig: Rig) {
   const imported = yield* importModule(bankFile, draft.file)
   if (!imported.ok) return imported satisfies LoadedClip

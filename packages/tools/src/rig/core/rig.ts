@@ -42,6 +42,7 @@ export interface Mat {
 }
 
 const RAD = Math.PI / 180
+/** The transform that changes nothing: the root bone's parent. */
 export const IDENTITY: Mat = { a: 1, b: 0, c: 0, d: 1, x: 0, y: 0 }
 
 /** `m` after `n`: a point goes through `n` first. */
@@ -61,8 +62,10 @@ export const localMat = (x: number, y: number, rotation: number, sx: number, sy:
   return { a: cs * sx, b: sn * sx, c: -sn * sy, d: cs * sy, x, y }
 }
 
+/** A point through a transform: a point in a bone's frame (`[along, across]`) to the world. */
 export const apply = (m: Mat, p: V): V => [m.a * p[0] + m.c * p[1] + m.x, m.b * p[0] + m.d * p[1] + m.y]
 
+/** The transform that undoes `m`: the world to a bone's frame. */
 export const invert = (m: Mat): Mat => {
   const det = m.a * m.d - m.b * m.c
   const a = m.d / det
@@ -84,6 +87,7 @@ export const wrap = (deg: number): number => ((((deg + 180) % 360) + 360) % 360)
 // ---------------------------------------------------------------------------
 // The rig
 
+/** A bone of the tree, as the rig module wrote it, with its defaults filled in. */
 export interface Bone {
   readonly name: string
   readonly parent: string | undefined
@@ -117,6 +121,7 @@ export type Shape =
    */
   | { readonly kind: "sweep"; readonly from: number; readonly to: number; readonly frames: number }
 
+/** A part, checked: its shape in setup-pose world coordinates, and the prop it belongs to. */
 export interface Part {
   readonly name: string
   readonly bone: string
@@ -139,6 +144,7 @@ export interface Part {
   readonly prop: string | undefined
 }
 
+/** A two-bone IK chain: a pose's `reach` puts its end on a goal. */
 export interface Chain {
   readonly name: string
   readonly upper: string
@@ -360,7 +366,8 @@ const DEFAULT_LOOK: Look = { background: "#232838", ground: "#59627e", floor: "#
  * Checks a rig module's default export, naming every field that is wrong,
  * and resolves it: the bone order and setup pose, every shape's points in
  * setup-pose world coordinates, which prop each part belongs to, and the
- * stances checked as poses.
+ * stances checked as poses. Check any other pose against the rig with
+ * `poseProblems`.
  */
 export const decodeRig = (module: unknown): Decoded<Rig> => {
   const value = isRecord(module) && "default" in module ? module.default : module

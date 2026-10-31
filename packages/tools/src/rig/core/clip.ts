@@ -234,6 +234,7 @@ export interface Run {
   readonly errors: ReadonlyArray<RunError>
 }
 
+/** What the bank gives a draft's run: its seed, and the person's tune of its params. */
 export interface RunOptions {
   readonly seed?: number | undefined
   readonly tune?: Readonly<Record<string, number>> | undefined
@@ -262,7 +263,7 @@ const spans = (frames: ReadonlyArray<number>): string => {
   return parts.join(", ")
 }
 
-/** Poses every frame of a clip on a rig. Never throws: what goes wrong is in `errors`, and that frame shows the setup pose. */
+/** Poses every frame of a clip on a rig. Never throws: what goes wrong is in `errors`, and that frame shows the setup pose. To measure the motion too, use `checkClip`. */
 export const runClip = (rig: Rig, clip: Clip, options: RunOptions = {}): Run => {
   const p = tuned(clip, options.tune)
   const seed = options.seed ?? 1

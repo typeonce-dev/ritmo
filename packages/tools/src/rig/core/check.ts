@@ -49,6 +49,7 @@ export const STANCE = 1
 /** Consecutive frames of a loop whose bones move less than this on average (pixels) are the same pose. */
 export const IDENTICAL = 0.02
 
+/** What breaks a rule: an error to fix first, or a warning to weigh (or accept, with why). */
 export interface Issue {
   readonly level: "error" | "warning"
   readonly code: string
@@ -85,6 +86,7 @@ export interface Position {
   readonly angle: ReadonlyArray<number | null>
 }
 
+/** A draft's numbers, as `rig check` reports them. */
 export interface Measures {
   readonly frames: number
   readonly fps: number
@@ -96,6 +98,7 @@ export interface Measures {
   readonly bounds: { readonly x: number; readonly y: number; readonly w: number; readonly h: number } | undefined
 }
 
+/** What `checkClip` found: the run it checked, its numbers, and its issues. */
 export interface Checked {
   readonly run: Run
   readonly measures: Measures
@@ -111,6 +114,7 @@ export interface Checked {
   readonly positions: Readonly<Record<string, Position>>
 }
 
+/** How `checkClip` runs a draft: the bank's seed and tune, its accepted warnings, and what to report. */
 export interface CheckOptions extends RunOptions {
   /** Warnings judged deliberate: code -> why. */
   readonly accept?: Readonly<Record<string, string>> | undefined
@@ -533,7 +537,8 @@ export const ERROR_CODES: ReadonlyArray<string> = ["load", "keys", "pose", "rand
  * Runs a clip twice (the second to catch randomness that is not the seed's),
  * measures it, and lists its issues; warnings in `accept` (code -> why) are
  * set apart. Errors are never accepted, and a clip with errors gets no
- * warnings: fix the errors first.
+ * warnings: fix the errors first. To pose a clip without measuring it (to
+ * draw it), use `runClip`.
  */
 export const checkClip = (rig: Rig, clip: Clip, options: CheckOptions = {}): Checked => {
   const run = runClip(rig, clip, options)

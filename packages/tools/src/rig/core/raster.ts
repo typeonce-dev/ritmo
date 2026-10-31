@@ -10,6 +10,7 @@ import type { Frame } from "./clip.ts"
 import type { Drawn, Geom } from "./pose.ts"
 import { tipOf, type Look, type Rig, type V } from "./rig.ts"
 
+/** A color as red, green, and blue from 0 to 255, and alpha from 0 to 1. */
 export type Rgba = readonly [number, number, number, number]
 
 /** A `#rrggbb` or `#rrggbbaa` color as RGB 0 to 255 and alpha 0 to 1. */

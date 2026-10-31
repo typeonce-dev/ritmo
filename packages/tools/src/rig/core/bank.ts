@@ -29,6 +29,7 @@
  */
 import type { Decoded } from "./rig.ts"
 
+/** One draft of a clip: its module, and what the bank says about it. */
 export interface Draft {
   readonly file: string
   /** Where `rig.random()` starts. */
@@ -39,6 +40,7 @@ export interface Draft {
   readonly accept?: Readonly<Record<string, string>> | undefined
 }
 
+/** A clip in the bank: its drafts, and the one the game gets. */
 export interface ClipEntry {
   /** What the clip is for, in a few words; the person reads it. */
   readonly about?: string | undefined
@@ -47,13 +49,16 @@ export interface ClipEntry {
   readonly use?: string | undefined
 }
 
+/** A bank, decoded by `decodeBank`: the rig module and every clip. */
 export interface Bank {
   /** The rig module, from the bank's folder. */
   readonly rig: string
   readonly clips: Readonly<Record<string, ClipEntry>>
 }
 
+/** A clip's review status: not looked at yet, approved, or changes asked. */
 export type Status = "new" | "approved" | "changes"
+/** Every status, in the order the person sees them. */
 export const statuses: ReadonlyArray<Status> = ["new", "approved", "changes"]
 
 interface CommentBase {
@@ -89,6 +94,7 @@ export interface SpanComment extends CommentBase {
 /** A pixel of a frame, or a span of frames; once the agent has acted on it, `resolved`, with a `reply` saying what changed (`rig resolve`). */
 export type Comment = PixelComment | SpanComment
 
+/** Whether a comment is on a span of frames (timing) rather than a pixel of one frame. */
 export const isSpan = (comment: Comment): comment is SpanComment => "from" in comment
 
 /** Where a comment is, in words: "draft a, frames 6-9 (anticipation)" or "draft a, frame 22 (up), pixel (146, 195), on blade, near bone sword". */
@@ -97,17 +103,21 @@ export const whereOf = (c: Comment): string =>
     ? `draft ${c.draft}, frames ${c.from}-${c.to}${c.phases !== undefined && c.phases.length > 0 ? ` (${c.phases.join(", ")})` : ""}`
     : `draft ${c.draft}, frame ${c.frame}${c.phase === undefined ? "" : ` (${c.phase})`}, pixel (${c.x}, ${c.y})${c.part === undefined ? "" : `, on ${c.part}`}${c.bone === undefined ? "" : `, near bone ${c.bone}`}`
 
+/** What the person said about one clip. */
 export interface ClipReview {
   readonly status: Status
   readonly note: string
   readonly comments: ReadonlyArray<Comment>
 }
 
+/** A bank's review, decoded by `decodeReview`: what the person said about each clip. */
 export interface Review {
   readonly clips: Readonly<Record<string, ClipReview>>
 }
 
+/** The review of a bank never reviewed. */
 export const emptyReview: Review = { clips: {} }
+/** The review of a clip the person has not said anything about. */
 export const newClip: ClipReview = { status: "new", note: "", comments: [] }
 
 /** Where a bank's review lives. */
@@ -126,6 +136,7 @@ const parse = (text: string): Decoded<unknown> => {
   }
 }
 
+/** Reads a bank's JSON, naming every problem in it; write one back with `encodeBank`. */
 export const decodeBank = (text: string): Decoded<Bank> => {
   const parsed = parse(text)
   if (!parsed.ok) return parsed
@@ -172,6 +183,7 @@ export const decodeBank = (text: string): Decoded<Bank> => {
   return errors.length > 0 ? { ok: false, error: errors.join("; ") } : { ok: true, value: { rig: raw.rig, clips } }
 }
 
+/** A bank as JSON, leaving out what is unset; `decodeBank` reads it back. */
 export const encodeBank = (bank: Bank): string => {
   const clips: Record<string, unknown> = {}
   for (const [name, entry] of Object.entries(bank.clips)) {
@@ -188,6 +200,7 @@ export const encodeBank = (bank: Bank): string => {
   return JSON.stringify({ version: 1, rig: bank.rig, clips }, null, 2) + "\n"
 }
 
+/** Reads a review's JSON (pixel and span comments), naming every problem in it; write one back with `encodeReview`. */
 export const decodeReview = (text: string): Decoded<Review> => {
   const parsed = parse(text)
   if (!parsed.ok) return parsed
@@ -243,6 +256,7 @@ export const decodeReview = (text: string): Decoded<Review> => {
   return errors.length > 0 ? { ok: false, error: errors.join("; ") } : { ok: true, value: { clips } }
 }
 
+/** A review as JSON; `decodeReview` reads it back. To close comments, use `resolveComments` first. */
 export const encodeReview = (review: Review): string => {
   const clips: Record<string, unknown> = {}
   for (const [name, entry] of Object.entries(review.clips))

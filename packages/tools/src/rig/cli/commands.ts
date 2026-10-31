@@ -391,6 +391,7 @@ const init = Command.make(
   })
 ).pipe(Command.withDescription("Writes a starting bank with a small figure's rig module (bones, parts, leg and arm chains, a stance) and one clip, an idle, and its first draft module to build from."))
 
+/** The `rig` command and its subcommands, registered in `ritmo-tools` next to `fx`. */
 export const rig = Command.make("rig").pipe(
   Command.withDescription(
     "Ritmo's skeleton lab: characters as code (a rig module of bones, parts, IK chains, props, and stances, and clip drafts that pose it), checked for motion craft, looked at as contact sheets, and baked as sprite sheets. Prints JSON; exit 0 clean, 2 usage error, 3 errors in the rig or a draft."

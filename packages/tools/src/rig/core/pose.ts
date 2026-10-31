@@ -43,7 +43,7 @@ export const goalPoint = (world: Readonly<Record<string, Mat>>, goal: Goal): V |
   return [x + (goal.dx ?? 0), y + (goal.dy ?? 0)]
 }
 
-/** Every bone's world transform under a pose. The pose must have passed `poseProblems`. */
+/** Every bone's world transform under a pose, which must have passed `poseProblems`. `drawnOf` places the parts on them; a clip's frames come solved from `runClip`. */
 export const solve = (rig: Rig, pose: Pose): Record<string, Mat> => {
   const world: Record<string, Mat> = {}
   /** Local rotations set by IK on an earlier bone (the lower bone of a chain whose upper was just solved). */
@@ -131,6 +131,7 @@ export type Geom =
   | { readonly kind: "ellipse"; readonly c: V; readonly rx: number; readonly ry: number; readonly angle: number }
   | { readonly kind: "poly"; readonly points: ReadonlyArray<V>; readonly round: number }
 
+/** A shown part on one frame: its shape placed in the world, with how it is drawn. */
 export interface Drawn {
   readonly part: string
   readonly bone: string
