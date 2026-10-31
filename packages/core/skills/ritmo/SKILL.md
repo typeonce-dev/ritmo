@@ -17,6 +17,10 @@ Follow the game's existing structure; the game decides its folders, UI framework
 
 When the game has a `PROTOTYPE.md` at its root, follow the [`ritmo-prototype`](../ritmo-prototype/SKILL.md) skill: its check replaces the playbooks' checks here, and these principles still hold. Start one only when the user asks to prototype a mechanic or find the fun.
 
+## Strangers
+
+When the change is about what teaches the game (the title, the first stretch of play, what the game says when the player fails, the controls) or follows a playtest by someone other than the user, read the [`ritmo-onboarding`](../ritmo-onboarding/SKILL.md) skill too: the playbooks here still apply, and it adds the check that a player who never learned the rule cannot win.
+
 ## Pick the playbook
 
 Read it before writing code; a change of several kinds reads each.
