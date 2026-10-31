@@ -73,11 +73,12 @@ export interface RigContext {
   readonly clamp: (v: number, min: number, max: number) => number
 }
 
-/** A clip's hit: the segment of `bone` from `from` to `to` along it, on the frames in `frames` (both ends included). */
+/** A clip's hit: the segment of `bone` from `from` to `to` along it, `radius` wide on each side (a capsule), on the frames in `frames` (both ends included). */
 export interface Hit {
   readonly bone: string
   readonly from: number
   readonly to: number
+  readonly radius: number
   readonly frames: ReadonlyArray<readonly [number, number]>
 }
 
@@ -170,7 +171,7 @@ export const decodeClip = (module: unknown, rig: Rig): Decoded<Clip> => {
   else if (value.hit !== undefined) {
     const raw = value.hit
     const bone = isRecord(raw) && typeof raw.bone === "string" ? raw.bone : trail
-    if (!isRecord(raw) || bone === undefined || !(bone in rig.bones)) errors.push("hit must be { bone, from, to, frames }, on a bone the rig has (the clip's trail bone when bone is left out), or false for a clip that hits nothing")
+    if (!isRecord(raw) || bone === undefined || !(bone in rig.bones)) errors.push("hit must be { bone, from, to, radius, frames }, on a bone the rig has (the clip's trail bone when bone is left out), or false for a clip that hits nothing")
     else {
       const length = rig.bones[bone]!.length
       const from = raw.from === undefined ? 0 : raw.from
@@ -178,9 +179,10 @@ export const decodeClip = (module: unknown, rig: Rig): Decoded<Clip> => {
       if (!isNumber(from) || !isNumber(to) || from >= to) errors.push(`hit.from and hit.to must be numbers along ${bone}, from below to (0 to ${length} by default)`)
       const spans = raw.frames === undefined ? fastSpans : raw.frames
       if (!Array.isArray(spans) || !spans.every((span) => isSpan(span, n))) errors.push(`hit.frames must be [[from, to], ...]: whole frames inside the clip (0 to ${n - 1}); its fast phases by default`)
-      else if (isNumber(from) && isNumber(to)) hit = { bone, from, to, frames: spans }
+      else if (raw.radius !== undefined && (!isNumber(raw.radius) || raw.radius < 0)) errors.push("hit.radius must be 0 or more: how far each side of the segment the hit reaches, in world units (0 by default)")
+      else if (isNumber(from) && isNumber(to)) hit = { bone, from, to, radius: isNumber(raw.radius) ? raw.radius : 0, frames: spans }
     }
-  } else if (trail !== undefined) hit = { bone: trail, from: 0, to: rig.bones[trail]!.length, frames: fastSpans }
+  } else if (trail !== undefined) hit = { bone: trail, from: 0, to: rig.bones[trail]!.length, radius: 0, frames: fastSpans }
   if (errors.length > 0) return { ok: false, error: errors.join("; ") }
   return {
     ok: true,

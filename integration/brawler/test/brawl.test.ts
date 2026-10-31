@@ -6,8 +6,9 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 
+import { Segment2 } from "@typeonce/ritmo-math"
 import { decodeClips, type Clips } from "../clips.ts"
-import { makeBrawl } from "../simulation.ts"
+import { frameAt, makeBrawl } from "../simulation.ts"
 
 const fixtures = fileURLToPath(new URL("../fixtures/", import.meta.url))
 const tools = dirname(createRequire(import.meta.url).resolve("@typeonce/ritmo-tools/package.json"))
@@ -43,6 +44,29 @@ describe("a brawl driven by a baked clip", () => {
     expect(hits[0]!.step).toBe(1 + Math.ceil((swing.to * 60) / attack.fps))
     // The clip plays to its end and stops.
     expect(seen[seen.length - 1]!.animation.clip).toBeNull()
+  })
+
+  it("hits a target the blade passes between two frames, sweeping from the frame before", () => {
+    // Neither the frame before the strike nor the strike puts the blade's capsule on this target; the swing between them does.
+    const target = { x: 180, y: 195 }
+    const at = (f: number) => {
+      const hit = attack.frames[f]!.hit!
+      return Segment2.between({ x: 100 + hit.from[0], y: 300 + hit.from[1] }, { x: 100 + hit.to[0], y: 300 + hit.to[1] })
+    }
+    const reach = 12 + attack.frames[swing.to]!.hit!.radius
+    expect(Segment2.overlapsCircle(at(swing.to - 1), target, reach)).toBe(false)
+    expect(Segment2.overlapsCircle(at(swing.to), target, reach)).toBe(false)
+    const hits = brawl(target).at(-1)!.hits
+    expect(hits).toMatchObject([{ frame: swing.to }])
+  })
+
+  it("keeps which clip plays and when it started, and works the frame out from the clock", () => {
+    const game = makeBrawl({ clips, attacker: { x: 100, y: 300 }, target: { x: 400, y: 230 } })
+    expect(game.play("attack").ok).toBe(true)
+    for (let i = 0; i < 10; i++) expect(game.step().ok).toBe(true)
+    const { animation, step } = game.read()
+    expect(animation).toEqual({ clip: "attack", started: 1, landed: false })
+    expect(frameAt(attack, animation.started, step, 60)).toBe(Math.floor(((step - 1) * attack.fps) / 60))
   })
 
   it("lands no hit when the target is out of reach", () => {

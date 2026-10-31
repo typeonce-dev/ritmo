@@ -18,7 +18,7 @@ import { encodeBank, encodeReview, openComments, resolveComments, reviewPath, re
 import { checkClip, type Checked, type Issue } from "../core/check.ts"
 import { runClip } from "../core/clip.ts"
 import { artOf, framePictures, gifFramesOf, lookSheet, sheetOf } from "../core/export.ts"
-import { encodeSidecar, sidecarClip, sidecarName, sidecarOf, type SidecarClip } from "../core/sidecar.ts"
+import { encodeSidecar, keptClips, sidecarClip, sidecarName, sidecarOf, type SidecarClip } from "../core/sidecar.ts"
 import type { Rig } from "../core/rig.ts"
 import { CliFailure, loadClip, loadRig, printJson, readBank, readReview, readText, writeBytes, writeText } from "./io.ts"
 
@@ -225,9 +225,19 @@ const bake = Command.make(
     const scale = Math.max(1, flags.scale)
     const written: Array<Record<string, unknown>> = []
     const entries: Record<string, SidecarClip> = {}
-    // The sidecar is one file per bank, so it holds every clip, baked by name or not.
+    // The sidecar is one file per bank, always complete: a bake of some clips rewrites theirs and keeps the others as an earlier bake wrote them.
+    const sidecarFile = path.join(folder, sidecarName(flags.bank))
+    const header = { rig: bank.rig, scale, size: [rig.width * scale, rig.height * scale] as const, anchor: [rig.anchor[0] * scale, rig.anchor[1] * scale] as const }
+    const earlier = flags.names.length === 0 ? undefined : Option.match(yield* readText(sidecarFile).pipe(Effect.option), { onNone: () => undefined, onSome: (text) => keptClips(text, header) })
+    const kept: Array<string> = []
     for (const name of Object.keys(bank.clips)) {
       const entry = bank.clips[name]!
+      const previous = earlier?.[name]
+      if (!chosen.includes(name) && previous !== undefined) {
+        entries[name] = previous
+        kept.push(name)
+        continue
+      }
       const id = usedDraft(entry)!
       const draft = entry.drafts[id]!
       const loaded = yield* loadClip(flags.bank, draft, rig)
@@ -257,17 +267,17 @@ const bake = Command.make(
         fps: clip.fps,
         size: [rig.width * scale, rig.height * scale],
         anchor: [rig.anchor[0] * scale, rig.anchor[1] * scale],
-        hit: clip.hit === undefined ? null : { bone: clip.hit.bone, frames: hits },
+        hit: clip.hit === undefined ? null : { bone: clip.hit.bone, radius: clip.hit.radius, frames: hits },
         sockets: Object.keys({ ...rig.sockets, ...clip.sockets }),
         files
       })
     }
-    const sidecar = yield* writeText(path.join(folder, sidecarName(flags.bank)), encodeSidecar(sidecarOf(rig, bank.rig, scale, entries)))
-    yield* printJson({ file: flags.bank, sidecar, clips: written })
+    const sidecar = yield* writeText(sidecarFile, encodeSidecar(sidecarOf(rig, bank.rig, scale, entries)))
+    yield* printJson({ file: flags.bank, sidecar: { file: sidecar, rewrote: Object.keys(entries).filter((name) => !kept.includes(name)), kept }, clips: written })
   })
 ).pipe(
   Command.withDescription(
-    "Writes each clip's chosen draft (its `use`, or its first) for the game: a sprite sheet PNG of its frames in one row (anti-aliased, on transparency), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the rig's `anchor`, the animation and its fps, and `meta.loop`: whether it loops or plays once), and a GIF on the rig's backdrop to share. Next to them, one sidecar for the whole bank (`<bank>.clips.json`, every clip): each clip's timing, stance, and phases, and on each frame the feet on the ground, the sockets, the hit segment, and the drawn box, in pixels from the anchor with y down."
+    "Writes each clip's chosen draft (its `use`, or its first) for the game: a sprite sheet PNG of its frames in one row (anti-aliased, on transparency), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the rig's `anchor`, the animation and its fps, and `meta.loop`: whether it loops or plays once), and a GIF on the rig's backdrop to share. Next to them, one sidecar for the whole bank (`<bank>.clips.json`, always every clip: a bake of named clips rewrites theirs and keeps the others): each clip's timing, stance, and phases, and on each frame the feet on the ground, the sockets, the hit segment, and the drawn box, in pixels from the anchor with y down."
   )
 )
 

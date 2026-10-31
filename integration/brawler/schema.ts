@@ -14,14 +14,14 @@ export const Attacker = Descriptor.Tag("Brawler/Attacker")
 export const Target = Descriptor.Tag("Brawler/Target")
 
 /**
- * The attacker's animation: the clip it plays, the step it started on, the
- * clip frame that step shows (worked out from `Time`, never counted down),
- * and whether this play's hit has landed (a swing hits once).
+ * The attacker's animation, as simulation state (saved, since hits depend
+ * on it): the clip it plays, the step it started on, and whether this
+ * play's hit has landed (a swing hits once). The clip frame is never
+ * stored: every system that needs it works it out from `Time` (`frameAt`).
  */
 export interface Playing {
   readonly clip: string | null
   readonly started: number
-  readonly frame: number
   readonly landed: boolean
 }
 export const Animation = Descriptor.Resource<Playing>()("Brawler/Animation")

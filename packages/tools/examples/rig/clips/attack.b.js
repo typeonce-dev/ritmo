@@ -27,7 +27,7 @@ export default {
     { name: "recover", from: 17, to: 23 }
   ],
   trail: "sword",
-  hit: { from: 6 },
+  hit: { from: 6, radius: 3 },
   pose(rig, t, p) {
     const { overshoot, fold } = p
     const ready = rig.stances.ready

@@ -664,7 +664,7 @@ export default {
 
 A clip may also name `sockets` of its own (over the rig's) and its `hit`:
 the segment the bake reports for gameplay, by default the trail bone's
-whole length on its `fast` frames (`hit: { from: 6 }` for the blade alone,
+whole length on its `fast` frames (`hit: { from: 6, radius: 3 }` for the blade alone, 3 wide each side,
 `hit: { bone, frames: [[9, 12]] }` for other frames, `hit: false` for a clip
 that hits nothing). See the sidecar below.
 
@@ -817,8 +817,11 @@ file, broken bank), or 3 (the rig or a draft has errors).
 the whole bank, named after it (`hero.rig.json` → `hero.rig.clips.json`): what
 a game needs from the clips besides their pixels, so gameplay (a hit, a
 footstep, a spark at the blade's tip) follows the same frames the player
-sees. It always holds every clip in the bank, even when `bake` is given
-names. No code in Ritmo reads it: the game decodes it with its own Standard
+sees. The file is always complete and valid, every clip in the bank: a
+full `bake` rewrites it, and `bake <names>` rewrites only the named clips'
+entries and keeps the others as the last bake into that folder wrote them
+(a sidecar baked at another scale, or from another rig module, is
+rewritten whole). No code in Ritmo reads it: the game decodes it with its own Standard
 Schema, at the boundary, and trusts the type from there. It is versioned
 (`version`, now 1); a change that breaks a reader bumps it.
 
@@ -847,7 +850,7 @@ one of its 26 frames and one of its phases shown:
       "stance": {"start": "ready", "end": "ready"},
       "phases": [{"name": "swing", "from": 12, "to": 14, "fast": true}],
       "frames": [
-        {"name": "attack 14", "contacts": ["footNear", "footFar"], "sockets": {"tip": {"x": 131.89, "y": -63.94, "angle": 6}}, "hit": {"from": [74.21, -70], "to": [131.89, -63.94]}, "bounds": {"x": -20, "y": -183, "w": 154, "h": 185}}
+        {"name": "attack 14", "contacts": ["footNear", "footFar"], "sockets": {"tip": {"x": 131.89, "y": -63.94, "angle": 6}}, "hit": {"from": [74.21, -70], "to": [131.89, -63.94], "radius": 3}, "bounds": {"x": -20, "y": -183, "w": 154, "h": 185}}
       ]
     }
   }
@@ -871,12 +874,14 @@ one of its 26 frames and one of its phases shown:
 | `frames[i].name` | The frame's name in the atlas JSON (`"attack 14"`). |
 | `frames[i].contacts` | The foot bones planted on the ground: the clip's `contacts` (every frame for a foot chain it does not list). A footstep plays where one is added. |
 | `frames[i].sockets` | Each socket whose bone shows on this frame: `x`, `y`, and `angle` (its bone's direction). Sockets are named points on bones, in the rig's `sockets` and a clip's own: `{ grip: { bone: "sword" }, tip: { bone: "sword", along: 64 } }` (`along` the bone and `across` it). |
-| `frames[i].hit` | The hit segment, `from` and `to`, on the frames the clip hits on, else `null`. A clip's `hit: { bone, from, to, frames }` is the segment of `bone` from `from` to `to` along it, on the `frames` spans; by default the trail bone's whole length on the clip's `fast` frames, and `hit: false` for a clip that hits nothing (a block). |
+| `frames[i].hit` | The hit on the frames the clip hits on, else `null`: a segment, `from` and `to`, and `radius`, how far each side of it the hit reaches in pixels (a capsule: a blade's half-width, a fist's; 0 for a line). A clip's `hit: { bone, from, to, radius, frames }` is the segment of `bone` from `from` to `to` along it, `radius` wide each side (world units, 0 by default), on the `frames` spans; by default the trail bone's whole length on the clip's `fast` frames, and `hit: false` for a clip that hits nothing (a block). |
 | `frames[i].bounds` | The box every drawn part fills, outline included, in whole pixels (`x`, `y`, `w`, `h`), or `null` on a frame with nothing drawn: for culling, and a simple hurtbox. |
 
-A game plays a clip from its clock (frame = whole steps since it started
-× `fps` ÷ the step rate), and on each frame with a `hit` sweeps the segment,
-placed on its entity, against its targets (with `Collide2` from
+A game keeps which clip plays and the step it started on, works the frame
+out from its clock on every step (whole steps since the start × `fps` ÷
+the step rate), and on each frame with a `hit` sweeps the capsule, placed
+on its entity, from where the frame before left it to where this one puts
+it, against its targets (with `Collide2` from
 [`@typeonce/ritmo-math`](https://github.com/typeonce-dev/ritmo/blob/main/packages/math/README.md)).
 
 ### Code

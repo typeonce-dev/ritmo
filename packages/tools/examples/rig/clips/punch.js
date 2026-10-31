@@ -35,6 +35,8 @@ export default {
     { name: "recover", from: 8, to: 14 }
   ],
   trail: "handNear",
+  // The fist, on the strike's fast frames.
+  hit: { radius: 4 },
   pose(rig) {
     return rig.keys([
       // Frame 0 is the guard stance: keys start from it. Coil: the fist pulls back toward the cheek and down, the hips sink, the torso rocks back.

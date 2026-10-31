@@ -32,8 +32,8 @@ export default {
     { name: "recover", from: 19, to: 25 }
   ],
   trail: "sword",
-  // The blade, not the grip, is what hits: on the swing's fast frames.
-  hit: { from: 6 },
+  // The blade, not the grip, is what hits, 3 px each side of its middle line: on the swing's fast frames.
+  hit: { from: 6, radius: 3 },
   pose(rig, t, p) {
     const { overshoot, lean } = p
     const ready = rig.stances.ready

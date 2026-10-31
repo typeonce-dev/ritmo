@@ -38,8 +38,8 @@ export interface SidecarFrame {
   readonly contacts: ReadonlyArray<string>
   /** Every socket whose bone shows on this frame, by name. */
   readonly sockets: Readonly<Record<string, SocketAt>>
-  /** The hit segment on a frame the clip hits on, or `null`. */
-  readonly hit: { readonly from: Point; readonly to: Point } | null
+  /** The hit on a frame the clip hits on, or `null`: a segment and how far each side of it the hit reaches (a capsule; 0 for a line). */
+  readonly hit: { readonly from: Point; readonly to: Point; readonly radius: number } | null
   /** The box every drawn part fills (outline included), whole pixels from the anchor, or `null` on a frame with nothing drawn. */
   readonly bounds: { readonly x: number; readonly y: number; readonly w: number; readonly h: number } | null
 }
@@ -132,7 +132,7 @@ export const sidecarClip = (rig: Rig, clip: Clip, run: Run, options: { readonly 
         name: `${options.name} ${f}`,
         contacts: feet.filter((chain) => inSpans(f, clip.contacts[chain.name] ?? [[0, clip.frames - 1]]) && fr.shown.has(chain.end)).map((chain) => chain.end),
         sockets: placed,
-        hit: hitting ? { from: toFrame(...apply(fr.world[hit.bone]!, [hit.from, 0])), to: toFrame(...apply(fr.world[hit.bone]!, [hit.to, 0])) } : null,
+        hit: hitting ? { from: toFrame(...apply(fr.world[hit.bone]!, [hit.from, 0])), to: toFrame(...apply(fr.world[hit.bone]!, [hit.to, 0])), radius: r2(hit.radius * s) } : null,
         bounds: box
       }
     })
@@ -148,6 +148,32 @@ export const sidecarOf = (rig: Rig, rigFile: string, scale: number, clips: Reado
   anchor: [rig.anchor[0] * scale, rig.anchor[1] * scale],
   clips
 })
+
+/**
+ * The clips of a sidecar already in the bake's folder that a subset bake
+ * keeps: only when it is this version and was baked at the same scale,
+ * frame size, and anchor from the same rig module, so the file stays one
+ * consistent whole. `undefined` when it cannot be kept (the bake then
+ * rewrites every clip).
+ */
+export const keptClips = (text: string, expected: Pick<Sidecar, "rig" | "scale" | "size" | "anchor">): Readonly<Record<string, SidecarClip>> | undefined => {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    return undefined
+  }
+  const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
+  if (!isRecord(raw) || raw.version !== SIDECAR_VERSION || raw.rig !== expected.rig || raw.scale !== expected.scale || JSON.stringify(raw.size) !== JSON.stringify(expected.size) || JSON.stringify(raw.anchor) !== JSON.stringify(expected.anchor) || !isRecord(raw.clips))
+    return undefined
+  const clips: Record<string, SidecarClip> = {}
+  for (const [name, clip] of Object.entries(raw.clips)) {
+    if (!isRecord(clip) || !Array.isArray(clip.frames) || typeof clip.draft !== "string") return undefined
+    // The file this bake wrote: its entries are as `sidecarClip` made them.
+    clips[name] = clip as unknown as SidecarClip
+  }
+  return clips
+}
 
 /** Where a bank's sidecar goes in the bake's folder: the bank's name with `.clips.json` (`hero.rig.json` -> `hero.rig.clips.json`). */
 export const sidecarName = (bankFile: string): string => {

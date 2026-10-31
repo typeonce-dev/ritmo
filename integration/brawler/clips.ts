@@ -4,7 +4,8 @@
  * hand-written so the integration needs no schema library (a real game
  * brings Effect, Zod, or Valibot). Fields the game does not use are not
  * read. Coordinates are the sidecar's: pixels from the clip's anchor, y
- * down, so the game adds the entity's position.
+ * down, so the game adds the entity's position; a hit is a segment and how
+ * far each side of it it reaches (a capsule).
  */
 import * as Result from "@typeonce/ritmo/Result"
 import type { StandardSchema } from "@typeonce/ritmo/Descriptor"
@@ -69,7 +70,7 @@ const struct = <const Fields extends Readonly<Record<string, Codec<unknown>>>>(f
 })
 
 const phase = struct({ name: string, from: whole, to: whole, fast: boolean })
-const frame = struct({ name: string, hit: nullable(struct({ from: point, to: point })) })
+const frame = struct({ name: string, hit: nullable(struct({ from: point, to: point, radius: finite })) })
 const clip = struct({ fps: finite, loop: boolean, phases: array(phase), frames: array(frame) })
 const version: Codec<1> = { check: (raw, path) => (raw === 1 ? { value: 1 } : fail(path, "version 1 (this game reads version 1 of the sidecar)")) }
 const sidecar = struct({ version, scale: finite, clips: record(clip) })

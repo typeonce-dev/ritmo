@@ -98,7 +98,7 @@ export default {
   contacts: { legNear: [[0, 27]], legFar: [[0, 2], [23, 27]] },
   trail: "footFar",
   // The shin and foot hit, through the strike and the held impact.
-  hit: { bone: "footFar", frames: [[9, 12]] },
+  hit: { bone: "footFar", radius: 4, frames: [[9, 12]] },
   sockets: { toe: { bone: "footFar", along: 11 } },
   pose(rig) {
     const guard = rig.stances.guard

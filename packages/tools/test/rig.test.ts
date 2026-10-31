@@ -437,13 +437,14 @@ describe("the sidecar", () => {
   const entry = (target: Clip, scale = 1) => sidecarClip(rig, target, runClip(rig, target), { name: "swing", draft: "a", scale })
 
   it("default a clip's hit to its trail bone on its fast frames, or take the clip's", () => {
-    expect(decodedSwing.value.hit).toEqual({ bone: "stick", from: 0, to: 12, frames: [[3, 5]] })
-    const own = decodeClip({ default: { frames: 8, fps: 12, trail: "stick", hit: { from: 4, frames: [[1, 2]] }, pose: alive } }, rig)
-    expect(own.ok && own.value.hit).toEqual({ bone: "stick", from: 4, to: 12, frames: [[1, 2]] })
+    expect(decodedSwing.value.hit).toEqual({ bone: "stick", from: 0, to: 12, radius: 0, frames: [[3, 5]] })
+    const own = decodeClip({ default: { frames: 8, fps: 12, trail: "stick", hit: { from: 4, radius: 1.5, frames: [[1, 2]] }, pose: alive } }, rig)
+    expect(own.ok && own.value.hit).toEqual({ bone: "stick", from: 4, to: 12, radius: 1.5, frames: [[1, 2]] })
+    expect(own.ok && entry(own.value, 2).frames[1]!.hit!.radius).toBe(3)
     const none = decodeClip({ default: { frames: 8, fps: 12, trail: "stick", hit: false, pose: alive } }, rig)
     expect(none.ok && none.value.hit).toBeUndefined()
     const wrong = decodeClip({ default: { frames: 8, fps: 12, hit: { from: 3 }, sockets: { x: { bone: "tail" } }, pose: alive } }, rig)
-    expect(wrong.ok === false && wrong.error).toContain("hit must be { bone, from, to, frames }")
+    expect(wrong.ok === false && wrong.error).toContain("hit must be { bone, from, to, radius, frames }")
     expect(wrong.ok === false && wrong.error).toContain("sockets.x must be { bone, along, across }")
   })
 
@@ -594,14 +595,19 @@ describe("the CLI", () => {
     expect(sheet.frames["punch 0"]!.anchor.y).toBeCloseTo(194 / 212, 4)
     expect(sheet.meta.loop).toEqual({ punch: false })
     // One sidecar for the bank, with every clip, though only the punch was baked.
-    const report = JSON.parse(run("bake", example, "punch", "-o", join(folder, "three")).stdout) as { sidecar: string; clips: Array<{ clip: string; hit: { bone: string; frames: Array<number> } }> }
-    expect(report.sidecar).toBe(join(folder, "three", "hero.rig.clips.json"))
-    expect(report.clips).toMatchObject([{ clip: "punch", hit: { bone: "handNear", frames: [3, 4] } }])
-    const sidecar = JSON.parse(readFileSync(report.sidecar, "utf8")) as { version: number; clips: Record<string, { atlas: string; frames: Array<{ name: string }> }> }
+    const report = JSON.parse(run("bake", example, "punch", "-o", join(folder, "three")).stdout) as { sidecar: { file: string; rewrote: Array<string>; kept: Array<string> }; clips: Array<{ clip: string; hit: { bone: string; frames: Array<number> } }> }
+    expect(report.sidecar).toEqual({ file: join(folder, "three", "hero.rig.clips.json"), rewrote: ["idle", "walk", "attack", "block", "punch", "kick"], kept: [] })
+    expect(report.clips).toMatchObject([{ clip: "punch", hit: { bone: "handNear", radius: 4, frames: [3, 4] } }])
+    const sidecar = JSON.parse(readFileSync(report.sidecar.file, "utf8")) as { version: number; clips: Record<string, { atlas: string; frames: Array<{ name: string }> }> }
     expect(sidecar.version).toBe(1)
     expect(Object.keys(sidecar.clips)).toEqual(["idle", "walk", "attack", "block", "punch", "kick"])
     expect(sidecar.clips.punch!.frames.map((frame) => frame.name)).toEqual(Object.keys(sheet.frames))
     expect(readFileSync(join(folder, "one", "hero.rig.clips.json"))).toEqual(readFileSync(join(folder, "two", "hero.rig.clips.json")))
+    // A later bake of one clip into the same folder rewrites its entry and keeps the others as they were: the file stays complete.
+    const before = JSON.parse(readFileSync(report.sidecar.file, "utf8")) as { clips: Record<string, unknown> }
+    const again = JSON.parse(run("bake", example, "kick", "-o", join(folder, "three")).stdout) as { sidecar: { rewrote: Array<string>; kept: Array<string> } }
+    expect(again.sidecar).toMatchObject({ rewrote: ["kick"], kept: ["idle", "walk", "attack", "block", "punch"] })
+    expect(JSON.parse(readFileSync(report.sidecar.file, "utf8"))).toEqual(before)
   })
 
   it("starts a bank, looks at it a few ways, and reads and resolves notes", () => {
