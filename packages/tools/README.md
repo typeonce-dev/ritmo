@@ -10,7 +10,7 @@ tool per kind of asset:
 | `ritmo-tools sound` | Sound effects: keeps them as JSON recipes, measures and varies them, writes WAV files, and opens a local page where a person listens, picks, tunes, and notes. |
 | `ritmo-tools fx` | Pixel art effects: keeps each effect as a few drafts written as code, checks them for pixel art craft and the project's rules, draws contact sheets an agent can look at, writes sprite sheets and GIFs, and opens a local page where a person watches the drafts side by side, picks, tunes, and pins comments to a pixel. |
 | `ritmo-tools music` | Game music: hears a person's hum for its tune, tempo, and key, keeps songs as JSON tracks of notes, checks them, writes WAV and MIDI files, and opens a local page where a person plays, edits notes, records, and comments. |
-| `ritmo-tools rig` | Characters animated on a skeleton: keeps a character as a rig module (bones, shapes, IK chains, props, stances) and each clip as a few drafts written as code, checks the motion (feet that slide or float, limbs out of reach, locked or overbent joints, pops in speed, loops that jump, starts off the stance), draws contact sheets an agent can look at, and bakes sprite sheets, GIFs, and a sidecar of each frame's hit segments, sockets, and foot contacts for gameplay. |
+| `ritmo-tools rig` | Characters animated on a skeleton: keeps a character as a rig module (bones, parts drawn as shapes or cut from a parts sheet as pictures, IK chains, props, stances) and each clip as a few drafts written as code, checks the motion (feet that slide or float, limbs out of reach, locked or overbent joints, pops in speed, loops that jump, starts off the stance), draws contact sheets an agent can look at, and bakes sprite sheets, GIFs, and a sidecar of each frame's hit segments, sockets, and foot contacts for gameplay. |
 
 ```sh
 npx @typeonce/ritmo-tools pixel check art.png
@@ -627,8 +627,8 @@ export default {
 ```
 
 - `bones`: a tree, each with a `length`, a `parent` (none for the root), where it starts in its parent's frame (`x` along the parent, `y` across it), its `rotation` from the parent's direction, and `scaleX`/`scaleY`. Parents are solved before children, in the order the bones are declared otherwise.
-- `parts`: what is drawn, each on a `bone`, in draw order `z` (higher over lower; equal keeps the declared order), with a `fill` (`#rrggbb` or `#rrggbbaa`), an `outline` (or `null`) and `line` width, `far: true` for the far side of the body (the peek check watches it), `hidden: true` for a part a pose shows only when it says (a smear), and `alt`, other shapes by name. Parts are drawn anti-aliased.
-- Shapes are drawn in the setup pose's world coordinates, and follow their bone from there: `capsule` (`a`, `b`, radius `r` tapering to `r2`; along the bone when `a` and `b` are left out), `ellipse` (`c`, `rx`, `ry`, `angle`; a circle when `ry` is left out), `poly` (`points`, corners rounded by `round`), and `sweep` (the area the bone's segment from `from` to `to` swept over the last `frames` frames: a smear worked out from the clip's own poses). A point is `[x, y]`, or a point on a bone in the setup pose, `{ bone, along, across, dx, dy }` (the part's own bone when `bone` is left out; `across` is to the bone's left, `dx` and `dy` in world axes), so a shape that hangs on a bone is written along it.
+- `parts`: what is drawn, each on a `bone`, in draw order `z` (higher over lower; equal keeps the declared order), with a `fill` (`#rrggbb` or `#rrggbbaa`), an `outline` (or `null`) and `line` width, `far: true` for the far side of the body (the peek check watches it), `hidden: true` for a part a pose shows only when it says (a smear), `alt`, other shapes by name, and `tint` (a `#rrggbb` every color it draws is multiplied by: a far side darker and cooler). Parts are drawn anti-aliased. A part whose shapes are all pictures needs no `fill` and has no outline.
+- Shapes are drawn in the setup pose's world coordinates, and follow their bone from there: `capsule` (`a`, `b`, radius `r` tapering to `r2`; along the bone when `a` and `b` are left out), `ellipse` (`c`, `rx`, `ry`, `angle`; a circle when `ry` is left out), `poly` (`points`, corners rounded by `round`), `sweep` (the area the bone's segment from `from` to `to` swept over the last `frames` frames: a smear worked out from the clip's own poses), and `image` (a picture: `{ kind: "image", file: "parts/forearm.png", pivot: [x, y], at, angle, scale }`, its `pivot` pixel, in the picture's own pixels from its top left, on the point `at` of the setup pose (the bone's start by default), turned `angle` degrees and drawn `scale` world units a pixel (1 by default); it turns and scales with its bone, sampled bilinearly and composited premultiplied, the same bytes every time). Shapes and pictures mix freely in a rig, and props and slots work the same on both. A point is `[x, y]`, or a point on a bone in the setup pose, `{ bone, along, across, dx, dy }` (the part's own bone when `bone` is left out; `across` is to the bone's left, `dx` and `dy` in world axes), so a shape that hangs on a bone is written along it.
 - `chains`: two-bone IK, `upper` then `lower` (which starts at the end of `upper`), ending in `end`; `bend` says which way the middle joint bends (1 counter-clockwise from the line to the goal: a knee facing +x); `foot: true` marks a foot, whose ground contact the checks measure.
 - `props`: groups of parts shown, swapped, or hidden as one (a sword, a shield). A prop's parts cannot be hidden one by one.
 - `stances`: named poses clips start and end on, so the game can blend between them.
@@ -796,6 +796,62 @@ clip comes before it), and a verdict; each clip has a verdict too, so a new
 clip is judged apart. `--positions handNear,sword` adds where each bone
 named starts, its tip, and its angle on every frame, in world units.
 
+### From a parts sheet
+
+An image generator can draw a "character parts sheet": the head, torso,
+and each limb of one character drawn apart on one background. Two
+commands turn it into a rig whose parts are those pictures:
+
+```sh
+ritmo-tools rig parts art/hero-parts.png --names head,torso,upperArmNear,forearmNear,handNear,...
+ritmo-tools rig init hero.rig.json --from art/parts/parts.json
+ritmo-tools rig look hero.rig.json idle --art
+```
+
+`rig parts` clears the sheet's background as the pixel fixer clears an
+animation sheet (its border colors flooded inward, painted grid lines
+included) and cuts each drawn island, joined where islands nearly touch,
+into `parts/<name>.png` with transparency. The pixels stay as drawn,
+anti-aliased: there is no grid snapping and no palette. Parts come in
+reading order (rows top to bottom, left to right), named from `--names`,
+then `part-1`, `part-2`, .... Boxes that look like labels (three or more
+small pieces in a row, short and wide like a word) and specks are left
+out, each with a warning; so is a names list of the wrong length.
+`parts/parts.json` lists each part's `name`, `file`, `size`, the `box` it
+came from on the sheet, its long `axis` (from the end at its pivot to the
+far end, its `length` and `width` across, in the part's pixels), and its
+`pivot`.
+
+The pivot is a guess for the agent to correct, by a simple rule: the point
+on the part's long axis nearest the sheet's centre of mass, which
+approximates the joint that attaches it toward the body; the part that
+holds the centre of mass itself (the torso, drawn in the middle) pivots on
+the lower end of its axis (the hips). A pivot on an end of the axis sits
+half the part's width in from it (a quarter of its length at most), where
+a rounded joint's centre is. It is right for limbs drawn with their joint
+end toward the body, and wrong for a limb drawn pointing at the middle
+(its far end is nearest): look at each part and fix its `pivot` in
+`parts.json`, in the part's own pixels.
+
+`rig init --from parts.json` writes a bank, a rig module (`rig/character.mjs`)
+of a side-view humanoid facing right, and an idle draft that breathes on
+its `stand` stance, so the first look shows the character assembled and
+standing. It knows the parts `head`, `torso`, `upperArmNear`/`Far`,
+`forearmNear`/`Far`, `handNear`/`Far`, `thighNear`/`Far`, `shinNear`/`Far`,
+and `footNear`/`Far`: each picture's pivot sits on its bone's start, its
+long axis is turned onto the bone (`angle`), and the bone runs from the
+pivot to the far end of the axis. The far side draws through a darker,
+cooler `tint`. A part the set does not have gets a plain capsule (an
+ellipse for the head) so the rig still bakes; parts with other names
+become props held at the near hand's end. The idle accepts `locked` (it
+only breathes). Then correct what reads wrong in `rig look` in the module:
+a pivot, an angle, a bone's length.
+
+The limits: a side view, one character facing right, each part drawn whole
+(overlaps included: a thigh drawn to the hip, not cut where the torso
+covers it), and parts apart from each other on the sheet. A part drawn
+twice (a near and a far arm alike) is cut twice; name both.
+
 ### The command line
 
 `npx @typeonce/ritmo-tools rig <command>` (inside the Ritmo repository, `node packages/tools/bin/ritmo-tools.mjs rig <command>`).
@@ -804,9 +860,10 @@ file, broken bank), or 3 (the rig or a draft has errors).
 
 | Command | Does |
 | --- | --- |
-| `ritmo-tools rig init [bank]` | Writes a starting bank, a small figure's rig module (bones, parts, leg and arm chains, a stance), and an idle draft to build from. |
+| `ritmo-tools rig init [bank] [--from parts.json]` | Writes a starting bank, a small figure's rig module (bones, parts, leg and arm chains, a stance), and an idle draft to build from; with `--from`, a side-view humanoid rig made of the pictures `rig parts` cut (see above). |
+| `ritmo-tools rig parts <sheet.png> [-o dir] [--names head,torso,...]` | Cuts a character parts sheet into `parts/<name>.png` with transparency and `parts/parts.json` (each part's file, size, box, long axis, and guessed pivot), and warns about boxes that look like labels or are tiny (see above). |
 | `ritmo-tools rig check <bank> [names...] [--positions bones]` | Poses every draft of every clip (or the named ones) twice and measures it, and lists errors and warnings (see above), with accepted warnings apart and a verdict per draft and per clip. |
-| `ritmo-tools rig look <bank> <name> [--draft a] [--frames 5-10] [--scale 1] [--columns n] [--art] [--each] [--onion] [--positions bones]` | Writes a contact sheet PNG per draft for the agent to look at: every frame (or `--frames`) numbered with its phase (`fast` ones in amber), on the rig's backdrop, in rows no wider than 2000 pixels; under each row the same frames with their bones, joints, and the trail bone's path (`--art` leaves them out). `--each` writes one picture per frame, `--onion` draws the frame before faintly under each, and `--scale` draws them bigger. The person's open comments are ringed (a pixel) or framed (a span) in magenta with their numbers. Prints every joint's bend on every frame. |
+| `ritmo-tools rig look <bank> <name> [--draft a] [--frames 5-10] [--scale 1] [--columns n] [--art] [--each] [--onion] [--compare] [--positions bones]` | Writes a contact sheet PNG per draft for the agent to look at: every frame (or `--frames`) numbered with its phase (`fast` ones in amber), on the rig's backdrop, in rows no wider than 2000 pixels; under each row the same frames with their bones, joints, and the trail bone's path (`--art` leaves them out). `--each` writes one picture per frame, `--onion` draws the frame before faintly under each, `--scale` draws them bigger, and `--compare` writes one picture instead: a row per draft, each column the same moment (`--columns` of them, 8 by default, first frame to last), to weigh the drafts against each other. The person's open comments are ringed (a pixel) or framed (a span) in magenta with their numbers. Prints every joint's bend on every frame. |
 | `ritmo-tools rig bake <bank> [names...] [-o dir] [--scale 1]` | Writes each clip's draft in use for the game: a sprite sheet PNG (its frames in one row, anti-aliased on transparency), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the rig's `anchor`, the animation and its fps, and `meta.loop`), a GIF on the rig's backdrop, and the bank's sidecar (`<bank>.clips.json`, every clip; see below). The report lists the sidecar and each clip's hit frames and sockets. Same inputs, same bytes. |
 | `ritmo-tools rig notes <bank>` | What the person said: each clip's status, note, open comments (numbered, each with where it is in words: "draft a, frame 22 (up), pixel (146, 195), on blade, near bone sword"), how many are resolved, draft in use, and tune, changes asked first. |
 | `ritmo-tools rig resolve <bank> <clip> <numbers...> [--reply "what changed"]` | Marks comments as resolved: `rig notes` and `rig look` stop showing them. |
@@ -890,7 +947,7 @@ it, against its targets (with `Collide2` from
   poses solved (turns, IK, aims) and parts placed (`pose.ts`), keyframes
   (`keys.ts`), clip modules and the runner that poses every frame
   (`clip.ts`), the anti-aliased rasterizer (`raster.ts`), banks and reviews
-  (`bank.ts`), the checks (`check.ts`), the bake's sidecar (`sidecar.ts`), and contact sheets, sprite sheets,
+  (`bank.ts`), the checks (`check.ts`), the bake's sidecar (`sidecar.ts`), cutting a parts sheet (`parts.ts`, through the pixel fixer's sheet clearing) and a first humanoid rig from its parts (`scaffold.ts`), and contact sheets, sprite sheets,
   and GIFs (`export.ts`, through the pixel fixer's sheet and GIF writers).
 - `src/rig/cli/`: the commands, loading the rig's and the clips' modules as
   files so their imports of each other resolve (`io.ts`).

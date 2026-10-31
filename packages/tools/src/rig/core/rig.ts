@@ -26,6 +26,7 @@
  * runs clips.
  */
 import type { Decoded } from "../../fx/core/effect.ts"
+import type { RgbaImage } from "../../pixel/core/grid.ts"
 
 export type { Decoded }
 
@@ -104,9 +105,10 @@ export interface Bone {
 
 /**
  * A shape as the rig module writes it, in the setup pose's world
- * coordinates. Every kind draws with the part's fill and outline. An
- * image part (a PNG with its pivot) is a later kind of the same union:
- * clips name parts, never shapes, so they do not change with it.
+ * coordinates. The code shapes draw with the part's fill and outline; an
+ * image draws its own pixels (no outline), tinted by the part's `tint`.
+ * Clips name parts, never shapes, so a part can change kind with no change
+ * to them.
  */
 export type Shape =
   /** A tapered capsule from `a` (radius `r`) to `b` (radius `r2`): a limb. */
@@ -121,6 +123,21 @@ export type Shape =
    * the motion.
    */
   | { readonly kind: "sweep"; readonly from: number; readonly to: number; readonly frames: number }
+  /**
+   * A picture (a PNG beside the rig module), its `pivot` pixel (in the
+   * picture's own pixels, from its top left) on a point `at` of the setup
+   * pose, turned by `angle` degrees and drawn `scale` world units a pixel.
+   * `setup` maps the picture's pixels to the setup pose's world; `opaque`
+   * is the box of its drawn pixels.
+   */
+  | {
+      readonly kind: "image"
+      readonly file: string
+      readonly image: RgbaImage
+      readonly pivot: V
+      readonly setup: Mat
+      readonly opaque: { readonly x0: number; readonly y0: number; readonly x1: number; readonly y1: number }
+    }
 
 /** A part, checked: its shape in setup-pose world coordinates, and the prop it belongs to. */
 export interface Part {
@@ -143,6 +160,8 @@ export interface Part {
   readonly far: boolean
   /** The prop it belongs to: hidden or swapped with the rest of it (`props: { sword: null }`). */
   readonly prop: string | undefined
+  /** A `#rrggbb` every color the part draws is multiplied by (a far side drawn darker and cooler), or none. */
+  readonly tint: string | undefined
 }
 
 /** A two-bone IK chain: a pose's `reach` puts its end on a goal. */
@@ -394,13 +413,49 @@ export const poseProblems = (rig: Rig, pose: unknown): Array<string> => {
 const DEFAULT_LOOK: Look = { background: "#232838", ground: "#59627e", floor: "#1b1f2b" }
 
 /**
+ * The pictures a rig module's image parts name (`shape: { kind: "image",
+ * file }`, in a part's shape or its `alt`), to load before `decodeRig`.
+ */
+export const imageFiles = (module: unknown): Array<string> => {
+  const value = isRecord(module) && "default" in module ? module.default : module
+  const files = new Set<string>()
+  const add = (shape: unknown): void => {
+    if (isRecord(shape) && shape.kind === "image" && typeof shape.file === "string") files.add(shape.file)
+  }
+  for (const spec of Object.values(isRecord(value) && isRecord(value.parts) ? value.parts : {})) {
+    if (!isRecord(spec)) continue
+    add(spec.shape)
+    for (const alt of Object.values(isRecord(spec.alt) ? spec.alt : {})) add(alt)
+  }
+  return [...files]
+}
+
+/** The box of a picture's drawn pixels (alpha above 0), in its pixels; the whole picture when it has none. */
+const opaqueBox = (image: RgbaImage): { x0: number; y0: number; x1: number; y1: number } => {
+  let x0 = image.width
+  let y0 = image.height
+  let x1 = 0
+  let y1 = 0
+  for (let y = 0; y < image.height; y++)
+    for (let x = 0; x < image.width; x++)
+      if (image.data[(y * image.width + x) * 4 + 3]! > 0) {
+        x0 = Math.min(x0, x)
+        y0 = Math.min(y0, y)
+        x1 = Math.max(x1, x + 1)
+        y1 = Math.max(y1, y + 1)
+      }
+  return x1 === 0 ? { x0: 0, y0: 0, x1: image.width, y1: image.height } : { x0, y0, x1, y1 }
+}
+
+/**
  * Checks a rig module's default export, naming every field that is wrong,
  * and resolves it: the bone order and setup pose, every shape's points in
  * setup-pose world coordinates, which prop each part belongs to, and the
- * stances checked as poses. Check any other pose against the rig with
- * `poseProblems`.
+ * stances checked as poses. `images` holds the pictures its image parts
+ * name (`imageFiles` lists them), already read. Check any other pose
+ * against the rig with `poseProblems`.
  */
-export const decodeRig = (module: unknown): Decoded<Rig> => {
+export const decodeRig = (module: unknown, images: ReadonlyMap<string, RgbaImage> = new Map()): Decoded<Rig> => {
   const value = isRecord(module) && "default" in module ? module.default : module
   if (!isRecord(value)) return { ok: false, error: "the rig module must `export default { size, anchor, bones, parts, chains, props, stances }`" }
   const errors: Array<string> = []
@@ -516,8 +571,30 @@ export const decodeRig = (module: unknown): Decoded<Rig> => {
         }
         return { kind: "sweep", from: raw.from, to: raw.to, frames: raw.frames }
       }
+      case "image": {
+        if (typeof raw.file !== "string" || raw.file === "") {
+          errors.push(`${where}.file must name a PNG beside the rig module`)
+          return undefined
+        }
+        const image = images.get(raw.file)
+        if (image === undefined) errors.push(`${where}.file: cannot read ${raw.file}`)
+        if (!isPair(raw.pivot)) errors.push(`${where}.pivot must be [x, y]: the pixel of the picture (from its top left) that sits on the bone's point`)
+        if (raw.angle !== undefined && !isNumber(raw.angle)) errors.push(`${where}.angle must be a number: how far the picture is turned in the setup pose, in degrees`)
+        if (raw.scale !== undefined && (!isNumber(raw.scale) || raw.scale <= 0)) errors.push(`${where}.scale must be above 0: world units a picture pixel`)
+        const at = point(`${where}.at`, own, raw.at ?? { along: 0 })
+        if (image === undefined || !isPair(raw.pivot) || at === undefined) return undefined
+        const angle = ((isNumber(raw.angle) ? raw.angle : 0) * Math.PI) / 180
+        const s = isNumber(raw.scale) ? raw.scale : 1
+        // A picture's y runs down, the world's up: a picture pixel (u, v) is at `at` plus (u - px, -(v - py)) scaled and turned.
+        const a = Math.cos(angle) * s
+        const b = Math.sin(angle) * s
+        const c = Math.sin(angle) * s
+        const d = -Math.cos(angle) * s
+        const [px, py] = raw.pivot
+        return { kind: "image", file: raw.file, image, pivot: [px, py], setup: { a, b, c, d, x: at[0] - (a * px + c * py), y: at[1] - (b * px + d * py) }, opaque: opaqueBox(image) }
+      }
       default:
-        errors.push(`${where}.kind must be "capsule", "ellipse", "poly", or "sweep"`)
+        errors.push(`${where}.kind must be "capsule", "ellipse", "poly", "sweep", or "image"`)
         return undefined
     }
   }
@@ -531,7 +608,12 @@ export const decodeRig = (module: unknown): Decoded<Rig> => {
       continue
     }
     if (!isNumber(spec.z)) errors.push(`parts.${name}.z must be a number: its draw order`)
-    if (!isColor(spec.fill)) errors.push(`parts.${name}.fill must be a #rrggbb or #rrggbbaa color`)
+    // A part that is pictures only draws no fill; one with a code shape needs one.
+    const pictures = (raw: unknown): boolean => isRecord(raw) && raw.kind === "image"
+    const onlyPictures = pictures(spec.shape) && Object.values(isRecord(spec.alt) ? spec.alt : {}).every(pictures)
+    const fill = spec.fill === undefined && onlyPictures ? "#ffffff" : spec.fill
+    if (!isColor(fill)) errors.push(`parts.${name}.fill must be a #rrggbb or #rrggbbaa color`)
+    if (spec.tint !== undefined && (!isColor(spec.tint) || spec.tint.length !== 7)) errors.push(`parts.${name}.tint must be a #rrggbb color every color of the part is multiplied by`)
     if (spec.outline !== undefined && spec.outline !== null && !isColor(spec.outline)) errors.push(`parts.${name}.outline must be a #rrggbb color, or null for none`)
     if (spec.line !== undefined && (!isNumber(spec.line) || spec.line < 0)) errors.push(`parts.${name}.line must be 0 or more`)
     for (const flag of ["hidden", "far"]) if (spec[flag] !== undefined && typeof spec[flag] !== "boolean") errors.push(`parts.${name}.${flag} must be true or false`)
@@ -543,13 +625,15 @@ export const decodeRig = (module: unknown): Decoded<Rig> => {
       const decoded = shape(`parts.${name}.alt.${look}`, spec.bone, raw)
       if (decoded !== undefined) alt[look] = decoded
     }
-    if (main === undefined || !isNumber(spec.z) || !isColor(spec.fill)) continue
+    if (main === undefined || !isNumber(spec.z) || !isColor(fill)) continue
     parts.push({
       name,
       bone: spec.bone,
       z: spec.z,
-      fill: spec.fill.toLowerCase(),
-      outline: spec.outline === null ? null : isColor(spec.outline) ? spec.outline.toLowerCase() : outline,
+      fill: fill.toLowerCase(),
+      // A picture brings its own outline.
+      outline: spec.outline === null || onlyPictures ? null : isColor(spec.outline) ? spec.outline.toLowerCase() : outline,
+      tint: isColor(spec.tint) ? spec.tint.toLowerCase() : undefined,
       line: isNumber(spec.line) ? spec.line : line,
       shape: main,
       alt,

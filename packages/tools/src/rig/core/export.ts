@@ -13,6 +13,7 @@ import type { AtlasRect } from "../../pixel/core/spritesheet.ts"
 import { isSpan, type Comment } from "./bank.ts"
 import { phaseAt, type Clip, type Run } from "./clip.ts"
 import { over, renderArt, renderBackdrop, renderBones, rgbaOf } from "./raster.ts"
+import { momentsOf } from "../../fx/core/export.ts"
 import { tipOf, type Rig, type V } from "./rig.ts"
 
 /** A contact sheet is at most this wide when its columns are not given. */
@@ -275,4 +276,38 @@ export const gifFramesOf = (rig: Rig, frames: ReadonlyArray<RgbaImage>, scale: n
     for (let i = 0; i < indices.length; i++) indices[i] = slot.get(pack(image.data[i * 4]!, image.data[i * 4 + 1]!, image.data[i * 4 + 2]!))!
     return { width: image.width, height: image.height, palette, indices }
   })
+}
+
+/** One row of a compare sheet: a draft's run, named. */
+export interface CompareRow {
+  readonly name: string
+  readonly clip: Clip
+  readonly run: Run
+}
+
+/**
+ * Drafts side by side: a row per draft, each column the same moment of
+ * each (its first frame, its last, and evenly between, as the effects lab
+ * compares), every frame numbered with its phase, each row's draft named
+ * on its first cell. To weigh the drafts' poses and timing in one picture;
+ * `lookSheet` shows one draft's every frame.
+ */
+export const compareSheet = (rig: Rig, rows: ReadonlyArray<CompareRow>, options: { readonly scale: number; readonly columns: number }): RgbaImage => {
+  const scale = Math.max(1, Math.floor(options.scale))
+  const backdrop = renderBackdrop(rig, rig.look, scale)
+  const w = backdrop.width
+  const h = backdrop.height
+  const columns = Math.max(1, Math.min(Math.max(1, ...rows.map((row) => row.run.frames.length)), Math.floor(options.columns)))
+  const sheet = blank(columns * (w + GAP) + GAP, HEAD + rows.length * (h + GAP) + GAP, PANEL)
+  text(sheet, GAP, 7, `${rows.length} drafts, ${columns} moments each, first frame to last`, INK)
+  rows.forEach((row, r) => {
+    momentsOf(row.run.frames.length, columns).forEach((frame, c) => {
+      const x = GAP + c * (w + GAP)
+      const y = HEAD + r * (h + GAP)
+      paste(sheet, over(backdrop, renderArt(rig, row.run.frames[frame]!, scale)), x, y)
+      labelCell(sheet, row.clip, frame, x, y, h)
+      if (c === 0) text(sheet, x + w - 6 - 8 * row.name.length, y + 4, row.name, WARM)
+    })
+  })
+  return sheet
 }

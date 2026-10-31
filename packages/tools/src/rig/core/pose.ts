@@ -11,6 +11,7 @@
  * Then the parts are placed on their bones, in draw order, as the pose's
  * slots and props say.
  */
+import type { RgbaImage } from "../../pixel/core/grid.ts"
 import { angleOf, apply, IDENTITY, localMat, mul, scaleOf, wrap, type Aim, type BoneOffset, type Goal, type Mat, type Pose, type Rig, type Shape, type V } from "./rig.ts"
 
 const RAD = Math.PI / 180
@@ -130,6 +131,8 @@ export type Geom =
   | { readonly kind: "capsule"; readonly a: V; readonly b: V; readonly ra: number; readonly rb: number }
   | { readonly kind: "ellipse"; readonly c: V; readonly rx: number; readonly ry: number; readonly angle: number }
   | { readonly kind: "poly"; readonly points: ReadonlyArray<V>; readonly round: number }
+  /** A picture: `m` maps its pixels (from its top left, y down) to the world; `opaque` is the box of its drawn pixels. */
+  | { readonly kind: "image"; readonly image: RgbaImage; readonly m: Mat; readonly opaque: { readonly x0: number; readonly y0: number; readonly x1: number; readonly y1: number } }
 
 /** A shown part on one frame: its shape placed in the world, with how it is drawn. */
 export interface Drawn {
@@ -140,6 +143,8 @@ export interface Drawn {
   readonly outline: string | null
   readonly line: number
   readonly far: boolean
+  /** A `#rrggbb` every color of the part is multiplied by, or none. */
+  readonly tint: string | undefined
   readonly geom: Geom
 }
 
@@ -156,6 +161,8 @@ const place = (shape: Exclude<Shape, { kind: "sweep" }>, m: Mat): Geom => {
     }
     case "poly":
       return { kind: "poly", points: shape.points.map((p) => apply(m, p)), round: shape.round * scaleOf(m) }
+    case "image":
+      return { kind: "image", image: shape.image, m: mul(m, shape.setup), opaque: shape.opaque }
   }
 }
 
@@ -182,7 +189,7 @@ export const drawnOf = (rig: Rig, pose: Pose, world: Readonly<Record<string, Mat
   for (const part of rig.parts) {
     const shape = shapeShown(rig, pose, part.name)
     if (shape === undefined) continue
-    const base = { part: part.name, bone: part.bone, z: pose.z?.[part.name] ?? part.z, fill: part.fill, outline: part.outline, line: part.line, far: part.far }
+    const base = { part: part.name, bone: part.bone, z: pose.z?.[part.name] ?? part.z, fill: part.fill, outline: part.outline, line: part.line, far: part.far, tint: part.tint }
     if (shape.kind === "sweep") {
       // The segment's place at earlier moments of the same clip: the smear is exactly the motion.
       const outer: Array<V> = []
@@ -211,6 +218,11 @@ export const boundsOf = (g: Geom): { readonly minX: number; readonly minY: numbe
     const hx = Math.hypot(g.rx * Math.cos(t), g.ry * Math.sin(t))
     const hy = Math.hypot(g.rx * Math.sin(t), g.ry * Math.cos(t))
     return { minX: g.c[0] - hx, maxX: g.c[0] + hx, minY: g.c[1] - hy, maxY: g.c[1] + hy }
+  }
+  if (g.kind === "image") {
+    const { x0, y0, x1, y1 } = g.opaque
+    const corners = [apply(g.m, [x0, y0]), apply(g.m, [x1, y0]), apply(g.m, [x0, y1]), apply(g.m, [x1, y1])]
+    return { minX: Math.min(...corners.map((p) => p[0])), maxX: Math.max(...corners.map((p) => p[0])), minY: Math.min(...corners.map((p) => p[1])), maxY: Math.max(...corners.map((p) => p[1])) }
   }
   const xs = g.points.map((p) => p[0])
   const ys = g.points.map((p) => p[1])

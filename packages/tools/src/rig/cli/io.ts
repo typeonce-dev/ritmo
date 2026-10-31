@@ -3,7 +3,9 @@ import { pathToFileURL } from "node:url"
 import { Effect, FileSystem, Path } from "effect"
 import { decodeBank, decodeReview, emptyReview, reviewPath, type Bank, type Draft, type Review } from "../core/bank.ts"
 import { decodeClip, type Clip } from "../core/clip.ts"
-import { decodeRig, type Rig } from "../core/rig.ts"
+import { decodeRig, imageFiles, type Rig } from "../core/rig.ts"
+import { decodePng } from "../../pixel/cli/png.ts"
+import type { RgbaImage } from "../../pixel/core/grid.ts"
 import { CliFailure, readText } from "../../sound/cli/io.ts"
 
 export { CliFailure, printJson, readText, writeBytes, writeText } from "../../sound/cli/io.ts"
@@ -56,7 +58,17 @@ export type LoadedRig = { readonly ok: true; readonly rig: Rig; readonly file: s
 export const loadRig = Effect.fn("loadRig")(function* (bankFile: string, bank: Bank) {
   const imported = yield* importModule(bankFile, bank.rig)
   if (!imported.ok) return imported satisfies LoadedRig
-  const decoded = decodeRig(imported.module)
+  // The pictures its image parts name, from the rig module's folder; one that does not read is left out, and the decode names it.
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const images = new Map<string, RgbaImage>()
+  for (const file of imageFiles(imported.module)) {
+    const bytes = yield* fs.readFile(path.resolve(path.dirname(imported.file), file)).pipe(Effect.option)
+    if (bytes._tag === "None") continue
+    const picture = yield* Effect.try(() => decodePng(bytes.value)).pipe(Effect.option)
+    if (picture._tag === "Some") images.set(file, picture.value)
+  }
+  const decoded = decodeRig(imported.module, images)
   return (decoded.ok ? { ok: true, rig: decoded.value, file: imported.file } : { ok: false, error: `${bank.rig}: ${decoded.error}`, file: imported.file }) satisfies LoadedRig
 })
 

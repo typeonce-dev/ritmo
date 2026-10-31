@@ -8,7 +8,7 @@
 import type { RgbaImage } from "../../pixel/core/grid.ts"
 import type { Frame } from "./clip.ts"
 import type { Drawn, Geom } from "./pose.ts"
-import { tipOf, type Look, type Rig, type V } from "./rig.ts"
+import { apply, invert, tipOf, type Look, type Mat, type Rig, type V } from "./rig.ts"
 
 /** A color as red, green, and blue from 0 to 255, and alpha from 0 to 1. */
 export type Rgba = readonly [number, number, number, number]
@@ -78,9 +78,29 @@ const polygon = (px: number, py: number, pts: ReadonlyArray<V>): number => {
   return s * Math.sqrt(d)
 }
 
-/** A placed shape's signed distance at a world point (world units, y up): below 0 inside. */
+/** Whether a placed picture draws at a world point: its pixel there is at least half opaque. */
+const covers = (g: Extract<Geom, { kind: "image" }>, x: number, y: number): boolean => {
+  const [u, v] = apply(invert(g.m), [x, y])
+  const i = Math.floor(u)
+  const j = Math.floor(v)
+  return i >= 0 && j >= 0 && i < g.image.width && j < g.image.height && g.image.data[(j * g.image.width + i) * 4 + 3]! >= 128
+}
+
+/**
+ * A placed shape's signed distance at a world point (world units, y up):
+ * below 0 inside. A picture has no distance field: it is -1 where it draws
+ * and 1e9 elsewhere, so it counts where it covers and never as "near".
+ */
 export const distance = (g: Geom, x: number, y: number): number =>
-  g.kind === "capsule" ? unevenCapsule(x, y, g.a, g.b, g.ra, g.rb) : g.kind === "ellipse" ? ellipse(x, y, g.c, g.rx, g.ry, (g.angle * Math.PI) / 180) : polygon(x, y, g.points) - g.round
+  g.kind === "capsule"
+    ? unevenCapsule(x, y, g.a, g.b, g.ra, g.rb)
+    : g.kind === "ellipse"
+      ? ellipse(x, y, g.c, g.rx, g.ry, (g.angle * Math.PI) / 180)
+      : g.kind === "image"
+        ? covers(g, x, y)
+          ? -1
+          : 1e9
+        : polygon(x, y, g.points) - g.round
 
 /** The topmost part drawn at a world point (its outline counts), or, with none there, the nearest within `slack`. */
 export const partAt = (drawn: ReadonlyArray<Drawn>, x: number, y: number, slack = 0): string | undefined => {
@@ -175,13 +195,77 @@ const canvas = (width: number, height: number, scale: number, anchor: V) => {
     }
     return { width, height, data }
   }
-  return { scale, toSamples, paint, toImage }
+  /**
+   * Draws a picture placed by `m` (its pixels to the world): every sample
+   * maps back to the picture and reads it bilinearly (premultiplied), the
+   * samples of a pixel average, and the result lays over what is there,
+   * each color multiplied by `tint`.
+   */
+  const paintImage = (image: RgbaImage, m: Mat, tint: Rgba): void => {
+    const corners = [apply(m, [0, 0]), apply(m, [image.width, 0]), apply(m, [0, image.height]), apply(m, [image.width, image.height])].map(toSamples)
+    const px0 = Math.max(0, Math.floor(Math.min(...corners.map((p) => p[0])) / SS) - 1)
+    const py0 = Math.max(0, Math.floor(Math.min(...corners.map((p) => p[1])) / SS) - 1)
+    const px1 = Math.min(width - 1, Math.ceil(Math.max(...corners.map((p) => p[0])) / SS) + 1)
+    const py1 = Math.min(height - 1, Math.ceil(Math.max(...corners.map((p) => p[1])) / SS) + 1)
+    const back = invert(m)
+    const texel = (i: number, j: number): readonly [number, number, number, number] => {
+      if (i < 0 || j < 0 || i >= image.width || j >= image.height) return [0, 0, 0, 0]
+      const k = (j * image.width + i) * 4
+      const a = image.data[k + 3]! / 255
+      return [image.data[k]! * a, image.data[k + 1]! * a, image.data[k + 2]! * a, a]
+    }
+    const n = SS * SS
+    for (let py = py0; py <= py1; py++)
+      for (let px = px0; px <= px1; px++) {
+        let r = 0
+        let g = 0
+        let b = 0
+        let a = 0
+        for (let sy = 0; sy < SS; sy++)
+          for (let sx = 0; sx < SS; sx++) {
+            // The sample's world point, then its place in the picture (texel centres at +0.5).
+            const wx = ((px * SS + sx + 0.5) / SS - anchor[0]) / scale
+            const wy = (anchor[1] - (py * SS + sy + 0.5) / SS) / scale
+            const [u, v] = apply(back, [wx, wy])
+            const fu = u - 0.5
+            const fv = v - 0.5
+            const i = Math.floor(fu)
+            const j = Math.floor(fv)
+            const du = fu - i
+            const dv = fv - j
+            const t00 = texel(i, j)
+            const t10 = texel(i + 1, j)
+            const t01 = texel(i, j + 1)
+            const t11 = texel(i + 1, j + 1)
+            const w00 = (1 - du) * (1 - dv)
+            const w10 = du * (1 - dv)
+            const w01 = (1 - du) * dv
+            const w11 = du * dv
+            r += t00[0] * w00 + t10[0] * w10 + t01[0] * w01 + t11[0] * w11
+            g += t00[1] * w00 + t10[1] * w10 + t01[1] * w01 + t11[1] * w11
+            b += t00[2] * w00 + t10[2] * w10 + t01[2] * w01 + t11[2] * w11
+            a += t00[3] * w00 + t10[3] * w10 + t01[3] * w01 + t11[3] * w11
+          }
+        if (a <= 0) continue
+        const i = (py * width + px) * 4
+        const k = 1 - a / n
+        buf[i] = buf[i]! * k + (r / n) * (tint[0] / 255)
+        buf[i + 1] = buf[i + 1]! * k + (g / n) * (tint[1] / 255)
+        buf[i + 2] = buf[i + 2]! * k + (b / n) * (tint[2] / 255)
+        buf[i + 3] = buf[i + 3]! * k + a / n
+      }
+  }
+  return { scale, toSamples, paint, paintImage, toImage }
 }
 type Canvas = ReturnType<typeof canvas>
 
 const canvasFor = (rig: Rig, scale: number): Canvas => canvas(Math.round(rig.width * scale), Math.round(rig.height * scale), scale, [rig.anchor[0] * scale, rig.anchor[1] * scale])
 
-const drawGeom = (cv: Canvas, g: Geom, fill: Rgba, outline: Rgba | null, line: number): void => {
+const drawGeom = (cv: Canvas, g: Geom, fill: Rgba, outline: Rgba | null, line: number, tint: Rgba): void => {
+  if (g.kind === "image") {
+    cv.paintImage(g.image, g.m, tint)
+    return
+  }
   const k = cv.scale * SS
   const band = outline === null ? 0 : line * k
   if (g.kind === "capsule") {
@@ -213,7 +297,11 @@ const drawGeom = (cv: Canvas, g: Geom, fill: Rgba, outline: Rgba | null, line: n
 /** The character alone on a transparent frame, `scale` pixels per world unit. */
 export const renderArt = (rig: Rig, frame: Frame, scale: number): RgbaImage => {
   const cv = canvasFor(rig, scale)
-  for (const d of frame.drawn) drawGeom(cv, d.geom, rgbaOf(d.fill), d.outline === null ? null : rgbaOf(d.outline), d.line)
+  for (const d of frame.drawn) {
+    const tint = rgbaOf(d.tint ?? "#ffffff")
+    const tinted = (color: Rgba): Rgba => [Math.round((color[0] * tint[0]) / 255), Math.round((color[1] * tint[1]) / 255), Math.round((color[2] * tint[2]) / 255), color[3]]
+    drawGeom(cv, d.geom, tinted(rgbaOf(d.fill)), d.outline === null ? null : tinted(rgbaOf(d.outline)), d.line, tint)
+  }
   return cv.toImage()
 }
 
