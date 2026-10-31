@@ -137,6 +137,12 @@ playable toy in front of you every round, checks only that it compiles and
 loads, and asks you one question you answer by playing; when you keep it, it
 graduates to the full checks.
 
+Before anyone else plays the game, ask your agent to make it teach itself. The
+[onboarding skill](./packages/core/skills/ritmo-onboarding/SKILL.md) puts the
+rule on screen in the first seconds, makes each lesson impossible to pass by
+chance, and proves headless that a player who never learned the rule cannot
+win; after each playtest, you tell it what the stranger did.
+
 ## Games built with Ritmo
 
 - [Inkline Town](https://github.com/SandroMaglione/inkline-town): a town
