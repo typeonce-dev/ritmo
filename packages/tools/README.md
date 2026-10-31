@@ -10,7 +10,7 @@ tool per kind of asset:
 | `ritmo-tools sound` | Sound effects: keeps them as JSON recipes, measures and varies them, writes WAV files, and opens a local page where a person listens, picks, tunes, and notes. |
 | `ritmo-tools fx` | Pixel art effects: keeps each effect as a few drafts written as code, checks them for pixel art craft and the project's rules, draws contact sheets an agent can look at, writes sprite sheets and GIFs, and opens a local page where a person watches the drafts side by side, picks, tunes, and pins comments to a pixel. |
 | `ritmo-tools music` | Game music: hears a person's hum for its tune, tempo, and key, keeps songs as JSON tracks of notes, checks them, writes WAV and MIDI files, and opens a local page where a person plays, edits notes, records, and comments. |
-| `ritmo-tools rig` | Characters animated on a skeleton: keeps a character as a rig module (bones, shapes, IK chains, props, stances) and each clip as a few drafts written as code, checks the motion (feet that slide or float, limbs out of reach, locked or overbent joints, pops in speed, loops that jump, starts off the stance), draws contact sheets an agent can look at, and bakes sprite sheets and GIFs. |
+| `ritmo-tools rig` | Characters animated on a skeleton: keeps a character as a rig module (bones, shapes, IK chains, props, stances) and each clip as a few drafts written as code, checks the motion (feet that slide or float, limbs out of reach, locked or overbent joints, pops in speed, loops that jump, starts off the stance), draws contact sheets an agent can look at, and bakes sprite sheets, GIFs, and a sidecar of each frame's hit segments, sockets, and foot contacts for gameplay. |
 
 ```sh
 npx @typeonce/ritmo-tools pixel check art.png
@@ -632,6 +632,7 @@ export default {
 - `chains`: two-bone IK, `upper` then `lower` (which starts at the end of `upper`), ending in `end`; `bend` says which way the middle joint bends (1 counter-clockwise from the line to the goal: a knee facing +x); `foot: true` marks a foot, whose ground contact the checks measure.
 - `props`: groups of parts shown, swapped, or hidden as one (a sword, a shield). A prop's parts cannot be hidden one by one.
 - `stances`: named poses clips start and end on, so the game can blend between them.
+- `sockets` (optional): named points on bones the bake reports on every frame (`{ tip: { bone: "sword", along: 64 } }`), for the game to place a spark or a swapped weapon on (see the sidecar below).
 - `look` (optional): the `background`, `ground` line, and `floor` pictures are drawn on; `facing` (optional): `"right"` (the default) or `"left"`.
 
 A clip draft's default export says the clip's length and speed, and poses the rig on each frame:
@@ -660,6 +661,12 @@ export default {
   }
 }
 ```
+
+A clip may also name `sockets` of its own (over the rig's) and its `hit`:
+the segment the bake reports for gameplay, by default the trail bone's
+whole length on its `fast` frames (`hit: { from: 6 }` for the blade alone,
+`hit: { bone, frames: [[9, 12]] }` for other frames, `hit: false` for a clip
+that hits nothing). See the sidecar below.
 
 Drafts and rigs are code, and every `rig` command that reads a bank runs
 them with Node's full permissions: run it on banks you trust, as you would
@@ -800,9 +807,77 @@ file, broken bank), or 3 (the rig or a draft has errors).
 | `ritmo-tools rig init [bank]` | Writes a starting bank, a small figure's rig module (bones, parts, leg and arm chains, a stance), and an idle draft to build from. |
 | `ritmo-tools rig check <bank> [names...] [--positions bones]` | Poses every draft of every clip (or the named ones) twice and measures it, and lists errors and warnings (see above), with accepted warnings apart and a verdict per draft and per clip. |
 | `ritmo-tools rig look <bank> <name> [--draft a] [--frames 5-10] [--scale 1] [--columns n] [--art] [--each] [--onion] [--positions bones]` | Writes a contact sheet PNG per draft for the agent to look at: every frame (or `--frames`) numbered with its phase (`fast` ones in amber), on the rig's backdrop, in rows no wider than 2000 pixels; under each row the same frames with their bones, joints, and the trail bone's path (`--art` leaves them out). `--each` writes one picture per frame, `--onion` draws the frame before faintly under each, and `--scale` draws them bigger. The person's open comments are ringed (a pixel) or framed (a span) in magenta with their numbers. Prints every joint's bend on every frame. |
-| `ritmo-tools rig bake <bank> [names...] [-o dir] [--scale 1]` | Writes each clip's draft in use for the game: a sprite sheet PNG (its frames in one row, anti-aliased on transparency), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the rig's `anchor`, the animation and its fps, and `meta.loop`), and a GIF on the rig's backdrop. Same inputs, same bytes. |
+| `ritmo-tools rig bake <bank> [names...] [-o dir] [--scale 1]` | Writes each clip's draft in use for the game: a sprite sheet PNG (its frames in one row, anti-aliased on transparency), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the rig's `anchor`, the animation and its fps, and `meta.loop`), a GIF on the rig's backdrop, and the bank's sidecar (`<bank>.clips.json`, every clip; see below). The report lists the sidecar and each clip's hit frames and sockets. Same inputs, same bytes. |
 | `ritmo-tools rig notes <bank>` | What the person said: each clip's status, note, open comments (numbered, each with where it is in words: "draft a, frame 22 (up), pixel (146, 195), on blade, near bone sword"), how many are resolved, draft in use, and tune, changes asked first. |
 | `ritmo-tools rig resolve <bank> <clip> <numbers...> [--reply "what changed"]` | Marks comments as resolved: `rig notes` and `rig look` stop showing them. |
+
+### The bake's sidecar
+
+`rig bake` writes, next to each clip's sheet and atlas JSON, one sidecar for
+the whole bank, named after it (`hero.rig.json` → `hero.rig.clips.json`): what
+a game needs from the clips besides their pixels, so gameplay (a hit, a
+footstep, a spark at the blade's tip) follows the same frames the player
+sees. It always holds every clip in the bank, even when `bake` is given
+names. No code in Ritmo reads it: the game decodes it with its own Standard
+Schema, at the boundary, and trusts the type from there. It is versioned
+(`version`, now 1); a change that breaks a reader bumps it.
+
+Coordinates are pixels of the baked frame (times `scale`) with **y down**
+and the origin on the **anchor** (the ground under the character), so the
+game adds its entity's position. Angles are **degrees from +x, clockwise on
+screen**, as Pixi and Phaser turn sprites. The example bank's attack, with
+one of its 26 frames and one of its phases shown:
+
+```json
+{
+  "version": 1,
+  "rig": "hero.js",
+  "scale": 1,
+  "size": [264, 212],
+  "anchor": [118, 194],
+  "clips": {
+    "attack": {
+      "draft": "a",
+      "image": "attack.png",
+      "atlas": "attack.json",
+      "fps": 24,
+      "loop": false,
+      "duration": 1083,
+      "travel": 0,
+      "stance": {"start": "ready", "end": "ready"},
+      "phases": [{"name": "swing", "from": 12, "to": 14, "fast": true}],
+      "frames": [
+        {"name": "attack 14", "contacts": ["footNear", "footFar"], "sockets": {"tip": {"x": 131.89, "y": -63.94, "angle": 6}}, "hit": {"from": [74.21, -70], "to": [131.89, -63.94]}, "bounds": {"x": -20, "y": -183, "w": 154, "h": 185}}
+      ]
+    }
+  }
+}
+```
+
+| Field | What it is |
+| --- | --- |
+| `version` | The sidecar's format version: 1. |
+| `rig` | The rig module the clips were baked from. |
+| `scale` | Pixels per world unit in the sheets (`bake --scale`), and so in every coordinate here. |
+| `size` | A frame's width and height, in pixels. |
+| `anchor` | The anchor's pixel in a frame, from its top left: every coordinate below is from it. |
+| `clips.<name>.draft` | The draft baked: the clip's `use`. |
+| `image`, `atlas` | The clip's sprite sheet and its atlas JSON (the hash format), next to the sidecar. |
+| `fps`, `loop`, `duration` | Frames per second; whether it plays again from the start; one play, in milliseconds. |
+| `travel` | How fast the game moves the character while the clip plays, in pixels per second (a walk's speed). |
+| `stance` | `start`: the stance the clip starts on; `end`: the one it ends on (a one-shot's; a loop has none). `null` when the clip names none. |
+| `phases` | The clip's named spans: `name`, `from` and `to` (frames from 0, both included), and `fast` (a snap: a swing, a strike). |
+| `frames` | Every frame in order (`frames.length` is the frame count), each with: |
+| `frames[i].name` | The frame's name in the atlas JSON (`"attack 14"`). |
+| `frames[i].contacts` | The foot bones planted on the ground: the clip's `contacts` (every frame for a foot chain it does not list). A footstep plays where one is added. |
+| `frames[i].sockets` | Each socket whose bone shows on this frame: `x`, `y`, and `angle` (its bone's direction). Sockets are named points on bones, in the rig's `sockets` and a clip's own: `{ grip: { bone: "sword" }, tip: { bone: "sword", along: 64 } }` (`along` the bone and `across` it). |
+| `frames[i].hit` | The hit segment, `from` and `to`, on the frames the clip hits on, else `null`. A clip's `hit: { bone, from, to, frames }` is the segment of `bone` from `from` to `to` along it, on the `frames` spans; by default the trail bone's whole length on the clip's `fast` frames, and `hit: false` for a clip that hits nothing (a block). |
+| `frames[i].bounds` | The box every drawn part fills, outline included, in whole pixels (`x`, `y`, `w`, `h`), or `null` on a frame with nothing drawn: for culling, and a simple hurtbox. |
+
+A game plays a clip from its clock (frame = whole steps since it started
+× `fps` ÷ the step rate), and on each frame with a `hit` sweeps the segment,
+placed on its entity, against its targets (with `Collide2` from
+[`@typeonce/ritmo-math`](https://github.com/typeonce-dev/ritmo/blob/main/packages/math/README.md)).
 
 ### Code
 
@@ -810,7 +885,7 @@ file, broken bank), or 3 (the rig or a draft has errors).
   poses solved (turns, IK, aims) and parts placed (`pose.ts`), keyframes
   (`keys.ts`), clip modules and the runner that poses every frame
   (`clip.ts`), the anti-aliased rasterizer (`raster.ts`), banks and reviews
-  (`bank.ts`), the checks (`check.ts`), and contact sheets, sprite sheets,
+  (`bank.ts`), the checks (`check.ts`), the bake's sidecar (`sidecar.ts`), and contact sheets, sprite sheets,
   and GIFs (`export.ts`, through the pixel fixer's sheet and GIF writers).
 - `src/rig/cli/`: the commands, loading the rig's and the clips' modules as
   files so their imports of each other resolve (`io.ts`).

@@ -18,6 +18,7 @@ import { encodeBank, encodeReview, openComments, resolveComments, reviewPath, re
 import { checkClip, type Checked, type Issue } from "../core/check.ts"
 import { runClip } from "../core/clip.ts"
 import { artOf, framePictures, gifFramesOf, lookSheet, sheetOf } from "../core/export.ts"
+import { encodeSidecar, sidecarClip, sidecarName, sidecarOf, type SidecarClip } from "../core/sidecar.ts"
 import type { Rig } from "../core/rig.ts"
 import { CliFailure, loadClip, loadRig, printJson, readBank, readReview, readText, writeBytes, writeText } from "./io.ts"
 
@@ -223,7 +224,9 @@ const bake = Command.make(
     const folder = Option.getOrElse(flags.out, () => flags.bank.replace(/\.json$/, "") + ".out")
     const scale = Math.max(1, flags.scale)
     const written: Array<Record<string, unknown>> = []
-    for (const name of chosen) {
+    const entries: Record<string, SidecarClip> = {}
+    // The sidecar is one file per bank, so it holds every clip, baked by name or not.
+    for (const name of Object.keys(bank.clips)) {
       const entry = bank.clips[name]!
       const id = usedDraft(entry)!
       const draft = entry.drafts[id]!
@@ -232,6 +235,9 @@ const bake = Command.make(
       const clip = loaded.clip
       const run = runClip(rig, clip, { seed: draft.seed, tune: draft.tune })
       if (run.errors.length > 0) return yield* new CliFailure({ message: `${name} (draft ${id}) does not pose cleanly: ${run.errors.map((error) => error.message).join("; ")}` })
+      const side = sidecarClip(rig, clip, run, { name, draft: id, scale })
+      entries[name] = side
+      if (!chosen.includes(name)) continue
       const art = artOf(rig, run, scale)
       const gifFrames = gifFramesOf(rig, art, scale)
       // The hash format reads an anchor as a pixel (its middle across, its foot down); the rig's anchor is the corner the ground meets, so it goes in half a pixel left and one up.
@@ -242,13 +248,26 @@ const bake = Command.make(
         yield* writeText(path.join(folder, `${name}.json`), withLoop(spritesheetJson({ image: `${name}.png`, clips: [atlasClip], atlas, scale: 1 }), name, clip.loop)),
         yield* writeBytes(path.join(folder, `${name}.gif`), toGif(gifFrames, { scale: 1, delay: 1000 / clip.fps }))
       ]
-      written.push({ clip: name, draft: id, loop: clip.loop, frames: clip.frames, fps: clip.fps, size: [rig.width * scale, rig.height * scale], anchor: [rig.anchor[0] * scale, rig.anchor[1] * scale], files })
+      const hits = side.frames.flatMap((frame, f) => (frame.hit === null ? [] : [f]))
+      written.push({
+        clip: name,
+        draft: id,
+        loop: clip.loop,
+        frames: clip.frames,
+        fps: clip.fps,
+        size: [rig.width * scale, rig.height * scale],
+        anchor: [rig.anchor[0] * scale, rig.anchor[1] * scale],
+        hit: clip.hit === undefined ? null : { bone: clip.hit.bone, frames: hits },
+        sockets: Object.keys({ ...rig.sockets, ...clip.sockets }),
+        files
+      })
     }
-    yield* printJson({ file: flags.bank, clips: written })
+    const sidecar = yield* writeText(path.join(folder, sidecarName(flags.bank)), encodeSidecar(sidecarOf(rig, bank.rig, scale, entries)))
+    yield* printJson({ file: flags.bank, sidecar, clips: written })
   })
 ).pipe(
   Command.withDescription(
-    "Writes each clip's chosen draft (its `use`, or its first) for the game: a sprite sheet PNG of its frames in one row (anti-aliased, on transparency), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the rig's `anchor`, the animation and its fps, and `meta.loop`: whether it loops or plays once), and a GIF on the rig's backdrop to share."
+    "Writes each clip's chosen draft (its `use`, or its first) for the game: a sprite sheet PNG of its frames in one row (anti-aliased, on transparency), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the rig's `anchor`, the animation and its fps, and `meta.loop`: whether it loops or plays once), and a GIF on the rig's backdrop to share. Next to them, one sidecar for the whole bank (`<bank>.clips.json`, every clip): each clip's timing, stance, and phases, and on each frame the feet on the ground, the sockets, the hit segment, and the drawn box, in pixels from the anchor with y down."
   )
 )
 

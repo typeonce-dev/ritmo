@@ -41,6 +41,8 @@ export default {
   // The front foot never leaves the ground; the back foot is planted except while it steps back (4-8) and forward again (19-22).
   contacts: { legNear: [[0, 25]], legFar: [[0, 3], [9, 18], [23, 25]] },
   trail: "sword",
+  // The impact is fast, but the block hits nothing.
+  hit: false,
   pose(rig) {
     const ready = rig.stances.ready
     return rig.keys([

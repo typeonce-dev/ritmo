@@ -11,6 +11,7 @@ import { decodeBank, decodeReview, encodeBank, encodeReview, openComments, resol
 import { checkClip, JERK } from "@typeonce/ritmo-tools/rig/core/check.ts"
 import { decodeClip, runClip, tuned, type Clip, type RigContext } from "@typeonce/ritmo-tools/rig/core/clip.ts"
 import { artOf, framePictures, gifFramesOf, lookSheet, MAX_WIDTH } from "@typeonce/ritmo-tools/rig/core/export.ts"
+import { encodeSidecar, sidecarClip, sidecarName, sidecarOf } from "@typeonce/ritmo-tools/rig/core/sidecar.ts"
 import { keysAt, KeysError } from "@typeonce/ritmo-tools/rig/core/keys.ts"
 import { add, solve } from "@typeonce/ritmo-tools/rig/core/pose.ts"
 import { angleOf, apply, decodeRig, poseProblems, type Pose, type Rig } from "@typeonce/ritmo-tools/rig/core/rig.ts"
@@ -53,7 +54,8 @@ const spec = {
     reach: { upper: "arm", lower: "fore", end: "hand", bend: -1 }
   },
   props: { stick: ["stick"] },
-  stances: { stand: { bones: { torso: -5, arm: 20, fore: 40 } } }
+  stances: { stand: { bones: { torso: -5, arm: 20, fore: 40 } } },
+  sockets: { tip: { bone: "stick", along: 12 }, shoulder: { bone: "torso", along: 14 } }
 }
 
 const decoded = decodeRig({ default: spec })
@@ -71,6 +73,8 @@ const clip = (pose: (rig: RigContext, t: number, p: Readonly<Record<string, numb
   phases: [],
   contacts: {},
   trail: undefined,
+  sockets: {},
+  hit: undefined,
   pose,
   ...overrides
 })
@@ -426,6 +430,68 @@ describe("the checks", () => {
   })
 })
 
+describe("the sidecar", () => {
+  const swing = clip(alive, { trail: "stick", phases: [{ name: "swing", from: 3, to: 5, fast: true }], stance: "stand" })
+  const decodedSwing = decodeClip({ default: { frames: 8, fps: 12, trail: "stick", stance: "stand", phases: [{ name: "swing", from: 3, to: 5, fast: true }], pose: alive } }, rig)
+  if (!decodedSwing.ok) throw new Error(decodedSwing.error)
+  const entry = (target: Clip, scale = 1) => sidecarClip(rig, target, runClip(rig, target), { name: "swing", draft: "a", scale })
+
+  it("default a clip's hit to its trail bone on its fast frames, or take the clip's", () => {
+    expect(decodedSwing.value.hit).toEqual({ bone: "stick", from: 0, to: 12, frames: [[3, 5]] })
+    const own = decodeClip({ default: { frames: 8, fps: 12, trail: "stick", hit: { from: 4, frames: [[1, 2]] }, pose: alive } }, rig)
+    expect(own.ok && own.value.hit).toEqual({ bone: "stick", from: 4, to: 12, frames: [[1, 2]] })
+    const none = decodeClip({ default: { frames: 8, fps: 12, trail: "stick", hit: false, pose: alive } }, rig)
+    expect(none.ok && none.value.hit).toBeUndefined()
+    const wrong = decodeClip({ default: { frames: 8, fps: 12, hit: { from: 3 }, sockets: { x: { bone: "tail" } }, pose: alive } }, rig)
+    expect(wrong.ok === false && wrong.error).toContain("hit must be { bone, from, to, frames }")
+    expect(wrong.ok === false && wrong.error).toContain("sockets.x must be { bone, along, across }")
+  })
+
+  it("give the hit segment only on its frames, in pixels from the anchor with y down", () => {
+    const baked = entry(decodedSwing.value)
+    expect(baked.frames.map((frame) => frame.hit !== null)).toEqual([false, false, false, true, true, true, false, false])
+    const fr = runClip(rig, decodedSwing.value).frames[4]!
+    const [tx, ty] = apply(fr.world.stick!, [12, 0])
+    const to = baked.frames[4]!.hit!.to
+    expect(to[0]).toBeCloseTo(tx, 1)
+    expect(to[1]).toBeCloseTo(-ty, 1)
+    // Twice the scale, twice the pixels.
+    const twice = entry(decodedSwing.value, 2).frames[4]!.hit!.to
+    expect(twice[0]).toBeCloseTo(to[0] * 2, 1)
+  })
+
+  it("place the rig's and the clip's sockets, angles clockwise on screen, and leave out hidden ones", () => {
+    const fr = runClip(rig, swing).frames[0]!
+    const tip = entry(swing).frames[0]!.sockets.tip!
+    const [x, y] = apply(fr.world.stick!, [12, 0])
+    expect([tip.x, tip.y]).toEqual([Math.round(x * 100) / 100 + 0, Math.round(-y * 100) / 100 + 0])
+    expect(tip.angle).toBeCloseTo(-angleOf(fr.world.stick!), 0)
+    const hidden = clip((r, t) => ({ ...alive(r, t), props: { stick: null } }), { sockets: { hand: { bone: "hand", along: 1, across: 0 } } })
+    expect(Object.keys(entry(hidden).frames[0]!.sockets).sort()).toEqual(["hand", "shoulder"])
+  })
+
+  it("name each frame as the atlas does, its feet on the ground, its drawn box, and the clip's timing and stance", () => {
+    const baked = entry(clip(alive, { contacts: { leg: [[0, 3]] }, stance: "stand", phases: [{ name: "swing", from: 3, to: 5, fast: true }] }))
+    expect(baked).toMatchObject({ draft: "a", image: "swing.png", atlas: "swing.json", fps: 12, loop: false, duration: 667, stance: { start: "stand", end: "stand" }, phases: [{ name: "swing", from: 3, to: 5, fast: true }] })
+    expect(baked.frames.map((frame) => frame.name)).toEqual(Array.from({ length: 8 }, (_, f) => `swing ${f}`))
+    expect(baked.frames.map((frame) => frame.contacts)).toEqual([["foot"], ["foot"], ["foot"], ["foot"], [], [], [], []])
+    const box = baked.frames[0]!.bounds!
+    // The feet stand on the anchor: the box ends at the ground (y 0, down) with the outline, rounded out to whole pixels, and reaches up past the head.
+    expect([1, 2]).toContain(box.y + box.h)
+    expect(box.y).toBeLessThan(-30)
+    expect(entry(clip(alive, { loop: true, stance: "stand" })).stance).toEqual({ start: "stand", end: null })
+  })
+
+  it("write the same bytes from the same clips, a frame a line, and name the file after the bank", () => {
+    const sidecar = sidecarOf(rig, "rig.mjs", 1, { swing: entry(decodedSwing.value) })
+    const text = encodeSidecar(sidecar)
+    expect(encodeSidecar(sidecarOf(rig, "rig.mjs", 1, { swing: entry(decodedSwing.value) }))).toBe(text)
+    expect(JSON.parse(text)).toEqual(JSON.parse(JSON.stringify(sidecar)))
+    expect(text.split("\n").filter((line) => line.includes('"name":"swing ')).length).toBe(8)
+    expect([sidecarName("art/hero.rig.json"), sidecarName("game.json")]).toEqual(["hero.rig.clips.json", "game.clips.json"])
+  })
+})
+
 describe("banks and reviews", () => {
   const bank: Bank = { rig: "hero.js", clips: { attack: { about: "A chop.", drafts: { a: { file: "a.js" }, b: { file: "b.js", seed: 3, tune: { lean: 20 }, accept: { jerk: "the snap is the look" } } }, use: "b" } } }
 
@@ -527,6 +593,15 @@ describe("the CLI", () => {
     expect(sheet.frames["punch 0"]!.anchor.x).toBeCloseTo(118 / 264, 4)
     expect(sheet.frames["punch 0"]!.anchor.y).toBeCloseTo(194 / 212, 4)
     expect(sheet.meta.loop).toEqual({ punch: false })
+    // One sidecar for the bank, with every clip, though only the punch was baked.
+    const report = JSON.parse(run("bake", example, "punch", "-o", join(folder, "three")).stdout) as { sidecar: string; clips: Array<{ clip: string; hit: { bone: string; frames: Array<number> } }> }
+    expect(report.sidecar).toBe(join(folder, "three", "hero.rig.clips.json"))
+    expect(report.clips).toMatchObject([{ clip: "punch", hit: { bone: "handNear", frames: [3, 4] } }])
+    const sidecar = JSON.parse(readFileSync(report.sidecar, "utf8")) as { version: number; clips: Record<string, { atlas: string; frames: Array<{ name: string }> }> }
+    expect(sidecar.version).toBe(1)
+    expect(Object.keys(sidecar.clips)).toEqual(["idle", "walk", "attack", "block", "punch", "kick"])
+    expect(sidecar.clips.punch!.frames.map((frame) => frame.name)).toEqual(Object.keys(sheet.frames))
+    expect(readFileSync(join(folder, "one", "hero.rig.clips.json"))).toEqual(readFileSync(join(folder, "two", "hero.rig.clips.json")))
   })
 
   it("starts a bank, looks at it a few ways, and reads and resolves notes", () => {

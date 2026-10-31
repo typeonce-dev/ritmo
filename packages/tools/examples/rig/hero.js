@@ -118,6 +118,12 @@ export default {
     armNear: { upper: "upperArmNear", lower: "forearmNear", end: "handNear", bend: -1 }
   },
   props: { sword: ["smear", "pommel", "grip", "blade", "fuller", "guard"] },
+  // Points the bake reports on every frame they show, for the game to place things on: a swapped weapon's handle, a spark at the tip, an effect on the fist.
+  sockets: {
+    grip: { bone: "sword" },
+    tip: { bone: "sword", along: 64 },
+    fist: { bone: "handNear", along: 3 }
+  },
   stances: {
     // The armed stance: near foot forward, weight low, sword up in front at 50°. Idle breathes on it; the attacks and the block start and end on it.
     ready: {

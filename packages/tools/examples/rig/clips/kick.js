@@ -97,6 +97,9 @@ export default {
   // The front foot never leaves the ground; the back foot is planted until it lifts (after 2) and from when it lands flat (23).
   contacts: { legNear: [[0, 27]], legFar: [[0, 2], [23, 27]] },
   trail: "footFar",
+  // The shin and foot hit, through the strike and the held impact.
+  hit: { bone: "footFar", frames: [[9, 12]] },
+  sockets: { toe: { bone: "footFar", along: 11 } },
   pose(rig) {
     const guard = rig.stances.guard
     return rig.keys([

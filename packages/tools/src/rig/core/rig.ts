@@ -10,7 +10,8 @@
  *     parts: { torso: { bone: "torso", z: 10, fill: "#3f7fb8", shape: { kind: "capsule", r: 7 } }, ... },
  *     chains: { legNear: { upper: "thighNear", lower: "shinNear", end: "footNear", bend: 1, foot: true } },
  *     props: { sword: ["blade", "grip"] },
- *     stances: { ready: { bones: { torso: -6 }, reach: { legNear: { x: 8, y: 3 } } } }
+ *     stances: { ready: { bones: { torso: -6 }, reach: { legNear: { x: 8, y: 3 } } } },
+ *     sockets: { grip: { bone: "sword" }, tip: { bone: "sword", along: 30 } }
  *   }
  *
  * Coordinates: y up, the origin on the ground under the character, angles
@@ -190,8 +191,17 @@ export interface Rig {
   readonly chains: Readonly<Record<string, Chain>>
   readonly props: Readonly<Record<string, ReadonlyArray<string>>>
   readonly stances: Readonly<Record<string, Pose>>
+  /** Named points on bones the bake reports on every frame, for the game to place things on (a particle, a swapped weapon). */
+  readonly sockets: Readonly<Record<string, Socket>>
   /** Each part's setup bone transform, inverted: setup world -> the bone's frame. */
   readonly bind: Readonly<Record<string, Mat>>
+}
+
+/** A named point on a bone (`along` it and `across` it, to its left): where the game puts something that follows the bone. */
+export interface Socket {
+  readonly bone: string
+  readonly along: number
+  readonly across: number
 }
 
 /** A bone's tip in a set of world transforms. */
@@ -259,6 +269,27 @@ const isNumber = (value: unknown): value is number => typeof value === "number" 
 const isColor = (value: unknown): value is string => typeof value === "string" && /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(value)
 const isPair = (value: unknown): value is V => Array.isArray(value) && value.length === 2 && value.every(isNumber)
 const list = (names: Iterable<string>): string => [...names].join(", ") || "none"
+
+/**
+ * Sockets as a rig or clip module writes them (`{ grip: { bone: "sword", along: 4 } }`),
+ * checked against the bones; the problems go in `errors`, each starting with `where`.
+ */
+export const decodeSockets = (raw: unknown, bones: Readonly<Record<string, { readonly length: number }>>, where: string, errors: Array<string>): Record<string, Socket> => {
+  const sockets: Record<string, Socket> = {}
+  if (raw === undefined) return sockets
+  if (!isRecord(raw)) {
+    errors.push(`${where} must be { name: { bone, along, across } }`)
+    return sockets
+  }
+  for (const [name, spec] of Object.entries(raw)) {
+    if (!isRecord(spec) || typeof spec.bone !== "string" || !(spec.bone in bones) || (spec.along !== undefined && !isNumber(spec.along)) || (spec.across !== undefined && !isNumber(spec.across))) {
+      errors.push(`${where}.${name} must be { bone, along, across }, on a bone the rig has (${list(Object.keys(bones))})`)
+      continue
+    }
+    sockets[name] = { bone: spec.bone, along: isNumber(spec.along) ? spec.along : 0, across: isNumber(spec.across) ? spec.across : 0 }
+  }
+  return sockets
+}
 
 const BONE_FIELDS = ["r", "x", "y", "sx", "sy"] as const
 const GOAL_FIELDS = ["x", "y", "bone", "along", "across", "dx", "dy", "angle", "turn", "mix"] as const
@@ -566,6 +597,7 @@ export const decodeRig = (module: unknown): Decoded<Rig> => {
     chains[name] = { name, upper: upper.name, lower: lower.name, end: end.name, bend: spec.bend, foot: spec.foot === true }
   }
   if (value.back !== undefined && (typeof value.back !== "string" || !(value.back in bones))) errors.push(`back must name a bone (the one the body's back runs along, for the peek check)`)
+  const sockets = decodeSockets(value.sockets, bones, "sockets", errors)
   if (errors.length > 0) return { ok: false, error: errors.join("; ") }
 
   const withProps = parts.map((part) => ({ ...part, prop: propOf.get(part.name) }))
@@ -589,6 +621,7 @@ export const decodeRig = (module: unknown): Decoded<Rig> => {
     chains,
     props,
     stances: {},
+    sockets,
     bind
   } satisfies Rig
 

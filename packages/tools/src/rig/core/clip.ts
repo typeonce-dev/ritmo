@@ -9,6 +9,7 @@
  *     params: { lean: { min: 10, max: 40, value: 28 } },
  *     phases: [{ name: "swing", from: 12, to: 14, fast: true }],
  *     trail: "sword",
+ *     hit: { from: 6 }, // the blade, not the grip: what the bake reports as the hit on fast frames
  *     pose(rig, t, p) {
  *       return rig.keys([{ at: 0, ...rig.stances.ready }, { at: 14, bones: { torso: -p.lean } }, { at: 25, ...rig.stances.ready }])
  *     }
@@ -24,7 +25,7 @@
 import { add } from "./pose.ts"
 import { keysAt, KeysError } from "./keys.ts"
 import { drawnOf, solve, type Drawn } from "./pose.ts"
-import { poseProblems, type Decoded, type Mat, type Pose, type Rig } from "./rig.ts"
+import { decodeSockets, poseProblems, type Decoded, type Mat, type Pose, type Rig, type Socket } from "./rig.ts"
 import type { Key } from "./keys.ts"
 
 /** A param the person tunes with a slider; `value` is the clip's own. */
@@ -72,6 +73,14 @@ export interface RigContext {
   readonly clamp: (v: number, min: number, max: number) => number
 }
 
+/** A clip's hit: the segment of `bone` from `from` to `to` along it, on the frames in `frames` (both ends included). */
+export interface Hit {
+  readonly bone: string
+  readonly from: number
+  readonly to: number
+  readonly frames: ReadonlyArray<readonly [number, number]>
+}
+
 /** What a clip's module exports, checked. */
 export interface Clip {
   readonly label: string
@@ -89,6 +98,10 @@ export interface Clip {
   readonly contacts: Readonly<Record<string, ReadonlyArray<readonly [number, number]>>>
   /** A bone whose tip the checks measure for speed and arc (a sword, a fist). */
   readonly trail: string | undefined
+  /** Sockets of this clip's own, over the rig's by name. */
+  readonly sockets: Readonly<Record<string, Socket>>
+  /** The segment the bake reports as the clip's hit on the frames it hits; the trail bone's whole length on `fast` frames by default, none with no trail or with `hit: false`. */
+  readonly hit: Hit | undefined
   readonly pose: (rig: RigContext, t: number, p: Readonly<Record<string, number>>) => unknown
 }
 
@@ -149,6 +162,25 @@ export const decodeClip = (module: unknown, rig: Rig): Decoded<Clip> => {
     }
     contacts[chain] = spans
   }
+  const sockets = decodeSockets(value.sockets, rig.bones, "sockets", errors)
+  const trail = typeof value.trail === "string" && value.trail in rig.bones ? value.trail : undefined
+  const fastSpans = phases.filter((phase) => phase.fast).map((phase): readonly [number, number] => [phase.from, phase.to])
+  let hit: Hit | undefined
+  if (value.hit === false) hit = undefined
+  else if (value.hit !== undefined) {
+    const raw = value.hit
+    const bone = isRecord(raw) && typeof raw.bone === "string" ? raw.bone : trail
+    if (!isRecord(raw) || bone === undefined || !(bone in rig.bones)) errors.push("hit must be { bone, from, to, frames }, on a bone the rig has (the clip's trail bone when bone is left out), or false for a clip that hits nothing")
+    else {
+      const length = rig.bones[bone]!.length
+      const from = raw.from === undefined ? 0 : raw.from
+      const to = raw.to === undefined ? length : raw.to
+      if (!isNumber(from) || !isNumber(to) || from >= to) errors.push(`hit.from and hit.to must be numbers along ${bone}, from below to (0 to ${length} by default)`)
+      const spans = raw.frames === undefined ? fastSpans : raw.frames
+      if (!Array.isArray(spans) || !spans.every((span) => isSpan(span, n))) errors.push(`hit.frames must be [[from, to], ...]: whole frames inside the clip (0 to ${n - 1}); its fast phases by default`)
+      else if (isNumber(from) && isNumber(to)) hit = { bone, from, to, frames: spans }
+    }
+  } else if (trail !== undefined) hit = { bone: trail, from: 0, to: rig.bones[trail]!.length, frames: fastSpans }
   if (errors.length > 0) return { ok: false, error: errors.join("; ") }
   return {
     ok: true,
@@ -162,7 +194,9 @@ export const decodeClip = (module: unknown, rig: Rig): Decoded<Clip> => {
       travel: isNumber(value.travel) ? value.travel : 0,
       phases,
       contacts,
-      trail: typeof value.trail === "string" ? value.trail : undefined,
+      trail,
+      sockets,
+      hit,
       pose: value.pose as Clip["pose"]
     }
   }
