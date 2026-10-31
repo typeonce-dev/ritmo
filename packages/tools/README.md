@@ -843,8 +843,9 @@ long axis is turned onto the bone (`angle`), and the bone runs from the
 pivot to the far end of the axis. The far side draws through a darker,
 cooler `tint`. A part the set does not have gets a plain capsule (an
 ellipse for the head) so the rig still bakes; parts with other names
-become props held at the near hand's end. The idle accepts `locked` (it
-only breathes). Then correct what reads wrong in `rig look` in the module:
+become props held at the near hand's end. It accepts no warnings: when
+one fires, judge it, and accept it in the bank with why if it is
+deliberate. Then correct what reads wrong in `rig look` in the module:
 a pivot, an angle, a bone's length.
 
 The limits: a side view, one character facing right, each part drawn whole

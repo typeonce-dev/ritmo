@@ -51,8 +51,6 @@ export interface Scaffold {
   readonly fallbacks: ReadonlyArray<string>
   /** Parts with other names, made props in the near hand. */
   readonly props: ReadonlyArray<string>
-  /** Warnings the idle accepts in the bank, each with why. */
-  readonly accept: Readonly<Record<string, string>>
 }
 
 /**
@@ -184,7 +182,6 @@ export default {
     rig: source,
     idle,
     fallbacks,
-    props,
-    accept: { locked: "An idle only breathes: the knees barely bend." }
+    props
   }
 }

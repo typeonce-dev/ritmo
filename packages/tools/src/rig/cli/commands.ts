@@ -432,7 +432,7 @@ const init = Command.make(
       const made = scaffold(decoded.value, path.relative(path.dirname(rigFile), path.dirname(partsFile)).split(path.sep).join("/") || ".")
       const bank: Bank = {
         rig: path.relative(folder, rigFile).split(path.sep).join("/"),
-        clips: { idle: { about: "Standing, breathing: the stance the other clips start and end on.", drafts: { a: { file: path.relative(folder, clipFile).split(path.sep).join("/"), accept: made.accept } } } }
+        clips: { idle: { about: "Standing, breathing: the stance the other clips start and end on.", drafts: { a: { file: path.relative(folder, clipFile).split(path.sep).join("/") } } } }
       }
       return yield* printJson({
         bank: yield* writeText(flags.bank, encodeBank(bank)),
