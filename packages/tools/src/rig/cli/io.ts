@@ -29,6 +29,12 @@ export const readReview = Effect.fn("readReview")(function* (bankFile: string) {
  * Imports a module from the bank's folder as a file, so its imports of the
  * rig module and of other clips resolve. A broken module is a message, not a
  * failure, so `check` can report every draft.
+ *
+ * Node keeps an imported module for the life of the process, keyed by its
+ * URL. Each command imports once, so that is fine here; the review server
+ * (which rebakes as files change) must add a cache-busting query to the URL
+ * on each rebake (`?v=<n>`), as the scratch experiment did, rather than
+ * start a process per bake.
  */
 const importModule = Effect.fn("importModule")(function* (bankFile: string, relative: string) {
   const path = yield* Path.Path

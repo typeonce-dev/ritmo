@@ -185,14 +185,36 @@ describe("keys", () => {
     const list = [{ at: 0, bones: { torso: 0 } }, { at: 4, bones: { torso: 40, arm: 10 } }, { at: 8, bones: { torso: 0 } }]
     expect(at(list, 4).bones).toEqual({ torso: { r: 40 }, arm: { r: 10 } })
     expect(at(list, 2).bones?.torso).toEqual({ r: 20 })
-    // The arm has one key: it holds it from the start.
-    expect(at(list, 0).bones?.arm).toEqual({ r: 10 })
+    // The arm has one key: it starts from the setup pose on frame 0 and holds its key after it.
+    expect([at(list, 0).bones?.arm, at(list, 8).bones?.arm]).toEqual([{ r: 0 }, { r: 10 }])
     expect(at([{ at: 0, curve: "linear", bones: { torso: 0 } }, { at: 10, bones: { torso: 10 } }], 3).bones?.torso).toEqual({ r: 3 })
     expect(at([{ at: 0, curve: "stepped", bones: { torso: 0 } }, { at: 10, bones: { torso: 10 } }], 9).bones?.torso).toEqual({ r: 0 })
     expect(at([{ at: 0, slots: { stick: "short" } }, { at: 5, slots: { stick: "default" } }], 4.9).slots).toEqual({ stick: "short" })
-    // A slot, a prop, or a draw order is the rig's own until its first key; a number holds its first key back.
-    const later = at([{ at: 5, slots: { stick: "short" }, props: { stick: null }, z: { arm: 9 }, bones: { torso: 7 } }], 2)
-    expect([later.slots, later.props, later.z, later.bones]).toEqual([{}, {}, {}, { torso: { r: 7 } }])
+  })
+
+  it("start every channel from the setup pose on frame 0, for a clip with no stance", () => {
+    const later = [{ at: 5, slots: { stick: "short" }, props: { stick: null }, z: { arm: 9 }, bones: { torso: 40, hips: { sx: 2 } } }]
+    const first = at(later, 0)
+    expect([first.slots, first.props, first.z, first.bones]).toEqual([{}, {}, {}, { torso: { r: 0 }, hips: { sx: 1 } }])
+    expect(at(later, 5).bones).toEqual({ torso: { r: 40 }, hips: { sx: 2 } })
+    expect((at(later, 2.5).bones?.torso as { r: number }).r).toBeCloseTo(20, 6)
+    // An aim or a reach mixes in from 0 on frame 0 to 1 on its first key.
+    const aimed = [{ at: 6, aim: { stick: 200 } }]
+    expect(at(aimed, 0).aim).toEqual({ stick: { angle: 200, mix: 0 } })
+    expect(at(aimed, 6).aim).toEqual({ stick: { angle: 200, mix: 1 } })
+    expect(at([{ at: 4, reach: { reach: { x: 1, y: 1 } } }], 0).reach).toEqual({ reach: { x: 1, y: 1, mix: 0 } })
+  })
+
+  it("start every channel from the clip's stance on frame 0, so the first key need not repeat it", () => {
+    const stance: Pose = { bones: { torso: -6, arm: 20 }, aim: { stick: 50 }, reach: { leg: { x: 2, y: 2 } }, slots: { stick: "short" } }
+    const list = [{ at: 4, bones: { torso: 30 }, aim: { stick: 120 }, reach: { leg: { x: 6, y: 2 } } }, { at: 8, slots: { stick: "default" } }]
+    const first = keysAt(list, 0, 10, chains, stance)
+    expect(first).toMatchObject({ bones: { torso: { r: -6 }, arm: { r: 20 } }, aim: { stick: { angle: 50 } }, reach: { leg: { x: 2, y: 2 } }, slots: { stick: "short" } })
+    expect(keysAt(list, 4, 10, chains, stance)).toMatchObject({ bones: { torso: { r: 30 }, arm: { r: 20 } }, aim: { stick: { angle: 120 } }, reach: { leg: { x: 6 } } })
+    expect(keysAt(list, 8, 10, chains, stance).slots).toEqual({ stick: "default" })
+    // A goal in another form than the stance's mixes in as if the stance had none.
+    const onBone = keysAt([{ at: 4, reach: { leg: { bone: "torso", along: 0, dy: -20 } } }], 0, 10, chains, stance)
+    expect(onBone.reach).toEqual({ leg: { bone: "torso", along: 0, dy: -20, mix: 0 } })
   })
 
   it("ease into and out of a rest key", () => {
@@ -211,17 +233,17 @@ describe("keys", () => {
     expect(() => at([{ at: 2, bones: { torso: 1 } }, { at: 2, bones: { arm: 2 } }], 0)).not.toThrow()
   })
 
-  it("refuse keys past the clip, and aims or reaches that would hold back over turns", () => {
+  it("refuse keys past the clip", () => {
     expect(() => at([{ at: 11, bones: { torso: 1 } }], 0)).toThrow("outside the clip's frames (0 to 10)")
-    const late = [{ at: 0, bones: { stick: 10 } }, { at: 6, aim: { stick: 200 } }]
-    expect(() => at(late, 0)).toThrow("aim.stick starts on frame 6, but bones.stick is keyed from frame 0")
-    expect(() => at([{ at: 0, bones: { stick: 10 }, aim: { stick: { angle: 0, mix: 0 } } }, { at: 6, aim: { stick: { angle: 200, mix: 1 } } }], 0)).not.toThrow()
-    const reach = [{ at: 0, bones: { arm: 10 } }, { at: 6, reach: { reach: { x: 1, y: 1 } } }]
-    expect(() => at(reach, 0)).toThrow("reach.reach starts on frame 6, but bones.arm is keyed from frame 0")
   })
 
-  it("refuse turns an aim always wins over", () => {
+  it("refuse turns an aim or a reach always wins over, from the keys or the stance", () => {
     expect(() => at([{ at: 0, aim: { stick: 50 } }, { at: 4, bones: { stick: 20 } }], 0)).toThrow("bones.stick is keyed, but aim.stick (mix 1 on every frame) wins over it")
+    expect(() => keysAt([{ at: 4, bones: { stick: 20 } }], 0, 10, chains, { aim: { stick: 50 } })).toThrow("bones.stick is keyed, but aim.stick (mix 1 on every frame) wins over it")
+    expect(() => keysAt([{ at: 4, bones: { arm: 20 } }], 0, 10, chains, { reach: { reach: { x: 1, y: 1 } } })).toThrow("bones.arm is keyed, but reach.reach (mix 1 on every frame) wins over it")
+    // An aim mixed in later, or mixed out, leaves the turns showing.
+    expect(() => at([{ at: 0, bones: { stick: 10 } }, { at: 6, aim: { stick: 200 } }], 0)).not.toThrow()
+    expect(() => keysAt([{ at: 4, bones: { stick: 20 }, aim: { stick: { angle: 50, mix: 0 } } }], 0, 10, chains, { aim: { stick: 50 } })).not.toThrow()
   })
 
   it("name the clip when the runner reports a key mistake", () => {
@@ -364,13 +386,19 @@ describe("the checks", () => {
 
   it("hold a clip to its stance on its first frame, and its last when it plays once", () => {
     const stand = rig.stances.stand!
-    const onStance = clip((r) => r.keys([{ at: 0, ...stand }, { at: 3, bones: { arm: 60, fore: 90 } }, { at: 7, ...stand }]), { stance: "stand" })
+    // Keys start from the stance, so a clip that ends on it is on it at both ends without keying frame 0.
+    const onStance = clip((r) => r.keys([{ at: 3, bones: { arm: 60, fore: 90 } }, { at: 7, ...stand }]), { stance: "stand" })
     expect(codes(onStance).filter((code) => code === "stance")).toEqual([])
-    const off = checkClip(rig, clip((r) => r.keys([{ at: 0, ...stand }, { at: 7, bones: { torso: 20, arm: 60, fore: 90 } }]), { stance: "stand" }))
+    expect(checkClip(rig, onStance).run.frames[0]!.pose.bones).toMatchObject({ torso: { r: -5 }, arm: { r: 20 }, fore: { r: 40 } })
+    const off = checkClip(rig, clip((r) => r.keys([{ at: 7, bones: { torso: 20, arm: 60, fore: 90 } }]), { stance: "stand" }))
     const stance = off.issues.find((issue) => issue.code === "stance")
     expect(stance?.frames).toEqual([7])
-    expect(stance?.message).toContain("frame 7 is off the stand stance")
+    expect(stance?.message).toContain("frame 7, the last, is off the stand stance")
+    expect(stance?.message).toContain("end on `{ at: 7, ...rig.stances.stand }`")
     expect(stance?.where).toContain("torso")
+    // A key on frame 0 that contradicts the stance.
+    const contradicts = checkClip(rig, clip((r) => r.keys([{ at: 0, bones: { torso: 30 } }, { at: 7, ...stand }]), { stance: "stand" }))
+    expect(contradicts.issues.find((issue) => issue.code === "stance")).toMatchObject({ frames: [0], message: expect.stringContaining("rig.keys starts from the stance there, so a key on frame 0") })
     // A part the stance shows and the frame hides.
     const hidden = checkClip(rig, clip((r) => r.keys([{ at: 0, ...stand, props: { stick: null } }, { at: 7, ...stand, props: { stick: "default" } }]), { stance: "stand" }))
     expect(hidden.issues.find((issue) => issue.code === "stance")?.message).toContain("hides stick, which the stance shows")

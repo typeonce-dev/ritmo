@@ -44,8 +44,7 @@ export default {
   pose(rig) {
     const ready = rig.stances.ready
     return rig.keys([
-      // Ready, one-handed (50°).
-      { at: 0, ...ready, reach: { ...ready.reach, armFar: { ...GRIP, mix: 0 } }, z: { handFar: 3, forearmFar: 2 } },
+      // Frame 0 is the ready stance, one-handed (50°): keys start from it.
       // Read: the head comes up to the threat.
       { at: 2, bones: { hips: { x: -1, y: -4 }, torso: -3, head: 7, upperArmNear: 33, forearmNear: 55 }, aim: { sword: 53 } },
       // The far hand comes to the grip, in front of the body while it holds; and the back foot, planted, starts its step.

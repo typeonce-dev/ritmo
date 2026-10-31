@@ -55,7 +55,7 @@ export interface RigContext {
   /** This frame's number, from 0; fractional while a smear samples between frames. */
   readonly frame: number
   readonly frames: number
-  /** The pose a key list gives on this frame: the one keyframe helper. */
+  /** The pose a key list gives on this frame, every channel starting from the clip's stance (or the setup pose) on frame 0: the one keyframe helper. */
   readonly keys: (list: ReadonlyArray<Key>) => Pose
   /** `over` laid on `base`: turns, moves, and aim angles add up; goals, slots, props, and draw order in `over` win. */
   readonly add: (base: Pose, over: Pose) => Pose
@@ -268,6 +268,8 @@ export const runClip = (rig: Rig, clip: Clip, options: RunOptions = {}): Run => 
   const p = tuned(clip, options.tune)
   const seed = options.seed ?? 1
   const last = clip.loop ? clip.frames : clip.frames - 1
+  // Keys start from the clip's stance on frame 0, or from the setup pose.
+  const base = clip.stance === undefined ? {} : (rig.stances[clip.stance] ?? {})
   const chainBones = Object.fromEntries(Object.values(rig.chains).map((chain) => [chain.name, [chain.upper, chain.lower, chain.end]]))
   const problems = new Map<string, { code: RunError["code"]; frames: Array<number> }>()
   const report = (code: RunError["code"], message: string, frame: number): void => {
@@ -282,7 +284,7 @@ export const runClip = (rig: Rig, clip: Clip, options: RunOptions = {}): Run => 
     const context: RigContext = {
       frame: wrapped,
       frames: clip.frames,
-      keys: (list) => keysAt(list, wrapped, last, chainBones),
+      keys: (list) => keysAt(list, wrapped, last, chainBones, base),
       add,
       stances: rig.stances,
       length: (bone) => rig.bones[bone]?.length ?? Number.NaN,

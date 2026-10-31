@@ -15,17 +15,16 @@
  * Every value a key sets is its own timeline, a channel (`bones.torso`,
  * `aim.sword`, `reach.legFar.x`, `slots.smear`), made of the keys that set
  * it: a key may move a few bones only, and the sword can arrive a frame
- * after the arm. A number holds its first value before its first key and
- * its last after its last, so a stance keyed on frame 0 should set every
- * bone the later keys move. Slots, props, and draw order are the rig's own
- * until a key sets them, and then hold until the next key that does; a
- * goal's bone steps like them.
+ * after the arm. Every channel starts on frame 0 from the clip's stance (or
+ * the setup pose, for a clip with none) and holds its last key's value
+ * after it; an aim or reach the stance does not have mixes in from 0 on
+ * frame 0. Slots, props, draw order, and a goal's bone step: they hold
+ * until the next key that sets them.
  *
  * Mistakes that would key the wrong motion are errors (`KeysError`), each
  * naming the frame and channel: two keys on one frame for one channel, a
- * key past the clip's frames, an aim or reach that would hold back over a
- * bone's own turns from frame 0 (key its `mix: 0` there), and turns an aim
- * or reach always wins over (they would never show).
+ * key past the clip's frames, and turns an aim or reach always wins over
+ * (they would never show).
  */
 import type { Pose } from "./rig.ts"
 
@@ -114,31 +113,30 @@ const channelsOf = (list: unknown, last: number): Map<string, Array<Point>> => {
   return channels
 }
 
-/**
- * A channel's value can only start later than a bone's own turns when it
- * is mixed in from 0: an aim or reach holds its first value back to frame
- * 0, where it would win over the turns. `bones` maps each aim or reach
- * channel prefix (`aim.sword`, `reach.armFar`) to the bones it moves.
- */
-const holdBack = (channels: Map<string, Array<Point>>, owner: string, moved: ReadonlyArray<string>): void => {
-  const first = (id: string): number | undefined => channels.get(id)?.[0]?.at
-  const starts = [...channels.keys()].filter((id) => id === owner || id.startsWith(`${owner}.`)).map(first).filter((at): at is number => at !== undefined)
-  if (starts.length === 0) return
-  const start = Math.min(...starts)
-  for (const bone of moved) {
-    const turned = first(`bones.${bone}`)
-    if (turned === undefined || turned >= start) continue
-    const mix = first(`${owner}.mix`)
-    if (mix !== undefined && mix <= turned) continue
-    throw new KeysError(
-      `${owner} starts on frame ${start}, but bones.${bone} is keyed from frame ${turned}: ${owner} holds its first value back to frame ${turned} and wins over the turn there; add mix 0 to ${owner} on frame ${turned} (and mix 1 where it takes over)`
-    )
+/** A pose as channels, the way keys write them: what a clip's channels start from on frame 0. */
+const channelsOfPose = (pose: Pose): Map<string, Value> => {
+  const values = new Map<string, Value>()
+  for (const [bone, offset] of Object.entries(pose.bones ?? {})) {
+    if (typeof offset === "number") values.set(`bones.${bone}`, offset)
+    else for (const [field, v] of Object.entries(offset)) if (v !== undefined) values.set(field === "r" ? `bones.${bone}` : `bones.${bone}.${field}`, v)
   }
+  for (const [bone, aim] of Object.entries(pose.aim ?? {})) {
+    if (typeof aim === "number") values.set(`aim.${bone}`, aim)
+    else {
+      values.set(`aim.${bone}`, aim.angle)
+      if (aim.mix !== undefined) values.set(`aim.${bone}.mix`, aim.mix)
+    }
+  }
+  for (const [chain, goal] of Object.entries(pose.reach ?? {})) for (const [field, v] of Object.entries(goal)) if (v !== undefined) values.set(`reach.${chain}.${field}`, v)
+  for (const [part, v] of Object.entries(pose.slots ?? {})) values.set(`slots.${part}`, v)
+  for (const [prop, v] of Object.entries(pose.props ?? {})) values.set(`props.${prop}`, v)
+  for (const [part, v] of Object.entries(pose.z ?? {})) values.set(`z.${part}`, v)
+  return values
 }
 
-/** A bone's turns under an aim or reach that never mixes out are never seen: an error, so the agent does not tune dead keys. */
-const overruled = (channels: Map<string, Array<Point>>, owner: string, moved: ReadonlyArray<string>): void => {
-  if (channels.has(`${owner}.mix`)) return
+/** A bone's turns under an aim or reach that is at mix 1 on every frame are never seen: an error, so the agent does not tune dead keys. */
+const overruled = (channels: Map<string, Array<Point>>, owner: string, active: boolean, moved: ReadonlyArray<string>): void => {
+  if (!active || channels.has(`${owner}.mix`)) return
   for (const bone of moved)
     if (channels.has(`bones.${bone}`))
       throw new KeysError(`bones.${bone} is keyed, but ${owner} (mix 1 on every frame) wins over it, so the turns never show: drop them, or key ${owner}'s mix (0 where the turns should rule)`)
@@ -167,42 +165,96 @@ const sample = (points: ReadonlyArray<Point>, f: number): Value => {
   return points[points.length - 1]!.value
 }
 
-/** Which bones each chain moves, for the hold-back guard. */
+/** Which bones each chain moves, for the overruled-turns guard. */
 export interface ChainBones {
   readonly [chain: string]: ReadonlyArray<string>
 }
 
+/** A channel's first point is on frame 0: `value` there, unless a key already is. */
+const startAt = (points: Array<Point>, value: Value): void => {
+  if (points[0]!.at > 0) points.unshift({ at: 0, curve: "smooth", rest: false, value })
+}
+
 /**
- * The pose a key list gives on `frame` (fractional between frames). `last`
- * is the clip's last frame a key may be on (its frame count for a loop,
- * which may key the frame it wraps to). Throws `KeysError` on a list that
- * would key the wrong motion; the clip runner reports it with the clip's
- * name. Clips call it as `rig.keys(list)`, the one keyframe helper; for a
- * pose made of layers, use `rig.add`.
+ * The pose a key list gives on `frame` (fractional between frames), laid
+ * over `base`: the clip's stance, or the setup pose (`{}`) for a clip with
+ * none. Every channel starts from the base on frame 0: a bone's turn or
+ * move from the base's (or the setup pose's 0, and scale 1); an aim or a
+ * reach from the base's, or, when the base has none, mixed in from 0 on
+ * frame 0 to its keys; a slot, prop, or draw order is the base's (or the
+ * rig's own) until a key sets it. So a clip keyed from its stance is the
+ * stance until its keys change it, and its first key need not repeat it.
+ *
+ * `last` is the clip's last frame a key may be on (its frame count for a
+ * loop, which may key the frame it wraps to). Throws `KeysError` on a list
+ * that would key the wrong motion; the clip runner reports it with the
+ * clip's name. Clips call it as `rig.keys(list)`, the one keyframe helper;
+ * for a pose made of layers, use `rig.add`.
  */
-export const keysAt = (list: unknown, frame: number, last: number, chains: ChainBones): Pose => {
+export const keysAt = (list: unknown, frame: number, last: number, chains: ChainBones, base: Pose = {}): Pose => {
   const channels = channelsOf(list, last)
-  const aimed = new Set([...channels.keys()].filter((id) => id.startsWith("aim.")).map((id) => id.split(".")[1]!))
-  for (const bone of aimed) {
-    holdBack(channels, `aim.${bone}`, [bone])
-    overruled(channels, `aim.${bone}`, [bone])
+  const baseValues = channelsOfPose(base)
+  const ownerOf = (id: string): string | undefined => (id.startsWith("aim.") || id.startsWith("reach.") ? id.split(".").slice(0, 2).join(".") : undefined)
+  const owners = new Set([...channels.keys()].flatMap((id) => ownerOf(id) ?? []))
+  // A reach keyed in another form than the base's (a goal on a bone over a world point) cannot blend from it: it mixes in as if the base had none.
+  const formless = new Set<string>()
+  for (const chain of Object.keys(base.reach ?? {})) {
+    const keyedBone = channels.has(`reach.${chain}.bone`)
+    const keyedWorld = channels.has(`reach.${chain}.x`) || channels.has(`reach.${chain}.y`)
+    if ((keyedBone || keyedWorld) && keyedBone !== "bone" in base.reach![chain]!) formless.add(chain)
   }
-  const reached = new Set([...channels.keys()].filter((id) => id.startsWith("reach.")).map((id) => id.split(".")[1]!))
-  for (const chain of reached) {
-    const moved = chains[chain] ?? []
-    holdBack(channels, `reach.${chain}`, moved)
+  const inBase = (owner: string): boolean => {
+    const [kind, name] = owner.split(".") as [string, string]
+    return kind === "aim" ? base.aim?.[name] !== undefined : base.reach?.[name] !== undefined && !formless.has(name)
+  }
+  for (const owner of owners) {
+    const ids = [...channels.keys()].filter((id) => ownerOf(id) === owner)
+    const start = Math.min(...ids.map((id) => channels.get(id)![0]!.at))
+    if (inBase(owner)) {
+      // From the base's angle or goal, and its mix (1 unless it says).
+      for (const id of ids) {
+        const value = baseValues.get(id) ?? (id === `${owner}.mix` ? 1 : undefined)
+        if (value !== undefined) startAt(channels.get(id)!, value)
+      }
+    } else if (start > 0) {
+      // None in the base: mixed in from 0 on frame 0 to 1 on its first key, unless its mix is keyed.
+      const mix = channels.get(`${owner}.mix`)
+      if (mix === undefined) channels.set(`${owner}.mix`, [{ at: 0, curve: "smooth", rest: false, value: 0 }, { at: start, curve: "smooth", rest: false, value: 1 }])
+      else startAt(mix, 0)
+    }
+  }
+  for (const [id, points] of channels) {
+    if (!id.startsWith("bones.")) continue
+    const field = id.split(".")[2]
+    startAt(points, baseValues.get(id) ?? (field === "sx" || field === "sy" ? 1 : 0))
+  }
+  // Dead turns: under an aim or reach at mix 1 on every frame, from the keys or from the base.
+  for (const bone of new Set([...owners].filter((o) => o.startsWith("aim.")).map((o) => o.split(".")[1]!).concat(Object.keys(base.aim ?? {})))) {
+    const fromBase = base.aim?.[bone]
+    const active = channels.has(`aim.${bone}`) ? channels.get(`aim.${bone}`)![0]!.at === 0 : fromBase !== undefined && (typeof fromBase === "number" || (fromBase.mix ?? 1) === 1)
+    overruled(channels, `aim.${bone}`, active, [bone])
+  }
+  for (const chain of new Set([...owners].filter((o) => o.startsWith("reach.")).map((o) => o.split(".")[1]!).concat(Object.keys(base.reach ?? {})))) {
+    const fromBase = base.reach?.[chain]
+    const keyed = [...channels.keys()].filter((id) => ownerOf(id) === `reach.${chain}`)
+    const active = keyed.length > 0 ? keyed.some((id) => channels.get(id)![0]!.at === 0) : fromBase !== undefined && (fromBase.mix ?? 1) === 1
     // The end bone keeps its own turn unless the goal says an angle, so only the two bones IK always sets are overruled.
-    overruled(channels, `reach.${chain}`, moved.slice(0, 2))
+    overruled(channels, `reach.${chain}`, active, (chains[chain] ?? []).slice(0, 2))
   }
-  const bones: Record<string, Record<string, Value>> = {}
-  const aim: Record<string, Record<string, Value>> = {}
-  const reach: Record<string, Record<string, Value>> = {}
-  const slots: Record<string, Value> = {}
-  const props: Record<string, Value> = {}
-  const z: Record<string, Value> = {}
+
+  // The base, with every channel laid over it.
+  const bones: Record<string, Record<string, Value | undefined>> = {}
+  for (const [bone, offset] of Object.entries(base.bones ?? {})) bones[bone] = typeof offset === "number" ? { r: offset } : { ...offset }
+  const aim: Record<string, Record<string, Value | undefined>> = {}
+  for (const [bone, value] of Object.entries(base.aim ?? {})) aim[bone] = typeof value === "number" ? { angle: value } : { ...value }
+  const reach: Record<string, Record<string, Value | undefined>> = {}
+  for (const [chain, goal] of Object.entries(base.reach ?? {})) if (!formless.has(chain)) reach[chain] = { ...goal }
+  const slots: Record<string, Value> = { ...base.slots }
+  const props: Record<string, Value> = { ...base.props }
+  const z: Record<string, Value> = { ...base.z }
   for (const [id, points] of channels) {
     const [kind, name, field] = id.split(".") as [string, string, string | undefined]
-    // A slot, prop, or draw order before its first key is the rig's own: the smear a key shows on frame 8 is not there on frame 0.
+    // A slot, prop, or draw order before its first key is the base's, or the rig's own.
     if ((kind === "slots" || kind === "props" || kind === "z") && frame < points[0]!.at) continue
     const v = sample(points, frame)
     if (kind === "bones") (bones[name] ??= {})[field ?? "r"] = v

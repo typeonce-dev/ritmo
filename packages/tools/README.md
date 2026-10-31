@@ -621,7 +621,7 @@ export default {
   },
   chains: { leg: { upper: "thigh", lower: "shin", end: "foot", bend: 1, foot: true } },
   props: { sword: ["blade", "smear"] },
-  // The stance sets every bone its clips move (hips.x too): a clip keyed from it starts and ends exactly on it.
+  // The pose a clip with `stance: "ready"` starts from on frame 0.
   stances: { ready: { bones: { hips: { x: 0, y: -3 }, torso: -6, arm: 40, fore: 60 }, aim: { sword: 50 }, reach: { leg: { x: 4, y: 2 } } } }
 }
 ```
@@ -648,8 +648,8 @@ export default {
   trail: "sword", // the bone whose tip the checks measure for speed and arc
   pose(rig, t, p) {
     const ready = rig.stances.ready
+    // Frame 0 is the ready stance: every channel starts from it.
     return rig.keys([
-      { at: 0, ...ready },
       // Cocked behind the head, and held: the blade at 190°.
       { at: 6, rest: true, bones: { hips: { x: -3, y: -5 }, torso: 10, arm: 200, fore: 30 }, aim: { sword: 190 } },
       { at: 8, curve: "linear", slots: { smear: "default" }, bones: { hips: { x: 1, y: -5 }, torso: -p.lean, arm: 130, fore: 10 }, aim: { sword: 80 } },
@@ -704,17 +704,21 @@ side; `linear`, `in`, `out`, or `stepped`) and `rest: true` where the
 motion comes to rest (an extreme or a hold: smooth segments ease into and
 out of it). Every value a key sets is its own timeline, a channel
 (`bones.torso`, `aim.sword`, `reach.leg.x`, `slots.smear`), made of the
-keys that set it, so a key may move a few bones only. A number holds its
-first value before its first key and its last after its last, so a stance
-keyed on the first and last frames should set every bone the clip moves
-(the `stance` check says when one does not). Slots, props, and draw order
-are the rig's own until a key sets them, and then hold until the next key
-that does; a goal's bone steps like them. Key lists that would key the
-wrong motion are errors, each naming the clip, the frame, and the
-channel: two keys on one frame setting one channel, a key past the
-clip's frames, an aim or reach that starts after a bone's own turns
-(it would hold back over them from frame 0: key its `mix: 0` there), and
-turns under an aim or reach that never mixes out (they would never show).
+keys that set it, so a key may move a few bones only. One rule says where
+each starts: on frame 0, every channel is the clip's `stance` (or the
+rig's setup pose, for a clip with none), so the pose is the stance until
+its keys change it, and the first key need not repeat it. A turn or move
+the stance does not set starts from the setup pose's (0, and scale 1); an
+aim or reach it does not have mixes in, from 0 on frame 0 to 1 on its first
+key (key its `mix` to say otherwise); slots, props, and draw order are the
+stance's (or the rig's own) until a key sets them. After its last key a
+channel holds that key's value, so a one-shot ends on its stance with a
+last key like `{ at: 25, ...rig.stances.ready }`. Slots, props, draw order,
+and a goal's bone step: they hold until the next key that sets them. Key
+lists that would key the wrong motion are errors, each naming the clip,
+the frame, and the channel: two keys on one frame setting one channel, a
+key past the clip's frames, and turns under an aim or reach (the keys' or
+the stance's) at mix 1 on every frame, which would never show.
 
 A bank is one file per character (`hero.rig.json`) naming the rig module
 and each clip's drafts (paths from the bank's folder), with each draft's
@@ -773,7 +777,7 @@ each with its frames and the bones or parts:
 | `seam` | A loop whose last frame jumps back to its first (its step more than twice the median step, and 0.5 px). |
 | `gap` | A frame with nothing drawn. |
 | `draw-order` | A part changing draw order between frames (a pose's `z`), passing the parts listed: check it reads. |
-| `stance` | The first frame, and for a one-shot the last, more than 1 px off the clip's `stance` on any shown bone, or showing parts the stance hides (or hiding parts it shows). |
+| `stance` | The first frame, and for a one-shot the last, more than 1 px off the clip's `stance` on any shown bone, or showing parts the stance hides (or hiding parts it shows): a key on frame 0 that contradicts the stance, or a one-shot whose last keys do not return to it. |
 
 Bones whose parts are all hidden on a frame (a put-away prop) are exempt
 from every check on that frame, and from the trail. With each draft the

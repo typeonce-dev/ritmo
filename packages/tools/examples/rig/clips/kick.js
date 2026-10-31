@@ -100,8 +100,7 @@ export default {
   pose(rig) {
     const guard = rig.stances.guard
     return rig.keys([
-      { at: 0, ...guard },
-      // The body. Shift: hips forward over the front foot, a little lower.
+      // Frame 0 is the guard stance: keys start from it. The body. Shift: hips forward over the front foot, a little lower.
       body(2, { torso: -4, head: 4 }, { rest: true }),
       body(5, { torso: -1, head: 2 }),
       // Chamber: rising onto the standing leg, the torso starting back. The near fist (opposite the kicking leg) rises to a high guard in front of

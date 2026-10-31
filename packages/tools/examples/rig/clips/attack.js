@@ -36,10 +36,10 @@ export default {
     const { overshoot, lean } = p
     const ready = rig.stances.ready
     return rig.keys([
-      // Ready, one-handed, the blade at 50°.
-      { at: 0, ...ready, reach: { ...ready.reach, armFar: { ...GRIP, mix: 0 } }, slots: { smear: null }, z: { handFar: 3, forearmFar: 2 } },
+      // Frame 0 is the ready stance, one-handed, the blade at 50°: keys start from it.
       // The far hand has the grip, and is drawn over the body from here: a hand on the grip is in front of the torso, never inside it.
       { at: 2, z: { handFar: 25, forearmFar: 24 } },
+      // The ready stance has no goal for the far hand, so its reach mixes in from 0 on frame 0 to 1 here.
       { at: 3, reach: { armFar: { ...GRIP, mix: 1 } } },
       // Settle: the weight sinks and draws back, the torso tips toward the target, the eyes on it, the hands push forward and the tip dips (25°).
       { at: 4, rest: true, bones: { hips: { x: -4, y: -11 }, torso: -14, head: 11, upperArmNear: 40, forearmNear: 45 }, aim: { sword: 25 } },

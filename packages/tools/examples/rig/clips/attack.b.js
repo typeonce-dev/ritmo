@@ -31,8 +31,7 @@ export default {
     const { overshoot, fold } = p
     const ready = rig.stances.ready
     return rig.keys([
-      // Two-handed like draft a, but with no settling dip first: the far hand takes the grip as the sword rises.
-      { at: 0, ...ready, reach: { ...ready.reach, armFar: { ...GRIP, mix: 0 } }, slots: { smear: null }, z: { handFar: 3, forearmFar: 2 } },
+      // From the ready stance (frame 0), two-handed like draft a, but with no settling dip first: the far hand takes the grip as the sword rises.
       { at: 1, z: { handFar: 25, forearmFar: 24 } },
       { at: 2, reach: { armFar: { ...GRIP, mix: 1 } } },
       { at: 3, bones: { hips: { x: -4, y: -6 }, torso: 2, head: -1, upperArmNear: 118, forearmNear: 50 }, aim: { sword: 115 } },

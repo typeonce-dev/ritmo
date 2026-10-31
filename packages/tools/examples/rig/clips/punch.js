@@ -37,8 +37,7 @@ export default {
   trail: "handNear",
   pose(rig) {
     return rig.keys([
-      { at: 0, ...rig.stances.guard },
-      // Coil: the fist pulls back toward the cheek and down, the hips sink, the torso rocks back.
+      // Frame 0 is the guard stance: keys start from it. Coil: the fist pulls back toward the cheek and down, the hips sink, the torso rocks back.
       body(2, { hips: { x: -1.5, y: -10.5 }, torso: -5, head: 4, lead: [19, -3], leadAngle: 50, rear: [14, 8] }, { rest: true }),
       // Strike: halfway out, the shoulder already going forward.
       body(3, { hips: { x: 3, y: -10.2 }, torso: -14, head: 12, lead: [31, -1], leadAngle: 15, rear: [12, 9] }, { curve: "linear" }),
