@@ -27,7 +27,7 @@
     "lint": "oxlint --disable-nested-config"
   },
   "devDependencies": {
-    "@changesets/cli": "2.31.1",
+    "@changesets/cli": "3.0.3",
     "@typeonce/oxlint-plugin-ritmo": "workspace:*",
     "@typeonce/ritmo": "workspace:*",
     "@typeonce/ritmo-browser": "workspace:*",
