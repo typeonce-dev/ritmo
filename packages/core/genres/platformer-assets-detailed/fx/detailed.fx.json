@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "palette": {
+    "ink": "#141013",
+    "sky0": "#849be4",
+    "sky1": "#b9bffb",
+    "sky2": "#e3e6ff",
+    "sky3": "#fef3c0",
+    "steel0": "#333941",
+    "steel1": "#4a5462",
+    "steel2": "#6d758d",
+    "steel3": "#8b93af",
+    "steel4": "#b3b9d1",
+    "steel5": "#dae0ea",
+    "steel6": "#ffffff",
+    "teal0": "#122020",
+    "teal1": "#24523b",
+    "teal2": "#23674e",
+    "teal3": "#328464",
+    "teal4": "#477d85",
+    "teal5": "#5daf8d",
+    "teal6": "#92dcba",
+    "teal7": "#cdf7e2",
+    "leaf0": "#1a7a3e",
+    "leaf1": "#14a02e",
+    "leaf2": "#59c135",
+    "leaf3": "#9cdb43",
+    "leaf4": "#d6f264",
+    "earth0": "#221c1a",
+    "earth1": "#322b28",
+    "earth2": "#71413b",
+    "earth3": "#bb7547",
+    "earth4": "#dba463",
+    "stone0": "#423934",
+    "stone1": "#5a4e44",
+    "stone2": "#796755",
+    "stone3": "#a08662",
+    "stone4": "#c7b08b",
+    "stone5": "#e4d2aa",
+    "rose0": "#422433",
+    "rose1": "#5b3138",
+    "rose2": "#8e5252",
+    "rose3": "#ba756a",
+    "rose4": "#e9b5a3",
+    "rose5": "#fad6b8",
+    "blue0": "#143464",
+    "blue1": "#285cc4",
+    "blue2": "#249fde",
+    "blue3": "#20d6c7",
+    "blue4": "#a6fcdb",
+    "fire0": "#3b1725",
+    "fire1": "#73172d",
+    "fire2": "#b4202a",
+    "fire3": "#df3e23",
+    "fire4": "#fa6a0a",
+    "gold0": "#f9a31b",
+    "gold1": "#ffd541",
+    "gold2": "#fffc40",
+    "violet0": "#242234",
+    "violet1": "#403353",
+    "violet2": "#793a80",
+    "violet3": "#bc4a9b",
+    "violet4": "#e86a73"
+  },
+  "ramps": {
+    "glow": [
+      "steel6",
+      "gold2",
+      "gold1",
+      "gold0",
+      "fire4",
+      "fire3"
+    ],
+    "dust": [
+      "stone5",
+      "stone4",
+      "stone3",
+      "stone2"
+    ],
+    "spark": [
+      "steel6",
+      "gold2",
+      "fire4",
+      "fire2"
+    ]
+  },
+  "backdrops": {
+    "sky": "#b9bffb",
+    "haze": "#e3e6ff",
+    "jungle": "#23674e",
+    "earth": "#322b28",
+    "stone": "#a08662"
+  },
+  "standIn": {
+    "file": "../art/player/player-idle.png",
+    "anchor": [
+      24,
+      47
+    ]
+  },
+  "effects": {
+    "dash": {
+      "about": "The dash starts: a burst behind the player in the cell's gold (the cell goes grey after). Metal Slug's muzzle flashes and Celeste's dash are the references for speed: a white frame, then gone in a quarter second. About the player's size.",
+      "standIn": [
+        26,
+        22
+      ],
+      "drafts": {
+        "a": {
+          "file": "drafts/dash.a.js",
+          "accept": {
+            "holes": "gaps where two sparks cross for a frame; they part on the next"
+          }
+        },
+        "b": {
+          "file": "drafts/dash.b.js"
+        }
+      },
+      "use": "b"
+    },
+    "dust": {
+      "about": "Dust at the boots on a jump, a landing, or a turn: chunky puffs in the stone's colors, never hiding the boots.",
+      "standIn": [
+        0,
+        0
+      ],
+      "drafts": {
+        "a": {
+          "file": "drafts/dust.a.js"
+        },
+        "b": {
+          "file": "drafts/dust.b.js"
+        }
+      },
+      "use": "a"
+    },
+    "collect": {
+      "about": "A cog is taken: a white flash, a gold ring, and sparks that fall a little.",
+      "standIn": false,
+      "drafts": {
+        "a": {
+          "file": "drafts/collect.a.js"
+        }
+      },
+      "use": "a"
+    }
+  }
+}

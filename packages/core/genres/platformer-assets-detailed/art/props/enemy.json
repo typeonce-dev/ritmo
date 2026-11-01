@@ -1,0 +1,73 @@
+{
+ "frames": {
+  "enemy 0": {
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 24
+   },
+   "duration": 180,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "enemy 1": {
+   "frame": {
+    "x": 32,
+    "y": 0,
+    "w": 32,
+    "h": 24
+   },
+   "duration": 180,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "enemy 2": {
+   "frame": {
+    "x": 64,
+    "y": 0,
+    "w": 32,
+    "h": 24
+   },
+   "duration": 180,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "enemy 3": {
+   "frame": {
+    "x": 96,
+    "y": 0,
+    "w": 32,
+    "h": 24
+   },
+   "duration": 180,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  }
+ },
+ "animations": {
+  "enemy": [
+   "enemy 0",
+   "enemy 1",
+   "enemy 2",
+   "enemy 3"
+  ]
+ },
+ "meta": {
+  "size": {
+   "w": 128,
+   "h": 24
+  },
+  "about": "Scrap beetle, idle. Loops.",
+  "loop": true,
+  "image": "enemy.png"
+ }
+}

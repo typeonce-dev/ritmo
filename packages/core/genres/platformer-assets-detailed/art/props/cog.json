@@ -1,0 +1,129 @@
+{
+ "frames": {
+  "cog 0": {
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 80,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "cog 1": {
+   "frame": {
+    "x": 16,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 80,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "cog 2": {
+   "frame": {
+    "x": 32,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 80,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "cog 3": {
+   "frame": {
+    "x": 48,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 80,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "cog 4": {
+   "frame": {
+    "x": 64,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 80,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "cog 5": {
+   "frame": {
+    "x": 80,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 80,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "cog 6": {
+   "frame": {
+    "x": 96,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 80,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "cog 7": {
+   "frame": {
+    "x": 112,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 80,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  }
+ },
+ "animations": {
+  "cog": [
+   "cog 0",
+   "cog 1",
+   "cog 2",
+   "cog 3",
+   "cog 4",
+   "cog 5",
+   "cog 6",
+   "cog 7"
+  ]
+ },
+ "meta": {
+  "size": {
+   "w": 128,
+   "h": 16
+  },
+  "about": "The collectible: a brass cog, spinning. Loops.",
+  "loop": true,
+  "image": "cog.png"
+ }
+}

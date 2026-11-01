@@ -1,0 +1,59 @@
+{
+ "frames": {
+  "spring 0": {
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 24
+   },
+   "duration": 0,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "spring 1": {
+   "frame": {
+    "x": 16,
+    "y": 0,
+    "w": 16,
+    "h": 24
+   },
+   "duration": 0,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "spring 2": {
+   "frame": {
+    "x": 32,
+    "y": 0,
+    "w": 16,
+    "h": 24
+   },
+   "duration": 0,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  }
+ },
+ "animations": {
+  "spring": [
+   "spring 0",
+   "spring 1",
+   "spring 2"
+  ]
+ },
+ "meta": {
+  "size": {
+   "w": 48,
+   "h": 24
+  },
+  "about": "Spring pad: 0 at rest, 1 pressed, 2 thrown. Frames are picked by the game.",
+  "loop": false,
+  "image": "spring.png"
+ }
+}

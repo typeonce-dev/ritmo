@@ -1,0 +1,241 @@
+{
+  "frames": {
+    "dash 0": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "sourceSize": {
+        "w": 56,
+        "h": 40
+      },
+      "duration": 33,
+      "anchor": {
+        "x": 0.7232,
+        "y": 0.525
+      }
+    },
+    "dash 1": {
+      "frame": {
+        "x": 56,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "sourceSize": {
+        "w": 56,
+        "h": 40
+      },
+      "duration": 33,
+      "anchor": {
+        "x": 0.7232,
+        "y": 0.525
+      }
+    },
+    "dash 2": {
+      "frame": {
+        "x": 112,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "sourceSize": {
+        "w": 56,
+        "h": 40
+      },
+      "duration": 33,
+      "anchor": {
+        "x": 0.7232,
+        "y": 0.525
+      }
+    },
+    "dash 3": {
+      "frame": {
+        "x": 168,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "sourceSize": {
+        "w": 56,
+        "h": 40
+      },
+      "duration": 33,
+      "anchor": {
+        "x": 0.7232,
+        "y": 0.525
+      }
+    },
+    "dash 4": {
+      "frame": {
+        "x": 224,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "sourceSize": {
+        "w": 56,
+        "h": 40
+      },
+      "duration": 33,
+      "anchor": {
+        "x": 0.7232,
+        "y": 0.525
+      }
+    },
+    "dash 5": {
+      "frame": {
+        "x": 280,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "sourceSize": {
+        "w": 56,
+        "h": 40
+      },
+      "duration": 33,
+      "anchor": {
+        "x": 0.7232,
+        "y": 0.525
+      }
+    },
+    "dash 6": {
+      "frame": {
+        "x": 336,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "sourceSize": {
+        "w": 56,
+        "h": 40
+      },
+      "duration": 33,
+      "anchor": {
+        "x": 0.7232,
+        "y": 0.525
+      }
+    },
+    "dash 7": {
+      "frame": {
+        "x": 392,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 56,
+        "h": 40
+      },
+      "sourceSize": {
+        "w": 56,
+        "h": 40
+      },
+      "duration": 33,
+      "anchor": {
+        "x": 0.7232,
+        "y": 0.525
+      }
+    }
+  },
+  "animations": {
+    "dash": [
+      "dash 0",
+      "dash 1",
+      "dash 2",
+      "dash 3",
+      "dash 4",
+      "dash 5",
+      "dash 6",
+      "dash 7"
+    ]
+  },
+  "meta": {
+    "app": "https://ritmo.typeonce.dev/tools/pixel/",
+    "version": "1",
+    "image": "dash.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 448,
+      "h": 40
+    },
+    "scale": "1",
+    "frameTags": [
+      {
+        "name": "dash",
+        "from": 0,
+        "to": 7,
+        "direction": "forward"
+      }
+    ],
+    "fps": {
+      "dash": 30
+    },
+    "loop": {
+      "dash": false
+    }
+  }
+}

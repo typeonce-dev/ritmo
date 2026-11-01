@@ -1,0 +1,59 @@
+{
+ "frames": {
+  "beacon 0": {
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 32
+   },
+   "duration": 300,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "beacon 1": {
+   "frame": {
+    "x": 16,
+    "y": 0,
+    "w": 16,
+    "h": 32
+   },
+   "duration": 300,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "beacon 2": {
+   "frame": {
+    "x": 32,
+    "y": 0,
+    "w": 16,
+    "h": 32
+   },
+   "duration": 300,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  }
+ },
+ "animations": {
+  "beacon": [
+   "beacon 0",
+   "beacon 1",
+   "beacon 2"
+  ]
+ },
+ "meta": {
+  "size": {
+   "w": 48,
+   "h": 32
+  },
+  "about": "Checkpoint beacon: 0 off; 1 and 2 on, blinking.",
+  "loop": true,
+  "image": "beacon.png"
+ }
+}
