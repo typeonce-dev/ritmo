@@ -103,7 +103,8 @@ export interface Modules {
  * A bank kept in the tab, baked in the browser: what the person changes
  * lasts until the page closes, and a tune or a pivot rebakes there.
  */
-export const memoryStore = (name: string, bankText: string, files: Modules): Store => {
+/** `scale`: pixels per world unit the drafts are baked at (2 by default, as the CLI's server bakes them; 1 for a rig drawn at a parts sheet's size, so a tab holds its frames). */
+export const memoryStore = (name: string, bankText: string, files: Modules, options: { readonly scale?: number } = {}): Store => {
   let bank = bankText
   let review: string | null = null
   let edits = 0
@@ -155,7 +156,7 @@ export const memoryStore = (name: string, bankText: string, files: Modules): Sto
       if (known !== undefined && known.stamp === stamp) return known
       const found = loaded(clip, id)
       if (found === undefined) return undefined
-      const result: DraftResult<Frame> = "error" in found ? { ok: false, id, file: found.draft.file, error: found.error } : draftView(found.rig, found.clip, found.draft, id, clip)
+      const result: DraftResult<Frame> = "error" in found ? { ok: false, id, file: found.draft.file, error: found.error } : draftView(found.rig, found.clip, found.draft, id, clip, options.scale ?? 2)
       baked.set(`${clip}/${id}`, { stamp, result })
       return { stamp, result }
     },
