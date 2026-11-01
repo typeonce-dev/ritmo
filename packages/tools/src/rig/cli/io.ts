@@ -1,4 +1,5 @@
 /** Reading banks, reviews, and the rig's and clips' modules, and writing what the CLI makes, through Effect's FileSystem. */
+import { register } from "node:module"
 import { pathToFileURL } from "node:url"
 import { Effect, FileSystem, Path } from "effect"
 import { decodeBank, decodeReview, emptyReview, reviewPath, type Bank, type Draft, type Review } from "../core/bank.ts"
@@ -28,23 +29,46 @@ export const readReview = Effect.fn("readReview")(function* (bankFile: string) {
 })
 
 /**
+ * Node keeps an imported module for the life of the process, keyed by its
+ * URL. Each command imports once, so that is fine for them; the review
+ * server, which rebakes as files change, imports with a cache-busting
+ * query (`?rig-v=<generation>`). This resolve hook carries the query from a
+ * module to the modules it imports by a relative path (a clip's
+ * `../hero.js`), so the whole graph is read anew, not only the entry; bare
+ * imports (packages) are left alone. Registered once, by `rig review`.
+ */
+const FRESH_IMPORTS = `export async function resolve(specifier, context, next) {
+  const resolved = await next(specifier, context)
+  const parent = context.parentURL
+  if (parent === undefined || !resolved.url.startsWith("file:") || !(specifier.startsWith("./") || specifier.startsWith("../"))) return resolved
+  const generation = new URL(parent).searchParams.get("rig-v")
+  if (generation === null) return resolved
+  const url = new URL(resolved.url)
+  url.searchParams.set("rig-v", generation)
+  return { ...resolved, url: url.href }
+}`
+
+let fresh = false
+/** Lets `generation` in `loadRig` and `loadClip` read every module of the bank's anew (see `FRESH_IMPORTS`). */
+export const registerFreshImports = (): void => {
+  if (fresh) return
+  fresh = true
+  register(`data:text/javascript,${encodeURIComponent(FRESH_IMPORTS)}`)
+}
+
+/**
  * Imports a module from the bank's folder as a file, so its imports of the
  * rig module and of other clips resolve. A broken module is a message, not a
- * failure, so `check` can report every draft.
- *
- * Node keeps an imported module for the life of the process, keyed by its
- * URL. Each command imports once, so that is fine here; the review server
- * (which rebakes as files change) must add a cache-busting query to the URL
- * on each rebake (`?v=<n>`), as the scratch experiment did, rather than
- * start a process per bake.
+ * failure, so `check` can report every draft. A `generation` imports it
+ * anew, with the modules it imports (after `registerFreshImports`).
  */
-const importModule = Effect.fn("importModule")(function* (bankFile: string, relative: string) {
+const importModule = Effect.fn("importModule")(function* (bankFile: string, relative: string, generation?: string) {
   const path = yield* Path.Path
   const fs = yield* FileSystem.FileSystem
   const file = path.resolve(path.dirname(bankFile), relative)
   if (!(yield* fs.exists(file).pipe(Effect.orElseSucceed(() => false)))) return { ok: false as const, error: `cannot read ${relative}`, file }
   return yield* Effect.promise(() =>
-    import(pathToFileURL(file).href).then(
+    import(pathToFileURL(file).href + (generation === undefined ? "" : `?rig-v=${encodeURIComponent(generation)}`)).then(
       (module: unknown) => ({ ok: true as const, module, file }),
       (error: unknown) => ({ ok: false as const, error: `${relative} does not load: ${error instanceof Error ? error.message : String(error)}`, file })
     )
@@ -55,8 +79,8 @@ const importModule = Effect.fn("importModule")(function* (bankFile: string, rela
 export type LoadedRig = { readonly ok: true; readonly rig: Rig; readonly file: string } | { readonly ok: false; readonly error: string; readonly file: string }
 
 /** The bank's rig module, imported as a file and decoded; a broken one is a message, so `rig check` can report it (the other commands fail on it). */
-export const loadRig = Effect.fn("loadRig")(function* (bankFile: string, bank: Bank) {
-  const imported = yield* importModule(bankFile, bank.rig)
+export const loadRig = Effect.fn("loadRig")(function* (bankFile: string, bank: Bank, generation?: string) {
+  const imported = yield* importModule(bankFile, bank.rig, generation)
   if (!imported.ok) return imported satisfies LoadedRig
   // The pictures its image parts name, from the rig module's folder; one that does not read is left out, and the decode names it.
   const fs = yield* FileSystem.FileSystem
@@ -68,7 +92,7 @@ export const loadRig = Effect.fn("loadRig")(function* (bankFile: string, bank: B
     const picture = yield* Effect.try(() => decodePng(bytes.value)).pipe(Effect.option)
     if (picture._tag === "Some") images.set(file, picture.value)
   }
-  const decoded = decodeRig(imported.module, images)
+  const decoded = decodeRig(imported.module, images, bank.pivots)
   return (decoded.ok ? { ok: true, rig: decoded.value, file: imported.file } : { ok: false, error: `${bank.rig}: ${decoded.error}`, file: imported.file }) satisfies LoadedRig
 })
 
@@ -76,8 +100,8 @@ export const loadRig = Effect.fn("loadRig")(function* (bankFile: string, bank: B
 export type LoadedClip = { readonly ok: true; readonly clip: Clip; readonly file: string } | { readonly ok: false; readonly error: string; readonly file: string }
 
 /** A draft's clip module, imported as a file (its imports of the rig module and other clips resolve) and decoded against the rig. */
-export const loadClip = Effect.fn("loadClip")(function* (bankFile: string, draft: Draft, rig: Rig) {
-  const imported = yield* importModule(bankFile, draft.file)
+export const loadClip = Effect.fn("loadClip")(function* (bankFile: string, draft: Draft, rig: Rig, generation?: string) {
+  const imported = yield* importModule(bankFile, draft.file, generation)
   if (!imported.ok) return imported satisfies LoadedClip
   const decoded = decodeClip(imported.module, rig)
   return (decoded.ok ? { ok: true, clip: decoded.value, file: imported.file } : { ok: false, error: `${draft.file}: ${decoded.error}`, file: imported.file }) satisfies LoadedClip

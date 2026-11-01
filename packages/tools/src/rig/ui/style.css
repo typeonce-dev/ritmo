@@ -1,0 +1,87 @@
+/* The skeleton lab's own pieces over the effects lab's: frames are anti-aliased, so they scale smoothly, not as pixel art. */
+.fx-canvas.rig-canvas {
+  image-rendering: auto;
+  touch-action: none;
+}
+
+.rig-counter {
+  min-width: 15ch;
+}
+
+.rig-baking {
+  color: #ffd166;
+}
+
+/* The frame strip in the playback bar: one cell per frame of the draft in focus. */
+.rig-timeline {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 30px;
+  padding: 0 4px;
+}
+
+.rig-cell {
+  position: relative;
+  width: 12px;
+  height: 18px;
+  border-radius: 3px;
+  background: rgba(243, 241, 236, 0.12);
+  cursor: pointer;
+}
+
+.rig-cell.phase {
+  box-shadow: -2px 0 0 rgba(243, 241, 236, 0.35);
+}
+
+.rig-cell.fast {
+  background: rgba(255, 209, 102, 0.35);
+}
+
+/* A key on this frame: a dot under the cell. */
+.rig-cell.key::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  bottom: -6px;
+  width: 4px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(243, 241, 236, 0.7);
+}
+
+.rig-cell.now {
+  background: var(--accent);
+}
+
+.rig-cell.start {
+  outline: 2px solid #ff2bd6;
+  outline-offset: 1px;
+}
+
+.rig-band {
+  position: absolute;
+  top: 3px;
+  height: 24px;
+  border: 2px solid #ff2bd6;
+  border-radius: 5px;
+  pointer-events: none;
+}
+
+.rig-band.pending {
+  border-style: dashed;
+}
+
+.rig-band b {
+  position: absolute;
+  top: -10px;
+  right: -8px;
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: #ff2bd6;
+  color: #fff;
+  font: 600 10px/14px Inter, system-ui, sans-serif;
+  text-align: center;
+}

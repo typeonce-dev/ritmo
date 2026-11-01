@@ -526,7 +526,7 @@ describe("banks and reviews", () => {
       { draft: "a", frame: 22, x: 146, y: 195, part: "blade", bone: "sword", phase: "up", text: "digs in" },
       { draft: "b", from: 6, to: 9, phases: ["raise"], text: "slow" }
     ]
-    expect(whereOf(comments[0]!)).toBe("draft a, frame 22 (up), pixel (146, 195), on blade, near bone sword")
+    expect(whereOf(comments[0]!)).toBe("draft a, frame 22 (up), pixel (146, 195), on blade (bone sword)")
     expect(whereOf(comments[1]!)).toBe("draft b, frames 6-9 (raise)")
     const review: Review = { clips: { attack: { status: "changes", note: "", comments } } }
     const resolved = resolveComments(review, "attack", [1], "raised the carry")

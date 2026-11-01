@@ -23,6 +23,7 @@ import { scaffold } from "../core/scaffold.ts"
 import { encodeSidecar, keptClips, sidecarClip, sidecarName, sidecarOf, type SidecarClip } from "../core/sidecar.ts"
 import type { Rig } from "../core/rig.ts"
 import { CliFailure, loadClip, loadRig, printJson, readBank, readReview, readText, writeBytes, writeText } from "./io.ts"
+import { serve } from "./serve.ts"
 
 const exitWith = (code: number): Effect.Effect<void, Exit> => (code === 0 ? Effect.void : Effect.fail(new Exit({ code })))
 
@@ -297,11 +298,51 @@ const notes = Command.make(
   Effect.fn("notes")(function* (flags) {
     const bank = yield* readBank(flags.bank)
     const review = yield* readReview(flags.bank)
-    yield* printJson({ file: flags.bank, review: reviewPath(flags.bank), ...reviewSummary(bank, review) })
+    const pivots = bank.pivots ?? {}
+    yield* printJson({
+      file: flags.bank,
+      review: reviewPath(flags.bank),
+      ...reviewSummary(bank, review),
+      pivots,
+      ...(Object.keys(pivots).length === 0
+        ? {}
+        : { next: "The person moved these image parts' pivots on the review page (in each picture's pixels): copy each into its part's shape.pivot in the rig module, then remove the bank's pivots." })
+    })
   })
 ).pipe(
   Command.withDescription(
-    "What the person said in the review: each clip's status (new, approved, changes asked), note, open comments (each numbered, on a draft and a frame's pixel with the part, bone, and phase there, or on a span of frames, with where it is in words), chosen draft, and tune, the changes first."
+    "What the person said in the review: each clip's status (new, approved, changes asked), note, open comments (each numbered, on a draft and a frame's pixel with the part, its bone, the spot in that bone's frame, and the phase, or on a span of frames, with where it is in words), chosen draft, and tune, the changes first; and the pivots the person dragged on the page (the bank's pivots), for the agent to fold into the rig module."
+  )
+)
+
+const review = Command.make(
+  "review",
+  {
+    bank: bankArgument,
+    port: Flag.Int("port").pipe(Flag.withDescription("The port to serve the page on."), Flag.withDefault(5194)),
+    host: Flag.Boolean("host").pipe(Flag.withDefault(false), Flag.withDescription("Serve on the network too, to look on a phone."))
+  },
+  Effect.fn("review")(function* (flags) {
+    const path = yield* Path.Path
+    const bank = path.resolve(flags.bank)
+    yield* requireRig(bank, yield* readBank(bank))
+    yield* readReview(bank)
+    const address = yield* Effect.tryPromise({
+      try: () => serve({ bank, port: flags.port, host: flags.host }),
+      catch: (error) => new CliFailure({ message: `cannot serve the page: ${error instanceof Error ? error.message : String(error)}` })
+    })
+    yield* printJson({
+      url: address.url,
+      network: address.network,
+      bank,
+      review: reviewPath(bank),
+      next: "Send the person the url. What they pick, tune, pin, and drag is saved to the bank and the review as they go; read it back with `ritmo-tools rig notes`. Edits to the rig module, its pictures, the clips, or the bank rebake on the page."
+    })
+    return yield* Effect.never
+  })
+).pipe(
+  Command.withDescription(
+    "Opens the review page for a bank: the person watches every draft of a clip side by side, slowed down or frame by frame, picks one, tunes its params, pins comments to a spot or a span of frames, and drags image parts' pivots. Runs until stopped; changes are saved to the bank and its review as they happen, and the drafts rebake when the agent edits the rig, the clips, or the bank."
   )
 )
 
@@ -507,7 +548,7 @@ const parts = Command.make(
 
 export const rig = Command.make("rig").pipe(
   Command.withDescription(
-    "Ritmo's skeleton lab: characters as code (a rig module of bones, parts, IK chains, props, and stances, and clip drafts that pose it), checked for motion craft, looked at as contact sheets, and baked as sprite sheets. Prints JSON; exit 0 clean, 2 usage error, 3 errors in the rig or a draft."
+    "Ritmo's skeleton lab: characters as code (a rig module of bones, parts, IK chains, props, and stances, and clip drafts that pose it), checked for motion craft, looked at as contact sheets, reviewed by a person on a local page, and baked as sprite sheets. Prints JSON; exit 0 clean, 2 usage error, 3 errors in the rig or a draft."
   ),
-  Command.withSubcommands([check, look, bake, parts, notes, resolve, init])
+  Command.withSubcommands([check, look, bake, parts, review, notes, resolve, init])
 )

@@ -452,10 +452,11 @@ const opaqueBox = (image: RgbaImage): { x0: number; y0: number; x1: number; y1: 
  * and resolves it: the bone order and setup pose, every shape's points in
  * setup-pose world coordinates, which prop each part belongs to, and the
  * stances checked as poses. `images` holds the pictures its image parts
- * name (`imageFiles` lists them), already read. Check any other pose
- * against the rig with `poseProblems`.
+ * name (`imageFiles` lists them), already read; `pivots` is the bank's
+ * pivot overrides, laid over the module's. Check any other pose against
+ * the rig with `poseProblems`.
  */
-export const decodeRig = (module: unknown, images: ReadonlyMap<string, RgbaImage> = new Map()): Decoded<Rig> => {
+export const decodeRig = (module: unknown, images: ReadonlyMap<string, RgbaImage> = new Map(), pivots: Readonly<Record<string, readonly [number, number]>> = {}): Decoded<Rig> => {
   const value = isRecord(module) && "default" in module ? module.default : module
   if (!isRecord(value)) return { ok: false, error: "the rig module must `export default { size, anchor, bones, parts, chains, props, stances }`" }
   const errors: Array<string> = []
@@ -617,7 +618,9 @@ export const decodeRig = (module: unknown, images: ReadonlyMap<string, RgbaImage
     if (spec.outline !== undefined && spec.outline !== null && !isColor(spec.outline)) errors.push(`parts.${name}.outline must be a #rrggbb color, or null for none`)
     if (spec.line !== undefined && (!isNumber(spec.line) || spec.line < 0)) errors.push(`parts.${name}.line must be 0 or more`)
     for (const flag of ["hidden", "far"]) if (spec[flag] !== undefined && typeof spec[flag] !== "boolean") errors.push(`parts.${name}.${flag} must be true or false`)
-    const main = shape(`parts.${name}.shape`, spec.bone, spec.shape)
+    // The bank's pivot override for this part's picture, over the module's.
+    const override = pivots[name]
+    const main = shape(`parts.${name}.shape`, spec.bone, override !== undefined && isRecord(spec.shape) && spec.shape.kind === "image" ? { ...spec.shape, pivot: override } : spec.shape)
     const alt: Record<string, Shape> = {}
     if (spec.alt !== undefined && !isRecord(spec.alt)) errors.push(`parts.${name}.alt must be { name: shape }`)
     for (const [look, raw] of Object.entries(isRecord(spec.alt) ? spec.alt : {})) {
@@ -641,6 +644,11 @@ export const decodeRig = (module: unknown, images: ReadonlyMap<string, RgbaImage
       far: spec.far === true,
       prop: undefined
     })
+  }
+
+  for (const part of Object.keys(pivots)) {
+    const spec = isRecord(value.parts) ? value.parts[part] : undefined
+    if (!isRecord(spec) || !isRecord(spec.shape) || spec.shape.kind !== "image") errors.push(`the bank's pivots.${part}: no image part named ${part} (a pivot override moves a picture's pivot)`)
   }
 
   // Props: each a group of parts, hidden or swapped as one.

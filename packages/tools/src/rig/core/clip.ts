@@ -268,6 +268,8 @@ export interface Run {
   readonly params: Readonly<Record<string, number>>
   /** Each problem once, with the frames it is on. */
   readonly errors: ReadonlyArray<RunError>
+  /** The frames a key is on (from `rig.keys`), sorted: what the review page marks on its frame strip. A procedural clip has none. */
+  readonly keys: ReadonlyArray<number>
 }
 
 /** What the bank gives a draft's run: its seed, and the person's tune of its params. */
@@ -308,6 +310,7 @@ export const runClip = (rig: Rig, clip: Clip, options: RunOptions = {}): Run => 
   const base = clip.stance === undefined ? {} : (rig.stances[clip.stance] ?? {})
   const chainBones = Object.fromEntries(Object.values(rig.chains).map((chain) => [chain.name, [chain.upper, chain.lower, chain.end]]))
   const problems = new Map<string, { code: RunError["code"]; frames: Array<number> }>()
+  const keyed = new Set<number>()
   const report = (code: RunError["code"], message: string, frame: number): void => {
     const known = problems.get(message) ?? { code, frames: [] }
     if (!known.frames.includes(frame)) known.frames.push(frame)
@@ -320,7 +323,10 @@ export const runClip = (rig: Rig, clip: Clip, options: RunOptions = {}): Run => 
     const context: RigContext = {
       frame: wrapped,
       frames: clip.frames,
-      keys: (list) => keysAt(list, wrapped, last, chainBones, base),
+      keys: (list) => {
+        if (Array.isArray(list)) for (const key of list as ReadonlyArray<unknown>) if (typeof key === "object" && key !== null && "at" in key && typeof key.at === "number") keyed.add(key.at)
+        return keysAt(list, wrapped, last, chainBones, base)
+      },
       add,
       stances: rig.stances,
       length: (bone) => rig.bones[bone]?.length ?? Number.NaN,
@@ -350,5 +356,5 @@ export const runClip = (rig: Rig, clip: Clip, options: RunOptions = {}): Run => 
     frames.push({ frame: f, pose, world, drawn, shown: shownBones(rig, drawn) })
   }
   const errors = [...problems].map(([message, { code, frames: on }]): RunError => ({ code, message: on.length === clip.frames ? message : `${message} (frame${on.length === 1 ? "" : "s"} ${spans(on)})` }))
-  return { frames, params: p, errors }
+  return { frames, params: p, errors, keys: [...keyed].filter((at) => Number.isFinite(at) && at >= 0 && at < clip.frames).sort((a, b) => a - b) }
 }

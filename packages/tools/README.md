@@ -10,7 +10,7 @@ tool per kind of asset:
 | `ritmo-tools sound` | Sound effects: keeps them as JSON recipes, measures and varies them, writes WAV files, and opens a local page where a person listens, picks, tunes, and notes. |
 | `ritmo-tools fx` | Pixel art effects: keeps each effect as a few drafts written as code, checks them for pixel art craft and the project's rules, draws contact sheets an agent can look at, writes sprite sheets and GIFs, and opens a local page where a person watches the drafts side by side, picks, tunes, and pins comments to a pixel. |
 | `ritmo-tools music` | Game music: hears a person's hum for its tune, tempo, and key, keeps songs as JSON tracks of notes, checks them, writes WAV and MIDI files, and opens a local page where a person plays, edits notes, records, and comments. |
-| `ritmo-tools rig` | Characters animated on a skeleton: keeps a character as a rig module (bones, parts drawn as shapes or cut from a parts sheet as pictures, IK chains, props, stances) and each clip as a few drafts written as code, checks the motion (feet that slide or float, limbs out of reach, locked or overbent joints, pops in speed, loops that jump, starts off the stance), draws contact sheets an agent can look at, and bakes sprite sheets, GIFs, and a sidecar of each frame's hit segments, sockets, and foot contacts for gameplay. |
+| `ritmo-tools rig` | Characters animated on a skeleton: keeps a character as a rig module (bones, parts drawn as shapes or cut from a parts sheet as pictures, IK chains, props, stances) and each clip as a few drafts written as code, checks the motion (feet that slide or float, limbs out of reach, locked or overbent joints, pops in speed, loops that jump, starts off the stance), draws contact sheets an agent can look at, bakes sprite sheets, GIFs, and a sidecar of each frame's hit segments, sockets, and foot contacts for gameplay, and opens a local page where a person watches the drafts side by side, picks, tunes, pins comments to a spot or a span of frames, and drags a picture's pivot. |
 
 ```sh
 npx @typeonce/ritmo-tools pixel check art.png
@@ -866,8 +866,54 @@ file, broken bank), or 3 (the rig or a draft has errors).
 | `ritmo-tools rig check <bank> [names...] [--positions bones]` | Poses every draft of every clip (or the named ones) twice and measures it, and lists errors and warnings (see above), with accepted warnings apart and a verdict per draft and per clip. |
 | `ritmo-tools rig look <bank> <name> [--draft a] [--frames 5-10] [--scale 1] [--columns n] [--art] [--each] [--onion] [--compare] [--positions bones]` | Writes a contact sheet PNG per draft for the agent to look at: every frame (or `--frames`) numbered with its phase (`fast` ones in amber), on the rig's backdrop, in rows no wider than 2000 pixels; under each row the same frames with their bones, joints, and the trail bone's path (`--art` leaves them out). `--each` writes one picture per frame, `--onion` draws the frame before faintly under each, `--scale` draws them bigger, and `--compare` writes one picture instead: a row per draft, each column the same moment (`--columns` of them, 8 by default, first frame to last), to weigh the drafts against each other. The person's open comments are ringed (a pixel) or framed (a span) in magenta with their numbers. Prints every joint's bend on every frame. |
 | `ritmo-tools rig bake <bank> [names...] [-o dir] [--scale 1]` | Writes each clip's draft in use for the game: a sprite sheet PNG (its frames in one row, anti-aliased on transparency), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the rig's `anchor`, the animation and its fps, and `meta.loop`), a GIF on the rig's backdrop, and the bank's sidecar (`<bank>.clips.json`, every clip; see below). The report lists the sidecar and each clip's hit frames and sockets. Same inputs, same bytes. |
-| `ritmo-tools rig notes <bank>` | What the person said: each clip's status, note, open comments (numbered, each with where it is in words: "draft a, frame 22 (up), pixel (146, 195), on blade, near bone sword"), how many are resolved, draft in use, and tune, changes asked first. |
+| `ritmo-tools rig review <bank> [--port 5194] [--host]` | Serves the review page and prints its address; runs until stopped. |
+| `ritmo-tools rig notes <bank>` | What the person said: each clip's status, note, open comments, how many are resolved, draft in use, and tune, changes asked first; and the bank's `pivots` the person dragged, with what to do with them. A pixel comment has its `number`, `draft`, `frame`, `x` and `y` (frame pixels from the top left), `part`, `bone` (the part's own), `local` (the spot in that bone's frame, `[along, across]`), `phase`, `text`, and `where` in words ("draft a, frame 22 (up), pixel (146, 195), on blade (bone sword)"); a span comment its `number`, `draft`, `from`, `to`, `phases`, `text`, and `where` ("draft a, frames 6-9 (swing)"). |
 | `ritmo-tools rig resolve <bank> <clip> <numbers...> [--reply "what changed"]` | Marks comments as resolved: `rig notes` and `rig look` stop showing them. |
+
+### The review page
+
+`ritmo-tools rig review` opens the bank on a local page: the clips on the
+left with their status, every draft of the selected clip playing side by
+side on one clock (one-shots rest a moment between plays), each card the
+size of the rig's frame, and on the right, in this order, its Review
+(status and note), its Comments, the Tune sliders of the draft in focus,
+that draft's Check (each warning with **Show**, which pauses on its first
+frame with its bones traced or its parts boxed; the accepted warnings with
+their reasons; each joint's bend range), and Toggles (the bones overlay,
+onion skin, the ground line). The playback bar plays and pauses, steps
+frame by frame (the same frame on every draft), slows to ½ or ¼, zooms from
+1× to 4× (the frames are baked at 2×), and shows the frame strip of the
+draft in focus: a cell per frame, the current one lit, `fast` frames
+tinted, a dot under each frame a key is on, and span comments as numbered
+bands; clicking a cell goes there. Clicking a draft focuses it; **Use**
+picks the draft the game gets.
+
+Clicking a spot of the draft in focus pauses on that frame and pins a
+comment to it, with the part drawn there, that part's own bone, the spot
+in that bone's frame (so its ring follows the part when the agent changes
+the pose), and the phase. For timing, press S (or **Span**) on a frame,
+step to another, and press S again: the comment covers the frames between,
+listed as "frames 6-9 (swing)". Resolved comments show greyed with the
+agent's reply, and **Reopen** puts one back. Space plays, ← and → step, ↑
+and ↓ change clip, 1 to 9 focus a draft, S marks a span, and Escape clears
+rings and cancels a span.
+
+With the bones on, each image part's pivot shows as a blue cross on the
+draft in focus: dragging one to where the part's joint is saves the
+picture pixel under it to the bank's `pivots` (`{"head": [19, 56.3]}`, in
+the picture's own pixels), which the loader lays over the rig module's
+pivots, as `tune` lays over params, and the draft rebakes. It is the one
+way a person moves a pivot, and it never edits code: `rig notes` lists
+pending pivots, and the agent copies each into its part's `shape.pivot` in
+the rig module and removes them from the bank.
+
+Every change is written to the bank and its review as it happens, so
+`rig notes` reads it with no other step. The page's server watches the
+bank's folder and rebakes what changed: a clip's module, its drafts; the
+rig module, a picture, or a module the clips share, every draft; the bank,
+the drafts whose tune, accept, or seed changed, or every draft when
+`pivots` did. Each rebake reads the modules anew, and the page swaps the
+new frames in without a reload, about a second after the edit.
 
 ### The bake's sidecar
 
@@ -951,7 +997,14 @@ it, against its targets (with `Collide2` from
   (`bank.ts`), the checks (`check.ts`), the bake's sidecar (`sidecar.ts`), cutting a parts sheet (`parts.ts`, through the pixel fixer's sheet clearing) and a first humanoid rig from its parts (`scaffold.ts`), and contact sheets, sprite sheets,
   and GIFs (`export.ts`, through the pixel fixer's sheet and GIF writers).
 - `src/rig/cli/`: the commands, loading the rig's and the clips' modules as
-  files so their imports of each other resolve (`io.ts`).
+  files so their imports of each other resolve, and anew on a rebake
+  (`io.ts`), and the page's server and its watcher (`serve.ts`).
+- `src/rig/ui/`: the review page (`lab.ts`), reading, writing, and baking
+  through a store (`store.ts`): the CLI's server (`main.ts`), or the tab for
+  the website's demo (`demo.ts`, `example.ts`), which bakes the example bank
+  in the browser with the same runner and rasterizer (`core/view.ts`). The
+  published package carries it built (`dist/rig/page`, made by `prepack`);
+  inside the repository Vite serves it from source.
 
 ## Sound lab (`ritmo-tools sound`)
 
