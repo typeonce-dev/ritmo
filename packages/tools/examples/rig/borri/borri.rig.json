@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "rig": "rig/character.mjs",
+  "clips": {
+    "idle": {
+      "about": "Guard, breathing: a heavy dwarf at rest with the axe held two-handed across the body. The stance every other clip starts and ends on.",
+      "drafts": {
+        "a": {
+          "file": "clips/idle.a.mjs"
+        }
+      }
+    },
+    "walk": {
+      "about": "A stocky, grounded march with short steps, the axe carried at guard; the game moves him at its travel.",
+      "drafts": {
+        "a": {
+          "file": "clips/walk.a.mjs"
+        }
+      }
+    },
+    "attack": {
+      "about": "A two-handed overhead chop: a settle, a held wind-up behind the head, the hips leading the strike, and a heavy follow-through back to guard.",
+      "drafts": {
+        "a": {
+          "file": "clips/attack.a.mjs"
+        }
+      }
+    }
+  }
+}
