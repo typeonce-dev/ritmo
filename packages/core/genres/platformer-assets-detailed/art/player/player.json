@@ -1,0 +1,511 @@
+{
+ "frames": {
+  "idle 0": {
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 160,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "idle 1": {
+   "frame": {
+    "x": 48,
+    "y": 0,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 160,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "idle 2": {
+   "frame": {
+    "x": 96,
+    "y": 0,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 160,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "idle 3": {
+   "frame": {
+    "x": 144,
+    "y": 0,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 160,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "idle 4": {
+   "frame": {
+    "x": 192,
+    "y": 0,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 160,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "idle 5": {
+   "frame": {
+    "x": 240,
+    "y": 0,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 160,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "run 0": {
+   "frame": {
+    "x": 0,
+    "y": 48,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 70,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "run 1": {
+   "frame": {
+    "x": 48,
+    "y": 48,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 70,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "run 2": {
+   "frame": {
+    "x": 96,
+    "y": 48,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 70,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "run 3": {
+   "frame": {
+    "x": 144,
+    "y": 48,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 70,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "run 4": {
+   "frame": {
+    "x": 192,
+    "y": 48,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 70,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "run 5": {
+   "frame": {
+    "x": 240,
+    "y": 48,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 70,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "run 6": {
+   "frame": {
+    "x": 288,
+    "y": 48,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 70,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "run 7": {
+   "frame": {
+    "x": 336,
+    "y": 48,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 70,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "jump 0": {
+   "frame": {
+    "x": 0,
+    "y": 96,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 80,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "jump 1": {
+   "frame": {
+    "x": 48,
+    "y": 96,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 80,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "jump 2": {
+   "frame": {
+    "x": 96,
+    "y": 96,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 80,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "fall 0": {
+   "frame": {
+    "x": 0,
+    "y": 144,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 110,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "fall 1": {
+   "frame": {
+    "x": 48,
+    "y": 144,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 110,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "dash 0": {
+   "frame": {
+    "x": 0,
+    "y": 192,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 50,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "dash 1": {
+   "frame": {
+    "x": 48,
+    "y": 192,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 50,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "dash 2": {
+   "frame": {
+    "x": 96,
+    "y": 192,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 50,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "wall-slide 0": {
+   "frame": {
+    "x": 0,
+    "y": 240,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 120,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "wall-slide 1": {
+   "frame": {
+    "x": 48,
+    "y": 240,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 120,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "land 0": {
+   "frame": {
+    "x": 0,
+    "y": 288,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 70,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "land 1": {
+   "frame": {
+    "x": 48,
+    "y": 288,
+    "w": 48,
+    "h": 48
+   },
+   "duration": 70,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  }
+ },
+ "animations": {
+  "idle": [
+   "idle 0",
+   "idle 1",
+   "idle 2",
+   "idle 3",
+   "idle 4",
+   "idle 5"
+  ],
+  "run": [
+   "run 0",
+   "run 1",
+   "run 2",
+   "run 3",
+   "run 4",
+   "run 5",
+   "run 6",
+   "run 7"
+  ],
+  "jump": [
+   "jump 0",
+   "jump 1",
+   "jump 2"
+  ],
+  "fall": [
+   "fall 0",
+   "fall 1"
+  ],
+  "dash": [
+   "dash 0",
+   "dash 1",
+   "dash 2"
+  ],
+  "wall-slide": [
+   "wall-slide 0",
+   "wall-slide 1"
+  ],
+  "land": [
+   "land 0",
+   "land 1"
+  ]
+ },
+ "timing": {
+  "idle": {
+   "frames": [
+    "idle 0",
+    "idle 1",
+    "idle 2",
+    "idle 3",
+    "idle 4",
+    "idle 5"
+   ],
+   "msPerFrame": 160,
+   "loop": true
+  },
+  "run": {
+   "frames": [
+    "run 0",
+    "run 1",
+    "run 2",
+    "run 3",
+    "run 4",
+    "run 5",
+    "run 6",
+    "run 7"
+   ],
+   "msPerFrame": 70,
+   "loop": true
+  },
+  "jump": {
+   "frames": [
+    "jump 0",
+    "jump 1",
+    "jump 2"
+   ],
+   "msPerFrame": 80,
+   "loop": false
+  },
+  "fall": {
+   "frames": [
+    "fall 0",
+    "fall 1"
+   ],
+   "msPerFrame": 110,
+   "loop": true
+  },
+  "dash": {
+   "frames": [
+    "dash 0",
+    "dash 1",
+    "dash 2"
+   ],
+   "msPerFrame": 50,
+   "loop": false
+  },
+  "wall-slide": {
+   "frames": [
+    "wall-slide 0",
+    "wall-slide 1"
+   ],
+   "msPerFrame": 120,
+   "loop": true
+  },
+  "land": {
+   "frames": [
+    "land 0",
+    "land 1"
+   ],
+   "msPerFrame": 70,
+   "loop": false
+  }
+ },
+ "meta": {
+  "image": "player.png",
+  "size": {
+   "w": 384,
+   "h": 336
+  },
+  "frameSize": {
+   "w": 48,
+   "h": 48
+  },
+  "scale": "1",
+  "about": "Soles on row 46, outline on row 47; the anchor is the middle of the bottom row. Hitbox 12x34 from x 17..28, y 13..46. Faces right; flip for left. The wall-slide frames press a wall whose first column is x 29, just right of the hitbox. player-spent.png is the same sheet with the dash spent.",
+  "frameTags": [
+   {
+    "name": "idle",
+    "from": 0,
+    "to": 5,
+    "direction": "forward"
+   },
+   {
+    "name": "run",
+    "from": 6,
+    "to": 13,
+    "direction": "forward"
+   },
+   {
+    "name": "jump",
+    "from": 14,
+    "to": 16,
+    "direction": "forward"
+   },
+   {
+    "name": "fall",
+    "from": 17,
+    "to": 18,
+    "direction": "forward"
+   },
+   {
+    "name": "dash",
+    "from": 19,
+    "to": 21,
+    "direction": "forward"
+   },
+   {
+    "name": "wall-slide",
+    "from": 22,
+    "to": 23,
+    "direction": "forward"
+   },
+   {
+    "name": "land",
+    "from": 24,
+    "to": 25,
+    "direction": "forward"
+   }
+  ]
+ }
+}
