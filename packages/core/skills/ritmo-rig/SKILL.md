@@ -15,6 +15,14 @@ You cannot watch a clip play. You write poses, measure them, and look at still f
 - **Not small pixel sprites.** A rig draws anti-aliased parts and keeps no pixel grid: a 16 or 32 px sprite and its frames stay with the pixel fixer (the `ritmo-pixel-art` skill).
 - **Not the hand-drawn, frame-by-frame look.** Parts are flat side views, so a rig cannot twist the torso or turn the hips toward the camera. Choose moves that read from the side; a move that needs a turn is drawn frame by frame, not rigged.
 
+## From a parts sheet
+
+When the character comes as pictures (a parts sheet from an image generator or an artist: each part drawn whole and apart from the others, side view facing right, on a plain background), build the rig from it before any clip:
+
+1. Name the parts in the sheet's reading order with the names `rig init --from` knows (`head`, `torso`, `upperArmNear`, `upperArmFar`, `forearmNear`, `forearmFar`, `handNear`, `handFar`, `thighNear`, `thighFar`, `shinNear`, `shinFar`, `footNear`, `footFar`; any other name becomes a prop held at the near hand) and cut it: `rig parts <sheet.png> -o parts --names <names>`. Read the report: a box left out as a label or a speck, or a count that differs from your names, means the sheet or the names are wrong, not the cut.
+2. Check every guessed pivot in `parts/parts.json` against the picture before scaffolding. The rule puts a pivot on the joint nearest the body, which is wrong for a weapon lying on its side (its pivot belongs at the grip) and arbitrary for a round part like a fist; correct those in the file.
+3. `rig init --from parts/parts.json`, then `rig look <bank> idle --art`: the character should stand assembled on the ground line. Fix bone lengths, part angles, and pivots in the rig module until it does, and only then write clips. A two-handed weapon needs the far hand's `reach` onto the haft in every clip that holds it.
+
 ## The loop
 
 1. **References first.** Ask for, or find, two or three references of the real motion (a fighting game's move, a film, a video of someone doing it). Write each clip's key poses in words before any code, one line each ("settle: the weight sinks back, the tip dips; cocked: blade behind the head, held; strike: hips first, then the arms"). Put the move's purpose in the clip's `about`.
