@@ -1,5 +1,11 @@
 # @typeonce/ritmo
 
+## 0.21.0
+
+### Minor Changes
+
+- d1d864d: **Breaking: the packages require Node 22 or newer (Node 20 reached end of life on 2026-04-30).** `engines.node` is `>=22` for `@typeonce/ritmo`, `-browser`, `-render`, `-pixi`, `-math`, and `-netcode`; `>=22.12` for `@typeonce/oxlint-plugin-ritmo` (oxlint's own floor); `>=22.15` for `@typeonce/ritmo-devtools` (unchanged); and `>=22.19` for `@typeonce/ritmo-tools` (what `@effect/platform-node` needs). On Node 20, upgrade Node: `nvm install 22` (or 24), or `"node": ">=22"` in your CI's setup step.
+
 ## 0.20.0
 
 ### Minor Changes
