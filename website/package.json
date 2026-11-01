@@ -32,7 +32,7 @@
     "miniplex": "2.0.0",
     "pagefind": "1.5.2",
     "twoslash": "0.3.9",
-    "typescript": "6.0.3",
+    "typescript": "7.0.2",
     "wrangler": "4.152.0"
   }
 }
