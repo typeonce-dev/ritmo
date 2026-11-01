@@ -26,6 +26,12 @@ A rule that is none of these does not go in the skill. When you change the skill
 
 - **Ritmo:** a bone turns in the picture's plane only, and a part is one flat picture or shape drawn in the side view (`rig parts`' limits: "a side view, one character facing right, each part drawn whole"). A torso twisting or hips turning toward the camera need new drawings, which a rig does not have. The maintainer's direction for the skill.
 
+## From a parts sheet
+
+### Name, cut, and check the pivots before scaffolding; the module owns them after; a weapon on its own bone, held two-handed by a second reach
+
+- **Ritmo:** procedure for `rig parts` and `rig init --from` (their README section). The steps and the two-handed pattern come from the evaluation run in which a fresh agent rigged Borri (`examples/rig/borri/`) from `examples/rig/sheet/character.png` with only this skill and the README: it reported that the pivot guess is wrong for a weapon lying on its side, that correcting pivots in `parts.json` after `init` meant editing two places, and that a far hand could not reach a weapon on the near hand. The scaffold now puts the weapon on a bone of its own before the arms, and the module owns the pivots after `init`.
+
 ## The loop
 
 ### References first; key poses in words before code
@@ -45,11 +51,11 @@ A rule that is none of these does not go in the skill. When you change the skill
 - **Prototype:** "Every bone value is a turn from setup relative to its parent, but I reason about poses in world angles (\"sword pointing back and down\"). Every key needed hand arithmetic" … "An authoring helper that takes world angles (`aim: { sword: 245 }`, solved like IK) would remove most of my mistakes".
 - **Ritmo:** `aim` (a world angle) and `reach` (two-bone IK to a point, or to a point on another bone) were built from that note, and the skill says to key extremes with them.
 
-### Timing in phases; ease into extremes; the snap fast
+### Timing in phases; ease into extremes; the snap fast; the hold outside it; hit frames that travel forward
 
 - Wikipedia, "Twelve basic principles" ([link][twelve]): "For this reason, more pictures are drawn near the beginning and end of an action, creating a slow in and slow out effect" … "Timing is critical for establishing a character's mood, emotion, and reaction."
 - **Prototype:** "Getting slow-in and slow-out right was the main timing work."
-- **Ritmo:** `rest: true` is how `rig.keys` eases into and out of an extreme; a `fast` phase is the one span the `jerk` check lets snap, and the default span of the bake's hit.
+- **Ritmo:** `rest: true` is how `rig.keys` eases into and out of an extreme; a `fast` phase is the one span the `jerk` check lets snap, and the default span of the bake's hit. So a wind-up hold inside the fast span is never checked for pops, and the default hit takes in a first fast frame where, in Borri's evaluation chop, the hips led and the axe still rose; `rig check` reports the hit's `travel` so the agent sees it and sets `hit.frames`.
 
 ### Anticipation before, follow-through after, the body leading
 

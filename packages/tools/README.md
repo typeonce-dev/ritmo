@@ -628,7 +628,7 @@ export default {
 
 - `bones`: a tree, each with a `length`, a `parent` (none for the root), where it starts in its parent's frame (`x` along the parent, `y` across it), its `rotation` from the parent's direction, and `scaleX`/`scaleY`. Parents are solved before children, in the order the bones are declared otherwise.
 - `parts`: what is drawn, each on a `bone`, in draw order `z` (higher over lower; equal keeps the declared order), with a `fill` (`#rrggbb` or `#rrggbbaa`), an `outline` (or `null`) and `line` width, `far: true` for the far side of the body (the peek check watches it), `hidden: true` for a part a pose shows only when it says (a smear), `alt`, other shapes by name, and `tint` (a `#rrggbb` every color it draws is multiplied by: a far side darker and cooler). Parts are drawn anti-aliased. A part whose shapes are all pictures needs no `fill` and has no outline.
-- Shapes are drawn in the setup pose's world coordinates, and follow their bone from there: `capsule` (`a`, `b`, radius `r` tapering to `r2`; along the bone when `a` and `b` are left out), `ellipse` (`c`, `rx`, `ry`, `angle`; a circle when `ry` is left out), `poly` (`points`, corners rounded by `round`), `sweep` (the area the bone's segment from `from` to `to` swept over the last `frames` frames: a smear worked out from the clip's own poses), and `image` (a picture: `{ kind: "image", file: "parts/forearm.png", pivot: [x, y], at, angle, scale }`, its `pivot` pixel, in the picture's own pixels from its top left, on the point `at` of the setup pose (the bone's start by default), turned `angle` degrees and drawn `scale` world units a pixel (1 by default); it turns and scales with its bone, sampled bilinearly and composited premultiplied, the same bytes every time). Shapes and pictures mix freely in a rig, and props and slots work the same on both. A point is `[x, y]`, or a point on a bone in the setup pose, `{ bone, along, across, dx, dy }` (the part's own bone when `bone` is left out; `across` is to the bone's left, `dx` and `dy` in world axes), so a shape that hangs on a bone is written along it.
+- Shapes are drawn in the setup pose's world coordinates, and follow their bone from there: `capsule` (`a`, `b`, radius `r` tapering to `r2`; along the bone when `a` and `b` are left out), `ellipse` (`c`, `rx`, `ry`, `angle`; a circle when `ry` is left out), `poly` (`points`, corners rounded by `round`), `sweep` (the area the bone's segment from `from` to `to` swept over the last `frames` frames: a smear worked out from the clip's own poses), and `image` (a picture: `{ kind: "image", file: "parts/forearm.png", pivot: [x, y], at, angle, scale }`, its `pivot` pixel, in the picture's own pixels from its top left, on the point `at` of the setup pose (the bone's start by default), turned `angle` degrees and drawn `scale` world units a pixel (1 by default); it turns and scales with its bone, sampled bilinearly and composited premultiplied, the same bytes every time). Like every shape's coordinates, `angle` is in the setup pose's world, not relative to the bone: 0 draws the picture as it was drawn, standing in the setup pose (so a torso drawn upright on a bone pointing up takes 0, and so does a sword drawn lying flat on a bone pointing forward). Change a bone's setup `rotation` and its pictures stay where they were: turn their `angle` by the same amount. Shapes and pictures mix freely in a rig, and props and slots work the same on both. A point is `[x, y]`, or a point on a bone in the setup pose, `{ bone, along, across, dx, dy }` (the part's own bone when `bone` is left out; `across` is to the bone's left, `dx` and `dy` in world axes), so a shape that hangs on a bone is written along it.
 - `chains`: two-bone IK, `upper` then `lower` (which starts at the end of `upper`), ending in `end`; `bend` says which way the middle joint bends (1 counter-clockwise from the line to the goal: a knee facing +x); `foot: true` marks a foot, whose ground contact the checks measure.
 - `props`: groups of parts shown, swapped, or hidden as one (a sword, a shield). A prop's parts cannot be hidden one by one.
 - `stances`: named poses clips start and end on, so the game can blend between them.
@@ -666,7 +666,12 @@ A clip may also name `sockets` of its own (over the rig's) and its `hit`:
 the segment the bake reports for gameplay, by default the trail bone's
 whole length on its `fast` frames (`hit: { from: 6, radius: 3 }` for the blade alone, 3 wide each side,
 `hit: { bone, frames: [[9, 12]] }` for other frames, `hit: false` for a clip
-that hits nothing). See the sidecar below.
+that hits nothing). `rig check` reports the hit's `travel` on each of its
+frames: how far the segment's far end moved since the frame before (`dx`,
+`dy`, y up), how far its bone turned, and the `heading` in words ("forward
+and down"). A `fast` frame where the weapon still goes back or up (the hips
+leading before the arms come through) is not a hit: set `hit.frames` to the
+frames it travels into the target. See the sidecar below.
 
 Drafts and rigs are code, and every `rig` command that reads a bank runs
 them with Node's full permissions: run it on banks you trust, as you would
@@ -684,7 +689,7 @@ laid over them, and `rig`:
 | `rig.` | What it is |
 | --- | --- |
 | `keys(list)` | The pose a list of keys gives on this frame: the one way to key a clip (see below). |
-| `add(base, over)` | `over` laid on `base`, for a pose made of layers (breathing on a stance): turns, moves, and aim angles add up; goals, slots, props, and draw order in `over` win. |
+| `add(base, over)` | `over` laid on `base`: turns, moves, and aim angles add up; goals, slots, props, and draw order in `over` win. For motion written as a function of `t` (a wave) over a stance or over `keys` (see below). |
 | `stances` | The rig's stances by name. |
 | `frame`, `frames` | This frame's number (fractional while a smear samples between frames) and how many there are. |
 | `length(bone)` | A bone's length. |
@@ -700,7 +705,7 @@ bone's own turn, each by its `mix` (0 to 1, default 1):
 | `bones: { torso: -6, hips: { x: -3, y: -5, r: 2, sx: 1, sy: 1 } }` | Turns a bone from its setup pose (relative to its parent), and moves (in its parent's frame) and scales it. |
 | `aim: { sword: 245, thigh: { angle: -40, mix: 0.5 } }` | A bone's world angle: "the blade at 245°", "the thigh at -40° and the shin hanging (-90°)", whatever its parents do. |
 | `reach: { leg: { x: 4, y: 2, angle: 0 } }` | IK: the chain's end (an ankle, a wrist) on a world point. |
-| `reach: { arm: { bone: "sword", along: -9, across: 3.5, turn: -90 } }` | IK to a point on another bone, moved by `dx` and `dy` in world axes: a hand on a grip, or a fist in front of the shoulder (`{ bone: "torso", along: 35, dx: 24, dy: -4, angle: 45 }`). The end bone keeps its setup world angle unless the goal says `angle` (world) or `turn` (from the goal's bone); the goal's bone must be declared before the chain's upper bone. |
+| `reach: { arm: { bone: "sword", along: -9, across: 3.5, turn: -90 } }` | IK to a point on another bone, moved by `dx` and `dy` in world axes: a hand on a grip, or a fist in front of the shoulder (`{ bone: "torso", along: 35, dx: 24, dy: -4, angle: 45 }`). The end bone keeps its setup world angle unless the goal says `angle` (world) or `turn` (from the goal's bone); the goal's bone must be declared before the chain's upper bone. A reach puts the end bone's start (the wrist) on the goal, not the hand's middle: to close a fist on a haft, move the goal `across` the haft by half the hand's length and turn the hand down from it (`{ bone: "axe", along: 0, across: 12, turn: -90 }` for a 24-long hand). |
 | `slots: { smear: "default", hand: "fist" }` | A part's shape by `alt` name, `"default"`, or `null` to hide it. |
 | `props: { sword: null }` | A prop shown (`"default"`), swapped to a look its parts have in `alt` (parts without it hide), or hidden, as one. A hidden prop's bones are exempt from every check, and from the trail. |
 | `z: { handFar: 25 }` | A part's draw order, replacing its `z`. |
@@ -709,7 +714,12 @@ bone's own turn, each by its `mix` (0 to 1, default 1):
 the next (`curve`: `smooth`, the default, flows through the keys on either
 side; `linear`, `in`, `out`, or `stepped`) and `rest: true` where the
 motion comes to rest (an extreme or a hold: smooth segments ease into and
-out of it). Every value a key sets is its own timeline, a channel
+out of it). A key's `curve` shapes each channel it sets from that key to
+the channel's next key, and nothing else. The frame-0 value a channel
+starts from (below) is not a key and is always `smooth`: to move a channel
+linearly from frame 0 (a planted foot sliding back at the walk's speed),
+key it on frame 0 with its stance value and the curve, `{ at: 0, curve:
+"linear", reach: { legNear: FEET.near } }`. Every value a key sets is its own timeline, a channel
 (`bones.torso`, `aim.sword`, `reach.leg.x`, `slots.smear`), made of the
 keys that set it, so a key may move a few bones only. One rule says where
 each starts: on frame 0, every channel is the clip's `stance` (or the
@@ -720,7 +730,30 @@ aim or reach it does not have mixes in, from 0 on frame 0 to 1 on its first
 key (key its `mix` to say otherwise); slots, props, and draw order are the
 stance's (or the rig's own) until a key sets them. After its last key a
 channel holds that key's value, so a one-shot ends on its stance with a
-last key like `{ at: 25, ...rig.stances.ready }`. Slots, props, draw order,
+last key like `{ at: 25, ...rig.stances.ready }`. A loop is the one
+exception: after its last key every channel moves on to its frame-0 value,
+reached on frame `frames` (which is frame 0 again), and smooth curves flow
+across the seam. So a loop keys only what changes, never repeats frame 0
+at its end (that holds two frames still: `identical`), and cannot key frame
+`frames`. An idle that breathes in to frame 8 of 16 and out again:
+
+```js
+pose(rig, t, p) {
+  const stand = rig.stances.stand
+  return rig.keys([
+    { at: 8, rest: true, bones: { hips: { y: stand.bones.hips.y - p.breath } } },
+    // The torso a frame behind the hips, the head a frame behind it.
+    { at: 9, rest: true, bones: { torso: -1.5 } },
+    { at: 10, rest: true, bones: { head: 1.5 } }
+  ])
+}
+```
+
+Use `rig.add(base, over)` instead only for motion written as a function of
+`t` rather than as poses on frames (a wave with a lag per bone, noise),
+laid over a pose: `rig.add(rig.keys(list), { bones: { head: 2 * Math.sin(2
+* Math.PI * t) } })`. Its layers must be 0 on frame 0 for a clip on a
+stance, and whole cycles for a loop. Slots, props, draw order,
 and a goal's bone step: they hold until the next key that sets them. Key
 lists that would key the wrong motion are errors, each naming the clip,
 the frame, and the channel: two keys on one frame setting one channel, a
@@ -754,10 +787,14 @@ each clip's status (`new`, `approved`, `changes`), the person's note, and
 their comments, each pinned to a draft, a frame (from 0), and a pixel of
 the frame (with the part there, the bone near it, and the phase), or to a
 span of frames (timing: "frames 6-9 feel slow"), and resolved by the agent
-with a reply (`rig resolve`). `examples/rig/hero.rig.json` in the
-repository is a swordsman with an idle (two drafts: armed, and an
-unarmed fighting stance), a walk, an overhead chop (two drafts), a block,
-a punch, and a kick.
+with a reply (`rig resolve`). The repository has two example banks.
+`examples/rig/borri/borri.rig.json` is Borri, a dwarf with an axe rigged
+from the painted parts sheet `examples/rig/sheet/character.png` by `rig
+parts` and `rig init --from`, with an idle, a walk, and a two-handed
+overhead chop: the path a character made of pictures takes.
+`examples/rig/hero.rig.json` is a swordsman drawn as shapes, with an idle
+(two drafts: armed, and an unarmed fighting stance), a walk, an overhead
+chop (two drafts), a block, a punch, and a kick.
 
 ### The checks
 
@@ -794,7 +831,11 @@ bone's spacing (how far its tip moves into each frame), peak speed, and
 arc (and with `fast` phases the swing's span, length, and how much of the
 clip comes before it), and a verdict; each clip has a verdict too, so a new
 clip is judged apart. `--positions handNear,sword` adds where each bone
-named starts, its tip, and its angle on every frame, in world units.
+named is on every frame, in world units (y up, the origin on the ground
+under the character): `positions.<bone>.start` and `.tip`, a list with an
+`[x, y]` per frame (its start and its end), and `.angle`, its world angle
+per frame (degrees, counter-clockwise from +x); `null` on a frame the bone
+is hidden.
 
 ### From a parts sheet
 
@@ -834,28 +875,54 @@ end toward the body, and wrong for a limb drawn pointing at the middle
 `parts.json`, in the part's own pixels.
 
 `rig init --from parts.json` writes a bank, a rig module (`rig/character.mjs`)
-of a side-view humanoid facing right, and an idle draft that breathes on
-its `stand` stance, so the first look shows the character assembled and
-standing. It knows the parts `head`, `torso`, `upperArmNear`/`Far`,
+of a side-view humanoid facing right, and an idle draft (`clips/idle.a.mjs`)
+that breathes on its `stand` stance, so the first look shows the character
+assembled and standing. It knows the parts `head`, `torso`, `upperArmNear`/`Far`,
 `forearmNear`/`Far`, `handNear`/`Far`, `thighNear`/`Far`, `shinNear`/`Far`,
-and `footNear`/`Far`: each picture's pivot sits on its bone's start, its
-long axis is turned onto the bone (`angle`), and the bone runs from the
-pivot to the far end of the axis. The far side draws through a darker,
-cooler `tint`. A part the set does not have gets a plain capsule (an
-ellipse for the head) so the rig still bakes; parts with other names
-become props held at the near hand's end. It accepts no warnings: when
-one fires, judge it, and accept it in the bank with why if it is
-deliberate. Then correct what reads wrong in `rig look` in the module:
-a pivot, an angle, a bone's length.
+and `footNear`/`Far`. Each bone's setup direction comes from its role (the
+torso and head up, the limbs hanging, the feet forward), never from the
+pictures. Each picture's pivot sits on its bone's start, and the bone runs
+from the pivot to where the picture ends along it. A picture keeps the way
+it was drawn (`angle` 0) when it was drawn upright or flat: the head, the
+torso, and the feet always (turned only by a whole quarter turn, for one
+drawn on its side), and any other part whose long axis is within 10° of
+its bone or of a quarter turn from it (a fist drawn lying down takes -90).
+Only a limb drawn at a slant is turned exactly onto its bone. The far side
+draws through a darker, cooler `tint`. A part the set does not have gets a
+plain capsule (an ellipse for the head) so the rig still bakes.
+
+A part with any other name is a prop (a weapon) on a bone of its own,
+named after it: on the torso, declared before the arms (a reach's goal
+must be on a bone declared before the chain), drawn as on the sheet
+between the body and the near arm, with sockets `grip` and `tip` on it.
+The stance puts the near hand on it. To hold it in both hands, give the far
+arm a reach onto the same bone further along the haft, in the stance or
+the clip; the fist closes on it with the goal half a hand `across` the haft
+(see `reach` above):
+
+```js
+reach: {
+  armNear: { bone: "axe", along: 0, across: 12, turn: -90 },
+  armFar: { bone: "axe", along: -24, across: 12, turn: -90 }
+}
+```
+
+It accepts no warnings: when one fires, judge it, and accept it in the bank
+with why if it is deliberate. From then on the rig module owns the pivots,
+angles, and lengths (the report says so): `parts.json` is not read again,
+and `init --force` would overwrite the module. Correct what reads wrong in
+`rig look` in the module (a pivot, an angle, a bone's length), or drag a
+pivot on the review page.
 
 The limits: a side view, one character facing right, each part drawn whole
 (overlaps included: a thigh drawn to the hip, not cut where the torso
 covers it), and parts apart from each other on the sheet. A part drawn
 twice (a near and a far arm alike) is cut twice; name both.
 
-`examples/rig/sheet/character.png` in the repository is such a sheet to
-try it on: Borri, a dwarf with an axe, in fifteen parts, painted by the
-script beside it (`make-sheet.ts`).
+`examples/rig/sheet/character.png` in the repository is such a sheet:
+Borri, a dwarf with an axe, in fifteen parts, painted by the script beside
+it (`make-sheet.ts`); `examples/rig/borri/` is the rig an agent made from
+it with these two commands.
 
 ### The command line
 
@@ -868,8 +935,15 @@ file, broken bank), or 3 (the rig or a draft has errors).
 | `ritmo-tools rig init [bank] [--from parts.json]` | Writes a starting bank, a small figure's rig module (bones, parts, leg and arm chains, a stance), and an idle draft to build from; with `--from`, a side-view humanoid rig made of the pictures `rig parts` cut (see above). |
 | `ritmo-tools rig parts <sheet.png> [-o dir] [--names head,torso,...]` | Cuts a character parts sheet into `parts/<name>.png` with transparency and `parts/parts.json` (each part's file, size, box, long axis, and guessed pivot), and warns about boxes that look like labels or are tiny (see above). |
 | `ritmo-tools rig check <bank> [names...] [--positions bones]` | Poses every draft of every clip (or the named ones) twice and measures it, and lists errors and warnings (see above), with accepted warnings apart and a verdict per draft and per clip. |
-| `ritmo-tools rig look <bank> <name> [--draft a] [--frames 5-10] [--scale 1] [--columns n] [--art] [--each] [--onion] [--compare] [--positions bones]` | Writes a contact sheet PNG per draft for the agent to look at: every frame (or `--frames`) numbered with its phase (`fast` ones in amber), on the rig's backdrop, in rows no wider than 2000 pixels; under each row the same frames with their bones, joints, and the trail bone's path (`--art` leaves them out). `--each` writes one picture per frame, `--onion` draws the frame before faintly under each, `--scale` draws them bigger, and `--compare` writes one picture instead: a row per draft, each column the same moment (`--columns` of them, 8 by default, first frame to last), to weigh the drafts against each other. The person's open comments are ringed (a pixel, where its part is now, as the review page rings it) or framed (a span) in magenta with their numbers. Prints every joint's bend on every frame. |
-| `ritmo-tools rig bake <bank> [names...] [-o dir] [--scale 1]` | Writes each clip's draft in use for the game: a sprite sheet PNG (its frames in one row, anti-aliased on transparency), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the rig's `anchor`, the animation and its fps, and `meta.loop`), a GIF on the rig's backdrop, and the bank's sidecar (`<bank>.clips.json`, every clip; see below). The report lists the sidecar and each clip's hit frames and sockets. Same inputs, same bytes. |
+| `ritmo-tools rig look <bank> <name> [--draft a] [--frames 5-10] [--scale 1] [--full] [--columns n] [--art] [--each] [--onion] [--compare] [--positions bones]` | Writes a contact sheet PNG per draft for the agent to look at: every frame (or `--frames`) numbered with its phase (`fast` ones in amber), on the rig's backdrop, cropped to the character (every drawn part on the frames shown, with a margin, down past the ground line; `--full` keeps the whole frame, and the report gives the box as `view`), in one row when the frames fit in 2000 pixels and in rows as even as can be when not; under each row the same frames with their bones, joints, and the trail bone's path (`--art` leaves them out). `--each` writes one picture per frame, `--onion` draws the frame before faintly under each, `--scale` draws them bigger (2) or smaller (0.5), and `--compare` writes one picture instead: a row per draft, each column the same moment (`--columns` of them, 8 by default, first frame to last), to weigh the drafts against each other. The person's open comments are ringed (a pixel, where its part is now, as the review page rings it) or framed (a span) in magenta with their numbers. Prints every joint's bend on every frame. |
+| `ritmo-tools rig bake <bank> [names...] [-o dir] [--scale 1]` | Writes each clip's draft in use for the game: a sprite sheet PNG (its frames in one row, anti-aliased on transparency), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the rig's `anchor`, the animation and its fps, and `meta.loop`), a GIF on the rig's backdrop, and the bank's sidecar (`<bank>.clips.json`, every clip; see below). `--scale` is any number above 0 up to 8 (0.5, 0.25). The report lists the sidecar and each clip's hit frames and sockets. Same inputs, same bytes. |
+
+A rig's world unit is a pixel of its parts: a rig built from a parts sheet
+is as tall as the sheet drew it (often 300 to 400 pixels). Size it for the
+game at the bake, not in the module: `bake --scale 0.5` for a character
+half as tall, and the sidecar's coordinates come at the same scale. Keep
+the module at the sheet's size, so its pictures are drawn at their own
+pixels and every rebake from it is sharp.
 | `ritmo-tools rig review <bank> [--port 5194] [--host]` | Serves the review page and prints its address; runs until stopped. With `--host` (to look on a phone) the page's frames come at 1×, a quarter of the bytes. |
 | `ritmo-tools rig notes <bank>` | What the person said: each clip's status, note, open comments, how many are resolved, draft in use, and tune, changes asked first; and the bank's `pivots` the person dragged, with what to do with them. A pixel comment has its `number`, `draft`, `frame`, `x` and `y` (frame pixels from the top left), `part`, `bone` (the part's own), `local` (the spot in that bone's frame, `[along, across]`), `phase`, `text`, and `where` in words ("draft a, frame 22 (up), pixel (146, 195), on blade (bone sword)"); a span comment its `number`, `draft`, `from`, `to`, `phases`, `text`, and `where` ("draft a, frames 6-9 (swing)"). |
 | `ritmo-tools rig resolve <bank> <clip> <numbers...> [--reply "what changed"]` | Marks comments as resolved: `rig notes` and `rig look` stop showing them. |
