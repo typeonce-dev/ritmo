@@ -36,7 +36,7 @@
     "@typeonce/ritmo-netcode": "workspace:*",
     "@typeonce/ritmo-pixi": "workspace:*",
     "@typeonce/ritmo-render": "workspace:*",
-    "@types/node": "^25.5.0",
+    "@types/node": "^26.6.6",
     "@vitest/coverage-v8": "4.0.18",
     "@vitest/expect": "4.0.18",
     "arktype": "^2.2.9",
