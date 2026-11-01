@@ -49,7 +49,7 @@ For an indie 2D platformer the world is a tile grid with smooth (not tile-steppe
 
 - Monteiro ([link][monteiro]): "I can think of four major ways in which a platform game can be implemented." (tile-based pure, tile-based smooth, bitmask, vectorial). "Decompose movement into X and Y axes, step one at a time." On bitmask terrain: "I only recommend it if you absolutely must have detailed terrain."
 - Thorson ([link][thorson-forgive]) lists the forgiveness rules as small adjustments to exactly this kind of axis-by-axis movement (a sideways wiggle when moving up, a pop-up when moving sideways).
-- Ritmo: `@typeonce/ritmo-math` holds the swept collision (`Collide2`) and boxes (`Box2`) this needs. A convention, not a design claim.
+- Ritmo: `@typeonce/ritmo-math` has `Box2` boxes and `Collide2`, which sweeps a circle; a platformer's box-against-tiles step, one axis at a time, is the game's own code today. A fact about the library, not a design claim.
 
 ## The camera shows what is coming
 
