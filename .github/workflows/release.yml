@@ -28,11 +28,12 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
 
-      # Node 24 ships npm 11, which supports npm trusted publishing (OIDC).
+      # .node-version is Node 24, which ships npm 11: it supports npm trusted
+      # publishing (OIDC).
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
@@ -62,14 +63,16 @@ jobs:
       # environment. No npm token is stored.
       - name: Version or publish
         id: changesets
-        uses: changesets/action@v1
+        # v2 is the action for the Changesets v3 CLI. It pushes the version
+        # commit and the release tags through the GitHub API with the job's
+        # token, and reads what was published from CHANGESETS_OUTPUT, which
+        # `pnpm release` passes down to `changeset publish`.
+        uses: changesets/action@v2
         with:
-          version: pnpm version-packages
-          publish: pnpm release
-          title: Version Packages
-          commit: Version Packages
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          version-script: pnpm version-packages
+          publish-script: pnpm release
+          pr-title: Version Packages
+          commit-message: Version Packages
 
       # The website documents what is on npm, so it is deployed after a
       # publish, from the same commit (see website/README.md).

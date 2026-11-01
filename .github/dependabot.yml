@@ -1,0 +1,31 @@
+# Weekly dependency updates: one grouped pull request of minor and patch
+# updates per ecosystem, and one pull request per major update.
+version: 2
+updates:
+  - package-ecosystem: npm
+    # The pnpm workspace: the root, the website, and every workspace package
+    # share pnpm-lock.yaml.
+    directories:
+      - "/"
+      - "/website"
+      - "/packages/*"
+      - "/integration/*"
+      - "/bench/*"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        update-types:
+          - minor
+          - patch

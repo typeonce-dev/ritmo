@@ -1,6 +1,6 @@
 {
   "name": "@typeonce/ritmo-devtools",
-  "version": "0.19.1",
+  "version": "0.20.0",
   "description": "Headless debug sessions, trace history, text reports, replays, and fuzzing for Ritmo runtimes",
   "author": "Sandro Maglione",
   "license": "MIT",
@@ -96,7 +96,7 @@
   },
   "devDependencies": {
     "playwright": "^1.64.1",
-    "vite": "^8.0.3"
+    "vite": "catalog:"
   },
   "engines": {
     "node": ">=22.15"

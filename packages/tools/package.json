@@ -1,6 +1,6 @@
 {
   "name": "@typeonce/ritmo-tools",
-  "version": "0.19.1",
+  "version": "0.20.0",
   "description": "Asset tools for games made with Ritmo, for agents: fixes AI-made pixel art and animation sheets onto a true pixel grid and a palette, keeps game sounds as JSON recipes, writes game music as JSON songs built around a hum, and draws pixel art effects as code, each with a review page for a person",
   "author": "Sandro Maglione",
   "license": "MIT",
@@ -76,18 +76,18 @@
     "prepack": "pnpm run build:page"
   },
   "dependencies": {
-    "@effect/platform-node": "4.1.0",
-    "@effect/platform-node-shared": "4.1.0",
-    "effect": "4.1.0",
+    "@effect/platform-node": "catalog:",
+    "@effect/platform-node-shared": "catalog:",
+    "effect": "catalog:",
     "jpeg-js": "0.4.4",
     "pngjs": "7.0.0"
   },
   "devDependencies": {
     "@types/pngjs": "^6.0.5",
-    "tsx": "^4.21.0",
-    "vite": "^8.0.3"
+    "tsx": "catalog:",
+    "vite": "catalog:"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19"
   }
 }

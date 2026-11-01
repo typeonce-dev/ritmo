@@ -3,3 +3,21 @@ packages:
   - integration/*
   - bench/*
   - website
+
+# One version for a dependency several manifests use (`"catalog:"`).
+catalog:
+  # Exact, and moved together: ritmo-tools depends on all three, and a
+  # mismatched @effect/platform-node-shared crashed every command (e6ead988).
+  "@effect/platform-node": 4.1.1
+  "@effect/platform-node-shared": 4.1.1
+  effect: 4.1.1
+  # The compiler; the website's Twoslash and the `typescript6` alias need
+  # the TypeScript 6 JavaScript API, so they pin typescript 6 themselves.
+  typescript: 7.0.2
+  vite: ^8.3.5
+  tsx: ^4.23.15
+  pixi.js: 8.22.0
+  # The libraries the comparison bench and the website's comparison page measure.
+  bitecs: 0.4.0
+  koota: 0.6.6
+  miniplex: 2.0.0

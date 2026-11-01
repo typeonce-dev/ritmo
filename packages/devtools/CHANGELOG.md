@@ -1,5 +1,25 @@
 # @typeonce/ritmo-devtools
 
+## 0.20.0
+
+### Patch Changes
+
+- b101512: **A skill for the first minute: `skills/ritmo-onboarding`.** When strangers are about to play a game (a playtest, a jam, a release), the agent reads it next to the `ritmo` skill. It says what teaches a game: the rule on screen in action before anything is asked, something at stake that the rule changes from the first seconds (a first contact that costs nothing, a second that is real), the rule told once in the game's own pieces at the player's pace and then the controls taught by doing, one thing per stretch of play, a lesson for what contradicts what a player of the genre expects, a lesson that cannot be passed by chance, a few words where the eyes are and never the only channel, a failure that names the rule, and the controls shown being done (a hand for a gesture, the key or button) with every input the game accepts given a result under the rule. It turns the strangers you watched into the game's checks: a bot per way of skipping the lesson (doing nothing, the obvious thing at full force, one input repeated, the input you did not mean) that must never clear a lesson or win what follows it, the rule's promise as a fuzzed invariant, and a playtest as a replay. After a playtest you tell the agent what the stranger did, not what they said; when rounds keep failing the same way it changes the lesson or the rule instead of the hints. `SETUP.md` step 2 links it; the `ritmo` skill points to it.
+
+  `ritmo-devtools lint` notes `ritmo-onboarding` as well when the project does not link it (`note  skill-not-linked  ritmo-onboarding`), without changing the exit code, so a project set up before this release sees it until it adds the link.
+
+- 72f2c40: **A skill for finishing a game: `skills/ritmo-polish`.** When a game is past its prototype and the user asks to polish it, make it feel better or more finished, add juice, or review its feedback, transitions, or UI, the agent reads it next to the `ritmo` skill. It says what polish is (every effect that changes what the player perceives without changing the simulation, so the headless tests and replays pass with the effects on or off), how to work (list what the game already has, walk the player's path, rank the gaps from the core verb out, let the human pick, one round at a time, never claim a touch feels good), and the principles that decide whether a touch reads right: every input gets an answer on the channel where the eyes are; the biggest answer goes to the rarest moment, scaled and capped; sound, visual and vibration for one event land on the same tick; motion says what it means; nothing reads as something else; each mode has its own language; the moments between play (death to retry at once, the results as the reward); never make the player wait for what they can skip; UI that holds still; shake, flash and vibration as the player's choice; and sound by the same rules. `SETUP.md` step 2 links it; the `ritmo` skill points to it.
+
+  `ritmo-devtools lint` notes `ritmo-polish` as well when the project does not link it (`note  skill-not-linked  ritmo-polish`), without changing the exit code, so a project set up before this release sees it until it adds the link.
+
+- Updated dependencies [b5f78e7]
+- Updated dependencies [7b0dcd2]
+- Updated dependencies [b101512]
+- Updated dependencies [7853fea]
+- Updated dependencies [72f2c40]
+  - @typeonce/ritmo@0.20.0
+  - @typeonce/ritmo-netcode@0.20.0
+
 ## 0.19.1
 
 ### Patch Changes

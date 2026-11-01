@@ -1,6 +1,6 @@
 {
   "name": "@typeonce/oxlint-plugin-ritmo",
-  "version": "0.19.1",
+  "version": "0.20.0",
   "description": "Oxlint rules for Ritmo games: deterministic, headless simulation code and checked runtime results",
   "author": "Sandro Maglione",
   "license": "MIT",
@@ -59,6 +59,6 @@
     "oxlint": ">=1.86.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12"
   }
 }

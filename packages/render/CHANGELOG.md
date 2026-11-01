@@ -1,5 +1,16 @@
 # @typeonce/ritmo-render
 
+## 0.20.0
+
+### Patch Changes
+
+- Updated dependencies [b5f78e7]
+- Updated dependencies [7b0dcd2]
+- Updated dependencies [b101512]
+- Updated dependencies [7853fea]
+- Updated dependencies [72f2c40]
+  - @typeonce/ritmo@0.20.0
+
 ## 0.19.1
 
 ### Patch Changes
