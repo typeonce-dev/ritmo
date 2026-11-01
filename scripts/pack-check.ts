@@ -51,7 +51,7 @@ for (const directory of packages) {
   tarballByName.set(manifest.name, path.join(tarballs, created))
   const listing = run("tar", ["-tzf", path.join(tarballs, created)], work).split("\n")
   const shipped = commandLineOnly.has(directory)
-    ? ["package/LICENSE", "package/README.md", "package/CHANGELOG.md", "package/dist/cli.js", "package/dist/sound/page/index.html", "package/dist/music/page/index.html", "package/dist/fx/page/index.html"]
+    ? ["package/LICENSE", "package/README.md", "package/CHANGELOG.md", "package/dist/cli.js", "package/dist/sound/page/index.html", "package/dist/music/page/index.html", "package/dist/fx/page/index.html", "package/dist/rig/page/index.html"]
     : ["package/LICENSE", "package/README.md", "package/CHANGELOG.md", "package/dist/index.js", "package/dist/index.d.ts", "package/src/index.ts"]
   for (const required of shipped) {
     if (!listing.includes(required)) throw new Error(`${manifest.name} tarball is missing ${required}`)
@@ -60,12 +60,12 @@ for (const directory of packages) {
     throw new Error(`${manifest.name} tarball contains test or build-info files`)
   }
   if (directory === "core") {
-    for (const required of ["package/skills/ritmo/SKILL.md", "package/skills/ritmo/playbooks/mechanic.md", "package/skills/ritmo/references/spatial-grid.ts", "package/skills/ritmo-prototype/SKILL.md", "package/skills/ritmo-onboarding/SKILL.md", "package/skills/ritmo-polish/SKILL.md", "package/skills/ritmo-pixel-art/SKILL.md", "package/skills/ritmo-sounds/SKILL.md", "package/skills/ritmo-music/SKILL.md", "package/skills/ritmo-fx/SKILL.md", "package/SETUP.md"]) {
+    for (const required of ["package/skills/ritmo/SKILL.md", "package/skills/ritmo/playbooks/mechanic.md", "package/skills/ritmo/references/spatial-grid.ts", "package/skills/ritmo-prototype/SKILL.md", "package/skills/ritmo-onboarding/SKILL.md", "package/skills/ritmo-polish/SKILL.md", "package/skills/ritmo-pixel-art/SKILL.md", "package/skills/ritmo-sounds/SKILL.md", "package/skills/ritmo-music/SKILL.md", "package/skills/ritmo-fx/SKILL.md", "package/skills/ritmo-rig/SKILL.md", "package/SETUP.md"]) {
       if (!listing.includes(required)) throw new Error(`${manifest.name} tarball is missing ${required}`)
     }
-    for (const repoOnly of ["PROTOTYPE.md", "ONBOARDING.md", "POLISH.md", "FX.md", "PIXEL-ART.md"]) if (listing.includes(`package/${repoOnly}`)) throw new Error(`${manifest.name} tarball contains the repo-only ${repoOnly}`)
+    for (const repoOnly of ["PROTOTYPE.md", "ONBOARDING.md", "POLISH.md", "FX.md", "PIXEL-ART.md", "RIG.md"]) if (listing.includes(`package/${repoOnly}`)) throw new Error(`${manifest.name} tarball contains the repo-only ${repoOnly}`)
   }
-  if (commandLineOnly.has(directory) && listing.some((file) => file.startsWith("package/src/") || file.startsWith("package/bin/") || file.startsWith("package/dist/pixel/ui/") || file.startsWith("package/dist/sound/ui/") || file.startsWith("package/dist/music/ui/") || file.startsWith("package/dist/fx/ui/"))) {
+  if (commandLineOnly.has(directory) && listing.some((file) => file.startsWith("package/src/") || file.startsWith("package/bin/") || file.startsWith("package/dist/pixel/ui/") || file.startsWith("package/dist/sound/ui/") || file.startsWith("package/dist/music/ui/") || file.startsWith("package/dist/fx/ui/") || file.startsWith("package/dist/rig/ui/"))) {
     throw new Error(`${manifest.name} tarball contains its source, its in-repo launcher, or the website's page`)
   }
   if (directory === "pixi" && listing.some((file) => /\/(NodeRegistry|RenderSync)\.(ts|js|d\.ts)$/.test(file))) {
@@ -249,7 +249,11 @@ if (!song.includes('"verdict": "clean"')) throw new Error(`ritmo-tools music che
 run(toolsBin, ["fx", "init", "game.fx.json"], consumer)
 const effects = run(toolsBin, ["fx", "check", "game.fx.json"], consumer)
 if (!effects.includes('"verdict": "clean"')) throw new Error(`ritmo-tools fx check printed ${effects}`)
-console.log(`${toolsVersion}: pixel palettes, sound check, music check, and fx check ok`)
+// The rig's modules load as files (so they can import each other), from the consumer's folder.
+run(toolsBin, ["rig", "init", "hero.rig.json"], consumer)
+const rig = run(toolsBin, ["rig", "check", "hero.rig.json"], consumer)
+if (!rig.includes('"verdict": "clean"')) throw new Error(`ritmo-tools rig check printed ${rig}`)
+console.log(`${toolsVersion}: pixel palettes, sound check, music check, fx check, and rig check ok`)
 
 step("internal modules are not exported")
 writeFileSync(path.join(consumer, "internal.mjs"), `import("@typeonce/ritmo/internal/world").then(() => process.exit(1), (error) => { if (error.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") process.exit(2) })\n`)

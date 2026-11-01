@@ -53,6 +53,7 @@ export const tools: ReadonlyArray<Page> = [
   { href: "/tools/", title: "All tools" },
   { href: "/tools/pixel/", title: "Pixel fixer" },
   { href: "/tools/fx/", title: "Effects lab" },
+  { href: "/tools/rig/", title: "Skeleton lab" },
   { href: "/tools/sound/", title: "Sound lab" },
   { href: "/tools/music/", title: "Music lab" }
 ]

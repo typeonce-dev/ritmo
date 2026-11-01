@@ -138,7 +138,7 @@ The skill also holds the principles for where code and state belong:
 
 ## Art, sound, and music
 
-The agent makes the assets too, with `ritmo-tools`, and four more skills
+The agent makes the assets too, with `ritmo-tools`, and five more skills
 that ship with Ritmo teach it how. You look and listen:
 
 - **Pixel art.** The agent fixes AI-made pictures and animation sheets
@@ -150,6 +150,12 @@ that ship with Ritmo teach it how. You look and listen:
   `ritmo-tools fx check`. In the [effects lab](/tools/fx/) you watch the
   drafts side by side, pick one, tune it, and click a pixel to comment on
   it; the agent sees that pixel ringed.
+- **Characters.** The agent builds a character on a skeleton and writes
+  each clip (an idle, a walk, an attack) as code, checking it for feet
+  that slide and joints that pop with `ritmo-tools rig check`. In the
+  [skeleton lab](/tools/rig/) you watch the drafts side by side, pick
+  one, and pin a comment to a spot or a span of frames; the bake gives
+  the game each frame's hits with its sprite sheet.
 - **Sound.** The agent writes each sound as a JSON recipe, checks it, and
   offers takes. `ritmo-tools sound review` opens the
   [sound lab](/tools/sound/) on the game's bank: you listen, pick, tune,
@@ -159,7 +165,7 @@ that ship with Ritmo teach it how. You look and listen:
   around it. In the [music lab](/tools/music/) you play it, move notes,
   swap instruments, and comment on bars.
 
-[Tools](/tools/) shows all four at work.
+[Tools](/tools/) shows all five at work.
 
 ## What the agent reads
 

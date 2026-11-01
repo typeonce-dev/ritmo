@@ -1,0 +1,39 @@
+---
+// The skeleton lab's review page (packages/tools, `@typeonce/ritmo-tools`)
+// with the example bank (Borri, a dwarf rigged from a painted parts sheet: an
+// idle, a walk, a two-handed chop) kept and baked in the tab: the page
+// `ritmo-tools rig review` serves, to try without the CLI. Like the pixel fixer, it owns the whole
+// window and skips the guide's layout.
+import Meta from "../../../components/Meta.astro"
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <Meta
+      title="Skeleton lab · Ritmo"
+      description="Characters animated on a skeleton, as code: watch a few drafts of a clip side by side, pick one, tune it, and pin comments to a spot or a span of frames. Your coding agent writes and checks them with ritmo-tools rig; you review them here. A free tool from Ritmo."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
+    />
+  </head>
+  <body data-pagefind-ignore="all">
+    <div id="app"></div>
+    <script>
+      // The pixel fixer's, the sound lab's, and the effects lab's styles first: the tools share one look.
+      import "@typeonce/ritmo-tools/pixel/page.css"
+      import "@typeonce/ritmo-tools/sound/page.css"
+      import "@typeonce/ritmo-tools/fx/page.css"
+      import "@typeonce/ritmo-tools/rig/page.css"
+      import { startDemo } from "@typeonce/ritmo-tools/rig/demo"
+
+      startDemo("attack")
+    </script>
+  </body>
+</html>

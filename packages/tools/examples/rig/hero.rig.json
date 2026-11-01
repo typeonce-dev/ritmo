@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "rig": "hero.js",
+  "clips": {
+    "idle": {
+      "about": "Ready stance, breathing.",
+      "drafts": {
+        "a": {
+          "file": "clips/idle.js",
+          "accept": {
+            "locked": "A held guard: the far arm only breathes with the shoulder, so its elbow barely changes."
+          }
+        },
+        "b": {
+          "file": "clips/idle.b.js"
+        }
+      },
+      "use": "a"
+    },
+    "walk": {
+      "about": "Walk cycle in place; the game moves the character at the clip's travel speed.",
+      "drafts": {
+        "a": {
+          "file": "clips/walk.js"
+        }
+      }
+    },
+    "attack": {
+      "about": "Overhead sword chop from the ready stance and back.",
+      "drafts": {
+        "a": {
+          "file": "clips/attack.js",
+          "accept": {
+            "draw-order": "The far hand and forearm come in front of the body while they hold the grip, and go back after."
+          }
+        },
+        "b": {
+          "file": "clips/attack.b.js",
+          "tune": {
+            "overshoot": 18
+          },
+          "accept": {
+            "draw-order": "The far hand and forearm come in front of the body while they hold the grip, and go back after."
+          }
+        }
+      },
+      "use": "a"
+    },
+    "block": {
+      "about": "Blocks a hit from an opponent in front: braced, weight on the back foot, stance lowered.",
+      "drafts": {
+        "a": {
+          "file": "clips/block.js",
+          "accept": {
+            "draw-order": "The far hand and forearm come in front of the body while they hold the grip, and go back after."
+          }
+        }
+      }
+    },
+    "punch": {
+      "about": "Unarmed straight punch with the lead fist, from the fighting stance (idle b) and back.",
+      "drafts": {
+        "a": {
+          "file": "clips/punch.js"
+        }
+      }
+    },
+    "kick": {
+      "about": "Unarmed high kick with the rear leg, from the fighting stance (idle b) and back.",
+      "drafts": {
+        "a": {
+          "file": "clips/kick.js",
+          "accept": {
+            "draw-order": "The far forearm and hand come in front of the body and the kicking thigh while the far arm reaches forward along the leg (8-17), or the torso and thigh would hide them; they go back behind on landing."
+          }
+        }
+      }
+    }
+  }
+}

@@ -111,6 +111,19 @@ importers:
         specifier: workspace:*
         version: link:../../packages/math
 
+  integration/brawler:
+    dependencies:
+      '@typeonce/ritmo':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@typeonce/ritmo-math':
+        specifier: workspace:*
+        version: link:../../packages/math
+    devDependencies:
+      '@typeonce/ritmo-tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
+
   integration/netcode:
     dependencies:
       '@typeonce/ritmo':

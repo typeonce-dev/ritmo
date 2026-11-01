@@ -1,0 +1,12 @@
+{
+  "name": "@typeonce/ritmo-integration-brawler",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@typeonce/ritmo": "workspace:*",
+    "@typeonce/ritmo-math": "workspace:*"
+  },
+  "devDependencies": {
+    "@typeonce/ritmo-tools": "workspace:*"
+  }
+}

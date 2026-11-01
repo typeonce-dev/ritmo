@@ -1,0 +1,571 @@
+/**
+ * The `rig` commands: the skeleton lab for agents. A character is code (a
+ * rig module and a module per clip draft), and the same runner poses and
+ * draws it everywhere. Every command prints JSON and exits with a code that
+ * says what to do next:
+ *
+ * - 0: clean (warnings are listed, and are the agent's call)
+ * - 2: a usage problem, a missing file, a broken bank
+ * - 3: errors: the rig or a draft does not load, throws, keys the wrong motion, or is not repeatable; fix its module
+ */
+import { Effect, FileSystem, Option, Path } from "effect"
+import { Argument, Command, Flag } from "effect/cli"
+import { toGif } from "../../pixel/core/gif.ts"
+import { atlasOf, spritesheetJson } from "../../pixel/core/spritesheet.ts"
+import { decodePicture, encodePng } from "../../pixel/cli/png.ts"
+import { Exit } from "../../pixel/cli/commands.ts"
+import { encodeBank, encodeReview, openComments, resolveComments, reviewPath, reviewSummary, usedDraft, type Bank } from "../core/bank.ts"
+import { checkClip, type Checked, type Issue } from "../core/check.ts"
+import { runClip } from "../core/clip.ts"
+import { artOf, compareSheet, framePictures, gifFramesOf, lookSheet, sheetOf, viewBox, type CompareRow } from "../core/export.ts"
+import { cutParts, decodeParts, encodeParts, isPartName, type PartsFile } from "../core/parts.ts"
+import { scaffold } from "../core/scaffold.ts"
+import { encodeSidecar, keptClips, sidecarClip, sidecarName, sidecarOf, type SidecarClip } from "../core/sidecar.ts"
+import type { Rig } from "../core/rig.ts"
+import { CliFailure, loadClip, loadRig, printJson, readBank, readReview, readText, writeBytes, writeText } from "./io.ts"
+import { serve } from "./serve.ts"
+
+const exitWith = (code: number): Effect.Effect<void, Exit> => (code === 0 ? Effect.void : Effect.fail(new Exit({ code })))
+
+const bankArgument = Argument.String("bank").pipe(Argument.withDescription("A rig bank: a JSON file naming the rig module and each clip's drafts."))
+const names = Argument.String("names").pipe(Argument.withDescription("Only these clips (default: every clip in the bank)."), Argument.variadic())
+const positionsFlag = Flag.String("positions").pipe(
+  Flag.withDescription("Bones to report the world place of on every frame, comma-separated (handNear,sword): where each starts, its tip, and its angle, in world units (y up, the origin on the ground under the character)."),
+  Flag.optional
+)
+
+/** The named clips, failing on a name the bank does not have. */
+const pick = (bank: Bank, chosen: ReadonlyArray<string>): Effect.Effect<ReadonlyArray<string>, CliFailure> => {
+  const all = Object.keys(bank.clips)
+  if (chosen.length === 0) return Effect.succeed(all)
+  const missing = chosen.filter((name) => !all.includes(name))
+  return missing.length === 0 ? Effect.succeed(chosen) : Effect.fail(new CliFailure({ message: `no clip named ${missing.join(", ")}`, details: { clips: all } }))
+}
+
+/** The bones `--positions` names, failing on one the rig does not have. */
+const positionsOf = (rig: Rig, flag: Option.Option<string>): Effect.Effect<ReadonlyArray<string>, CliFailure> => {
+  const bones = Option.match(flag, { onNone: () => [], onSome: (text) => text.split(",").map((name) => name.trim()).filter((name) => name !== "") })
+  const missing = bones.filter((bone) => !(bone in rig.bones))
+  return missing.length === 0 ? Effect.succeed(bones) : Effect.fail(new CliFailure({ message: `no bone named ${missing.join(", ")}`, details: { bones: Object.keys(rig.bones) } }))
+}
+
+/** A rig that does not load or is broken: the CLI fails on it, `check` reports it. */
+const requireRig = Effect.fn("requireRig")(function* (bankFile: string, bank: Bank) {
+  const loaded = yield* loadRig(bankFile, bank)
+  if (!loaded.ok) return yield* new CliFailure({ message: loaded.error.split("; ")[0]!, details: { file: loaded.file, problems: loaded.error.split("; ") } })
+  return loaded.rig
+})
+
+type Verdict = "errors" | "warnings" | "clean"
+const verdictOf = (issues: ReadonlyArray<Pick<Issue, "level">>): Verdict => (issues.some((issue) => issue.level === "error") ? "errors" : issues.length > 0 ? "warnings" : "clean")
+const worst = (verdicts: ReadonlyArray<Verdict>): Verdict => (verdicts.includes("errors") ? "errors" : verdicts.includes("warnings") ? "warnings" : "clean")
+
+/** Each joint's bend range in words, for `check` (the per-frame bends are in `look`). */
+const jointRanges = (checked: Checked): Record<string, string> =>
+  Object.fromEntries(Object.entries(checked.joints).map(([name, joint]) => [name, `${joint.joint} ${joint.min.deg}° (frame ${joint.min.frames[0]}) to ${joint.max.deg}° (frame ${joint.max.frames[0]})`]))
+
+const check = Command.make(
+  "check",
+  { bank: bankArgument, names, positions: positionsFlag },
+  Effect.fn("check")(function* (flags) {
+    const bank = yield* readBank(flags.bank)
+    const chosen = yield* pick(bank, flags.names)
+    const loadedRig = yield* loadRig(flags.bank, bank)
+    if (!loadedRig.ok) {
+      yield* printJson({ file: flags.bank, verdict: "errors", rig: { file: bank.rig, issues: loadedRig.error.split("; ").map((message) => ({ level: "error", code: "load", message })) }, clips: [], drafts: [] })
+      return yield* exitWith(3)
+    }
+    const rig = loadedRig.rig
+    const positions = yield* positionsOf(rig, flags.positions)
+    const results: Array<Record<string, unknown>> = []
+    const clips: Array<Record<string, unknown>> = []
+    for (const name of chosen) {
+      const entry = bank.clips[name]!
+      const use = usedDraft(entry)
+      const verdicts: Record<string, Verdict> = {}
+      for (const [id, draft] of Object.entries(entry.drafts)) {
+        const loaded = yield* loadClip(flags.bank, draft, rig)
+        if (!loaded.ok) {
+          verdicts[id] = "errors"
+          results.push({ clip: name, draft: id, file: draft.file, used: id === use, verdict: "errors", issues: [{ level: "error", code: "load", message: loaded.error }] })
+          continue
+        }
+        const checked = checkClip(rig, loaded.clip, { seed: draft.seed, tune: draft.tune, accept: draft.accept, name: `${name} (draft ${id})`, positions })
+        verdicts[id] = verdictOf(checked.issues)
+        results.push({
+          clip: name,
+          draft: id,
+          label: loaded.clip.label,
+          file: draft.file,
+          used: id === use,
+          verdict: verdicts[id],
+          ...checked.measures,
+          ...(Object.keys(checked.run.params).length === 0 ? {} : { params: checked.run.params }),
+          issues: checked.issues,
+          ...(checked.accepted.length === 0 ? {} : { accepted: checked.accepted.map((issue) => ({ code: issue.code, frames: issue.frames, where: issue.where, why: issue.why })) }),
+          joints: jointRanges(checked),
+          ...(checked.trail === undefined ? {} : { trail: { bone: checked.trail.bone, peak: checked.trail.peak, arc: checked.trail.arc, spacing: checked.trail.spacing } }),
+          ...(checked.hit === undefined ? {} : { hit: checked.hit }),
+          ...(positions.length === 0 ? {} : { positions: checked.positions })
+        })
+      }
+      clips.push({ clip: name, verdict: worst(Object.values(verdicts)), use, drafts: verdicts })
+    }
+    const verdict = worst(clips.map((clip) => clip.verdict as Verdict))
+    yield* printJson({ file: flags.bank, verdict, rig: { file: bank.rig, size: [rig.width, rig.height], bones: rig.order.length, parts: rig.parts.length, chains: Object.keys(rig.chains), props: Object.keys(rig.props), stances: Object.keys(rig.stances) }, clips, drafts: results })
+    yield* exitWith(verdict === "errors" ? 3 : 0)
+  })
+).pipe(
+  Command.withDescription(
+    "Poses every draft of every clip (or the named ones) twice and measures it: frames, length, the box it fills, each joint's bend, the trail bone's spacing, speed, and arc, and where the hit travels on each frame it hits on (forward or back, up or down). Lists what breaks the rules, with the frames and the bones or parts: a module that does not load or throws, keys that key the wrong motion (two on one frame for one channel), a pose naming what the rig does not have, randomness that is not the seed's; parts off the frame or under the ground, planted feet that slide, float, or sink, goals out of reach, far-side parts peeking behind the back, joints locked or bent the wrong way, sudden changes of speed, loops that stop or jump, parts that change draw order, and a first or last frame off the clip's stance. Each clip has its own verdict."
+  )
+)
+
+/** `--frames a-b` (or one frame) as the frames it names, failing outside the clip. */
+const framesOf = (flag: Option.Option<string>, count: number): Effect.Effect<ReadonlyArray<number>, CliFailure> => {
+  if (Option.isNone(flag)) return Effect.succeed(Array.from({ length: count }, (_, f) => f))
+  const match = /^(\d+)(?:-(\d+))?$/.exec(flag.value.trim())
+  const from = match === null ? Number.NaN : Number(match[1])
+  const to = match === null ? Number.NaN : Number(match[2] ?? match[1])
+  if (!(from <= to) || to >= count) return Effect.fail(new CliFailure({ message: `--frames takes from-to inside the clip, like --frames 5-10 (it has frames 0 to ${count - 1})` }))
+  return Effect.succeed(Array.from({ length: to - from + 1 }, (_, i) => from + i))
+}
+
+/** `--scale`: pixels per world unit, a positive number up to 8 (0.5 and 0.25 shrink a rig drawn at a sheet's size). */
+const scaleFlag = (description: string) =>
+  Flag.Finite("scale").pipe(
+    Flag.withDescription(description),
+    Flag.withDefault(1),
+    Flag.filter((scale) => scale > 0 && scale <= 8, (scale) => `--scale takes a number above 0 and up to 8 (like 2, 0.5, or 0.25), not ${scale}`)
+  )
+
+const look = Command.make(
+  "look",
+  {
+    bank: bankArgument,
+    name: Argument.String("name").pipe(Argument.withDescription("The clip to look at.")),
+    draft: Flag.String("draft").pipe(Flag.withDescription("Only this draft (default: every draft)."), Flag.optional),
+    frames: Flag.String("frames").pipe(Flag.withDescription("Only these frames, from-to (5-10) or one (7): bigger and easier to read than the whole clip."), Flag.optional),
+    scale: scaleFlag("Pixels per world unit: 2 draws the frames twice as big, 0.5 half as big."),
+    full: Flag.Boolean("full").pipe(Flag.withDescription("The whole frame: by default each picture is cropped to the character (every drawn part on the frames shown, with a margin, down past the ground line)."), Flag.withDefault(false)),
+    columns: Flag.Int("columns").pipe(Flag.withDescription("Frames per row (default: as many as fit in 2000 pixels)."), Flag.optional),
+    art: Flag.Boolean("art").pipe(Flag.withDescription("The art only: leave out the row of bones under each row of frames."), Flag.withDefault(false)),
+    each: Flag.Boolean("each").pipe(Flag.withDescription("One picture per frame instead of one sheet."), Flag.withDefault(false)),
+    onion: Flag.Boolean("onion").pipe(Flag.withDescription("Draw the frame before, faint, under each frame: to see spacing."), Flag.withDefault(false)),
+    compare: Flag.Boolean("compare").pipe(
+      Flag.withDescription("One picture of every draft instead, a row each (in the bank's order), the same moments in each column (--columns of them, 8 by default, first frame to last): to weigh the drafts against each other."),
+      Flag.withDefault(false)
+    ),
+    positions: positionsFlag,
+    out: Flag.String("out").pipe(Flag.withAlias("o"), Flag.withDescription("The folder to write to (default: <bank>.look/ next to the bank)."), Flag.optional)
+  },
+  Effect.fn("look")(function* (flags) {
+    const path = yield* Path.Path
+    const bank = yield* readBank(flags.bank)
+    yield* pick(bank, [flags.name])
+    const entry = bank.clips[flags.name]!
+    const ids = Option.match(flags.draft, { onNone: () => Object.keys(entry.drafts), onSome: (id) => [id] })
+    const folder = Option.getOrElse(flags.out, () => flags.bank.replace(/\.json$/, "") + ".look")
+    const rig = yield* requireRig(flags.bank, bank)
+    const positions = yield* positionsOf(rig, flags.positions)
+    const review = yield* readReview(flags.bank)
+    const files: Array<string> = []
+    const ringed: Array<Record<string, unknown>> = []
+    const joints: Record<string, unknown> = {}
+    const where: Record<string, unknown> = {}
+    const views: Record<string, unknown> = {}
+    let shown: ReadonlyArray<number> = []
+    const rows: Array<CompareRow> = []
+    for (const id of ids) {
+      const draft = entry.drafts[id]
+      if (draft === undefined) return yield* new CliFailure({ message: `${flags.name} has no draft ${id}`, details: { drafts: Object.keys(entry.drafts) } })
+      const loaded = yield* loadClip(flags.bank, draft, rig)
+      if (!loaded.ok) return yield* new CliFailure({ message: loaded.error })
+      const clip = loaded.clip
+      const run = runClip(rig, clip, { seed: draft.seed, tune: draft.tune })
+      if (run.errors.length > 0) return yield* new CliFailure({ message: `${flags.name} (draft ${id}) does not pose cleanly: ${run.errors.map((error) => error.message).join("; ")}` })
+      shown = yield* framesOf(flags.frames, clip.frames)
+      const comments = openComments(review, flags.name, id)
+      for (const comment of comments) ringed.push({ ...comment })
+      const view = viewBox(rig, run, shown, flags.full)
+      views[id] = view
+      const options = {
+        scale: flags.scale,
+        view,
+        columns: Option.getOrUndefined(flags.columns),
+        frames: shown,
+        bones: !flags.art,
+        onion: flags.onion,
+        comments,
+        title: `${flags.name} ${id} - ${clip.frames} frames at ${clip.fps} fps, ${clip.loop ? "loop" : "once"}${comments.length > 0 ? ` - ${comments.length} open comments` : ""}`
+      }
+      if (flags.compare) rows.push({ name: id, clip, run })
+      else if (flags.each) {
+        const pad = String(clip.frames - 1).length
+        for (const { frame, image } of framePictures(rig, clip, run, options)) files.push(yield* writeBytes(path.join(folder, `${flags.name}.${id}.${String(frame).padStart(pad, "0")}.png`), encodePng(image)))
+      } else files.push(yield* writeBytes(path.join(folder, `${flags.name}.${id}.png`), encodePng(lookSheet(rig, clip, run, options))))
+      const checked = checkClip(rig, clip, { seed: draft.seed, tune: draft.tune, positions })
+      joints[id] = Object.fromEntries(Object.entries(checked.joints).map(([name, joint]) => [name, { joint: joint.joint, min: joint.min, max: joint.max, bend: joint.bend }]))
+      if (positions.length > 0) where[id] = checked.positions
+    }
+    if (flags.compare) files.push(yield* writeBytes(path.join(folder, `${flags.name}.compare.png`), encodePng(compareSheet(rig, rows, { scale: flags.scale, columns: Option.getOrElse(flags.columns, () => 8), full: flags.full }))))
+    yield* printJson({
+      clip: flags.name,
+      files,
+      ...(flags.compare ? { rows: ids } : {}),
+      frames: shown.length === 0 ? undefined : `${shown[0]}-${shown[shown.length - 1]}`,
+      ...(flags.compare ? {} : { view: views }),
+      ringed,
+      joints,
+      ...(positions.length === 0 ? {} : { positions: where }),
+      next: "Read each picture: frames left to right, top to bottom, each numbered with its phase (fast ones in amber); under each row, the same frames with their bones (yellow), joints (red), and the trail bone's path (green). Magenta rings are the person's pixel comments, magenta frames their span comments, numbered as `rig notes` lists them. Judge the silhouette, the spacing, and the arcs before showing the person."
+    })
+  })
+).pipe(
+  Command.withDescription(
+    "Writes a contact sheet per draft of a clip, as a PNG to look at: every frame (or --frames a-b) numbered with its phase, cropped to the character (--full keeps the whole frame), in one row when they fit in 2000 pixels and in even rows when not, each row with the same frames' bones under it (--art leaves them out), the person's open comments ringed; --each writes one picture per frame, --onion shows the frame before faintly, --scale draws them bigger or smaller, and --compare puts every draft in one picture, a row each, the same moments in each column. Prints the box each draft's pictures show (`view`, in frame pixels at 1x), every joint's bend on every frame, and with --positions the world place of the bones named."
+  )
+)
+
+/** The sheet's JSON with `meta.loop`: whether the animation plays again from the start (an idle) or once (an attack), which the hash format has no field for. */
+const withLoop = (json: string, name: string, loop: boolean): string => {
+  const sheet = JSON.parse(json) as { meta: Record<string, unknown> }
+  sheet.meta.loop = { [name]: loop }
+  return JSON.stringify(sheet, null, 2) + "\n"
+}
+
+const bake = Command.make(
+  "bake",
+  {
+    bank: bankArgument,
+    names,
+    out: Flag.String("out").pipe(Flag.withAlias("o"), Flag.withDescription("The folder to write to (default: <bank>.out/ next to the bank)."), Flag.optional),
+    scale: scaleFlag("Pixels per world unit in the sheet, the GIF, and the sidecar: 0.5 bakes a rig drawn at a sheet's size at half of it for the game.")
+  },
+  Effect.fn("bake")(function* (flags) {
+    const path = yield* Path.Path
+    const bank = yield* readBank(flags.bank)
+    const chosen = yield* pick(bank, flags.names)
+    const rig = yield* requireRig(flags.bank, bank)
+    const folder = Option.getOrElse(flags.out, () => flags.bank.replace(/\.json$/, "") + ".out")
+    const scale = flags.scale
+    const written: Array<Record<string, unknown>> = []
+    const entries: Record<string, SidecarClip> = {}
+    // The sidecar is one file per bank, always complete: a bake of some clips rewrites theirs and keeps the others as an earlier bake wrote them.
+    const sidecarFile = path.join(folder, sidecarName(flags.bank))
+    const header = { rig: bank.rig, scale, size: [Math.round(rig.width * scale), Math.round(rig.height * scale)] as const, anchor: [rig.anchor[0] * scale, rig.anchor[1] * scale] as const }
+    const earlier = flags.names.length === 0 ? undefined : Option.match(yield* readText(sidecarFile).pipe(Effect.option), { onNone: () => undefined, onSome: (text) => keptClips(text, header) })
+    const kept: Array<string> = []
+    for (const name of Object.keys(bank.clips)) {
+      const entry = bank.clips[name]!
+      const previous = earlier?.[name]
+      if (!chosen.includes(name) && previous !== undefined) {
+        entries[name] = previous
+        kept.push(name)
+        continue
+      }
+      const id = usedDraft(entry)!
+      const draft = entry.drafts[id]!
+      const loaded = yield* loadClip(flags.bank, draft, rig)
+      if (!loaded.ok) return yield* new CliFailure({ message: loaded.error })
+      const clip = loaded.clip
+      const run = runClip(rig, clip, { seed: draft.seed, tune: draft.tune })
+      if (run.errors.length > 0) return yield* new CliFailure({ message: `${name} (draft ${id}) does not pose cleanly: ${run.errors.map((error) => error.message).join("; ")}` })
+      const side = sidecarClip(rig, clip, run, { name, draft: id, scale })
+      entries[name] = side
+      if (!chosen.includes(name)) continue
+      const art = artOf(rig, run, scale)
+      const gifFrames = gifFramesOf(rig, art, scale)
+      // The hash format reads an anchor as a pixel (its middle across, its foot down); the rig's anchor is the corner the ground meets, so it goes in half a pixel left and one up.
+      const atlasClip = { name, frames: gifFrames, anchor: { x: rig.anchor[0] * scale - 0.5, y: rig.anchor[1] * scale - 1 }, fps: clip.fps, loop: "forward" as const }
+      const atlas = atlasOf([atlasClip], { columns: gifFrames.length, spacing: 0 })
+      const files = [
+        yield* writeBytes(path.join(folder, `${name}.png`), encodePng(sheetOf(art, atlas.rects, atlas.art.width, atlas.art.height))),
+        yield* writeText(path.join(folder, `${name}.json`), withLoop(spritesheetJson({ image: `${name}.png`, clips: [atlasClip], atlas, scale: 1 }), name, clip.loop)),
+        yield* writeBytes(path.join(folder, `${name}.gif`), toGif(gifFrames, { scale: 1, delay: 1000 / clip.fps }))
+      ]
+      const hits = side.frames.flatMap((frame, f) => (frame.hit === null ? [] : [f]))
+      written.push({
+        clip: name,
+        draft: id,
+        loop: clip.loop,
+        frames: clip.frames,
+        fps: clip.fps,
+        size: [Math.round(rig.width * scale), Math.round(rig.height * scale)],
+        anchor: [rig.anchor[0] * scale, rig.anchor[1] * scale],
+        hit: clip.hit === undefined ? null : { bone: clip.hit.bone, radius: clip.hit.radius, frames: hits },
+        sockets: Object.keys({ ...rig.sockets, ...clip.sockets }),
+        files
+      })
+    }
+    const sidecar = yield* writeText(sidecarFile, encodeSidecar(sidecarOf(rig, bank.rig, scale, entries)))
+    yield* printJson({ file: flags.bank, sidecar: { file: sidecar, rewrote: Object.keys(entries).filter((name) => !kept.includes(name)), kept }, clips: written })
+  })
+).pipe(
+  Command.withDescription(
+    "Writes each clip's chosen draft (its `use`, or its first) for the game: a sprite sheet PNG of its frames in one row (anti-aliased, on transparency), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the rig's `anchor`, the animation and its fps, and `meta.loop`: whether it loops or plays once), and a GIF on the rig's backdrop to share. Next to them, one sidecar for the whole bank (`<bank>.clips.json`, always every clip: a bake of named clips rewrites theirs and keeps the others): each clip's timing, stance, and phases, and on each frame the feet on the ground, the sockets, the hit segment, and the drawn box, in pixels from the anchor with y down."
+  )
+)
+
+const notes = Command.make(
+  "notes",
+  { bank: bankArgument },
+  Effect.fn("notes")(function* (flags) {
+    const bank = yield* readBank(flags.bank)
+    const review = yield* readReview(flags.bank)
+    const pivots = bank.pivots ?? {}
+    yield* printJson({
+      file: flags.bank,
+      review: reviewPath(flags.bank),
+      ...reviewSummary(bank, review),
+      pivots,
+      ...(Object.keys(pivots).length === 0
+        ? {}
+        : { next: "The person moved these image parts' pivots on the review page (in each picture's pixels): copy each into its part's shape.pivot in the rig module, then remove the bank's pivots." })
+    })
+  })
+).pipe(
+  Command.withDescription(
+    "What the person said in the review: each clip's status (new, approved, changes asked), note, open comments (each numbered, on a draft and a frame's pixel with the part, its bone, the spot in that bone's frame, and the phase, or on a span of frames, with where it is in words), chosen draft, and tune, the changes first; and the pivots the person dragged on the page (the bank's pivots), for the agent to fold into the rig module."
+  )
+)
+
+const review = Command.make(
+  "review",
+  {
+    bank: bankArgument,
+    port: Flag.Int("port").pipe(Flag.withDescription("The port to serve the page on."), Flag.withDefault(5194)),
+    host: Flag.Boolean("host").pipe(Flag.withDefault(false), Flag.withDescription("Serve on the network too, to look on a phone."))
+  },
+  Effect.fn("review")(function* (flags) {
+    const path = yield* Path.Path
+    const bank = path.resolve(flags.bank)
+    yield* requireRig(bank, yield* readBank(bank))
+    yield* readReview(bank)
+    const address = yield* Effect.tryPromise({
+      try: () => serve({ bank, port: flags.port, host: flags.host }),
+      catch: (error) => new CliFailure({ message: `cannot serve the page: ${error instanceof Error ? error.message : String(error)}` })
+    })
+    yield* printJson({
+      url: address.url,
+      network: address.network,
+      bank,
+      review: reviewPath(bank),
+      next: "Send the person the url. What they pick, tune, pin, and drag is saved to the bank and the review as they go; read it back with `ritmo-tools rig notes`. Edits to the rig module, its pictures, the clips, or the bank rebake on the page."
+    })
+    return yield* Effect.never
+  })
+).pipe(
+  Command.withDescription(
+    "Opens the review page for a bank: the person watches every draft of a clip side by side, slowed down or frame by frame, picks one, tunes its params, pins comments to a spot or a span of frames, and drags image parts' pivots. Runs until stopped; changes are saved to the bank and its review as they happen, and the drafts rebake when the agent edits the rig, the clips, or the bank."
+  )
+)
+
+const resolve = Command.make(
+  "resolve",
+  {
+    bank: bankArgument,
+    clip: Argument.String("clip").pipe(Argument.withDescription("The clip the comments are on.")),
+    numbers: Argument.Int("numbers").pipe(Argument.withDescription("The comments' numbers, as `rig notes` lists them."), Argument.atLeast(1)),
+    reply: Flag.String("reply").pipe(Flag.withDescription("What you changed, in a few words: the person reads it beside their comment."), Flag.withDefault(""))
+  },
+  Effect.fn("resolve")(function* (flags) {
+    const bank = yield* readBank(flags.bank)
+    yield* pick(bank, [flags.clip])
+    const resolved = resolveComments(yield* readReview(flags.bank), flags.clip, flags.numbers, flags.reply)
+    if (!resolved.ok) return yield* new CliFailure({ message: resolved.error })
+    const file = yield* writeText(reviewPath(flags.bank), encodeReview(resolved.value))
+    yield* printJson({ review: file, clip: flags.clip, resolved: flags.numbers, reply: flags.reply === "" ? undefined : flags.reply })
+  })
+).pipe(
+  Command.withDescription(
+    "Marks the person's comments on a clip as resolved, by the numbers `rig notes` gives, with a reply saying what changed. `rig notes` and `rig look` stop showing them."
+  )
+)
+
+const STARTER_BANK: Bank = {
+  rig: "rig/figure.mjs",
+  clips: { idle: { about: "Standing, breathing: the stance the other clips start and end on.", drafts: { a: { file: "clips/idle.a.mjs" } } } }
+}
+
+const STARTER_RIG = `// A small figure seen from the side, facing right (+x): y is up, the origin is the ground under it, angles are degrees counter-clockwise from +x.
+// Parts are drawn in the setup pose (standing straight, arms hanging); a point can be [x, y] or on a bone: { bone, along, across }.
+const skin = "#f1c09a"
+const tunic = "#3f7fb8"
+const far = "#2b5784"
+const boot = "#6e4b3a"
+
+export default {
+  size: [64, 96],
+  anchor: [30, 90], // the pixel the ground under the character sits on
+  outline: "#16121d",
+  line: 1.2,
+  back: "torso", // the peek check measures far-side parts against it
+  bones: {
+    hips: { y: 34, rotation: 90, length: 4 },
+    torso: { parent: "hips", length: 22 },
+    head: { parent: "torso", x: 23, length: 14 },
+    upperArm: { parent: "torso", x: 20, rotation: 180, length: 12 },
+    forearm: { parent: "upperArm", x: 12, length: 11 },
+    hand: { parent: "forearm", x: 11, length: 3 },
+    thighFar: { parent: "hips", rotation: 180, length: 16 },
+    shinFar: { parent: "thighFar", x: 16, length: 15 },
+    footFar: { parent: "shinFar", x: 15, rotation: 90, length: 6 },
+    thighNear: { parent: "hips", rotation: 180, length: 16 },
+    shinNear: { parent: "thighNear", x: 16, length: 15 },
+    footNear: { parent: "shinNear", x: 15, rotation: 90, length: 6 }
+  },
+  parts: {
+    thighFar: { bone: "thighFar", z: 1, far: true, fill: far, shape: { kind: "capsule", r: 3.4, r2: 2.8 } },
+    shinFar: { bone: "shinFar", z: 2, far: true, fill: far, shape: { kind: "capsule", r: 2.8, r2: 2.2 } },
+    footFar: { bone: "footFar", z: 3, far: true, fill: boot, shape: { kind: "capsule", a: { along: -1 }, b: { along: 6 }, r: 1.8 } },
+    torso: { bone: "torso", z: 10, fill: tunic, shape: { kind: "capsule", a: { along: 1 }, b: { along: 20 }, r: 6, r2: 6.5 } },
+    head: { bone: "head", z: 11, fill: skin, shape: { kind: "ellipse", c: { along: 7, across: -1 }, rx: 6.5 } },
+    thighNear: { bone: "thighNear", z: 20, fill: tunic, shape: { kind: "capsule", r: 3.5, r2: 2.9 } },
+    shinNear: { bone: "shinNear", z: 21, fill: tunic, shape: { kind: "capsule", r: 2.9, r2: 2.3 } },
+    footNear: { bone: "footNear", z: 22, fill: boot, shape: { kind: "capsule", a: { along: -1 }, b: { along: 6 }, r: 1.8 } },
+    upperArm: { bone: "upperArm", z: 30, fill: tunic, shape: { kind: "capsule", r: 2.8, r2: 2.4 } },
+    forearm: { bone: "forearm", z: 31, fill: skin, shape: { kind: "capsule", r: 2.3, r2: 2 } },
+    hand: { bone: "hand", z: 32, fill: skin, shape: { kind: "ellipse", c: { along: 1.5 }, rx: 2.4 } }
+  },
+  chains: {
+    legNear: { upper: "thighNear", lower: "shinNear", end: "footNear", bend: 1, foot: true },
+    legFar: { upper: "thighFar", lower: "shinFar", end: "footFar", bend: 1, foot: true },
+    arm: { upper: "upperArm", lower: "forearm", end: "hand", bend: -1 }
+  },
+  stances: {
+    // Feet apart, knees soft, the hand loose in front: clips start and end here.
+    stand: {
+      bones: { hips: { y: -2 }, torso: -4, head: 4 },
+      reach: { legNear: { x: 6, y: 2 }, legFar: { x: -6, y: 2 }, arm: { bone: "torso", along: 20, dx: 7, dy: -15 } }
+    }
+  }
+}
+`
+
+const STARTER_CLIP = `// A draft of the "idle" clip: the stand stance (frame 0), breathing in to frame 8 and out again.
+// A loop's channels wrap: after its last key each one moves back to its frame-0 value (the stance) by frame 16, so the keys say only the breath in.
+// The hips sink first, the torso and the hand follow a frame later, the head a frame after that.
+export default {
+  label: "breathing",
+  frames: 16,
+  fps: 12,
+  loop: true,
+  stance: "stand",
+  params: { breath: { min: 0, max: 3, value: 1.5 } },
+  pose(rig, _t, p) {
+    return rig.keys([
+      { at: 8, rest: true, bones: { hips: { y: -2 - p.breath } } },
+      { at: 9, rest: true, bones: { torso: -2.5 }, reach: { arm: { dx: 8, dy: -15 - p.breath } } },
+      { at: 10, rest: true, bones: { head: 2.5 } }
+    ])
+  }
+}
+`
+
+const init = Command.make(
+  "init",
+  {
+    bank: Argument.String("bank").pipe(Argument.withDescription("Where to write the new bank."), Argument.withDefault("game.rig.json")),
+    from: Flag.String("from").pipe(
+      Flag.withDescription("A parts.json from `rig parts`: scaffold a side-view humanoid rig from those pictures (head, torso, upperArmNear/Far, forearmNear/Far, handNear/Far, thighNear/Far, shinNear/Far, footNear/Far; any other part is a prop on a bone of its own, held in the near hand) instead of the small starter figure."),
+      Flag.optional
+    ),
+    force: Flag.Boolean("force").pipe(Flag.withDefault(false), Flag.withDescription("Replace existing files."))
+  },
+  Effect.fn("init")(function* (flags) {
+    const path = yield* Path.Path
+    const folder = path.dirname(flags.bank)
+    if (Option.isSome(flags.from)) {
+      const partsFile = flags.from.value
+      const decoded = decodeParts(yield* readText(partsFile))
+      if (!decoded.ok) return yield* new CliFailure({ message: `${partsFile} is not a parts file`, details: { problems: decoded.error.split("; ") } })
+      const rigFile = path.join(folder, "rig", "character.mjs")
+      const clipFile = path.join(folder, "clips", "idle.a.mjs")
+      for (const file of [flags.bank, rigFile, clipFile]) {
+        const existing = yield* readText(file).pipe(Effect.option)
+        if (Option.isSome(existing) && !flags.force) return yield* new CliFailure({ message: `${file} already exists (--force replaces it)` })
+      }
+      const made = scaffold(decoded.value, path.relative(path.dirname(rigFile), path.dirname(partsFile)).split(path.sep).join("/") || ".")
+      const bank: Bank = {
+        rig: path.relative(folder, rigFile).split(path.sep).join("/"),
+        clips: { idle: { about: "Standing, breathing: the stance the other clips start and end on.", drafts: { a: { file: path.relative(folder, clipFile).split(path.sep).join("/") } } } }
+      }
+      return yield* printJson({
+        bank: yield* writeText(flags.bank, encodeBank(bank)),
+        rig: yield* writeText(rigFile, made.rig),
+        drafts: [yield* writeText(clipFile, made.idle)],
+        clips: Object.keys(bank.clips),
+        parts: decoded.value.parts.map((part) => part.name),
+        ...(made.fallbacks.length === 0 ? {} : { fallbacks: made.fallbacks }),
+        ...(made.props.length === 0 ? {} : { props: made.props }),
+        owns: "The rig module owns the pivots, angles, and lengths from now on: parts.json is not read again, and init --force would overwrite your corrections.",
+        next: `Look at it (rig look ${flags.bank} idle --art): the pivots are guesses. Correct a part's pivot or angle, and a bone's length where a joint does not meet, in the rig module (or drag a pivot on the review page).${made.fallbacks.length === 0 ? "" : ` These parts were missing and are plain shapes: ${made.fallbacks.join(", ")}.`}${made.props.length === 0 ? "" : ` ${made.props.join(", ")}: a prop on its own bone; the near hand holds it in the stance, and a far-arm reach onto it holds it two-handed.`}`
+      })
+    }
+    const rigFile = path.join(folder, STARTER_BANK.rig)
+    const clipFile = path.join(folder, STARTER_BANK.clips.idle!.drafts.a!.file)
+    for (const file of [flags.bank, rigFile, clipFile]) {
+      const existing = yield* readText(file).pipe(Effect.option)
+      if (Option.isSome(existing) && !flags.force) return yield* new CliFailure({ message: `${file} already exists (--force replaces it)` })
+    }
+    yield* printJson({
+      bank: yield* writeText(flags.bank, encodeBank(STARTER_BANK)),
+      rig: yield* writeText(rigFile, STARTER_RIG),
+      drafts: [yield* writeText(clipFile, STARTER_CLIP)],
+      clips: Object.keys(STARTER_BANK.clips)
+    })
+  })
+).pipe(
+  Command.withDescription(
+    "Writes a starting bank with a small figure's rig module (bones, parts, leg and arm chains, a stance) and one clip, an idle, and its first draft module to build from; with --from parts.json, a side-view humanoid rig made of those parts' pictures instead, standing on its first bake."
+  )
+)
+
+/** The `rig` command and its subcommands, registered in `ritmo-tools` next to `fx`. */
+const parts = Command.make(
+  "parts",
+  {
+    sheet: Argument.String("sheet").pipe(Argument.withDescription("A character parts sheet: a PNG or JPEG of the character's parts drawn apart on one background (an image generator's \"character parts\" sheet).")),
+    out: Flag.String("out").pipe(Flag.withAlias("o"), Flag.withDescription("The folder to write the parts to (default: parts/ next to the sheet)."), Flag.optional),
+    names: Flag.String("names").pipe(Flag.withDescription("The parts' names in reading order (rows top to bottom, left to right), comma-separated: head,torso,upperArmNear,... (default part-1, part-2, ...)."), Flag.optional)
+  },
+  Effect.fn("parts")(function* (flags) {
+    const path = yield* Path.Path
+    const fs = yield* FileSystem.FileSystem
+    const names = Option.match(flags.names, { onNone: () => [], onSome: (text) => text.split(",").map((name) => name.trim()).filter((name) => name !== "") })
+    const wrong = names.filter((name) => !isPartName(name))
+    if (wrong.length > 0) return yield* new CliFailure({ message: `not a part name: ${wrong.join(", ")} (letters, digits, _, ., and - only)` })
+    const bytes = yield* fs.readFile(flags.sheet).pipe(Effect.mapError(() => new CliFailure({ message: `cannot read ${flags.sheet}` })))
+    const sheet = yield* Effect.try({ try: () => decodePicture(bytes), catch: () => new CliFailure({ message: `${flags.sheet} is not a PNG or JPEG` }) })
+    const cut = cutParts(sheet, names)
+    if (cut.parts.length === 0) return yield* new CliFailure({ message: `no parts found in ${flags.sheet}: is its background one flat color around the parts?`, details: { warnings: cut.warnings } })
+    const folder = Option.getOrElse(flags.out, () => path.join(path.dirname(flags.sheet), "parts"))
+    const entries: Array<PartsFile["parts"][number]> = []
+    for (const part of cut.parts) {
+      const file = `${part.name}.png`
+      yield* writeBytes(path.join(folder, file), encodePng(part.image))
+      entries.push({ name: part.name, file, size: [part.image.width, part.image.height], box: part.box, pivot: part.pivot, axis: part.axis })
+    }
+    const listing = yield* writeText(path.join(folder, "parts.json"), encodeParts({ version: 1, sheet: path.basename(flags.sheet), parts: entries }))
+    yield* printJson({
+      sheet: flags.sheet,
+      folder,
+      parts: entries.map((entry) => ({ name: entry.name, file: path.join(folder, entry.file), size: entry.size, pivot: entry.pivot })),
+      file: listing,
+      warnings: cut.warnings,
+      next: "Each pivot is a guess (the point on the part's long axis nearest the sheet's centre of mass; the torso's lower end): look at the parts, correct a pivot in parts.json where it is not the joint, then scaffold a rig with `rig init --from` and the file."
+    })
+  })
+).pipe(
+  Command.withDescription(
+    "Cuts a character parts sheet into one PNG per part with transparency, for a rig's image parts: the background cleared as the pixel fixer clears a sheet, the parts in reading order and named from --names, their anti-aliased pixels kept (no grid, no palette). Writes parts/<name>.png and parts/parts.json (each part's file, size, the box it came from, its long axis, and a guessed pivot), and warns about boxes that look like labels or are tiny."
+  )
+)
+
+export const rig = Command.make("rig").pipe(
+  Command.withDescription(
+    "Ritmo's skeleton lab: characters as code (a rig module of bones, parts, IK chains, props, and stances, and clip drafts that pose it), checked for motion craft, looked at as contact sheets, reviewed by a person on a local page, and baked as sprite sheets. Prints JSON; exit 0 clean, 2 usage error, 3 errors in the rig or a draft."
+  ),
+  Command.withSubcommands([check, look, bake, parts, review, notes, resolve, init])
+)

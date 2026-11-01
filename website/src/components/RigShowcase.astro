@@ -1,0 +1,191 @@
+---
+// The skeleton lab's idea on a page: one character cut from a painted parts
+// sheet, three of its clips written as code, playing side by side on one
+// clock with the skeleton that poses them drawn over the pictures, baked in
+// the browser by the same runner and rasterizer the CLI checks with.
+interface Props {
+  /** Clips in `examples/rig/borri/borri.rig.json`, comma-separated. */
+  clips?: string
+}
+
+const { clips = "idle,walk,attack" } = Astro.props
+---
+
+<div class="rig-showcase" data-clips={clips}>
+  <div class="clips"></div>
+</div>
+
+<script>
+  import { exampleClips } from "@typeonce/ritmo-tools/rig/showcase"
+
+  /** Pixels per world unit: the rig is drawn at its parts sheet's size, so half of it is plenty for a card. */
+  const SCALE = 0.5
+  /** How long a one-shot rests on its last frame between plays, in milliseconds. */
+  const REST = 500
+  /** Room around the character in each card, in frame pixels at 1×. */
+  const MARGIN = 16
+  const BONE = "#ffd166"
+  const JOINT = "#ef476f"
+  const TRAIL = "#06d6a0"
+
+  type Mat6 = readonly [number, number, number, number, number, number]
+  const apply6 = (m: Mat6, x: number, y: number): readonly [number, number] => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]
+
+  for (const root of document.querySelectorAll<HTMLElement>(".rig-showcase")) {
+    const holder = root.querySelector(".clips")
+    const baked = await exampleClips((root.dataset.clips ?? "").split(","), SCALE)
+    if (holder === null || baked === undefined) continue
+    const { rig } = baked
+    // Each card cropped across to its clip's reach; all of them from the highest any clip goes down past the ground, so they stand on one line at one size.
+    const across = baked.clips.map(({ view }) => {
+      let minX = Infinity
+      let maxX = -Infinity
+      let minY = Infinity
+      for (const frame of view.parts)
+        for (const { box } of frame) {
+          minX = Math.min(minX, rig.anchor[0] + box[0])
+          maxX = Math.max(maxX, rig.anchor[0] + box[2])
+          minY = Math.min(minY, rig.anchor[1] - box[3])
+        }
+      return { x: Math.max(0, minX - MARGIN), right: Math.min(rig.width, maxX + MARGIN), top: minY }
+    })
+    const top = Math.max(0, Math.min(...across.map((a) => a.top)) - MARGIN)
+    const height = Math.min(rig.height, rig.anchor[1] + MARGIN) - top
+    // Columns as wide as their crops: one scale for every card.
+    if (holder instanceof HTMLElement) holder.style.gridTemplateColumns = across.map((a) => `${Math.round(a.right - a.x)}fr`).join(" ")
+    const cards = baked.clips.map(({ clip, view }, i) => {
+      const crop = { x: across[i]!.x, y: top, w: across[i]!.right - across[i]!.x, h: height }
+      const card = document.createElement("figure")
+      card.className = "clip"
+      const canvas = document.createElement("canvas")
+      canvas.width = Math.round(crop.w * SCALE * 2)
+      canvas.height = Math.round(crop.h * SCALE * 2)
+      const caption = document.createElement("figcaption")
+      caption.innerHTML = `<b>${clip}</b> <span class="label">${view.label}</span>`
+      card.append(canvas, caption)
+      holder.append(card)
+      // Each frame once as a canvas, to draw scaled.
+      const art = view.art.map((frame) => {
+        const image = document.createElement("canvas")
+        image.width = frame.width
+        image.height = frame.height
+        image.getContext("2d")?.putImageData(new ImageData(new Uint8ClampedArray(frame.data), frame.width, frame.height), 0, 0)
+        return image
+      })
+      return { canvas, view, art, crop }
+    })
+    const start = performance.now()
+    const draw = (now: number): void => {
+      for (const { canvas, view, art, crop } of cards) {
+        const g = canvas.getContext("2d")
+        if (g === null) continue
+        const step = 1000 / view.fps
+        const length = view.frames * step
+        const at = (now - start) % (view.loop ? length : length + REST)
+        const frame = Math.min(view.frames - 1, Math.floor(at / step))
+        // Canvas pixels per frame pixel at 1×, and the crop's corner.
+        const k = canvas.width / crop.w
+        const point = ([x, y]: readonly [number, number]): readonly [number, number] => [(rig.anchor[0] + x - crop.x) * k, (rig.anchor[1] - y - crop.y) * k]
+        g.fillStyle = rig.look.background
+        g.fillRect(0, 0, canvas.width, canvas.height)
+        g.fillStyle = rig.look.floor
+        g.fillRect(0, (rig.anchor[1] - crop.y) * k, canvas.width, canvas.height)
+        g.fillStyle = rig.look.ground
+        g.fillRect(0, (rig.anchor[1] - crop.y) * k - 1, canvas.width, 2)
+        const picture = art[frame]
+        if (picture !== undefined) {
+          g.imageSmoothingQuality = "high"
+          g.globalAlpha = 0.85
+          g.drawImage(picture, crop.x * SCALE, crop.y * SCALE, crop.w * SCALE, crop.h * SCALE, 0, 0, canvas.width, canvas.height)
+          g.globalAlpha = 1
+        }
+        // The trail bone's tip so far this play: the arc the checks measure.
+        g.strokeStyle = TRAIL
+        g.lineWidth = 2
+        g.globalAlpha = 0.7
+        g.beginPath()
+        let drawing = false
+        view.trail.forEach((tip, i) => {
+          if (tip === null || i > frame) return void (drawing = false)
+          const [x, y] = point(tip)
+          if (drawing) g.lineTo(x, y)
+          else g.moveTo(x, y)
+          drawing = true
+        })
+        g.stroke()
+        g.globalAlpha = 1
+        for (const [bone, m] of Object.entries(view.bones[frame] ?? {})) {
+          const [ax, ay] = point(apply6(m, 0, 0))
+          const [bx, by] = point(apply6(m, view.lengths[bone] ?? 0, 0))
+          g.strokeStyle = BONE
+          g.lineWidth = 2
+          g.beginPath()
+          g.moveTo(ax, ay)
+          g.lineTo(bx, by)
+          g.stroke()
+          g.fillStyle = JOINT
+          g.beginPath()
+          g.arc(ax, ay, 3, 0, Math.PI * 2)
+          g.fill()
+        }
+      }
+      requestAnimationFrame(draw)
+    }
+    requestAnimationFrame(draw)
+  }
+</script>
+
+<style>
+  .rig-showcase {
+    width: 100%;
+    padding: 20px;
+  }
+
+  .clips {
+    display: grid;
+    /* One row, so the clips play side by side on one ground line; the script sets each column's share. */
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: end;
+    gap: 10px;
+  }
+
+  .clips :global(.clip) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 6px;
+    border-radius: 10px;
+    background: #1a1c2c;
+    box-shadow: 0 0 0 1px rgba(243, 241, 236, 0.08);
+  }
+
+  .clips :global(canvas) {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 6px;
+  }
+
+  .clips :global(figcaption) {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    max-width: 100%;
+    color: #bdbab3;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  .clips :global(figcaption .label) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .clips :global(figcaption b) {
+    color: #f3f1ec;
+    font-family: var(--mono, monospace);
+  }
+</style>
