@@ -9,6 +9,10 @@ coverage/
 .bench/
 .tstyche/
 
+# Local reference clones and research output, never part of the repo.
+/.agents/
+/output/
+
 # The website
 .astro/
 .wrangler/
