@@ -68,7 +68,7 @@
     "@typeonce/ritmo": "workspace:^"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "devDependencies": {
     "@typeonce/ritmo-browser": "workspace:*",
