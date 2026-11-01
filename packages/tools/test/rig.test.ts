@@ -12,6 +12,7 @@ import { checkClip, JERK } from "@typeonce/ritmo-tools/rig/core/check.ts"
 import { decodeClip, runClip, tuned, type Clip, type RigContext } from "@typeonce/ritmo-tools/rig/core/clip.ts"
 import { artOf, framePictures, gifFramesOf, lookSheet, MAX_WIDTH } from "@typeonce/ritmo-tools/rig/core/export.ts"
 import { encodeSidecar, sidecarClip, sidecarName, sidecarOf } from "@typeonce/ritmo-tools/rig/core/sidecar.ts"
+import { commentSpot } from "@typeonce/ritmo-tools/rig/core/view.ts"
 import { keysAt, KeysError } from "@typeonce/ritmo-tools/rig/core/keys.ts"
 import { add, solve } from "@typeonce/ritmo-tools/rig/core/pose.ts"
 import { angleOf, apply, decodeRig, poseProblems, type Pose, type Rig } from "@typeonce/ritmo-tools/rig/core/rig.ts"
@@ -490,6 +491,20 @@ describe("the sidecar", () => {
     expect(JSON.parse(text)).toEqual(JSON.parse(JSON.stringify(sidecar)))
     expect(text.split("\n").filter((line) => line.includes('"name":"swing ')).length).toBe(8)
     expect([sidecarName("art/hero.rig.json"), sidecarName("game.json")]).toEqual(["hero.rig.clips.json", "game.clips.json"])
+  })
+})
+
+describe("where a pinned comment's ring goes", () => {
+  it("follows the part: its spot in its bone's frame, placed where the bone is on the frame", () => {
+    const still = runClip(rig, clip(() => ({})))
+    const turned = runClip(rig, clip(() => ({ bones: { torso: 40 } })))
+    // Pinned on the torso, 10 along it, on the setup pose: frame pixel (32, 60 - 22 - 10).
+    const comment = { draft: "a", frame: 0, x: 32, y: 28, part: "torso", bone: "torso", local: [10, 0] as const, text: "here" }
+    expect(commentSpot(rig, still.frames[0]!, comment).map((v) => Math.round(v * 100) / 100 + 0)).toEqual([32, 28])
+    const moved = commentSpot(rig, turned.frames[0]!, comment)
+    expect(moved[0]).toBeLessThan(32)
+    // With no local spot, the pixel it was pinned on.
+    expect(commentSpot(rig, turned.frames[0]!, { draft: "a", frame: 0, x: 5, y: 6, text: "old" })).toEqual([5.5, 6.5])
   })
 })
 

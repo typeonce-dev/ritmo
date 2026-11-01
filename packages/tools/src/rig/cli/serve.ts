@@ -69,7 +69,9 @@ const send = (response: ServerResponse, status: number, value: unknown): void =>
 const run = <A, E>(effect: Effect.Effect<A, E>): Promise<A> => Effect.runPromise(effect)
 
 /** The bank's API and watcher: one per `rig review`. */
-export const reviewApi = (bankFile: string) => {
+export const reviewApi = (bankFile: string, options: { readonly scale?: number } = {}) => {
+  // Frames at 2x on this machine; at 1x over the network (`--host`), a quarter of the bytes for a phone.
+  const scale = options.scale ?? 2
   registerFreshImports()
   const folder = dirname(bankFile)
   const review = reviewPath(bankFile)
@@ -126,7 +128,7 @@ export const reviewApi = (bankFile: string) => {
       let result: DraftResult<string>
       if ("error" in found) result = { ok: false, id, file: found.file, error: found.error }
       else {
-        const view = draftView(found.rig, found.clip, found.bank.clips[clip]!.drafts[id]!, id, clip)
+        const view = draftView(found.rig, found.clip, found.bank.clips[clip]!.drafts[id]!, id, clip, scale)
         result = view.ok ? { ok: true, view: { ...view.view, art: view.view.art.map((image) => `data:image/png;base64,${Buffer.from(encodePng(image)).toString("base64")}`) } } : view
       }
       const entry = { stamp, result }
@@ -306,7 +308,7 @@ const serveSource = async (options: ServeOptions, api: ReturnType<typeof reviewA
 
 /** Starts the page; resolves with its address once it listens, and how to stop it. */
 export const serve = async (options: ServeOptions): Promise<Address> => {
-  const api = reviewApi(resolve(options.bank))
+  const api = reviewApi(resolve(options.bank), { scale: options.host ? 1 : 2 })
   const address = await (existsSync(join(built, "index.html")) ? serveBuilt(options, api) : serveSource(options, api))
   return {
     ...address,

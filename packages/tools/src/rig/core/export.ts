@@ -14,6 +14,7 @@ import { isSpan, type Comment } from "./bank.ts"
 import { phaseAt, type Clip, type Run } from "./clip.ts"
 import { over, renderArt, renderBackdrop, renderBones, rgbaOf } from "./raster.ts"
 import { momentsOf } from "../../fx/core/export.ts"
+import { commentSpot } from "./view.ts"
 import { tipOf, type Rig, type V } from "./rig.ts"
 
 /** A contact sheet is at most this wide when its columns are not given. */
@@ -171,11 +172,15 @@ const labelCell = (img: RgbaImage, clip: Clip, f: number, x: number, y: number, 
   if (phase !== undefined) text(img, x + 4, y + h - 14, phase.fast ? `${phase.name} fast` : phase.name, phase.fast ? WARM : MUTED)
 }
 
-const markCell = (img: RgbaImage, comments: LookOptions["comments"], f: number, x: number, y: number, w: number, h: number, scale: number): void => {
+const markCell = (img: RgbaImage, rig: Rig, run: Run, comments: LookOptions["comments"], f: number, x: number, y: number, w: number, h: number, scale: number): void => {
   for (const comment of comments) {
     if (isSpan(comment)) {
       if (f >= comment.from && f <= comment.to) band(img, x, y, w, h, String(comment.number))
-    } else if (comment.frame === f) ring(img, x + Math.floor((comment.x + 0.5) * scale), y + Math.floor((comment.y + 0.5) * scale), String(comment.number))
+    } else if (comment.frame === f && run.frames[f] !== undefined) {
+      // Where its part is now, as the review page rings it.
+      const [px, py] = commentSpot(rig, run.frames[f], comment)
+      ring(img, x + Math.floor(px * scale), y + Math.floor(py * scale), String(comment.number))
+    }
   }
 }
 
@@ -204,11 +209,11 @@ export const lookSheet = (rig: Rig, clip: Clip, run: Run, options: LookOptions):
     const y = HEAD + Math.floor(i / columns) * rowHeight
     paste(sheet, cells.art(f), x, y)
     labelCell(sheet, clip, f, x, y, h)
-    markCell(sheet, options.comments, f, x, y, w, h, scale)
+    markCell(sheet, rig, run, options.comments, f, x, y, w, h, scale)
     if (options.bones) {
       paste(sheet, cells.bones(f), x, y + h + GAP)
       labelCell(sheet, clip, f, x, y + h + GAP, h)
-      markCell(sheet, options.comments, f, x, y + h + GAP, w, h, scale)
+      markCell(sheet, rig, run, options.comments, f, x, y + h + GAP, w, h, scale)
     }
   })
   return sheet
@@ -224,7 +229,7 @@ export const framePictures = (rig: Rig, clip: Clip, run: Run, options: LookOptio
     const image = blank(w, options.bones ? 2 * h + GAP : h, PANEL)
     paste(image, cells.art(f), 0, 0)
     labelCell(image, clip, f, 0, 0, h)
-    markCell(image, options.comments, f, 0, 0, w, h, scale)
+    markCell(image, rig, run, options.comments, f, 0, 0, w, h, scale)
     if (options.bones) {
       paste(image, cells.bones(f), 0, h + GAP)
       labelCell(image, clip, f, 0, h + GAP, h)

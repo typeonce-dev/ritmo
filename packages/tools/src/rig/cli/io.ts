@@ -32,10 +32,13 @@ export const readReview = Effect.fn("readReview")(function* (bankFile: string) {
  * Node keeps an imported module for the life of the process, keyed by its
  * URL. Each command imports once, so that is fine for them; the review
  * server, which rebakes as files change, imports with a cache-busting
- * query (`?rig-v=<generation>`). This resolve hook carries the query from a
- * module to the modules it imports by a relative path (a clip's
- * `../hero.js`), so the whole graph is read anew, not only the entry; bare
- * imports (packages) are left alone. Registered once, by `rig review`.
+ * query (`?rig-v=<generation>`). A query on the entry alone is not enough:
+ * the clip module is read anew, but its own `import ... from "../hero.js"`
+ * resolves to the plain URL Node already holds, so an edit to the rig
+ * module or a shared stance would not show until a restart. This resolve
+ * hook carries the query from a module to the modules it imports by a
+ * relative path, so the whole graph is read anew; bare imports (packages)
+ * are left alone. Registered once, by `rig review`.
  */
 const FRESH_IMPORTS = `export async function resolve(specifier, context, next) {
   const resolved = await next(specifier, context)

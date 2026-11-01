@@ -12,9 +12,9 @@
  * says pixels.
  */
 import type { RgbaImage } from "../../pixel/core/grid.ts"
-import type { Draft } from "./bank.ts"
+import type { Draft, PixelComment } from "./bank.ts"
 import { checkClip, type Issue } from "./check.ts"
-import { phaseAt, runClip, type Clip, type Param } from "./clip.ts"
+import { phaseAt, runClip, type Clip, type Frame, type Param } from "./clip.ts"
 import { apply, invert, type Rig, type V } from "./rig.ts"
 import { boundsOf } from "./pose.ts"
 import { partAt, renderArt } from "./raster.ts"
@@ -115,6 +115,20 @@ export const draftView = (rig: Rig, clip: Clip, draft: Draft, id: string, name: 
       }
     }
   }
+}
+
+/**
+ * Where a pixel comment's ring goes on a frame, in frame pixels (1x, from
+ * the top left): its spot in its bone's frame (`local`) placed where the
+ * bone is now, so the ring follows the part after an edit; its pixel's
+ * middle for a comment with no local spot, or a bone the frame does not
+ * show. The one rule `rig look` and the review page ring by.
+ */
+export const commentSpot = (rig: Rig, frame: Frame, comment: PixelComment): V => {
+  const m = comment.bone === undefined || !frame.shown.has(comment.bone) ? undefined : frame.world[comment.bone]
+  if (comment.local === undefined || m === undefined) return [comment.x + 0.5, comment.y + 0.5]
+  const [x, y] = apply(m, comment.local)
+  return [rig.anchor[0] + x, rig.anchor[1] - y]
 }
 
 /** A frame pixel (1x, from the frame's top left) as a world point at its middle. */

@@ -6,7 +6,7 @@ import { join } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
-import { encodePng } from "@typeonce/ritmo-tools/pixel/cli/png.ts"
+import { decodePng, encodePng } from "@typeonce/ritmo-tools/pixel/cli/png.ts"
 import { decodeBank, decodeReview, encodeBank, encodeReview, type Bank, type Review } from "@typeonce/ritmo-tools/rig/core/bank.ts"
 import { reviewApi } from "@typeonce/ritmo-tools/rig/cli/serve.ts"
 import { memoryStore, type Session, type Version } from "@typeonce/ritmo-tools/rig/ui/store.ts"
@@ -17,8 +17,8 @@ const examples = fileURLToPath(new URL("../examples/rig", import.meta.url))
 const rig = (...args: Array<string>) => spawnSync(process.execPath, [cli, "rig", ...args], { encoding: "utf8" })
 
 /** The review API on a port, as `rig review` mounts it under /api. */
-const listen = (bank: string): Promise<{ readonly base: string; readonly server: Server; readonly close: () => void }> => {
-  const api = reviewApi(bank)
+const listen = (bank: string, scale?: number): Promise<{ readonly base: string; readonly server: Server; readonly close: () => void }> => {
+  const api = reviewApi(bank, scale === undefined ? {} : { scale })
   const server = createServer((request, response) => {
     request.url = (request.url ?? "/").replace(/^\/api/, "")
     void api.handle(request, response)
@@ -171,6 +171,21 @@ describe("rig review, the command", () => {
     // The kick plants its far foot from FEET on frame 2: further back now (the leg reaches most of the 4 px).
     const foot = (draft: Draft) => (draft.result.ok ? draft.result.view.bones[2]!.footFar![4] : 0)
     expect(foot(moved) - foot(kick)).toBeLessThan(-3)
+  }, 30_000)
+})
+
+describe("over the network", () => {
+  it("bakes the page's frames at 1x for --host, at 2x on this machine", async () => {
+    const folder = mkdtempSync(join(tmpdir(), "rig-host-"))
+    cpSync(examples, folder, { recursive: true })
+    writeFileSync(join(folder, "package.json"), '{"type":"module"}')
+    const width = async (scale: number | undefined): Promise<number> => {
+      const started = await listen(join(folder, "hero.rig.json"), scale)
+      const draft = await getJson<Draft>(`${started.base}/draft?clip=idle&draft=a`)
+      started.close()
+      return draft.result.ok ? decodePng(Buffer.from(draft.result.view.art[0]!.split(",")[1]!, "base64")).width : 0
+    }
+    expect([await width(1), await width(undefined)]).toEqual([264, 528])
   }, 30_000)
 })
 

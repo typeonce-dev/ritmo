@@ -370,7 +370,7 @@ const frameNow = (view: DraftView<Frame>, now: number): number => {
 
 const apply6 = (m: Mat6, p: V): V => [m[0] * p[0] + m[2] * p[1] + m[4], m[1] * p[0] + m[3] * p[1] + m[5]]
 
-/** A comment's spot on a frame, in frame pixels: where its part's bone puts it now, so the ring follows the part after an edit. */
+/** A comment's spot on a frame, in frame pixels: where its part's bone puts it now, so the ring follows the part after an edit (`commentSpot`'s rule, from the baked bone transforms). */
 const spotOf = (comment: PixelComment, view: DraftView<Frame>, frame: number, rig: RigInfo): V => {
   const m = comment.bone === undefined ? undefined : view.bones[frame]?.[comment.bone]
   if (comment.local === undefined || m === undefined) return [comment.x + 0.5, comment.y + 0.5]
