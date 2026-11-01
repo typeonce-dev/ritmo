@@ -64,6 +64,7 @@ for (const directory of packages) {
       if (!listing.includes(required)) throw new Error(`${manifest.name} tarball is missing ${required}`)
     }
     for (const repoOnly of ["PROTOTYPE.md", "ONBOARDING.md", "POLISH.md", "FX.md", "PIXEL-ART.md"]) if (listing.includes(`package/${repoOnly}`)) throw new Error(`${manifest.name} tarball contains the repo-only ${repoOnly}`)
+    if (listing.some((file) => file.startsWith("package/genres/"))) throw new Error(`${manifest.name} tarball contains the repo-only genres/`)
   }
   if (commandLineOnly.has(directory) && listing.some((file) => file.startsWith("package/src/") || file.startsWith("package/bin/") || file.startsWith("package/dist/pixel/ui/") || file.startsWith("package/dist/sound/ui/") || file.startsWith("package/dist/music/ui/") || file.startsWith("package/dist/fx/ui/"))) {
     throw new Error(`${manifest.name} tarball contains its source, its in-repo launcher, or the website's page`)
