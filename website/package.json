@@ -22,17 +22,17 @@
     "pixi.js": "8.22.0"
   },
   "devDependencies": {
-    "@astrojs/mdx": "8.1.1",
+    "@astrojs/mdx": "8.1.2",
     "@shikijs/transformers": "4.5.0",
     "@shikijs/twoslash": "4.5.0",
     "@typeonce/ritmo-devtools": "workspace:*",
-    "astro": "7.4.2",
+    "astro": "7.4.4",
     "bitecs": "0.4.0",
     "koota": "0.6.6",
     "miniplex": "2.0.0",
     "pagefind": "1.5.2",
     "twoslash": "0.3.9",
     "typescript": "6.0.3",
-    "wrangler": "4.152.0"
+    "wrangler": "4.155.0"
   }
 }
