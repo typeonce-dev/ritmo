@@ -27,7 +27,7 @@
     "lint": "oxlint --disable-nested-config"
   },
   "devDependencies": {
-    "@changesets/cli": "2.31.1",
+    "@changesets/cli": "3.0.3",
     "@typeonce/oxlint-plugin-ritmo": "workspace:*",
     "@typeonce/ritmo": "workspace:*",
     "@typeonce/ritmo-browser": "workspace:*",
@@ -37,8 +37,8 @@
     "@typeonce/ritmo-pixi": "workspace:*",
     "@typeonce/ritmo-render": "workspace:*",
     "@types/node": "^26.6.6",
-    "@vitest/coverage-v8": "4.0.18",
-    "@vitest/expect": "4.0.18",
+    "@vitest/coverage-v8": "5.0.5",
+    "@vitest/expect": "5.0.5",
     "arktype": "^2.2.9",
     "effect": "catalog:",
     "oxlint": "1.90.0",
@@ -51,7 +51,7 @@
     "valibot": "^1.5.0",
     "vite": "catalog:",
     "vite-tsconfig-paths": "6.1.1",
-    "vitest": "4.0.18",
+    "vitest": "5.0.5",
     "zod": "^4.6.7"
   }
 }
