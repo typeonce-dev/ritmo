@@ -20,7 +20,7 @@ pnpm add -D @typeonce/ritmo-tools   # pins it to the game's Ritmo version
 Every command prints JSON on stdout and exits with a code that says what
 to do next. A game's agent learns them from the skills that ship with
 `@typeonce/ritmo` (`skills/ritmo-pixel-art`, `skills/ritmo-sounds`,
-`skills/ritmo-music`, `skills/ritmo-fx`), linked by
+`skills/ritmo-music`, `skills/ritmo-fx`, `skills/ritmo-rig`), linked by
 its `SETUP.md`.
 The tools are built on Effect; nothing a game imports depends on this
 package.
@@ -567,8 +567,8 @@ try without the CLI: https://ritmo.typeonce.dev/tools/fx/.
 ## Skeleton lab (`ritmo-tools rig`)
 
 Characters animated on a skeleton, as code, for agents. A character is a
-rig module (its bones, the shapes drawn on them, its IK chains, its props,
-and the stances its clips start and end on) and a module per draft of
+rig module (its bones, the parts drawn on them as shapes or pictures, its
+IK chains, its props, and the stances its clips start and end on) and a module per draft of
 each clip (an idle, a walk, an attack) that poses the rig on every frame.
 The agent writes and checks them, looks at the frames as contact sheets,
 and bakes the drafts the game uses into sprite sheets. One runner poses and
@@ -1001,7 +1001,7 @@ it, against its targets (with `Collide2` from
   (`io.ts`), and the page's server and its watcher (`serve.ts`).
 - `src/rig/ui/`: the review page (`lab.ts`), reading, writing, and baking
   through a store (`store.ts`): the CLI's server (`main.ts`), or the tab for
-  the website's demo (`demo.ts`, `example.ts`), which bakes the example bank
+  the website's demo and the tools page's picture (`demo.ts`, `showcase.ts`, `example.ts`), which bake the example bank
   in the browser with the same runner and rasterizer (`core/view.ts`). The
   published package carries it built (`dist/rig/page`, made by `prepack`);
   inside the repository Vite serves it from source.
