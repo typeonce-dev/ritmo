@@ -1,0 +1,406 @@
+{
+ "frames": {
+  "idle 0": {
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 220,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "idle 1": {
+   "frame": {
+    "x": 16,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 220,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "idle 2": {
+   "frame": {
+    "x": 32,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 220,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "idle 3": {
+   "frame": {
+    "x": 48,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 220,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "run 0": {
+   "frame": {
+    "x": 0,
+    "y": 16,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 70,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "run 1": {
+   "frame": {
+    "x": 16,
+    "y": 16,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 70,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "run 2": {
+   "frame": {
+    "x": 32,
+    "y": 16,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 70,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "run 3": {
+   "frame": {
+    "x": 48,
+    "y": 16,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 70,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "run 4": {
+   "frame": {
+    "x": 64,
+    "y": 16,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 70,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "run 5": {
+   "frame": {
+    "x": 80,
+    "y": 16,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 70,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "jump 0": {
+   "frame": {
+    "x": 0,
+    "y": 32,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 90,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "jump 1": {
+   "frame": {
+    "x": 16,
+    "y": 32,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 90,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "fall 0": {
+   "frame": {
+    "x": 0,
+    "y": 48,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 90,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "fall 1": {
+   "frame": {
+    "x": 16,
+    "y": 48,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 90,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "dash 0": {
+   "frame": {
+    "x": 0,
+    "y": 64,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 60,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "dash 1": {
+   "frame": {
+    "x": 16,
+    "y": 64,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 60,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "wall-slide 0": {
+   "frame": {
+    "x": 0,
+    "y": 80,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 120,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "wall-slide 1": {
+   "frame": {
+    "x": 16,
+    "y": 80,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 120,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  },
+  "land 0": {
+   "frame": {
+    "x": 0,
+    "y": 96,
+    "w": 16,
+    "h": 16
+   },
+   "duration": 80,
+   "anchor": {
+    "x": 0.5,
+    "y": 1
+   }
+  }
+ },
+ "animations": {
+  "idle": [
+   "idle 0",
+   "idle 1",
+   "idle 2",
+   "idle 3"
+  ],
+  "run": [
+   "run 0",
+   "run 1",
+   "run 2",
+   "run 3",
+   "run 4",
+   "run 5"
+  ],
+  "jump": [
+   "jump 0",
+   "jump 1"
+  ],
+  "fall": [
+   "fall 0",
+   "fall 1"
+  ],
+  "dash": [
+   "dash 0",
+   "dash 1"
+  ],
+  "wall-slide": [
+   "wall-slide 0",
+   "wall-slide 1"
+  ],
+  "land": [
+   "land 0"
+  ]
+ },
+ "timing": {
+  "idle": {
+   "frames": [
+    "idle 0",
+    "idle 1",
+    "idle 2",
+    "idle 3"
+   ],
+   "msPerFrame": 220,
+   "loop": true
+  },
+  "run": {
+   "frames": [
+    "run 0",
+    "run 1",
+    "run 2",
+    "run 3",
+    "run 4",
+    "run 5"
+   ],
+   "msPerFrame": 70,
+   "loop": true
+  },
+  "jump": {
+   "frames": [
+    "jump 0",
+    "jump 1"
+   ],
+   "msPerFrame": 90,
+   "loop": true
+  },
+  "fall": {
+   "frames": [
+    "fall 0",
+    "fall 1"
+   ],
+   "msPerFrame": 90,
+   "loop": true
+  },
+  "dash": {
+   "frames": [
+    "dash 0",
+    "dash 1"
+   ],
+   "msPerFrame": 60,
+   "loop": true
+  },
+  "wall-slide": {
+   "frames": [
+    "wall-slide 0",
+    "wall-slide 1"
+   ],
+   "msPerFrame": 120,
+   "loop": true
+  },
+  "land": {
+   "frames": [
+    "land 0"
+   ],
+   "msPerFrame": 80,
+   "loop": false
+  }
+ },
+ "meta": {
+  "size": {
+   "w": 96,
+   "h": 112
+  },
+  "frameSize": {
+   "w": 16,
+   "h": 16
+  },
+  "scale": "1",
+  "about": "Feet on the bottom row; the anchor is the middle of the feet. Hitbox 8x12 from x 4..11, y 4..15. Faces right; flip for left.",
+  "frameTags": [
+   {
+    "name": "idle",
+    "from": 0,
+    "to": 3,
+    "direction": "forward"
+   },
+   {
+    "name": "run",
+    "from": 4,
+    "to": 9,
+    "direction": "forward"
+   },
+   {
+    "name": "jump",
+    "from": 10,
+    "to": 11,
+    "direction": "forward"
+   },
+   {
+    "name": "fall",
+    "from": 12,
+    "to": 13,
+    "direction": "forward"
+   },
+   {
+    "name": "dash",
+    "from": 14,
+    "to": 15,
+    "direction": "forward"
+   },
+   {
+    "name": "wall-slide",
+    "from": 16,
+    "to": 17,
+    "direction": "forward"
+   },
+   {
+    "name": "land",
+    "from": 18,
+    "to": 18,
+    "direction": "forward"
+   }
+  ],
+  "image": "player.png"
+ }
+}
