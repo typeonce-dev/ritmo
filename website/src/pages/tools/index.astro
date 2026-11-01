@@ -1,12 +1,13 @@
 ---
 // The front door to `@typeonce/ritmo-tools`: the command an agent runs for
-// art, effects, sound, and music, and the four pages a person reviews on. The tools'
-// own pages (/tools/pixel/, /tools/fx/, /tools/sound/, /tools/music/) own the whole
+// art, effects, characters, sound, and music, and the five pages a person reviews on. The tools'
+// own pages (/tools/pixel/, /tools/fx/, /tools/rig/, /tools/sound/, /tools/music/) own the whole
 // window; this one is a guide.
 import Command from "../../components/Command.astro"
 import FxShowcase from "../../components/FxShowcase.astro"
 import MusicShowcase from "../../components/MusicShowcase.astro"
 import PixelShowcase from "../../components/PixelShowcase.astro"
+import RigShowcase from "../../components/RigShowcase.astro"
 import SheetShowcase from "../../components/SheetShowcase.astro"
 import SoundBoard from "../../components/SoundBoard.astro"
 import ToolsMark from "../../components/ToolsMark.astro"
@@ -40,6 +41,19 @@ const tools = [
     ]
   },
   {
+    id: "rig",
+    title: "Skeleton lab",
+    body: "Characters on a skeleton, every clip written as code by your agent: an idle, a walk, an attack. You watch the drafts side by side, pick one, tune it, and pin comments to a spot or a span of frames.",
+    href: "/tools/rig/",
+    open: "Try the skeleton lab",
+    command: "npx @typeonce/ritmo-tools rig review game.rig.json",
+    commands: [
+      { name: "check", body: "Sliding feet, unreachable limbs, popping joints." },
+      { name: "look", body: "Every frame and its bones, for the agent to see." },
+      { name: "bake", body: "Sprite sheets, and each frame's hits for the game." }
+    ]
+  },
+  {
     id: "sound",
     title: "Sound lab",
     body: "Sound effects as JSON recipes your agent writes and checks. You listen, compare takes, and leave notes.",
@@ -70,13 +84,13 @@ const tools = [
 
 <Base
   title="Tools"
-  description="ritmo-tools: the command your coding agent runs for pixel art, effects, sound effects, and music, with a local web UI where you look, listen, and tweak. Free and open source."
+  description="ritmo-tools: the command your coding agent runs for pixel art, effects, animated characters, sound effects, and music, with a local web UI where you look, listen, and tweak. Free and open source."
 >
   <main class="tools-page">
     <section class="hero">
       <ToolsMark />
       <h1>All the support you need to<br />create full game experiences</h1>
-      <p class="sub">Pixel art, animations, effects, sounds, and music tools for agent-first games.</p>
+      <p class="sub">Pixel art, animations, effects, characters, sounds, and music tools for agent-first games.</p>
       <div class="install">
         <Command command="npx @typeonce/ritmo-tools --help" />
       </div>
@@ -96,6 +110,7 @@ const tools = [
               </div>
             )}
             {tool.id === "fx" && <FxShowcase />}
+            {tool.id === "rig" && <RigShowcase />}
             {tool.id === "sound" && <SoundBoard compact sounds={["slash", "spin", "hit", "block", "zap", "victory"]} />}
             {tool.id === "music" && <MusicShowcase />}
           </div>
@@ -174,7 +189,7 @@ const tools = [
     border-top: 1px solid var(--border);
   }
 
-  /* The pictures alternate sides: the effects lab's and the music lab's sit on the right. */
+  /* The pictures alternate sides: the effects lab's and the sound lab's sit on the right. */
   .tool:nth-of-type(3) .visual,
   .tool:nth-of-type(5) .visual {
     order: 2;

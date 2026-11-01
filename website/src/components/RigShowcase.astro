@@ -1,0 +1,183 @@
+---
+// The skeleton lab's idea on a page: one character's clip, the drafts the
+// agent wrote as code, playing side by side on one clock with the skeleton
+// that poses them drawn over the parts, baked in the browser by the same
+// runner and rasterizer the CLI checks with. The picked draft is ringed.
+interface Props {
+  /** A clip in `examples/rig/hero.rig.json`. */
+  clip?: string
+  /** The draft shown as picked. */
+  picked?: string
+}
+
+const { clip = "attack", picked = "a" } = Astro.props
+---
+
+<div class="rig-showcase" data-clip={clip} data-picked={picked}>
+  <div class="drafts"></div>
+</div>
+
+<script>
+  import { exampleDrafts } from "@typeonce/ritmo-tools/rig/showcase"
+
+  /** How long a one-shot rests on its last frame between plays, in milliseconds. */
+  const REST = 500
+  const BONE = "#ffd166"
+  const JOINT = "#ef476f"
+  const TRAIL = "#06d6a0"
+
+  type Mat6 = readonly [number, number, number, number, number, number]
+  const apply6 = (m: Mat6, x: number, y: number): readonly [number, number] => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]
+
+  for (const root of document.querySelectorAll<HTMLElement>(".rig-showcase")) {
+    const holder = root.querySelector(".drafts")
+    const baked = await exampleDrafts(root.dataset.clip ?? "")
+    if (holder === null || baked === undefined) continue
+    const { rig } = baked
+    const cards = baked.drafts.map((view) => {
+      const card = document.createElement("figure")
+      card.className = view.id === root.dataset.picked ? "draft picked" : "draft"
+      if (view.id === root.dataset.picked) card.title = "The draft the person picked"
+      const canvas = document.createElement("canvas")
+      canvas.width = rig.width * view.scale
+      canvas.height = rig.height * view.scale
+      const caption = document.createElement("figcaption")
+      caption.innerHTML = `<b>${view.id}</b> <span class="label">${view.label}</span>`
+      card.append(canvas, caption)
+      holder.append(card)
+      // Each frame once as a canvas, to draw scaled.
+      const art = view.art.map((frame) => {
+        const image = document.createElement("canvas")
+        image.width = frame.width
+        image.height = frame.height
+        image.getContext("2d")?.putImageData(new ImageData(new Uint8ClampedArray(frame.data), frame.width, frame.height), 0, 0)
+        return image
+      })
+      return { canvas, view, art }
+    })
+    const start = performance.now()
+    const draw = (now: number): void => {
+      for (const { canvas, view, art } of cards) {
+        const g = canvas.getContext("2d")
+        if (g === null) continue
+        const step = 1000 / view.fps
+        const length = view.frames * step
+        const at = (now - start) % (view.loop ? length : length + REST)
+        const frame = Math.min(view.frames - 1, Math.floor(at / step))
+        const k = view.scale
+        const W = canvas.width
+        const H = canvas.height
+        g.fillStyle = rig.look.background
+        g.fillRect(0, 0, W, H)
+        g.fillStyle = rig.look.floor
+        g.fillRect(0, rig.anchor[1] * k, W, H - rig.anchor[1] * k)
+        g.fillStyle = rig.look.ground
+        g.fillRect(0, rig.anchor[1] * k - k * 0.6, W, k * 1.2)
+        const picture = art[frame]
+        if (picture !== undefined) {
+          g.globalAlpha = 0.8
+          g.drawImage(picture, 0, 0, W, H)
+          g.globalAlpha = 1
+        }
+        // World (y up, origin on the ground) to canvas pixels.
+        const point = ([x, y]: readonly [number, number]): readonly [number, number] => [(rig.anchor[0] + x) * k, (rig.anchor[1] - y) * k]
+        // The trail bone's tip so far this play: the arc the checks measure.
+        g.strokeStyle = TRAIL
+        g.lineWidth = 2
+        g.globalAlpha = 0.7
+        g.beginPath()
+        let drawing = false
+        view.trail.forEach((tip, i) => {
+          if (tip === null || i > frame) return void (drawing = false)
+          const [x, y] = point(tip)
+          if (drawing) g.lineTo(x, y)
+          else g.moveTo(x, y)
+          drawing = true
+        })
+        g.stroke()
+        g.globalAlpha = 1
+        const tip = view.trail[frame]
+        if (tip !== null && tip !== undefined) {
+          const [x, y] = point(tip)
+          g.fillStyle = TRAIL
+          g.beginPath()
+          g.arc(x, y, 5, 0, Math.PI * 2)
+          g.fill()
+        }
+        for (const [bone, m] of Object.entries(view.bones[frame] ?? {})) {
+          const [ax, ay] = point(apply6(m, 0, 0))
+          const [bx, by] = point(apply6(m, view.lengths[bone] ?? 0, 0))
+          g.strokeStyle = BONE
+          g.lineWidth = 2.5
+          g.beginPath()
+          g.moveTo(ax, ay)
+          g.lineTo(bx, by)
+          g.stroke()
+          g.fillStyle = JOINT
+          g.beginPath()
+          g.arc(ax, ay, 4, 0, Math.PI * 2)
+          g.fill()
+        }
+      }
+      requestAnimationFrame(draw)
+    }
+    requestAnimationFrame(draw)
+  }
+</script>
+
+<style>
+  .rig-showcase {
+    width: 100%;
+    padding: 20px;
+  }
+
+  .drafts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .drafts :global(.draft) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 6px;
+    border-radius: 10px;
+    background: #1a1c2c;
+    box-shadow: 0 0 0 1px rgba(243, 241, 236, 0.08);
+  }
+
+  .drafts :global(.draft.picked) {
+    box-shadow: 0 0 0 2px #ff5a36;
+  }
+
+  .drafts :global(canvas) {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 6px;
+  }
+
+  .drafts :global(figcaption) {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    max-width: 100%;
+    color: #bdbab3;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  .drafts :global(figcaption .label) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .drafts :global(figcaption b) {
+    color: #f3f1ec;
+    font-family: var(--mono, monospace);
+  }
+</style>

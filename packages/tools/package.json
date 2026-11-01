@@ -62,6 +62,7 @@
     "./fx/page.css": "./src/fx/ui/style.css",
     "./rig/demo": "./src/rig/ui/demo.ts",
     "./rig/example": "./src/rig/ui/example.ts",
+    "./rig/showcase": "./src/rig/ui/showcase.ts",
     "./rig/page.css": "./src/rig/ui/style.css"
   },
   "publishConfig": {
