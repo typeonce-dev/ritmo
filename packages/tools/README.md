@@ -853,6 +853,10 @@ The limits: a side view, one character facing right, each part drawn whole
 covers it), and parts apart from each other on the sheet. A part drawn
 twice (a near and a far arm alike) is cut twice; name both.
 
+`examples/rig/sheet/character.png` in the repository is such a sheet to
+try it on: Borri, a dwarf with an axe, in fifteen parts, painted by the
+script beside it (`make-sheet.ts`).
+
 ### The command line
 
 `npx @typeonce/ritmo-tools rig <command>` (inside the Ritmo repository, `node packages/tools/bin/ritmo-tools.mjs rig <command>`).
