@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "palette": {
+    "ink": "#181425",
+    "night": "#262b44",
+    "dusk": "#3a4466",
+    "slate": "#5a6988",
+    "mist": "#8b9bb4",
+    "haze": "#c0cbdc",
+    "white": "#ffffff",
+    "plum": "#3e2731",
+    "umber": "#733e39",
+    "clay": "#b86f50",
+    "sand": "#e4a672",
+    "pine": "#193c3e",
+    "moss": "#265c42",
+    "leaf": "#3e8948",
+    "lime": "#63c74d",
+    "wine": "#a22633",
+    "red": "#e43b44",
+    "rose": "#f6757a",
+    "skin": "#e8b796",
+    "tan": "#c28569",
+    "rust": "#be4a2f",
+    "orange": "#f77622",
+    "gold": "#feae34",
+    "yellow": "#fee761",
+    "blue": "#0099db",
+    "cyan": "#2ce8f5",
+    "violet": "#68386c",
+    "magenta": "#b55088"
+  },
+  "ramps": {
+    "glow": [
+      "white",
+      "yellow",
+      "gold",
+      "orange",
+      "rust"
+    ],
+    "spent": [
+      "white",
+      "cyan",
+      "blue",
+      "slate"
+    ],
+    "dust": [
+      "haze",
+      "mist",
+      "slate",
+      "dusk"
+    ]
+  },
+  "backdrops": {
+    "sky": "#3a4466",
+    "forest": "#262b44",
+    "rock": "#3e2731",
+    "mountain": "#8b9bb4"
+  },
+  "standIn": {
+    "file": "../art/player/player-idle.png",
+    "anchor": [
+      8,
+      15
+    ]
+  },
+  "effects": {
+    "dash": {
+      "about": "The dash starts: a burst where the player leaves, in the scarf's glow (the scarf turns blue after). Celeste's dash burst is the reference for size and speed: about the player's size, gone in a third of a second.",
+      "standIn": [
+        0,
+        4
+      ],
+      "drafts": {
+        "a": {
+          "file": "drafts/dash.a.js"
+        },
+        "b": {
+          "file": "drafts/dash.b.js"
+        }
+      },
+      "use": "a"
+    },
+    "dust": {
+      "about": "Dust at the feet on a jump or a landing: small and quick, never hiding the feet.",
+      "standIn": [
+        0,
+        0
+      ],
+      "drafts": {
+        "a": {
+          "file": "drafts/dust.a.js"
+        },
+        "b": {
+          "file": "drafts/dust.b.js"
+        }
+      },
+      "use": "a"
+    },
+    "collect": {
+      "about": "The lantern fruit is taken: a flash, a ring, glints that hang a moment.",
+      "standIn": false,
+      "drafts": {
+        "a": {
+          "file": "drafts/collect.a.js"
+        }
+      },
+      "use": "a"
+    }
+  }
+}

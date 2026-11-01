@@ -1,0 +1,345 @@
+{
+  "frames": {
+    "collect 0": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5208,
+        "y": 0.5417
+      }
+    },
+    "collect 1": {
+      "frame": {
+        "x": 24,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5208,
+        "y": 0.5417
+      }
+    },
+    "collect 2": {
+      "frame": {
+        "x": 48,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5208,
+        "y": 0.5417
+      }
+    },
+    "collect 3": {
+      "frame": {
+        "x": 72,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5208,
+        "y": 0.5417
+      }
+    },
+    "collect 4": {
+      "frame": {
+        "x": 96,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5208,
+        "y": 0.5417
+      }
+    },
+    "collect 5": {
+      "frame": {
+        "x": 120,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5208,
+        "y": 0.5417
+      }
+    },
+    "collect 6": {
+      "frame": {
+        "x": 144,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5208,
+        "y": 0.5417
+      }
+    },
+    "collect 7": {
+      "frame": {
+        "x": 168,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5208,
+        "y": 0.5417
+      }
+    },
+    "collect 8": {
+      "frame": {
+        "x": 192,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5208,
+        "y": 0.5417
+      }
+    },
+    "collect 9": {
+      "frame": {
+        "x": 216,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5208,
+        "y": 0.5417
+      }
+    },
+    "collect 10": {
+      "frame": {
+        "x": 240,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5208,
+        "y": 0.5417
+      }
+    },
+    "collect 11": {
+      "frame": {
+        "x": 264,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 24
+      },
+      "sourceSize": {
+        "w": 24,
+        "h": 24
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5208,
+        "y": 0.5417
+      }
+    }
+  },
+  "animations": {
+    "collect": [
+      "collect 0",
+      "collect 1",
+      "collect 2",
+      "collect 3",
+      "collect 4",
+      "collect 5",
+      "collect 6",
+      "collect 7",
+      "collect 8",
+      "collect 9",
+      "collect 10",
+      "collect 11"
+    ]
+  },
+  "meta": {
+    "app": "https://ritmo.typeonce.dev/tools/pixel/",
+    "version": "1",
+    "image": "collect.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 288,
+      "h": 24
+    },
+    "scale": "1",
+    "frameTags": [
+      {
+        "name": "collect",
+        "from": 0,
+        "to": 11,
+        "direction": "forward"
+      }
+    ],
+    "fps": {
+      "collect": 20
+    },
+    "loop": {
+      "collect": false
+    }
+  }
+}

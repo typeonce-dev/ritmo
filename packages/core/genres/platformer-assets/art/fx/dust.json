@@ -1,0 +1,215 @@
+{
+  "frames": {
+    "dust 0": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 10
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 10
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 10
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5179,
+        "y": 1
+      }
+    },
+    "dust 1": {
+      "frame": {
+        "x": 28,
+        "y": 0,
+        "w": 28,
+        "h": 10
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 10
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 10
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5179,
+        "y": 1
+      }
+    },
+    "dust 2": {
+      "frame": {
+        "x": 56,
+        "y": 0,
+        "w": 28,
+        "h": 10
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 10
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 10
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5179,
+        "y": 1
+      }
+    },
+    "dust 3": {
+      "frame": {
+        "x": 84,
+        "y": 0,
+        "w": 28,
+        "h": 10
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 10
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 10
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5179,
+        "y": 1
+      }
+    },
+    "dust 4": {
+      "frame": {
+        "x": 112,
+        "y": 0,
+        "w": 28,
+        "h": 10
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 10
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 10
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5179,
+        "y": 1
+      }
+    },
+    "dust 5": {
+      "frame": {
+        "x": 140,
+        "y": 0,
+        "w": 28,
+        "h": 10
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 10
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 10
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5179,
+        "y": 1
+      }
+    },
+    "dust 6": {
+      "frame": {
+        "x": 168,
+        "y": 0,
+        "w": 28,
+        "h": 10
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 10
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 10
+      },
+      "duration": 50,
+      "anchor": {
+        "x": 0.5179,
+        "y": 1
+      }
+    }
+  },
+  "animations": {
+    "dust": [
+      "dust 0",
+      "dust 1",
+      "dust 2",
+      "dust 3",
+      "dust 4",
+      "dust 5",
+      "dust 6"
+    ]
+  },
+  "meta": {
+    "app": "https://ritmo.typeonce.dev/tools/pixel/",
+    "version": "1",
+    "image": "dust.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 196,
+      "h": 10
+    },
+    "scale": "1",
+    "frameTags": [
+      {
+        "name": "dust",
+        "from": 0,
+        "to": 6,
+        "direction": "forward"
+      }
+    ],
+    "fps": {
+      "dust": 20
+    },
+    "loop": {
+      "dust": false
+    }
+  }
+}

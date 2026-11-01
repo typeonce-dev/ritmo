@@ -1,0 +1,27 @@
+# The lantern fruit: the room's collectible. A papery husk lit from inside,
+# shaded from the moon at the upper left. Glow ramp (rust to white) and moss.
+palette
+. transparent
+K #181425
+L #63c74d
+F #3e8948
+O #f77622
+R #be4a2f
+G #feae34
+Y #fee761
+W #ffffff
+
+pixels
+.....KK......
+....KLFK.....
+..KKKFFKKK...
+.KOOOKKOORK..
+KOOGYYYGORRK.
+KOGYWYYYGORK.
+KOGYYYYYGORK.
+KOOGYYYGORRK.
+.KOOGGGOORK..
+.KROOOOORRK..
+..KRROORRK...
+...KKRRKK....
+.....KK......

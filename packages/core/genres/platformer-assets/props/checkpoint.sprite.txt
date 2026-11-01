@@ -1,0 +1,28 @@
+# A checkpoint: a pennant on a pole set in a cairn, raised once reached.
+palette
+. transparent
+K #181425
+H #c0cbdc
+U #733e39
+C #b86f50
+M #b55088
+V #68386c
+P #3e2731
+
+pixels
+.KK.....
+KHHKKKK.
+.KUMMMMK
+.KUMMMVK
+.KUMMVK.
+.KUMVK..
+.KUKK...
+.KUK....
+.KUK....
+.KUK....
+.KUK....
+.KUK....
+.KCUKK..
+KCCUPPK.
+KCUPPPPK
+KKKKKKKK

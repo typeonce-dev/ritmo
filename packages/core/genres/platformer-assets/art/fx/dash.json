@@ -1,0 +1,241 @@
+{
+  "frames": {
+    "dash 0": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 28
+      },
+      "duration": 42,
+      "anchor": {
+        "x": 0.5179,
+        "y": 0.5357
+      }
+    },
+    "dash 1": {
+      "frame": {
+        "x": 28,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 28
+      },
+      "duration": 42,
+      "anchor": {
+        "x": 0.5179,
+        "y": 0.5357
+      }
+    },
+    "dash 2": {
+      "frame": {
+        "x": 56,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 28
+      },
+      "duration": 42,
+      "anchor": {
+        "x": 0.5179,
+        "y": 0.5357
+      }
+    },
+    "dash 3": {
+      "frame": {
+        "x": 84,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 28
+      },
+      "duration": 42,
+      "anchor": {
+        "x": 0.5179,
+        "y": 0.5357
+      }
+    },
+    "dash 4": {
+      "frame": {
+        "x": 112,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 28
+      },
+      "duration": 42,
+      "anchor": {
+        "x": 0.5179,
+        "y": 0.5357
+      }
+    },
+    "dash 5": {
+      "frame": {
+        "x": 140,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 28
+      },
+      "duration": 42,
+      "anchor": {
+        "x": 0.5179,
+        "y": 0.5357
+      }
+    },
+    "dash 6": {
+      "frame": {
+        "x": 168,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 28
+      },
+      "duration": 42,
+      "anchor": {
+        "x": 0.5179,
+        "y": 0.5357
+      }
+    },
+    "dash 7": {
+      "frame": {
+        "x": 196,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 28,
+        "h": 28
+      },
+      "sourceSize": {
+        "w": 28,
+        "h": 28
+      },
+      "duration": 42,
+      "anchor": {
+        "x": 0.5179,
+        "y": 0.5357
+      }
+    }
+  },
+  "animations": {
+    "dash": [
+      "dash 0",
+      "dash 1",
+      "dash 2",
+      "dash 3",
+      "dash 4",
+      "dash 5",
+      "dash 6",
+      "dash 7"
+    ]
+  },
+  "meta": {
+    "app": "https://ritmo.typeonce.dev/tools/pixel/",
+    "version": "1",
+    "image": "dash.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 224,
+      "h": 28
+    },
+    "scale": "1",
+    "frameTags": [
+      {
+        "name": "dash",
+        "from": 0,
+        "to": 7,
+        "direction": "forward"
+      }
+    ],
+    "fps": {
+      "dash": 24
+    },
+    "loop": {
+      "dash": false
+    }
+  }
+}

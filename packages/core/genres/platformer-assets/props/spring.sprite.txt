@@ -1,0 +1,20 @@
+# A spring at rest, one tile: the plate in the flag's violet ramp so it never
+# reads as grass, the coil and base in the steel of the night ramp.
+palette
+. transparent
+K #181425
+M #b55088
+V #68386c
+H #c0cbdc
+S #8b9bb4
+D #5a6988
+
+pixels
+........
+........
+........
+.KKKKKK.
+KMMMMMMK
+KVVVVVVK
+.KHSSHK.
+KDDDDDDK

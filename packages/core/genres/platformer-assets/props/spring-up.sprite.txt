@@ -1,0 +1,19 @@
+# The spring just after it throws: the plate up, the coil stretched.
+palette
+. transparent
+K #181425
+M #b55088
+V #68386c
+H #c0cbdc
+S #8b9bb4
+D #5a6988
+
+pixels
+.KKKKKK.
+KMMMMMMK
+KVVVVVVK
+.KKHKK..
+..KSHK..
+.KHKK...
+..KSHK..
+KDDDDDDK
