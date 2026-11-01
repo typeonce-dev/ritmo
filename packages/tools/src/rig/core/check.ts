@@ -112,6 +112,22 @@ export interface Checked {
   readonly motion: ReadonlyArray<number>
   /** The bones asked for in `positions`, by name. */
   readonly positions: Readonly<Record<string, Position>>
+  /** The clip's hit and how it travels on each frame it hits on, or `undefined` for a clip that hits nothing. */
+  readonly hit: HitTravel | undefined
+}
+
+/**
+ * Where a clip's hit goes on the frames it hits on: for each, how far the
+ * segment's far end moved since the frame before (world units, y up) and
+ * how far its bone turned (degrees, counter-clockwise), and which way that
+ * is in words for a character facing right ("forward and down"). A hit
+ * frame whose end still goes back or up into a downward blow (the wind-up
+ * finishing while the hips lead) is one to leave out of `hit.frames`.
+ */
+export interface HitTravel {
+  readonly bone: string
+  readonly frames: string
+  readonly travel: ReadonlyArray<{ readonly frame: number; readonly dx: number; readonly dy: number; readonly turn: number; readonly heading: string }>
 }
 
 /** How `checkClip` runs a draft: the bank's seed and tune, its accepted warnings, and what to report. */
@@ -511,6 +527,30 @@ export const positionsOf = (rig: Rig, frames: ReadonlyArray<Frame>, bones: Reado
       ])
   )
 
+/** How the clip's hit moves on each frame it hits on (see `HitTravel`). */
+const hitTravel = (rig: Rig, clip: Clip, frames: ReadonlyArray<Frame>): HitTravel | undefined => {
+  const hit = clip.hit
+  if (hit === undefined) return undefined
+  const n = frames.length
+  const travel: Array<HitTravel["travel"][number]> = []
+  for (let f = 0; f < n; f++) {
+    if (!inSpans(f, hit.frames)) continue
+    const before = f > 0 ? f - 1 : clip.loop ? n - 1 : undefined
+    const now = frames[f]!
+    const was = before === undefined ? undefined : frames[before]!
+    if (was === undefined || !now.shown.has(hit.bone) || !was.shown.has(hit.bone)) continue
+    const [x1, y1] = apply(now.world[hit.bone]!, [hit.to, 0])
+    const [x0, y0] = apply(was.world[hit.bone]!, [hit.to, 0])
+    const dx = r1(x1 - x0) + 0
+    const dy = r1(y1 - y0) + 0
+    const across = Math.abs(dx) < 0.5 ? undefined : dx > 0 ? "forward" : "back"
+    const vertical = Math.abs(dy) < 0.5 ? undefined : dy > 0 ? "up" : "down"
+    const heading = across === undefined && vertical === undefined ? "still" : [across, vertical].filter((word) => word !== undefined).join(" and ")
+    travel.push({ frame: f, dx, dy, turn: Math.round(wrap(angleOf(now.world[hit.bone]!) - angleOf(was.world[hit.bone]!))) + 0, heading })
+  }
+  return { bone: hit.bone, frames: hit.frames.map(([a, b]) => (a === b ? `${a}` : `${a}-${b}`)).join(", "), travel }
+}
+
 /** Every pixel any frame draws, as one box on the frame (x right, y down). */
 const boundsOfRun = (rig: Rig, frames: ReadonlyArray<Frame>): Measures["bounds"] => {
   let minX = Infinity
@@ -569,6 +609,7 @@ export const checkClip = (rig: Rig, clip: Clip, options: CheckOptions = {}): Che
     joints,
     trail: trailOf(rig, clip, run.frames),
     motion: run.frames.map((_, f) => r1(f === 0 ? (clip.loop && n > 1 ? stepOf(n - 1, 0) : 0) : stepOf(f - 1, f))),
-    positions: positionsOf(rig, run.frames, options.positions ?? [])
+    positions: positionsOf(rig, run.frames, options.positions ?? []),
+    hit: hitTravel(rig, clip, run.frames)
   }
 }

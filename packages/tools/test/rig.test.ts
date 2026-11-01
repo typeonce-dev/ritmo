@@ -10,7 +10,7 @@ import { toGif } from "@typeonce/ritmo-tools/pixel/core/gif.ts"
 import { decodeBank, decodeReview, encodeBank, encodeReview, openComments, resolveComments, reviewPath, reviewSummary, usedDraft, whereOf, type Bank, type Review } from "@typeonce/ritmo-tools/rig/core/bank.ts"
 import { checkClip, JERK } from "@typeonce/ritmo-tools/rig/core/check.ts"
 import { decodeClip, runClip, tuned, type Clip, type RigContext } from "@typeonce/ritmo-tools/rig/core/clip.ts"
-import { artOf, framePictures, gifFramesOf, lookSheet, MAX_WIDTH } from "@typeonce/ritmo-tools/rig/core/export.ts"
+import { artOf, columnsFor, viewBox, framePictures, gifFramesOf, lookSheet, MAX_WIDTH } from "@typeonce/ritmo-tools/rig/core/export.ts"
 import { encodeSidecar, sidecarClip, sidecarName, sidecarOf } from "@typeonce/ritmo-tools/rig/core/sidecar.ts"
 import { commentSpot } from "@typeonce/ritmo-tools/rig/core/view.ts"
 import { keysAt, KeysError } from "@typeonce/ritmo-tools/rig/core/keys.ts"
@@ -184,7 +184,7 @@ describe("poses", () => {
 
 describe("keys", () => {
   const chains = { leg: ["thigh", "shin", "foot"], reach: ["arm", "fore", "hand"] }
-  const at = (list: unknown, frame: number) => keysAt(list, frame, 10, chains)
+  const at = (list: unknown, frame: number) => keysAt(list, frame, { frames: 11, loop: false }, chains)
 
   it("give each channel its own timeline, smooth by default, at rest on its ends", () => {
     const list = [{ at: 0, bones: { torso: 0 } }, { at: 4, bones: { torso: 40, arm: 10 } }, { at: 8, bones: { torso: 0 } }]
@@ -213,12 +213,12 @@ describe("keys", () => {
   it("start every channel from the clip's stance on frame 0, so the first key need not repeat it", () => {
     const stance: Pose = { bones: { torso: -6, arm: 20 }, aim: { stick: 50 }, reach: { leg: { x: 2, y: 2 } }, slots: { stick: "short" } }
     const list = [{ at: 4, bones: { torso: 30 }, aim: { stick: 120 }, reach: { leg: { x: 6, y: 2 } } }, { at: 8, slots: { stick: "default" } }]
-    const first = keysAt(list, 0, 10, chains, stance)
+    const first = keysAt(list, 0, { frames: 11, loop: false }, chains, stance)
     expect(first).toMatchObject({ bones: { torso: { r: -6 }, arm: { r: 20 } }, aim: { stick: { angle: 50 } }, reach: { leg: { x: 2, y: 2 } }, slots: { stick: "short" } })
-    expect(keysAt(list, 4, 10, chains, stance)).toMatchObject({ bones: { torso: { r: 30 }, arm: { r: 20 } }, aim: { stick: { angle: 120 } }, reach: { leg: { x: 6 } } })
-    expect(keysAt(list, 8, 10, chains, stance).slots).toEqual({ stick: "default" })
+    expect(keysAt(list, 4, { frames: 11, loop: false }, chains, stance)).toMatchObject({ bones: { torso: { r: 30 }, arm: { r: 20 } }, aim: { stick: { angle: 120 } }, reach: { leg: { x: 6 } } })
+    expect(keysAt(list, 8, { frames: 11, loop: false }, chains, stance).slots).toEqual({ stick: "default" })
     // A goal in another form than the stance's mixes in as if the stance had none.
-    const onBone = keysAt([{ at: 4, reach: { leg: { bone: "torso", along: 0, dy: -20 } } }], 0, 10, chains, stance)
+    const onBone = keysAt([{ at: 4, reach: { leg: { bone: "torso", along: 0, dy: -20 } } }], 0, { frames: 11, loop: false }, chains, stance)
     expect(onBone.reach).toEqual({ leg: { bone: "torso", along: 0, dy: -20, mix: 0 } })
   })
 
@@ -230,12 +230,28 @@ describe("keys", () => {
 
   it("refuse two keys on one frame for one channel, naming the frame and the channel", () => {
     const twice = [{ at: 0, bones: { torso: 0 } }, { at: 12, bones: { torso: 4 } }, { at: 12, bones: { torso: 9, arm: 3 } }]
-    expect(() => keysAt(twice, 0, 20, chains)).toThrow(KeysError)
-    expect(() => keysAt(twice, 0, 20, chains)).toThrow("two keys on frame 12 set bones.torso")
+    expect(() => keysAt(twice, 0, { frames: 21, loop: false }, chains)).toThrow(KeysError)
+    expect(() => keysAt(twice, 0, { frames: 21, loop: false }, chains)).toThrow("two keys on frame 12 set bones.torso")
     // The number and the { r } form are one channel.
     expect(() => at([{ at: 2, bones: { torso: 1 } }, { at: 2, bones: { torso: { r: 2 } } }], 0)).toThrow("two keys on frame 2 set bones.torso")
     // Other channels on one frame are fine.
     expect(() => at([{ at: 2, bones: { torso: 1 } }, { at: 2, bones: { arm: 2 } }], 0)).not.toThrow()
+  })
+
+  it("wrap a loop: after its last key every channel moves on to its frame-0 value, smooth across the seam", () => {
+    const loop = { frames: 16, loop: true }
+    // One key: the breath in on frame 8. The channel starts on the setup pose's 0 and comes back to it at frame 16.
+    const breath = [{ at: 8, rest: true, bones: { torso: 10 } }]
+    const torso = (f: number): number => (keysAt(breath, f, loop, chains).bones?.torso as { r: number }).r
+    expect([torso(0), torso(8)]).toEqual([0, 10])
+    expect(torso(12)).toBeCloseTo(torso(4), 6)
+    // Smooth through frame 0: the steps on either side of the seam match.
+    expect(torso(15.9) - torso(15.8)).toBeCloseTo(torso(0.1) - torso(0.2) + 0, 1)
+    expect(torso(15)).toBeGreaterThan(0)
+    // A key on frame 16 is frame 0 again.
+    expect(() => keysAt([{ at: 16, bones: { torso: 1 } }], 0, loop, chains)).toThrow("is the loop's frame 0 again")
+    // A one-shot holds its last key instead.
+    expect((keysAt(breath, 15, { frames: 16, loop: false }, chains).bones?.torso as { r: number }).r).toBe(10)
   })
 
   it("refuse keys past the clip", () => {
@@ -244,11 +260,11 @@ describe("keys", () => {
 
   it("refuse turns an aim or a reach always wins over, from the keys or the stance", () => {
     expect(() => at([{ at: 0, aim: { stick: 50 } }, { at: 4, bones: { stick: 20 } }], 0)).toThrow("bones.stick is keyed, but aim.stick (mix 1 on every frame) wins over it")
-    expect(() => keysAt([{ at: 4, bones: { stick: 20 } }], 0, 10, chains, { aim: { stick: 50 } })).toThrow("bones.stick is keyed, but aim.stick (mix 1 on every frame) wins over it")
-    expect(() => keysAt([{ at: 4, bones: { arm: 20 } }], 0, 10, chains, { reach: { reach: { x: 1, y: 1 } } })).toThrow("bones.arm is keyed, but reach.reach (mix 1 on every frame) wins over it")
+    expect(() => keysAt([{ at: 4, bones: { stick: 20 } }], 0, { frames: 11, loop: false }, chains, { aim: { stick: 50 } })).toThrow("bones.stick is keyed, but aim.stick (mix 1 on every frame) wins over it")
+    expect(() => keysAt([{ at: 4, bones: { arm: 20 } }], 0, { frames: 11, loop: false }, chains, { reach: { reach: { x: 1, y: 1 } } })).toThrow("bones.arm is keyed, but reach.reach (mix 1 on every frame) wins over it")
     // An aim mixed in later, or mixed out, leaves the turns showing.
     expect(() => at([{ at: 0, bones: { stick: 10 } }, { at: 6, aim: { stick: 200 } }], 0)).not.toThrow()
-    expect(() => keysAt([{ at: 4, bones: { stick: 20 }, aim: { stick: { angle: 50, mix: 0 } } }], 0, 10, chains, { aim: { stick: 50 } })).not.toThrow()
+    expect(() => keysAt([{ at: 4, bones: { stick: 20 }, aim: { stick: { angle: 50, mix: 0 } } }], 0, { frames: 11, loop: false }, chains, { aim: { stick: 50 } })).not.toThrow()
   })
 
   it("name the clip when the runner reports a key mistake", () => {
@@ -561,13 +577,34 @@ describe("pictures", () => {
   const run = runClip(rig, clip(alive, { frames: 40, trail: "stick" }))
 
   it("wrap a contact sheet's rows to stay under 2000 pixels, and show a few frames bigger", () => {
-    const options = { scale: 1, frames: run.frames.map((fr) => fr.frame), bones: true, onion: false, comments: [], title: "test" }
+    const full = { x: 0, y: 0, w: rig.width, h: rig.height }
+    const options = { scale: 1, view: full, frames: run.frames.map((fr) => fr.frame), bones: true, onion: false, comments: [], title: "test" }
     const sheet = lookSheet(rig, clip(alive, { frames: 40 }), run, options)
     expect(sheet.width).toBeLessThanOrEqual(MAX_WIDTH)
     const few = lookSheet(rig, clip(alive, { frames: 40 }), run, { ...options, scale: 4, frames: [3, 4, 5], bones: false })
     // Three cells of 64 × 4 with a gap of 4 around each, one row of art under the title.
     expect([few.width, few.height]).toEqual([3 * 256 + 4 * 4, 24 + 256 + 4 + 4])
     expect(framePictures(rig, clip(alive, { frames: 40 }), run, { ...options, frames: [0, 1] })).toHaveLength(2)
+    // Half size: a 64 × 64 frame in 32 × 32 cells.
+    expect(lookSheet(rig, clip(alive, { frames: 40 }), run, { ...options, scale: 0.5, frames: [0], bones: false }).width).toBe(32 + 2 * 4)
+  })
+
+  it("crop to the character and the ground line, unless asked for the whole frame", () => {
+    const frames = run.frames.map((fr) => fr.frame)
+    const box = viewBox(rig, run, frames)
+    expect(box.w).toBeLessThan(rig.width)
+    // The ground line stays in view, with room under it.
+    expect(box.y + box.h).toBeGreaterThan(rig.anchor[1])
+    expect(viewBox(rig, run, frames, true)).toEqual({ x: 0, y: 0, w: rig.width, h: rig.height })
+    const cropped = lookSheet(rig, clip(alive, { frames: 40 }), run, { scale: 2, view: box, frames: [0], bones: false, onion: false, comments: [], title: "t" })
+    expect(cropped.width).toBe(Math.ceil((box.x + box.w) * 2) - Math.floor(box.x * 2) + 2 * 4)
+  })
+
+  it("lay out the frames in one row when they fit, else in rows as even as can be", () => {
+    expect(columnsFor(620, 4)).toBe(2)
+    expect(columnsFor(300, 4)).toBe(4)
+    expect(columnsFor(100, 22)).toBe(11)
+    expect(columnsFor(100, 22, 5)).toBe(5)
   })
 
   it("draw the same bytes from the same clip", () => {
@@ -660,7 +697,7 @@ describe("the CLI", () => {
     expect(run("init", bank).status).toBe(0)
     writeFileSync(join(folder, "rig", "broken.mjs"), "export default {")
     writeFileSync(join(folder, "rig", "twice.mjs"), "export default { frames: 4, fps: 12, pose: (rig) => rig.keys([{ at: 1, bones: { torso: 1 } }, { at: 1, bones: { torso: 2 } }]) }")
-    writeFileSync(bank, encodeBank({ rig: "rig/figure.mjs", clips: { idle: { drafts: { a: { file: "rig/idle.a.mjs" } } }, broken: { drafts: { a: { file: "rig/broken.mjs" } } }, twice: { drafts: { a: { file: "rig/twice.mjs" } } } } }))
+    writeFileSync(bank, encodeBank({ rig: "rig/figure.mjs", clips: { idle: { drafts: { a: { file: "clips/idle.a.mjs" } } }, broken: { drafts: { a: { file: "rig/broken.mjs" } } }, twice: { drafts: { a: { file: "rig/twice.mjs" } } } } }))
     const result = run("check", bank)
     expect(result.status).toBe(3)
     const report = JSON.parse(result.stdout) as { clips: Array<{ clip: string; verdict: string }>; drafts: Array<{ issues: Array<{ code: string; message: string }> }> }
@@ -669,7 +706,7 @@ describe("the CLI", () => {
     expect(report.drafts[2]!.issues[0]).toEqual({ level: "error", code: "keys", message: "twice (draft a): two keys on frame 1 set bones.torso: merge them into one key" })
     mkdirSync(join(folder, "bad"))
     writeFileSync(join(folder, "bad", "rig.mjs"), "export default { size: [1, 1] }")
-    writeFileSync(join(folder, "bad.rig.json"), encodeBank({ rig: "bad/rig.mjs", clips: { idle: { drafts: { a: { file: "rig/idle.a.mjs" } } } } }))
+    writeFileSync(join(folder, "bad.rig.json"), encodeBank({ rig: "bad/rig.mjs", clips: { idle: { drafts: { a: { file: "clips/idle.a.mjs" } } } } }))
     const broken = run("check", join(folder, "bad.rig.json"))
     expect(broken.status).toBe(3)
     expect(broken.stdout).toContain("size must be [width, height]")

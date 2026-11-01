@@ -26,7 +26,7 @@ export default {
     { name: "far step", from: 8, to: 15 }
   ],
   trail: "axe",
-  pose(rig, t, p) {
+  pose(rig) {
     return rig.keys([
       // near foot planted 0-8, moving back at the travel: linear from the stance
       { at: 0, curve: "linear", reach: { legNear: FEET.near } },

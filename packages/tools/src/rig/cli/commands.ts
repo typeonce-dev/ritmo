@@ -17,7 +17,7 @@ import { Exit } from "../../pixel/cli/commands.ts"
 import { encodeBank, encodeReview, openComments, resolveComments, reviewPath, reviewSummary, usedDraft, type Bank } from "../core/bank.ts"
 import { checkClip, type Checked, type Issue } from "../core/check.ts"
 import { runClip } from "../core/clip.ts"
-import { artOf, compareSheet, framePictures, gifFramesOf, lookSheet, sheetOf, type CompareRow } from "../core/export.ts"
+import { artOf, compareSheet, framePictures, gifFramesOf, lookSheet, sheetOf, viewBox, type CompareRow } from "../core/export.ts"
 import { cutParts, decodeParts, encodeParts, isPartName, type PartsFile } from "../core/parts.ts"
 import { scaffold } from "../core/scaffold.ts"
 import { encodeSidecar, keptClips, sidecarClip, sidecarName, sidecarOf, type SidecarClip } from "../core/sidecar.ts"
@@ -105,6 +105,7 @@ const check = Command.make(
           ...(checked.accepted.length === 0 ? {} : { accepted: checked.accepted.map((issue) => ({ code: issue.code, frames: issue.frames, where: issue.where, why: issue.why })) }),
           joints: jointRanges(checked),
           ...(checked.trail === undefined ? {} : { trail: { bone: checked.trail.bone, peak: checked.trail.peak, arc: checked.trail.arc, spacing: checked.trail.spacing } }),
+          ...(checked.hit === undefined ? {} : { hit: checked.hit }),
           ...(positions.length === 0 ? {} : { positions: checked.positions })
         })
       }
@@ -116,7 +117,7 @@ const check = Command.make(
   })
 ).pipe(
   Command.withDescription(
-    "Poses every draft of every clip (or the named ones) twice and measures it: frames, length, the box it fills, each joint's bend, the trail bone's spacing, speed, and arc. Lists what breaks the rules, with the frames and the bones or parts: a module that does not load or throws, keys that key the wrong motion (two on one frame for one channel), a pose naming what the rig does not have, randomness that is not the seed's; parts off the frame or under the ground, planted feet that slide, float, or sink, goals out of reach, far-side parts peeking behind the back, joints locked or bent the wrong way, sudden changes of speed, loops that stop or jump, parts that change draw order, and a first or last frame off the clip's stance. Each clip has its own verdict."
+    "Poses every draft of every clip (or the named ones) twice and measures it: frames, length, the box it fills, each joint's bend, the trail bone's spacing, speed, and arc, and where the hit travels on each frame it hits on (forward or back, up or down). Lists what breaks the rules, with the frames and the bones or parts: a module that does not load or throws, keys that key the wrong motion (two on one frame for one channel), a pose naming what the rig does not have, randomness that is not the seed's; parts off the frame or under the ground, planted feet that slide, float, or sink, goals out of reach, far-side parts peeking behind the back, joints locked or bent the wrong way, sudden changes of speed, loops that stop or jump, parts that change draw order, and a first or last frame off the clip's stance. Each clip has its own verdict."
   )
 )
 
@@ -130,6 +131,14 @@ const framesOf = (flag: Option.Option<string>, count: number): Effect.Effect<Rea
   return Effect.succeed(Array.from({ length: to - from + 1 }, (_, i) => from + i))
 }
 
+/** `--scale`: pixels per world unit, a positive number up to 8 (0.5 and 0.25 shrink a rig drawn at a sheet's size). */
+const scaleFlag = (description: string) =>
+  Flag.Finite("scale").pipe(
+    Flag.withDescription(description),
+    Flag.withDefault(1),
+    Flag.filter((scale) => scale > 0 && scale <= 8, (scale) => `--scale takes a number above 0 and up to 8 (like 2, 0.5, or 0.25), not ${scale}`)
+  )
+
 const look = Command.make(
   "look",
   {
@@ -137,7 +146,8 @@ const look = Command.make(
     name: Argument.String("name").pipe(Argument.withDescription("The clip to look at.")),
     draft: Flag.String("draft").pipe(Flag.withDescription("Only this draft (default: every draft)."), Flag.optional),
     frames: Flag.String("frames").pipe(Flag.withDescription("Only these frames, from-to (5-10) or one (7): bigger and easier to read than the whole clip."), Flag.optional),
-    scale: Flag.Int("scale").pipe(Flag.withDescription("Pixels per world unit: 2 draws the frames twice as big."), Flag.withDefault(1)),
+    scale: scaleFlag("Pixels per world unit: 2 draws the frames twice as big, 0.5 half as big."),
+    full: Flag.Boolean("full").pipe(Flag.withDescription("The whole frame: by default each picture is cropped to the character (every drawn part on the frames shown, with a margin, down past the ground line)."), Flag.withDefault(false)),
     columns: Flag.Int("columns").pipe(Flag.withDescription("Frames per row (default: as many as fit in 2000 pixels)."), Flag.optional),
     art: Flag.Boolean("art").pipe(Flag.withDescription("The art only: leave out the row of bones under each row of frames."), Flag.withDefault(false)),
     each: Flag.Boolean("each").pipe(Flag.withDescription("One picture per frame instead of one sheet."), Flag.withDefault(false)),
@@ -163,6 +173,7 @@ const look = Command.make(
     const ringed: Array<Record<string, unknown>> = []
     const joints: Record<string, unknown> = {}
     const where: Record<string, unknown> = {}
+    const views: Record<string, unknown> = {}
     let shown: ReadonlyArray<number> = []
     const rows: Array<CompareRow> = []
     for (const id of ids) {
@@ -176,8 +187,11 @@ const look = Command.make(
       shown = yield* framesOf(flags.frames, clip.frames)
       const comments = openComments(review, flags.name, id)
       for (const comment of comments) ringed.push({ ...comment })
+      const view = viewBox(rig, run, shown, flags.full)
+      views[id] = view
       const options = {
         scale: flags.scale,
+        view,
         columns: Option.getOrUndefined(flags.columns),
         frames: shown,
         bones: !flags.art,
@@ -194,12 +208,13 @@ const look = Command.make(
       joints[id] = Object.fromEntries(Object.entries(checked.joints).map(([name, joint]) => [name, { joint: joint.joint, min: joint.min, max: joint.max, bend: joint.bend }]))
       if (positions.length > 0) where[id] = checked.positions
     }
-    if (flags.compare) files.push(yield* writeBytes(path.join(folder, `${flags.name}.compare.png`), encodePng(compareSheet(rig, rows, { scale: flags.scale, columns: Option.getOrElse(flags.columns, () => 8) }))))
+    if (flags.compare) files.push(yield* writeBytes(path.join(folder, `${flags.name}.compare.png`), encodePng(compareSheet(rig, rows, { scale: flags.scale, columns: Option.getOrElse(flags.columns, () => 8), full: flags.full }))))
     yield* printJson({
       clip: flags.name,
       files,
       ...(flags.compare ? { rows: ids } : {}),
       frames: shown.length === 0 ? undefined : `${shown[0]}-${shown[shown.length - 1]}`,
+      ...(flags.compare ? {} : { view: views }),
       ringed,
       joints,
       ...(positions.length === 0 ? {} : { positions: where }),
@@ -208,7 +223,7 @@ const look = Command.make(
   })
 ).pipe(
   Command.withDescription(
-    "Writes a contact sheet per draft of a clip, as a PNG to look at: every frame (or --frames a-b) numbered with its phase, in rows no wider than 2000 pixels, each row with the same frames' bones under it (--art leaves them out), the person's open comments ringed; --each writes one picture per frame, --onion shows the frame before faintly, --scale draws them bigger, and --compare puts every draft in one picture, a row each, the same moments in each column. Prints every joint's bend on every frame, and with --positions the world place of the bones named."
+    "Writes a contact sheet per draft of a clip, as a PNG to look at: every frame (or --frames a-b) numbered with its phase, cropped to the character (--full keeps the whole frame), in one row when they fit in 2000 pixels and in even rows when not, each row with the same frames' bones under it (--art leaves them out), the person's open comments ringed; --each writes one picture per frame, --onion shows the frame before faintly, --scale draws them bigger or smaller, and --compare puts every draft in one picture, a row each, the same moments in each column. Prints the box each draft's pictures show (`view`, in frame pixels at 1x), every joint's bend on every frame, and with --positions the world place of the bones named."
   )
 )
 
@@ -225,7 +240,7 @@ const bake = Command.make(
     bank: bankArgument,
     names,
     out: Flag.String("out").pipe(Flag.withAlias("o"), Flag.withDescription("The folder to write to (default: <bank>.out/ next to the bank)."), Flag.optional),
-    scale: Flag.Int("scale").pipe(Flag.withDescription("Pixels per world unit in the sheet and the GIF."), Flag.withDefault(1))
+    scale: scaleFlag("Pixels per world unit in the sheet, the GIF, and the sidecar: 0.5 bakes a rig drawn at a sheet's size at half of it for the game.")
   },
   Effect.fn("bake")(function* (flags) {
     const path = yield* Path.Path
@@ -233,12 +248,12 @@ const bake = Command.make(
     const chosen = yield* pick(bank, flags.names)
     const rig = yield* requireRig(flags.bank, bank)
     const folder = Option.getOrElse(flags.out, () => flags.bank.replace(/\.json$/, "") + ".out")
-    const scale = Math.max(1, flags.scale)
+    const scale = flags.scale
     const written: Array<Record<string, unknown>> = []
     const entries: Record<string, SidecarClip> = {}
     // The sidecar is one file per bank, always complete: a bake of some clips rewrites theirs and keeps the others as an earlier bake wrote them.
     const sidecarFile = path.join(folder, sidecarName(flags.bank))
-    const header = { rig: bank.rig, scale, size: [rig.width * scale, rig.height * scale] as const, anchor: [rig.anchor[0] * scale, rig.anchor[1] * scale] as const }
+    const header = { rig: bank.rig, scale, size: [Math.round(rig.width * scale), Math.round(rig.height * scale)] as const, anchor: [rig.anchor[0] * scale, rig.anchor[1] * scale] as const }
     const earlier = flags.names.length === 0 ? undefined : Option.match(yield* readText(sidecarFile).pipe(Effect.option), { onNone: () => undefined, onSome: (text) => keptClips(text, header) })
     const kept: Array<string> = []
     for (const name of Object.keys(bank.clips)) {
@@ -276,7 +291,7 @@ const bake = Command.make(
         loop: clip.loop,
         frames: clip.frames,
         fps: clip.fps,
-        size: [rig.width * scale, rig.height * scale],
+        size: [Math.round(rig.width * scale), Math.round(rig.height * scale)],
         anchor: [rig.anchor[0] * scale, rig.anchor[1] * scale],
         hit: clip.hit === undefined ? null : { bone: clip.hit.bone, radius: clip.hit.radius, frames: hits },
         sockets: Object.keys({ ...rig.sockets, ...clip.sockets }),
@@ -370,7 +385,7 @@ const resolve = Command.make(
 
 const STARTER_BANK: Bank = {
   rig: "rig/figure.mjs",
-  clips: { idle: { about: "Standing, breathing: the stance the other clips start and end on.", drafts: { a: { file: "rig/idle.a.mjs" } } } }
+  clips: { idle: { about: "Standing, breathing: the stance the other clips start and end on.", drafts: { a: { file: "clips/idle.a.mjs" } } } }
 }
 
 const STARTER_RIG = `// A small figure seen from the side, facing right (+x): y is up, the origin is the ground under it, angles are degrees counter-clockwise from +x.
@@ -428,21 +443,22 @@ export default {
 }
 `
 
-const STARTER_CLIP = `// A draft of the "idle" clip: the stand stance, breathing. The hips sink and rise, the torso and head sway, the hand drifts.
+const STARTER_CLIP = `// A draft of the "idle" clip: the stand stance (frame 0), breathing in to frame 8 and out again.
+// A loop's channels wrap: after its last key each one moves back to its frame-0 value (the stance) by frame 16, so the keys say only the breath in.
+// The hips sink first, the torso and the hand follow a frame later, the head a frame after that.
 export default {
   label: "breathing",
   frames: 16,
   fps: 12,
   loop: true,
-  stance: "stand", // frame 0 must be the rig's stand stance: every layer below is 0 there
+  stance: "stand",
   params: { breath: { min: 0, max: 3, value: 1.5 } },
-  pose(rig, t, p) {
-    const breath = (p.breath * (1 - Math.cos(2 * Math.PI * t))) / 2 // 0 at the top of the breath (frame 0), p.breath at the bottom
-    const sway = Math.sin(2 * Math.PI * t)
-    return rig.add(rig.stances.stand, {
-      bones: { hips: { y: -breath }, torso: 1.5 * sway, head: -1.5 * sway },
-      reach: { arm: { bone: "torso", along: 20, dx: 7 + sway, dy: -15 - breath } }
-    })
+  pose(rig, _t, p) {
+    return rig.keys([
+      { at: 8, rest: true, bones: { hips: { y: -2 - p.breath } } },
+      { at: 9, rest: true, bones: { torso: -2.5 }, reach: { arm: { dx: 8, dy: -15 - p.breath } } },
+      { at: 10, rest: true, bones: { head: 2.5 } }
+    ])
   }
 }
 `
@@ -452,7 +468,7 @@ const init = Command.make(
   {
     bank: Argument.String("bank").pipe(Argument.withDescription("Where to write the new bank."), Argument.withDefault("game.rig.json")),
     from: Flag.String("from").pipe(
-      Flag.withDescription("A parts.json from `rig parts`: scaffold a side-view humanoid rig from those pictures (head, torso, upperArmNear/Far, forearmNear/Far, handNear/Far, thighNear/Far, shinNear/Far, footNear/Far; others become props in the near hand) instead of the small starter figure."),
+      Flag.withDescription("A parts.json from `rig parts`: scaffold a side-view humanoid rig from those pictures (head, torso, upperArmNear/Far, forearmNear/Far, handNear/Far, thighNear/Far, shinNear/Far, footNear/Far; any other part is a prop on a bone of its own, held in the near hand) instead of the small starter figure."),
       Flag.optional
     ),
     force: Flag.Boolean("force").pipe(Flag.withDefault(false), Flag.withDescription("Replace existing files."))
@@ -465,7 +481,7 @@ const init = Command.make(
       const decoded = decodeParts(yield* readText(partsFile))
       if (!decoded.ok) return yield* new CliFailure({ message: `${partsFile} is not a parts file`, details: { problems: decoded.error.split("; ") } })
       const rigFile = path.join(folder, "rig", "character.mjs")
-      const clipFile = path.join(folder, "rig", "idle.a.mjs")
+      const clipFile = path.join(folder, "clips", "idle.a.mjs")
       for (const file of [flags.bank, rigFile, clipFile]) {
         const existing = yield* readText(file).pipe(Effect.option)
         if (Option.isSome(existing) && !flags.force) return yield* new CliFailure({ message: `${file} already exists (--force replaces it)` })
@@ -483,7 +499,8 @@ const init = Command.make(
         parts: decoded.value.parts.map((part) => part.name),
         ...(made.fallbacks.length === 0 ? {} : { fallbacks: made.fallbacks }),
         ...(made.props.length === 0 ? {} : { props: made.props }),
-        next: `Bake it (rig look ${flags.bank} idle --art) and look: the pivots are guesses. Correct a part's pivot or angle in the rig module (or parts.json, and init again with --force), and a bone's length where a joint does not meet.${made.fallbacks.length === 0 ? "" : ` These parts were missing and are plain shapes: ${made.fallbacks.join(", ")}.`}`
+        owns: "The rig module owns the pivots, angles, and lengths from now on: parts.json is not read again, and init --force would overwrite your corrections.",
+        next: `Look at it (rig look ${flags.bank} idle --art): the pivots are guesses. Correct a part's pivot or angle, and a bone's length where a joint does not meet, in the rig module (or drag a pivot on the review page).${made.fallbacks.length === 0 ? "" : ` These parts were missing and are plain shapes: ${made.fallbacks.join(", ")}.`}${made.props.length === 0 ? "" : ` ${made.props.join(", ")}: a prop on its own bone; the near hand holds it in the stance, and a far-arm reach onto it holds it two-handed.`}`
       })
     }
     const rigFile = path.join(folder, STARTER_BANK.rig)

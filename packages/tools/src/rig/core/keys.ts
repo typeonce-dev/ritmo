@@ -18,8 +18,12 @@
  * after the arm. Every channel starts on frame 0 from the clip's stance (or
  * the setup pose, for a clip with none) and holds its last key's value
  * after it; an aim or reach the stance does not have mixes in from 0 on
- * frame 0. Slots, props, draw order, and a goal's bone step: they hold
- * until the next key that sets them.
+ * frame 0. In a loop, every channel instead wraps: after its last key it
+ * moves on to its frame-0 value, reached on frame `frames` (which is frame
+ * 0 again), and smooth curves flow across the seam; so a loop keys only
+ * what changes, and never repeats frame 0 at its end. Slots, props, draw
+ * order, and a goal's bone step: they hold until the next key that sets
+ * them.
  *
  * Mistakes that would key the wrong motion are errors (`KeysError`), each
  * naming the frame and channel: two keys on one frame for one channel, a
@@ -70,12 +74,21 @@ const ease: Record<Exclude<Curve, "smooth">, (u: number) => number> = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
 
+/** A clip's length, and whether it loops: where keys may go and what follows the last one. */
+export interface Span {
+  readonly frames: number
+  readonly loop: boolean
+}
+
 /** The channels a key list sets, each its keys in frame order; throws `KeysError` on a list that would key the wrong motion. */
-const channelsOf = (list: unknown, last: number): Map<string, Array<Point>> => {
+const channelsOf = (list: unknown, span: Span): Map<string, Array<Point>> => {
+  const last = span.frames - 1
   if (!Array.isArray(list) || list.length === 0) throw new KeysError("rig.keys takes a list of keys: [{ at: 0, ...pose }, ...]")
   const channels = new Map<string, Array<Point>>()
   const keys = list.map((key: unknown, i) => {
     if (!isRecord(key) || typeof key.at !== "number" || !Number.isFinite(key.at)) throw new KeysError(`key ${i} needs a frame: { at: 0, ... }`)
+    if (span.loop && key.at === span.frames)
+      throw new KeysError(`a key on frame ${key.at} is the loop's frame 0 again: drop it (every channel wraps back to its frame-0 value there), or key frame 0`)
     if (key.at < 0 || key.at > last) throw new KeysError(`a key on frame ${key.at} is outside the clip's frames (0 to ${last})`)
     if (key.curve !== undefined && !curves.includes(key.curve as Curve)) throw new KeysError(`the key on frame ${key.at} has curve ${String(key.curve)}; it takes ${curves.join(", ")}`)
     return key
@@ -170,6 +183,17 @@ export interface ChainBones {
   readonly [chain: string]: ReadonlyArray<string>
 }
 
+/**
+ * A loop's channel as one ring: its keys, then its first ones again a loop
+ * later (so the last key moves on to frame 0's value at `frames`), and its
+ * last one a loop earlier (so a smooth curve through frame 0 flows from it).
+ */
+const ringOf = (points: ReadonlyArray<Point>, frames: number): Array<Point> => [
+  { ...points[points.length - 1]!, at: points[points.length - 1]!.at - frames },
+  ...points,
+  ...points.slice(0, 2).map((point) => ({ ...point, at: point.at + frames }))
+]
+
 /** A channel's first point is on frame 0: `value` there, unless a key already is. */
 const startAt = (points: Array<Point>, value: Value): void => {
   if (points[0]!.at > 0) points.unshift({ at: 0, curve: "smooth", rest: false, value })
@@ -185,14 +209,15 @@ const startAt = (points: Array<Point>, value: Value): void => {
  * rig's own) until a key sets it. So a clip keyed from its stance is the
  * stance until its keys change it, and its first key need not repeat it.
  *
- * `last` is the clip's last frame a key may be on (its frame count for a
- * loop, which may key the frame it wraps to). Throws `KeysError` on a list
- * that would key the wrong motion; the clip runner reports it with the
- * clip's name. Clips call it as `rig.keys(list)`, the one keyframe helper;
- * for a pose made of layers, use `rig.add`.
+ * `span` is the clip's length and whether it loops: keys go on frames 0
+ * to `frames - 1`, and in a loop every channel wraps back to its frame-0
+ * value at `frames`. Throws `KeysError` on a list that would key the wrong
+ * motion; the clip runner reports it with the clip's name. Clips call it
+ * as `rig.keys(list)`, the one keyframe helper; for motion written as a
+ * function of `t` laid over a pose (a wave), use `rig.add`.
  */
-export const keysAt = (list: unknown, frame: number, last: number, chains: ChainBones, base: Pose = {}): Pose => {
-  const channels = channelsOf(list, last)
+export const keysAt = (list: unknown, frame: number, span: Span, chains: ChainBones, base: Pose = {}): Pose => {
+  const channels = channelsOf(list, span)
   const baseValues = channelsOfPose(base)
   const ownerOf = (id: string): string | undefined => (id.startsWith("aim.") || id.startsWith("reach.") ? id.split(".").slice(0, 2).join(".") : undefined)
   const owners = new Set([...channels.keys()].flatMap((id) => ownerOf(id) ?? []))
@@ -228,6 +253,8 @@ export const keysAt = (list: unknown, frame: number, last: number, chains: Chain
     const field = id.split(".")[2]
     startAt(points, baseValues.get(id) ?? (field === "sx" || field === "sy" ? 1 : 0))
   }
+  // A loop's numbers start on frame 0 too (their first key's value, when the base says none), so the ring wraps to it.
+  if (span.loop) for (const [id, points] of channels) if (typeof points[0]!.value === "number" && !/^(slots|props|z)\./.test(id) && !id.endsWith(".bone")) startAt(points, points[0]!.value)
   // Dead turns: under an aim or reach at mix 1 on every frame, from the keys or from the base.
   for (const bone of new Set([...owners].filter((o) => o.startsWith("aim.")).map((o) => o.split(".")[1]!).concat(Object.keys(base.aim ?? {})))) {
     const fromBase = base.aim?.[bone]
@@ -256,7 +283,7 @@ export const keysAt = (list: unknown, frame: number, last: number, chains: Chain
     const [kind, name, field] = id.split(".") as [string, string, string | undefined]
     // A slot, prop, or draw order before its first key is the base's, or the rig's own.
     if ((kind === "slots" || kind === "props" || kind === "z") && frame < points[0]!.at) continue
-    const v = sample(points, frame)
+    const v = span.loop && typeof points[0]!.value === "number" ? sample(ringOf(points, span.frames), frame) : sample(points, frame)
     if (kind === "bones") (bones[name] ??= {})[field ?? "r"] = v
     else if (kind === "aim") (aim[name] ??= {})[field ?? "angle"] = v
     else if (kind === "reach") (reach[name] ??= {})[field!] = v

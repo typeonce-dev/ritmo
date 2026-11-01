@@ -144,7 +144,7 @@ export const sidecarOf = (rig: Rig, rigFile: string, scale: number, clips: Reado
   version: SIDECAR_VERSION,
   rig: rigFile,
   scale,
-  size: [rig.width * scale, rig.height * scale],
+  size: [Math.round(rig.width * scale), Math.round(rig.height * scale)],
   anchor: [rig.anchor[0] * scale, rig.anchor[1] * scale],
   clips
 })

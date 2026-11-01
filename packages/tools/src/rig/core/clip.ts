@@ -56,9 +56,9 @@ export interface RigContext {
   /** This frame's number, from 0; fractional while a smear samples between frames. */
   readonly frame: number
   readonly frames: number
-  /** The pose a key list gives on this frame, every channel starting from the clip's stance (or the setup pose) on frame 0: the one keyframe helper. */
+  /** The pose a key list gives on this frame, every channel starting from the clip's stance (or the setup pose) on frame 0, and in a loop wrapping back to it at `frames`: the one keyframe helper. */
   readonly keys: (list: ReadonlyArray<Key>) => Pose
-  /** `over` laid on `base`: turns, moves, and aim angles add up; goals, slots, props, and draw order in `over` win. */
+  /** `over` laid on `base`: turns, moves, and aim angles add up; goals, slots, props, and draw order in `over` win. For motion written as a function of `t` (a wave) over a stance or over `keys`; poses on frames are `keys`. */
   readonly add: (base: Pose, over: Pose) => Pose
   /** The rig's stances by name. */
   readonly stances: Readonly<Record<string, Pose>>
@@ -305,7 +305,6 @@ const spans = (frames: ReadonlyArray<number>): string => {
 export const runClip = (rig: Rig, clip: Clip, options: RunOptions = {}): Run => {
   const p = tuned(clip, options.tune)
   const seed = options.seed ?? 1
-  const last = clip.loop ? clip.frames : clip.frames - 1
   // Keys start from the clip's stance on frame 0, or from the setup pose.
   const base = clip.stance === undefined ? {} : (rig.stances[clip.stance] ?? {})
   const chainBones = Object.fromEntries(Object.values(rig.chains).map((chain) => [chain.name, [chain.upper, chain.lower, chain.end]]))
@@ -325,7 +324,7 @@ export const runClip = (rig: Rig, clip: Clip, options: RunOptions = {}): Run => 
       frames: clip.frames,
       keys: (list) => {
         if (Array.isArray(list)) for (const key of list as ReadonlyArray<unknown>) if (typeof key === "object" && key !== null && "at" in key && typeof key.at === "number") keyed.add(key.at)
-        return keysAt(list, wrapped, last, chainBones, base)
+        return keysAt(list, wrapped, clip, chainBones, base)
       },
       add,
       stances: rig.stances,

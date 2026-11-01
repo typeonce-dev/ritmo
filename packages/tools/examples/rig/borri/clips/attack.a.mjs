@@ -21,7 +21,7 @@ export default {
   ],
   trail: "axe",
   hit: { from: 140, radius: 24 },
-  pose(rig, t, p) {
+  pose(rig) {
     const guard = rig.stances.guard
     return rig.keys([
       // settle: sink and draw back, axe dips

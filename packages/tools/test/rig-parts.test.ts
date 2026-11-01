@@ -11,6 +11,7 @@ import { readingOrder, type FrameBox } from "@typeonce/ritmo-tools/pixel/core/sh
 import { runClip, type Clip } from "@typeonce/ritmo-tools/rig/core/clip.ts"
 import { artOf } from "@typeonce/ritmo-tools/rig/core/export.ts"
 import { cutParts, decodeParts } from "@typeonce/ritmo-tools/rig/core/parts.ts"
+import { scaffold } from "@typeonce/ritmo-tools/rig/core/scaffold.ts"
 import { boundsOf } from "@typeonce/ritmo-tools/rig/core/pose.ts"
 import { renderArt } from "@typeonce/ritmo-tools/rig/core/raster.ts"
 import { decodeRig, imageFiles, type Rig } from "@typeonce/ritmo-tools/rig/core/rig.ts"
@@ -225,6 +226,55 @@ describe("cutting a parts sheet", () => {
   })
 })
 
+describe("the scaffold", () => {
+  const borri = decodeParts(readFileSync(join(import.meta.dirname, "..", "examples", "rig", "borri", "parts", "parts.json"), "utf8"))
+  if (!borri.ok) throw new Error(borri.error)
+  const rigOf = (source: string): { bones: Record<string, { parent?: string; x?: number; y?: number; rotation?: number; length: number }>; parts: Record<string, { bone: string; z: number; shape: { angle?: number } }>; stances: { stand: { reach: Record<string, unknown> } }; props: Record<string, Array<string>> } =>
+    JSON.parse(source.slice(source.indexOf("export default ") + "export default ".length)) as never
+
+  it("keeps upright and flat pictures as drawn, turning only a whole quarter turn, and sets each bone's angle from its role", () => {
+    const rig = rigOf(scaffold(borri.value, "../parts").rig)
+    // The painted torso and head lean 7° and 15° on the sheet, the boots 10°: kept as drawn, not tilted onto the bones.
+    expect([rig.parts.torso!.shape.angle, rig.parts.head!.shape.angle, rig.parts.footNear!.shape.angle]).toEqual([0, 0, 0])
+    // Limbs drawn hanging straight keep 0; fists drawn lying down turn a whole quarter turn.
+    expect([rig.parts.upperArmNear!.shape.angle, rig.parts.thighFar!.shape.angle, rig.parts.handNear!.shape.angle]).toEqual([0, 0, -90])
+    expect([rig.bones.torso!.rotation, rig.bones.thighNear!.rotation, rig.bones.footNear!.rotation]).toEqual([undefined, 180, 90])
+    // Bones run from the pivot to where the picture ends along them.
+    expect([rig.bones.torso!.length, rig.bones.upperArmNear!.length, rig.bones.footNear!.length]).toEqual([95.2, 54.5, 51])
+  })
+
+  it("puts a weapon on a bone of its own on the torso, before the arms, the near hand on it", () => {
+    const made = scaffold(borri.value, "../parts")
+    const rig = rigOf(made.rig)
+    expect(made.props).toEqual(["axe"])
+    const order = Object.keys(rig.bones)
+    expect(rig.bones.axe).toMatchObject({ parent: "torso", rotation: -90, length: 189 })
+    expect(order.indexOf("axe")).toBeLessThan(order.indexOf("upperArmFar"))
+    expect(order.indexOf("axe")).toBeLessThan(order.indexOf("upperArmNear"))
+    expect(rig.parts.axe).toMatchObject({ bone: "axe", z: 25, shape: { angle: 0 } })
+    expect(rig.props).toEqual({ axe: ["axe"] })
+    // The wrist half a hand across the haft, the hand turned down from it: the fist on the haft.
+    expect(rig.stances.stand.reach.armNear).toEqual({ bone: "axe", along: 0, across: 12.5, turn: -90 })
+    expect(made.rig).toContain('give the far arm a reach onto it too: { bone: "axe"')
+    // The idle keys the breath in once; the loop wraps back to the stance.
+    expect(made.idle).toContain("rig.keys([")
+    expect(made.idle).not.toContain("Math.")
+  })
+})
+
+describe("Borri, the example rigged from the painted sheet", () => {
+  it("checks clean, and reports where the chop's hit travels", () => {
+    const checked = run("check", join(import.meta.dirname, "..", "examples", "rig", "borri", "borri.rig.json"))
+    expect(checked.status).toBe(0)
+    const report = JSON.parse(checked.stdout) as { verdict: string; drafts: Array<{ clip: string; hit?: { bone: string; travel: Array<{ frame: number; heading: string }> } }> }
+    expect(report.verdict).toBe("clean")
+    const attack = report.drafts.find((draft) => draft.clip === "attack")!
+    expect(attack.hit?.bone).toBe("axe")
+    expect(attack.hit?.travel.map((step) => step.frame)).toEqual([16, 17, 18, 19])
+    expect(attack.hit?.travel.at(-1)?.heading).toContain("down")
+  }, 60_000)
+})
+
 describe("from a parts sheet to a rig", () => {
   it("cuts the sheet, scaffolds a humanoid that checks clean apart from its accepted defaults, bakes the same bytes twice, and compares drafts", () => {
     const folder = mkdtempSync(join(tmpdir(), "rig-parts-"))
@@ -264,7 +314,7 @@ describe("from a parts sheet to a rig", () => {
     expect(run("bake", join(folder, "partial.rig.json"), "-o", join(folder, "partial")).status).toBe(0)
 
     // Two drafts of one clip, side by side.
-    writeFileSync(bank, JSON.stringify({ version: 1, rig: "rig/character.mjs", clips: { idle: { drafts: { a: { file: "rig/idle.a.mjs" }, b: { file: "rig/idle.a.mjs", tune: { breath: 0 } } } } } }))
+    writeFileSync(bank, JSON.stringify({ version: 1, rig: "rig/character.mjs", clips: { idle: { drafts: { a: { file: "clips/idle.a.mjs" }, b: { file: "clips/idle.a.mjs", tune: { breath: 0 } } } } } }))
     const compared = run("look", bank, "idle", "--compare", "--columns", "4", "-o", join(folder, "look"))
     expect(compared.status).toBe(0)
     expect(JSON.parse(compared.stdout)).toMatchObject({ rows: ["a", "b"], files: [join(folder, "look", "idle.compare.png")] })
