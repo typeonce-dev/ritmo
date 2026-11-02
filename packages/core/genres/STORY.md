@@ -129,7 +129,7 @@ Most players never replay a story game to see the other branch. The ones that ar
 
 ### 13. Build the story out of small pieces, so it can grow and be tested in slices
 
-Every indie story game cited here is made of small modular pieces (storylets, lines with conditions, encounters dropped into a day) rather than one long script. Small pieces keep the writing bounded, let content be added late without rewiring the whole, and make a playable slice possible early, which is the only way to test a mystery: whether it is intriguing lives in the content, not in the mechanics ([`PROTOTYPE.md`](../PROTOTYPE.md), "Some fun lives in content").
+Every indie story game cited here is made of small modular pieces (storylets, lines with conditions, encounters dropped into a day) rather than one long script. Small pieces keep the writing bounded, let content be added late without rewiring the whole, and make a playable slice possible early, which is the only way to test a mystery: whether it is intriguing lives in the content, not in the mechanics ([`PROTOTYPE.md`](../PROTOTYPE.md), "prototype where the fun lives").
 
 - Short ([link][short-bb]) on storylets: "A major advantage of QBN is that it allows a lot of short stories to slot together in interesting ways." … "it's possible to drop in modular elements of new content alongside old content".
 - Pope ([link][pope-papers]): "Under the structure I ended up with, it was easy to add a little story arc here or encounter there".
