@@ -9,13 +9,21 @@
  *   "sizes": ["16x16", "32x32"],
  *   "maxColors": 16,
  *   "transparentBackground": true,
- *   "recipe": { "cleanup": { "size": 2, "strength": 0.5 } }
+ *   "recipe": { "cleanup": { "size": 2, "strength": 0.5 } },
+ *   "scale": 3,
+ *   "backdrops": { "grass": "art/grass-tile.png", "night": "#1a1c2c" },
+ *   "standIn": "art/hero.png",
+ *   "accept": { "art/torch.png": { "doubles": "the flame's tip is two pixels on purpose" } }
  * }
  * ```
  *
  * The palette is a preset's name, a list of hex colors, or a palette file
  * (`.hex` or `.gpl`) relative to the config. `recipe` holds recipe settings
- * every fix starts from.
+ * every fix starts from. `scale`, `backdrops`, and `standIn` say how the game
+ * shows its art, for `pixel look`: its whole-number scale on the smallest
+ * target screen, what art is seen over (a color, or a tile PNG repeated), and
+ * its player, to judge size by. `accept` sets apart warnings judged
+ * deliberate, per file (relative to the config), each rule with why.
  */
 import { Data, Effect, FileSystem, Option, Path, Schema } from "effect"
 import type { LintRules } from "../core/lint.ts"
@@ -34,7 +42,11 @@ const ConfigSchema = Schema.Struct({
   sizes: Schema.optionalKey(Schema.Array(Size)),
   maxColors: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))),
   transparentBackground: Schema.optionalKey(Schema.Boolean),
-  recipe: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown))
+  recipe: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+  scale: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))),
+  backdrops: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  standIn: Schema.optionalKey(Schema.String),
+  accept: Schema.optionalKey(Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.String)))
 })
 
 export interface Config {
@@ -44,9 +56,19 @@ export interface Config {
   readonly rules: LintRules
   /** The recipe every fix starts from. */
   readonly recipe: Recipe
+  /** How the game shows its art: its scale, its backdrops by name (`#rrggbb`, or a tile PNG's absolute path), and its stand-in sprite's absolute path. */
+  readonly look: { readonly scale: number | undefined; readonly backdrops: Readonly<Record<string, string>>; readonly standIn: string | undefined }
+  /** Warnings judged deliberate, by file (absolute path), each rule with why. */
+  readonly accept: Readonly<Record<string, Readonly<Record<string, string>>>>
 }
 
-export const emptyConfig: Config = { path: undefined, palette: undefined, rules: {}, recipe: defaultRecipe }
+export const emptyConfig: Config = { path: undefined, palette: undefined, rules: {}, recipe: defaultRecipe, look: { scale: undefined, backdrops: {}, standIn: undefined }, accept: {} }
+
+/** The warnings a file accepts, from the config's `accept`. */
+export const acceptFor = Effect.fn("acceptFor")(function* (config: Config, file: string) {
+  const path = yield* Path.Path
+  return config.accept[path.resolve(file)]
+})
 
 /** Reads a palette given as a preset's name, a palette file, or hex colors separated by commas or spaces. */
 export const loadPalette = Effect.fn("loadPalette")(function* (value: string | ReadonlyArray<string>, base: string) {
@@ -114,7 +136,13 @@ export const loadConfig = Effect.fn("loadConfig")(function* (explicit: Option.Op
       maxColors: config.maxColors,
       transparentBackground: config.transparentBackground
     },
-    recipe: { ...recipe, palette: recipe.palette ?? palette, removeBackground: recipe.removeBackground || config.transparentBackground === true }
+    recipe: { ...recipe, palette: recipe.palette ?? palette, removeBackground: recipe.removeBackground || config.transparentBackground === true },
+    look: {
+      scale: config.scale,
+      backdrops: Object.fromEntries(Object.entries(config.backdrops ?? {}).map(([name, value]) => [name, /^#[0-9a-f]{6}$/i.test(value) ? value : path.resolve(base, value)])),
+      standIn: config.standIn === undefined ? undefined : path.resolve(base, config.standIn)
+    },
+    accept: Object.fromEntries(Object.entries(config.accept ?? {}).map(([file, rules]) => [path.resolve(base, file), rules]))
   } satisfies Config
 })
 

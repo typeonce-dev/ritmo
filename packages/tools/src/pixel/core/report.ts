@@ -12,11 +12,11 @@ import { atlasClips, type AnimationOutcome } from "./animation.ts"
 import { pack, toHex, toOklab, unpack, type Lab } from "./color.ts"
 import { medianColor, usedColors, type CellSamples, type PixelArt } from "./fix.ts"
 import type { GridSpec, RgbaImage } from "./grid.ts"
-import { lintArt, type Issue, type LintRules } from "./lint.ts"
+import { craftIssues, lintArt, motionIssues, type Issue, type LintRules, type MotionReport } from "./lint.ts"
 import { runRecipe, type Outcome } from "./pipeline.ts"
 import type { Recipe } from "./recipe.ts"
-import { atlasOf } from "./spritesheet.ts"
-import { defaultSheet } from "./sheet.ts"
+import { atlasOf, type AtlasClip } from "./spritesheet.ts"
+import { defaultSheet, playOrder } from "./sheet.ts"
 import { artOfImage } from "./sprite.ts"
 
 export type Verdict = "clean" | "fixable" | "needs-person"
@@ -55,6 +55,8 @@ export interface Report {
       readonly loop: string
       readonly width: number
       readonly height: number
+      /** How it moves, for an exported animation: see `MotionReport`. */
+      readonly motion?: MotionReport
     }>
     readonly boxes: ReadonlyArray<{
       readonly frame: number
@@ -74,7 +76,12 @@ export interface Report {
     readonly lost: ReadonlyArray<{ readonly color: string; readonly became: string; readonly pixels: number }>
   }
   readonly issues: ReadonlyArray<Issue>
+  /** Warnings the project's config accepts for this file, each with why: set apart from `issues`. */
+  readonly accepted?: ReadonlyArray<Issue & { readonly why: string }>
 }
+
+/** The craft rules, judged per animation on a sheet rather than on the sheet as one picture. */
+const CRAFT_RULES: ReadonlySet<Issue["rule"]> = new Set(["jaggies", "doubles", "holes", "flicker"])
 
 /** Thresholds for a confident fix. */
 export const CONFIDENT = { confidence: 0.5, fit: 0.9 } as const
@@ -280,24 +287,79 @@ const OTHER_SCALE = 0.05
  * is, each frame's box, and the project's rules on the frames. "needs-person"
  * when the grid is unsure or a frame came out empty.
  */
-export const reportOfSheet = (image: RgbaImage, recipe: Recipe, outcome: AnimationOutcome, rules: LintRules = {}): Report => {
-  const sheet = recipe.sheet ?? defaultSheet
-  const clips = atlasClips(outcome, sheet)
-  const placed = clips.flatMap((clip) => clip.frames)
+/**
+ * The rules on animations whose frames are fixed and placed (a sheet's
+ * clips): the project's rules on all their frames as one picture (stray
+ * pixels left out: sparks and dust are single pixels on purpose), each
+ * animation's size, and per animation the craft and the motion.
+ */
+export const animationIssues = (
+  clips: ReadonlyArray<AtlasClip>,
+  rules: LintRules
+): { readonly strip: PixelArt; readonly issues: Array<Issue>; readonly motions: Map<string, MotionReport> } => {
   const strip = atlasOf(clips, { columns: Number.MAX_SAFE_INTEGER, spacing: 1 }).art
-  const issues: Array<Issue> = lintArt(strip, { ...rules, sizes: undefined, palette: rules.palette ?? recipe.palette?.colors }).filter(
-    // Sparks and dust around a body are single pixels on purpose: stray pixels are judged on single pictures only.
-    (issue) => issue.rule !== "stray-pixel"
-  )
+  const issues: Array<Issue> = lintArt(strip, { ...rules, sizes: undefined }).filter((issue) => issue.rule !== "stray-pixel" && !CRAFT_RULES.has(issue.rule))
   if (rules.sizes !== undefined && rules.sizes.length > 0) {
     for (const clip of clips) {
       issues.unshift(
         ...lintArt(clip.frames[0]!, { sizes: rules.sizes })
           .filter((issue) => issue.rule === "size")
-          .map((issue) => ({ ...issue, message: `${clip.name}: ${issue.message}` }))
+          .map((issue) => ({ ...issue, message: `${clip.name}: ${issue.message}`, animation: clip.name }))
       )
     }
   }
+  const motions = new Map<string, MotionReport>()
+  for (const clip of clips) {
+    issues.push(...craftIssues(clip.frames, { order: playOrder(clip.frames.length, clip.loop) }, clip.name))
+    const judged = motionIssues(clip.frames, clip.loop, clip.fps, clip.name)
+    issues.push(...judged.issues)
+    motions.set(clip.name, judged.motion)
+  }
+  return { strip, issues, motions }
+}
+
+/** The report on a sprite sheet already written (its JSON and picture): the rules, the craft, and the motion of every animation in it. */
+export const reportOfSpritesheet = (clips: ReadonlyArray<AtlasClip>, rules: LintRules, source: { readonly width: number; readonly height: number }): Report => {
+  const { strip, issues, motions } = animationIssues(clips, rules)
+  const count = errors(issues)
+  const frames = clips.reduce((sum, clip) => sum + clip.frames.length, 0)
+  const what = `${clips.length} animation${clips.length === 1 ? "" : "s"} of ${frames} frame${frames === 1 ? "" : "s"}`
+  let first = 1
+  return {
+    verdict: count === 0 ? "clean" : "fixable",
+    summary: count === 0 ? `A sprite sheet of ${what}, ${usedColors(strip).length} colors.` : `A sprite sheet of ${what}, with ${count} rule${count === 1 ? "" : "s"} broken: see issues.`,
+    kind: "animation",
+    source: { width: source.width, height: source.height },
+    output: { width: strip.width, height: strip.height, colors: usedColors(strip).length },
+    animation: {
+      frames,
+      included: frames,
+      anchor: "as written",
+      animations: clips.map((clip) => {
+        const numbers = clip.frames.map((_, i) => first + i)
+        first += clip.frames.length
+        return {
+          name: clip.name,
+          frames: numbers,
+          include: true,
+          fps: clip.fps,
+          loop: clip.loop,
+          width: clip.frames[0]?.width ?? 0,
+          height: clip.frames[0]?.height ?? 0,
+          motion: motions.get(clip.name)!
+        }
+      }),
+      boxes: []
+    },
+    issues
+  }
+}
+
+export const reportOfSheet = (image: RgbaImage, recipe: Recipe, outcome: AnimationOutcome, rules: LintRules = {}): Report => {
+  const sheet = recipe.sheet ?? defaultSheet
+  const clips = atlasClips(outcome, sheet)
+  const placed = clips.flatMap((clip) => clip.frames)
+  const { strip, issues, motions } = animationIssues(clips, { ...rules, palette: rules.palette ?? recipe.palette?.colors })
   if (clips.length === 0) {
     issues.push({ rule: "one-frame", severity: "warning", message: "No animation is exported: check the frames found, add boxes by hand, or put an animation back in", count: 0, at: [] })
   }
@@ -362,7 +424,8 @@ export const reportOfSheet = (image: RgbaImage, recipe: Recipe, outcome: Animati
         fps: animation.fps,
         loop: animation.loop,
         width: outcome.clips[a]?.width ?? 0,
-        height: outcome.clips[a]?.height ?? 0
+        height: outcome.clips[a]?.height ?? 0,
+        ...(motions.has(animation.name) && animation.include ? { motion: motions.get(animation.name)! } : {})
       })),
       boxes: outcome.frames.map((frame) => ({
         frame: frame.index + 1,

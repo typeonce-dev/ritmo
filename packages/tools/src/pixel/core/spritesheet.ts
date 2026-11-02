@@ -11,7 +11,7 @@
  * frame) for engines that place sprites by it.
  */
 import { TRANSPARENT, type PixelArt } from "./fix.ts"
-import type { Loop, Point } from "./sheet.ts"
+import { sharePalette, type Loop, type Point } from "./sheet.ts"
 
 /** How each animation's frames are laid out: one row, or rows of `columns` frames. */
 export interface SheetLayout {
@@ -140,3 +140,69 @@ export const spritesheetJson = (info: SpritesheetInfo): string => {
     ) + "\n"
   )
 }
+
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
+const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value)
+
+/** Whether parsed JSON is a sprite sheet's (frames and animations, as `spritesheetJson` writes and Pixi reads), not a JSON map of one picture. */
+export const isSpritesheet = (raw: unknown): boolean => isObject(raw) && isObject(raw.frames) && isObject(raw.animations)
+
+/**
+ * The animations of a sprite sheet written at 1x (`spritesheetJson`, or any
+ * Pixi-style JSON with `animations`), cut from its picture: every frame on
+ * one palette, so frames compare pixel by pixel. `cut` turns a part of the
+ * picture into pixel art.
+ */
+export const clipsOfSpritesheet = (
+  raw: unknown,
+  cut: (rect: { readonly x: number; readonly y: number; readonly w: number; readonly h: number }) => PixelArt
+): { readonly ok: true; readonly clips: Array<AtlasClip> } | { readonly ok: false; readonly error: string } => {
+  if (!isObject(raw) || !isObject(raw.frames) || !isObject(raw.animations)) return { ok: false, error: "a sprite sheet's JSON has frames and animations" }
+  const frames = raw.frames
+  const meta = isObject(raw.meta) ? raw.meta : {}
+  const fps = isObject(meta.fps) ? meta.fps : {}
+  const tags = Array.isArray(meta.frameTags) ? meta.frameTags.filter(isObject) : []
+  const parts: Array<{ readonly name: string; readonly names: ReadonlyArray<string> }> = []
+  for (const [name, list] of Object.entries(raw.animations)) {
+    if (!Array.isArray(list) || list.length === 0 || !list.every((entry) => typeof entry === "string")) return { ok: false, error: `animations.${name} must list frame names` }
+    parts.push({ name, names: list })
+  }
+  const arts: Array<PixelArt> = []
+  const anchors: Array<Point> = []
+  for (const part of parts) {
+    for (const frameName of part.names) {
+      const entry = frames[frameName]
+      const rect = isObject(entry) && isObject(entry.frame) ? entry.frame : undefined
+      if (rect === undefined || !isNumber(rect.x) || !isNumber(rect.y) || !isNumber(rect.w) || !isNumber(rect.h)) return { ok: false, error: `frame "${frameName}" has no frame {x, y, w, h}` }
+      arts.push(cut({ x: rect.x, y: rect.y, w: rect.w, h: rect.h }))
+      const anchor = isObject(entry) && isObject(entry.anchor) ? entry.anchor : {}
+      // The JSON's anchor is a share of the frame, at the pixel's middle across and its bottom down (see `spritesheetJson`).
+      anchors.push({
+        x: isNumber(anchor.x) ? Math.round(anchor.x * rect.w - 0.5) : Math.floor(rect.w / 2),
+        y: isNumber(anchor.y) ? Math.round(anchor.y * rect.h - 1) : rect.h - 1
+      })
+    }
+  }
+  const shared = sharePalette(arts)
+  let next = 0
+  return {
+    ok: true,
+    clips: parts.map((part) => {
+      const first = next
+      next += part.names.length
+      const tag = tags.find((entry) => entry.name === part.name)
+      const rate = fps[part.name]
+      return {
+        name: part.name,
+        frames: shared.slice(first, next),
+        anchor: anchors[first]!,
+        fps: isNumber(rate) && rate > 0 ? rate : 8,
+        loop: tag?.direction === "pingpong" ? "pingpong" : "forward"
+      }
+    })
+  }
+}
+
+/** The picture a sprite sheet's JSON names (`meta.image`), relative to the JSON. */
+export const imageOfSpritesheet = (raw: unknown): string | undefined =>
+  isObject(raw) && isObject(raw.meta) && typeof raw.meta.image === "string" ? raw.meta.image : undefined

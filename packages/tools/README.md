@@ -280,7 +280,8 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 | `sheet <png>` | Fixes an animation sheet: `.png` (each animation's frames in a strip from a new row, or `--columns N` per row), its `.json`, a `.<animation>.gif` each, `.frames/<animation>/` (one PNG per frame), `.recipe.json`, and `.preview.png` (the boxes found over the source, and each animation's fixed frames). The report lists the animations with their frame numbers. |
 | `pixelate <png> -w N` | Cuts a picture that is not pixel art into N pixels across, on the palette (or `--colors N` proposed from it). |
 | `render <sprite>` | Renders a sprite source or JSON map to PNG and SVG, and lints it. |
-| `lint <file>` | The project's rules on the pixels as they are. |
+| `lint <file>` | The pixels as they are: the project's rules, the craft (jaggies, doubles, holes), and for a sprite sheet (its `.json`) each animation's flicker and motion. |
+| `look <files...>` | One picture to read: the pieces at display size on the game's backdrop beside its stand-in, then each frame up close with every warning's pixels ringed in magenta. |
 | `preview <file>` | A picture to look at: the art enlarged, or the source and its grid beside the fix. |
 | `compare <a> <b>` | Which of two versions is better, and why. |
 | `palettes [name]` | The presets, or one palette's colors. |
@@ -300,7 +301,30 @@ animations to write, by name: `"walk,explode"`), `--anchor`, `--fps`,
 hex colors, or a `.hex`/`.gpl` file next to the config), `sizes`
 (`["16x16", "32x32"]`), `maxColors`, `transparentBackground` (which also
 removes the background when fixing), and `recipe` (settings every fix starts
-from).
+from). For `look`, it says how the game shows its art: `scale` (the game's
+whole-number scale on its smallest target screen), `backdrops` (by name: a
+`#rrggbb` color, or a tile PNG repeated, like a floor), and `standIn` (the
+player's sprite, to judge size by). `accept` sets apart warnings judged
+deliberate, per file, each with why: `{"art/torch.png": {"doubles": "the
+flame's tip is two pixels on purpose"}}`; reports list them under `accepted`,
+and errors cannot be accepted.
+
+**What the checks measure.** Errors break the project's rules (size,
+palette, color count, half-transparent pixels, a background left in).
+Warnings are worth a look, each with the pixels where it happens (`at`, with
+the frame in an animation): lone pixels, near-duplicate colors, and the
+craft, shared with `ritmo-tools fx`: **jaggies** (a short run of pixels between long
+ones along the outline, so a curve looks broken), **doubles** (a corner pixel
+that thickens a one-pixel line into an L, on the silhouette and on the
+outline's own color), and **holes** (single empty pixels inside the shape).
+On an animation sheet (`sheet`, or `lint` and `look` on its `.json`), each
+animation also gets **flicker** (lone pixels that change for one frame and
+back: the boil frames made one at a time leave), and its motion: **area**
+(the body's size changing between frames), **skate** (the foot on the
+ground moving by uneven steps), and **seam** (a loop that jumps from its
+last frame to its first). The report's `motion` gives the numbers: the
+body's area per frame, the steps of the foot on the ground, and the speed
+the game moves the sprite at to keep that foot planted.
 
 **Sprite sources** are pixel art as text, for art drawn with code: a
 `palette` section of one-character keys, then a `pixels` section with one row
@@ -554,8 +578,8 @@ try without the CLI: https://ritmo.typeonce.dev/tools/fx/.
 ### Code
 
 - `src/fx/core/`: the runner and what `draw` gets (`effect.ts`), banks and
-  reviews (`bank.ts`), the checks (`check.ts`) and the craft rules they use
-  (`craft.ts`), and frames as pixel art and
+  reviews (`bank.ts`), the checks (`check.ts`, with the craft rules the
+  pixel fixer's `lint` shares from `src/pixel/core/craft.ts`), and frames as pixel art and
   contact sheets (`export.ts`, through the pixel fixer's sheet and GIF
   writers).
 - `src/fx/cli/`: the commands, loading drafts as `data:` URLs (`io.ts`),

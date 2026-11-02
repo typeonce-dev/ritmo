@@ -14,18 +14,19 @@ import type { Metric } from "../core/color.ts"
 import { toHex } from "../core/color.ts"
 import { TRANSPARENT, usedColors, type PixelArt } from "../core/fix.ts"
 import { toJson, toRgba, toSvg } from "../core/export.ts"
-import type { LintRules } from "../core/lint.ts"
+import { acceptIssues, type LintRules } from "../core/lint.ts"
 import { presets, proposePalette, type ProposeMethod } from "../core/palette.ts"
 import { runRecipe, type Outcome } from "../core/pipeline.ts"
 import { atlasClips, detectFrames, proposeForSheet, runSheet, type AnimationCache } from "../core/animation.ts"
 import { toGif } from "../core/gif.ts"
 import { fitScale, previewArt, previewFix, previewSheet } from "../core/preview.ts"
-import { animationOf, defaultSheet, isAnimationName, playOrder, withFrames, type Sheet, type SheetAnimation } from "../core/sheet.ts"
-import { atlasOf, spritesheetJson } from "../core/spritesheet.ts"
+import { animationOf, cropImage, defaultSheet, isAnimationName, playOrder, withFrames, type Sheet, type SheetAnimation } from "../core/sheet.ts"
+import { atlasOf, clipsOfSpritesheet, imageOfSpritesheet, isSpritesheet, spritesheetJson, type AtlasClip } from "../core/spritesheet.ts"
+import { BACKDROPS, lookPicture, zoomOf, type Backdrop, type LookPiece } from "../core/look.ts"
 import { encodeRecipe, type GridChoice, type Recipe } from "../core/recipe.ts"
-import { checkImage, compareReports, reportOfArt, reportOfFix, reportOfSheet, type Report, type Verdict } from "../core/report.ts"
+import { checkImage, compareReports, reportOfArt, reportOfFix, reportOfSheet, reportOfSpritesheet, type Report, type Verdict } from "../core/report.ts"
 import { artOfImage, formatSprite } from "../core/sprite.ts"
-import { CliFailure, CONFIG_FILE, decodeOrFail, loadConfig, loadPalette, starterConfig, type Config } from "./config.ts"
+import { acceptFor, CliFailure, CONFIG_FILE, decodeOrFail, loadConfig, loadPalette, starterConfig, type Config } from "./config.ts"
 import { outputBase, printJson, readPicture, readProjectRecipeOf, readSource, readText, writeBytes, writePng, writeProject, writeText } from "./io.ts"
 
 /** Ends the run with an exit code, already reported on stdout. */
@@ -93,6 +94,12 @@ const recipeOf = Effect.fn("recipeOf")(function* (project: Config, file: Option.
   if (flags.dither) recipe = { ...recipe, dither: "ordered" }
   if (Option.isSome(flags.shrink)) recipe = { ...recipe, targetWidth: flags.shrink.value }
   return { recipe, stored: Option.isSome(inside) }
+})
+
+/** The report with the warnings the config accepts for this file set apart (see `acceptIssues`). */
+const withAccepted = Effect.fn("withAccepted")(function* (project: Config, file: string, report: Report) {
+  const split = acceptIssues(report.issues, yield* acceptFor(project, file))
+  return { ...report, issues: split.issues, ...(split.accepted.length > 0 ? { accepted: split.accepted } : {}) } satisfies Report
 })
 
 /** What a report says about where its recipe came from: only when the input's own stored recipe ran. */
@@ -181,7 +188,7 @@ const check = Command.make(
     const project = yield* loadConfig(flags.config)
     const { recipe, stored } = yield* recipeOf(project, flags.recipe, flags, flags.input)
     const source = yield* readSource(flags.input)
-    const report = source.kind === "art" ? reportOfArt(source.art, rulesOf(project, recipe)) : checkImage(source.image, recipe, rulesOf(project, recipe)).report
+    const report = yield* withAccepted(project, flags.input, source.kind === "art" ? reportOfArt(source.art, rulesOf(project, recipe)) : checkImage(source.image, recipe, rulesOf(project, recipe)).report)
     yield* printJson({ file: flags.input, ...storedNote(stored), ...report })
     yield* exitWith(exitCode[report.verdict])
   })
@@ -222,7 +229,7 @@ const fix = Command.make(
       const file = Option.isSome(flags.out) ? `${base}.project.png` : `${yield* outputBase(flags.input, undefined, "project")}.png`
       files.project = yield* writeProject(flags.input, image, file, encodeRecipe(fixed.recipe))
     }
-    yield* printJson({ file: flags.input, ...storedNote(stored), ...fixed.report, files })
+    yield* printJson({ file: flags.input, ...storedNote(stored), ...(yield* withAccepted(project, flags.input, fixed.report)), files })
     yield* exitWith(fixed.report.verdict === "needs-person" ? 4 : fixed.report.issues.some((issue) => issue.severity === "error") ? 3 : 0)
   })
 ).pipe(Command.withDescription("Fixes a picture into crisp pixel art, and writes it as PNG, SVG, a JSON map, a sprite source, its recipe, and a preview."))
@@ -278,29 +285,135 @@ const render = Command.make(
     if (flags.scale > 1) files.scaled = yield* writePng(`${base}@${flags.scale}x.png`, toRgba(art, flags.scale))
     files.svg = yield* writeText(`${base}.svg`, toSvg(art))
     files.preview = yield* writePng(`${base}.preview.png`, previewArt(art, fitScale(art)))
-    const report = reportOfArt(art, project.rules)
+    const report = yield* withAccepted(project, flags.input, reportOfArt(art, project.rules))
     yield* printJson({ file: flags.input, ...report, files })
     yield* exitWith(exitCode[report.verdict])
   })
 ).pipe(Command.withDescription("Renders a sprite source to PNG and SVG, and lints it against the project's rules."))
 
+/** Pixel art to judge as it is: one picture (a PNG at its own size, a sprite source, a JSON map), or a sprite sheet's animations (its JSON, beside its picture). */
+type Piece =
+  | { readonly kind: "art"; readonly art: PixelArt; readonly partial: number }
+  | { readonly kind: "sheet"; readonly clips: ReadonlyArray<AtlasClip>; readonly source: { readonly width: number; readonly height: number } }
+
+const readPiece = Effect.fn("readPiece")(function* (file: string) {
+  if (/\.json$/i.test(file)) {
+    const text = yield* readText(file)
+    const raw = yield* Effect.try({ try: (): unknown => JSON.parse(text), catch: (error) => new CliFailure({ message: `${file} is not JSON: ${String(error)}` }) })
+    if (isSpritesheet(raw)) {
+      const path = yield* Path.Path
+      const name = imageOfSpritesheet(raw) ?? `${path.basename(file, ".json")}.png`
+      const image = yield* readPicture(path.join(path.dirname(file), name))
+      const parsed = clipsOfSpritesheet(raw, (rect) => artOfImage(cropImage(image, { x: rect.x, y: rect.y, width: rect.w, height: rect.h })).art)
+      if (!parsed.ok) return yield* new CliFailure({ message: `${file}: ${parsed.error}` })
+      return { kind: "sheet", clips: parsed.clips, source: { width: image.width, height: image.height } } satisfies Piece
+    }
+  }
+  const source = yield* readSource(file)
+  return (source.kind === "art" ? { kind: "art", art: source.art, partial: 0 } : { kind: "art", ...artOfImage(source.image) }) satisfies Piece
+})
+
+const reportOfPiece = (piece: Piece, rules: LintRules): Report =>
+  piece.kind === "art" ? reportOfArt(piece.art, rules, piece.partial) : reportOfSpritesheet(piece.clips, rules, piece.source)
+
 const lint = Command.make(
   "lint",
   {
-    input: Argument.String("input").pipe(Argument.withDescription("A PNG taken as pixel art at its own size, a sprite source, or a JSON map.")),
+    input: Argument.String("input").pipe(
+      Argument.withDescription("A PNG taken as pixel art at its own size, a sprite source, a JSON map, or a sprite sheet's JSON (as `pixel sheet` writes it, at 1x, beside its PNG).")
+    ),
     config,
     palette
   },
   Effect.fn("lint")(function* (flags) {
     const project = yield* loadConfig(flags.config)
     const rules: LintRules = Option.isSome(flags.palette) ? { ...project.rules, palette: (yield* loadPalette(flags.palette.value, ".")).colors } : project.rules
-    const source = yield* readSource(flags.input)
-    const { art, partial } = source.kind === "art" ? { art: source.art, partial: 0 } : artOfImage(source.image)
-    const report = reportOfArt(art, rules, partial)
-    yield* printJson({ file: flags.input, verdict: report.verdict, summary: report.summary, issues: report.issues })
+    const piece = yield* readPiece(flags.input)
+    const report = yield* withAccepted(project, flags.input, reportOfPiece(piece, rules))
+    yield* printJson({
+      file: flags.input,
+      verdict: report.verdict,
+      summary: report.summary,
+      ...(report.animation === undefined ? {} : { animations: report.animation.animations.map((animation) => ({ name: animation.name, fps: animation.fps, loop: animation.loop, motion: animation.motion })) }),
+      issues: report.issues,
+      ...(report.accepted === undefined ? {} : { accepted: report.accepted })
+    })
     yield* exitWith(exitCode[report.verdict])
   })
-).pipe(Command.withDescription("Checks pixel art against the project's rules (size, palette, colors, transparency, stray pixels), as it is."))
+).pipe(
+  Command.withDescription(
+    "Checks pixel art as it is: the project's rules (size, palette, colors, transparency, stray pixels), the craft (jaggies, doubles, holes), and for a sprite sheet each animation's flicker and motion (area, the foot on the ground, the loop)."
+  )
+)
+
+const look = Command.make(
+  "look",
+  {
+    inputs: Argument.String("input").pipe(
+      Argument.withDescription("Pixel art to look at, judged together: PNGs at their own size, sprite sources, JSON maps, or sprite sheets' JSON."),
+      Argument.atLeast(1)
+    ),
+    config,
+    backdrop: Flag.String("backdrop").pipe(
+      Flag.withDescription("What the art is drawn over: one of the config's backdrops by name (default: its first), dark, light, checker, a #rrggbb color, or a tile PNG."),
+      Flag.optional
+    ),
+    scale: Flag.Int("scale").pipe(Flag.withDescription("Screen pixels per art pixel, the game's display size (default: the config's scale, or 3)."), Flag.optional),
+    marks: Flag.Literals("marks", ["issues", "jaggies", "doubles", "holes", "flicker", "stray-pixel", "none"]).pipe(
+      Flag.withDescription("What to ring in magenta up close: every warning's pixels (default), one rule's, or nothing."),
+      Flag.withDefault("issues")
+    ),
+    alone: Flag.Boolean("alone").pipe(Flag.withDescription("Leave out the config's stand-in sprite."), Flag.withDefault(false)),
+    out: Flag.String("out").pipe(Flag.withAlias("o"), Flag.withDescription("The PNG to write (default: <first input>.look.png)."), Flag.optional)
+  },
+  Effect.fn("look")(function* (flags) {
+    const project = yield* loadConfig(flags.config)
+    const path = yield* Path.Path
+    const pieces: Array<LookPiece> = []
+    const judged: Array<Record<string, unknown>> = []
+    for (const input of flags.inputs) {
+      const piece = yield* readPiece(input)
+      const report = yield* withAccepted(project, input, reportOfPiece(piece, rulesOf(project, project.recipe)))
+      const ringed = report.issues.filter((issue) => issue.severity === "warning" && (flags.marks === "issues" || issue.rule === flags.marks))
+      if (piece.kind === "art") pieces.push({ frames: [piece.art], marks: flags.marks === "none" ? [] : ringed.flatMap((issue) => issue.at) })
+      else
+        for (const clip of piece.clips)
+          pieces.push({ frames: clip.frames, marks: flags.marks === "none" ? [] : ringed.filter((issue) => issue.animation === clip.name).flatMap((issue) => issue.at) })
+      judged.push({ file: input, verdict: report.verdict, issues: report.issues.map((issue) => `${issue.severity} ${issue.rule}: ${issue.message}`), ...(report.accepted === undefined ? {} : { accepted: report.accepted.map((issue) => `${issue.rule}: ${issue.why}`) }) })
+    }
+    const named = Option.getOrElse(flags.backdrop, () => Object.keys(project.look.backdrops)[0] ?? "dark")
+    const backdrop = yield* backdropOf(project, named)
+    const standIn = flags.alone || project.look.standIn === undefined ? undefined : (yield* readPiece(project.look.standIn))
+    const scaleUsed = Option.getOrElse(flags.scale, () => project.look.scale ?? 3)
+    const file = Option.getOrElse(flags.out, () => path.join(path.dirname(flags.inputs[0]!), `${path.basename(flags.inputs[0]!, path.extname(flags.inputs[0]!))}.look.png`))
+    const picture = lookPicture(pieces, { scale: scaleUsed, backdrop, standIn: standIn?.kind === "art" ? standIn.art : standIn?.clips[0]?.frames[0] })
+    yield* printJson({
+      look: yield* writePng(file, picture),
+      scale: scaleUsed,
+      zoom: zoomOf(pieces, scaleUsed),
+      backdrop: named,
+      standIn: standIn === undefined ? null : project.look.standIn,
+      ...(project.look.scale === undefined && Option.isNone(flags.scale) ? { note: `no "scale" in ${CONFIG_FILE}: drawn at 3; set the game's scale on its smallest target screen` } : {}),
+      judged,
+      next: "Read the picture. Top: every piece at display size on the backdrop, after the stand-in, all on one ground line: does each read at a glance, at the right size, in one style with the others? Bottom: each frame up close, magenta rings on the pixels a warning names: fix each, or accept it in the config with why."
+    })
+  })
+).pipe(
+  Command.withDescription(
+    "Writes one picture of pixel art as the player sees it: every piece at display size on the game's backdrop beside its stand-in sprite, then up close with the pixels each warning names ringed. Use it before showing art to anyone, and to judge pieces together."
+  )
+)
+
+/** A backdrop by name: the config's (a color or a tile PNG), a preset, a #rrggbb color, or a tile PNG's path. */
+const backdropOf = Effect.fn("backdropOf")(function* (project: Config, name: string) {
+  const value = project.look.backdrops[name] ?? name
+  const preset = Object.entries(BACKDROPS).find(([key]) => key === value)
+  if (preset !== undefined) return { kind: "color", rgb: preset[1] } satisfies Backdrop
+  const hex = /^#([0-9a-f]{6})$/i.exec(value)
+  if (hex !== null) return { kind: "color", rgb: Number.parseInt(hex[1]!, 16) } satisfies Backdrop
+  if (/\.png$/i.test(value)) return { kind: "tile", tile: yield* readPicture(value) } satisfies Backdrop
+  return yield* new CliFailure({ message: `no backdrop named ${name}`, details: { backdrops: [...Object.keys(project.look.backdrops), ...Object.keys(BACKDROPS)] } })
+})
 
 const previewCommand = Command.make(
   "preview",
@@ -444,7 +557,7 @@ const sheetCommand = Command.make(
       recipe = { ...recipe, palette: { name: `Proposed (${proposed.length})`, colors: proposed, locked: [] } }
     }
     const outcome = runSheet(image, recipe, sheet, cache)
-    const report = reportOfSheet(image, recipe, outcome, rulesOf(project, recipe))
+    const report = yield* withAccepted(project, flags.input, reportOfSheet(image, recipe, outcome, rulesOf(project, recipe)))
     const base = yield* outputBase(flags.input, Option.getOrUndefined(flags.out), "sheet")
     const path = yield* Path.Path
     const name = path.basename(base)
@@ -521,6 +634,6 @@ const init = Command.make(
 
 export const pixel = Command.make("pixel").pipe(
   Command.withDescription("Ritmo's pixel fixer: checks, fixes, and makes pixel art. Prints JSON; exit 0 clean, 2 usage error, 3 fixable, 4 needs a person."),
-  Command.withSubcommands([check, fix, sheetCommand, pixelate, render, lint, previewCommand, compare, palettes, init])
+  Command.withSubcommands([check, fix, sheetCommand, pixelate, render, lint, look, previewCommand, compare, palettes, init])
 )
 

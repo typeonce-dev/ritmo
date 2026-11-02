@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 
 import { decodeBank, decodeReview, encodeBank, encodeReview, resolveComments, reviewPath, reviewSummary, standInSpot, usedDraft, type Bank } from "@typeonce/ritmo-tools/fx/core/bank.ts"
-import { checkEffect, OTHER_SEEDS, paletteIssues } from "@typeonce/ritmo-tools/fx/core/check.ts"
-import { doubles, faintOn, flicker, holes, jaggies } from "@typeonce/ritmo-tools/fx/core/craft.ts"
+import { checkEffect, faintOn, OTHER_SEEDS, paletteIssues } from "@typeonce/ritmo-tools/fx/core/check.ts"
+import { doubles, flicker, holes, jaggies } from "@typeonce/ritmo-tools/pixel/core/craft.ts"
 import { decodeEffect, rampsFor, runEffect, tuned, type Effect, type Fx } from "@typeonce/ritmo-tools/fx/core/effect.ts"
 import { compareSheet, contactSheet, momentsOf, placeStandIn, viewOf } from "@typeonce/ritmo-tools/fx/core/export.ts"
 

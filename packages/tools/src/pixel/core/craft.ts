@@ -1,7 +1,8 @@
 /**
  * Pixel art craft, measured: the rules pixel artists judge by eye that code
- * can count on a draft's frames. Each finds the frames and pixels where the
- * rule breaks, so the agent can fix that spot:
+ * can count on frames of pixel art. Each finds the frames and pixels where
+ * the rule breaks, so the agent can fix that spot. `pixel lint` runs them on
+ * sprites, tiles, and animation sheets, `fx check` on effects:
  *
  * - jaggies: uneven steps along an edge (runs of 3, 1, 3 where they should
  *   grow or shrink steadily), which make a curve look broken;
@@ -9,11 +10,39 @@
  *   it look two pixels thick there;
  * - flicker: pixels that change for a single frame and change back, which
  *   read as noise in motion though every frame looks clean;
- * - holes: single empty pixels inside a shape;
- * - contrast: pixels that barely differ from the game's own backgrounds.
+ * - holes: single empty pixels inside a shape.
  */
-import { parseHex, toOklab } from "../../pixel/core/color.ts"
-import type { Palette, Run } from "./effect.ts"
+
+/**
+ * Frames of pixel art on one canvas: each frame holds a value per pixel,
+ * 0 for empty and a color's number (from 1) for a drawn pixel. An effect's
+ * run is one; `framesOfArt` makes one from sprites.
+ */
+export interface Frames {
+  readonly width: number
+  readonly height: number
+  /** Whether the last frame is followed by the first: a loop wraps around its ends. */
+  readonly loop: boolean
+  readonly frames: ReadonlyArray<Uint8Array>
+}
+
+/** Pixel art (color indices, -1 for transparent) on one canvas as `Frames`. Colors past 255 share a value, which only matters to flicker. */
+export const framesOfArt = (arts: ReadonlyArray<{ readonly width: number; readonly height: number; readonly indices: ArrayLike<number> }>, loop: boolean): Frames => {
+  const width = arts[0]?.width ?? 0
+  const height = arts[0]?.height ?? 0
+  return {
+    width,
+    height,
+    loop,
+    frames: arts.map((art) => Uint8Array.from({ length: width * height }, (_, i) => {
+      const index = art.indices[i] ?? -1
+      return index < 0 ? 0 : Math.min(255, index + 1)
+    }))
+  }
+}
+
+/** A craft rule warns from this many spots: one or two can be a deliberate corner or notch. */
+export const CRAFT_SPOTS = 3
 
 /** A pixel where a rule breaks. */
 export interface Spot {
@@ -111,7 +140,7 @@ const turns = (mask: Uint8Array, w: number, h: number): Array<Turn> => {
  * line's rhythm and pass; a chain's first and last runs are cut by where the
  * edge turns, and are not judged.
  */
-export const jaggies = (run: Run): Array<Spot> => {
+export const jaggies = (run: Frames): Array<Spot> => {
   const spots: Array<Spot> = []
   run.frames.forEach((frame, f) => {
     const mask = frame.map((v) => (v > 0 ? 1 : 0))
@@ -175,8 +204,10 @@ const shapeSizes = (frame: Uint8Array, w: number, h: number): Uint16Array => {
  * (one beside, one above or below). The two already touch at their corners,
  * so the pixel thickens a one-pixel line into an L. Specks under 5 pixels
  * are left alone: a 3-pixel ember shaped like an L is a chunk, not a line.
+ * Nor is the corner of a box: when both lines run on straight from it, the
+ * pixel is where they meet, not a bump on a diagonal.
  */
-export const doubles = (run: Run): Array<Spot> => {
+export const doubles = (run: Frames): Array<Spot> => {
   const spots: Array<Spot> = []
   const { width: w, height: h } = run
   run.frames.forEach((frame, f) => {
@@ -188,9 +219,11 @@ export const doubles = (run: Run): Array<Spot> => {
         let count = 0
         for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx !== 0 || dy !== 0) && lit(x + dx, y + dy)) count++
         if (count !== 2) continue
-        const side = lit(x - 1, y) || lit(x + 1, y)
-        const upDown = lit(x, y - 1) || lit(x, y + 1)
-        if (side && upDown) spots.push({ frame: f, x, y })
+        const sx = lit(x - 1, y) ? -1 : lit(x + 1, y) ? 1 : 0
+        const sy = lit(x, y - 1) ? -1 : lit(x, y + 1) ? 1 : 0
+        if (sx === 0 || sy === 0) continue
+        if (lit(x + 2 * sx, y) && lit(x, y + 2 * sy)) continue
+        spots.push({ frame: f, x, y })
       }
   })
   return spots
@@ -203,7 +236,7 @@ export const doubles = (run: Run): Array<Spot> => {
  * Flicker: a pixel that is one color, then another (or empty) for a single
  * frame, then the first again. A loop wraps around its ends.
  */
-export const flicker = (run: Run): { readonly spots: Array<Spot>; readonly share: number } => {
+export const flicker = (run: Frames): { readonly spots: Array<Spot>; readonly share: number } => {
   const spots: Array<Spot> = []
   const frames = run.frames
   const n = frames.length
@@ -227,7 +260,7 @@ export const flicker = (run: Run): { readonly spots: Array<Spot>; readonly share
 // Holes
 
 /** Holes: an empty pixel with drawn pixels on all four sides, a pinhole inside a shape (two outlines a pixel apart leave rows of them). */
-export const holes = (run: Run): Array<Spot> => {
+export const holes = (run: Frames): Array<Spot> => {
   const spots: Array<Spot> = []
   const { width: w, height: h } = run
   run.frames.forEach((frame, f) => {
@@ -240,30 +273,17 @@ export const holes = (run: Run): Array<Spot> => {
   return spots
 }
 
-// ---------------------------------------------------------------------------
-// Contrast
-
-/** Colors closer than this (OKLab) to a background barely show on it. */
-export const FAINT = 0.12
-
-/** For each background, the share of drawn pixels that barely differ from it. */
-export const faintOn = (run: Run, palette: Palette, backdrops: Readonly<Record<string, string>>): Array<{ readonly name: string; readonly hex: string; readonly share: number }> => {
-  const labs = Object.values(palette).map((hex) => toOklab(parseHex(hex) ?? { r: 0, g: 0, b: 0 }))
-  const counts = new Map<number, number>()
-  let all = 0
-  for (const frame of run.frames)
-    for (const v of frame)
-      if (v > 0) {
-        counts.set(v, (counts.get(v) ?? 0) + 1)
-        all++
-      }
-  return Object.entries(backdrops).map(([name, hex]) => {
-    const back = toOklab(parseHex(hex) ?? { r: 0, g: 0, b: 0 })
-    let faint = 0
-    for (const [v, count] of counts) {
-      const lab = labs[v - 1]!
-      if (Math.hypot(lab.l - back.l, lab.a - back.a, lab.b - back.b) < FAINT) faint += count
-    }
-    return { name, hex, share: all === 0 ? 0 : faint / all }
-  })
+/**
+ * Specks: flicker on pixels that blink alone, with no blinking pixel beside
+ * them. A limb moving between poses changes a whole cluster at once, which
+ * is motion; a lone pixel that changes for one frame and back is noise, the
+ * boil left by frames drawn or generated one at a time.
+ */
+export const specks = (run: Frames): { readonly spots: Array<Spot>; readonly share: number } => {
+  const { spots: all } = flicker(run)
+  const blinking = new Set(all.map((spot) => `${spot.frame}:${spot.x}:${spot.y}`))
+  const alone = all.filter(({ frame, x, y }) => ![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => blinking.has(`${frame}:${x + dx!}:${y + dy!}`)))
+  let lit = 0
+  for (const frame of run.frames) for (const v of frame) if (v > 0) lit++
+  return { spots: alone, share: lit === 0 ? 0 : alone.length / lit }
 }

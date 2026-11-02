@@ -2,11 +2,11 @@
  * Measuring a draft's frames for what an agent cannot see by reading its
  * code: where it is cut off, whether it ends or loops cleanly, whether its
  * pixels form shapes or noise, whether it draws the same frames every time,
- * the pixel art craft rules (`craft.ts`), and the project's own rules
+ * the pixel art craft rules (`pixel/core/craft.ts`, shared with sprites), and the project's own rules
  * (`pixel.config.json`, shared with its sprites).
  */
 import { pack, parseHex, toHex, toOklab, type Rgb } from "../../pixel/core/color.ts"
-import { doubles, faintOn, flicker, holes, jaggies, SHOWN, type Spot } from "./craft.ts"
+import { CRAFT_SPOTS, doubles, flicker, holes, jaggies, SHOWN, type Spot } from "../../pixel/core/craft.ts"
 import { runEffect, type Effect, type Palette, type RunOptions, type Run } from "./effect.ts"
 
 /** The project's pixel art rules that apply to effects: its palette and how many colors one piece of art may use. */
@@ -22,8 +22,6 @@ export interface Context {
   readonly backdrops?: Readonly<Record<string, string>> | undefined
 }
 
-/** A craft rule warns from this many spots in a draft: one or two can be a deliberate corner or notch. */
-export const CRAFT_SPOTS = 3
 /** Flicker warns above this share of drawn pixels: a shimmer is a few, a boil is many. */
 export const FLICKER = 0.06
 /** Contrast warns when more than this share of drawn pixels barely differ from a background. */
@@ -50,6 +48,34 @@ export interface Issue {
   readonly message: string
   /** Where it happens: some of the pixels, each on its frame (look at them with `fx look --marks <code>`). */
   readonly at?: ReadonlyArray<Spot> | undefined
+}
+
+// ---------------------------------------------------------------------------
+// Contrast
+
+/** Colors closer than this (OKLab) to a background barely show on it. */
+export const FAINT = 0.12
+
+/** For each background, the share of drawn pixels that barely differ from it. */
+export const faintOn = (run: Run, palette: Palette, backdrops: Readonly<Record<string, string>>): Array<{ readonly name: string; readonly hex: string; readonly share: number }> => {
+  const labs = Object.values(palette).map((hex) => toOklab(parseHex(hex) ?? { r: 0, g: 0, b: 0 }))
+  const counts = new Map<number, number>()
+  let all = 0
+  for (const frame of run.frames)
+    for (const v of frame)
+      if (v > 0) {
+        counts.set(v, (counts.get(v) ?? 0) + 1)
+        all++
+      }
+  return Object.entries(backdrops).map(([name, hex]) => {
+    const back = toOklab(parseHex(hex) ?? { r: 0, g: 0, b: 0 })
+    let faint = 0
+    for (const [v, count] of counts) {
+      const lab = labs[v - 1]!
+      if (Math.hypot(lab.l - back.l, lab.a - back.a, lab.b - back.b) < FAINT) faint += count
+    }
+    return { name, hex, share: all === 0 ? 0 : faint / all }
+  })
 }
 
 const lit = (frame: Uint8Array): number => frame.reduce((sum, v) => sum + (v > 0 ? 1 : 0), 0)
