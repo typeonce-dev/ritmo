@@ -8,6 +8,7 @@
  */
 import * as Result from "../Result.ts"
 import type { Construction } from "./schema.ts"
+import { deepFreeze } from "./freeze.ts"
 import { emptyStates } from "./states.ts"
 import type { EntityRecord, Page, World } from "./world.ts"
 import { ABSENT, beforeNumbersOf, holdsNumber, numbersOf, PAGE_MASK, PRESENT } from "./world.ts"
@@ -263,6 +264,21 @@ class NumberWriteCell extends ComponentWriteCell {
   }
 }
 
+/** The cells of a runtime made with `debug`: each freezes what it writes (`deepFreeze`). */
+class FreezingComponentWriteCell extends ComponentWriteCell {
+  override set(value: unknown): void {
+    deepFreeze(value)
+    super.set(value)
+  }
+}
+
+class FreezingNumberWriteCell extends NumberWriteCell {
+  override set(value: unknown): void {
+    deepFreeze(value)
+    super.set(value)
+  }
+}
+
 /**
  * The write cell of an entity state component: `setRaw` for validated resets,
  * and the compare-and-set moves `transition` (enter a state with all of its
@@ -328,6 +344,13 @@ class EntityStateWriteCell {
   }
 }
 
+class FreezingEntityStateWriteCell extends EntityStateWriteCell {
+  override set(value: unknown): void {
+    deepFreeze(value)
+    super.set(value)
+  }
+}
+
 class StoreReadCell {
   readonly store: Map<symbol, unknown>
   readonly key: symbol
@@ -376,10 +399,15 @@ export const componentWrite = (
   constructor: Construction | undefined,
   entityState: EntityStatePlan | undefined
 ): object => {
-  if (entityState !== undefined && constructor !== undefined) return new EntityStateWriteCell(world, record, ordinal, stamp, constructor, entityState)
+  const freezes = world.freezesValues
+  if (entityState !== undefined && constructor !== undefined) {
+    return freezes
+      ? new FreezingEntityStateWriteCell(world, record, ordinal, stamp, constructor, entityState)
+      : new EntityStateWriteCell(world, record, ordinal, stamp, constructor, entityState)
+  }
   const cell = holdsNumber(pageOf(world, record, ordinal), record.id & PAGE_MASK)
-    ? new NumberWriteCell(world, record, ordinal, stamp)
-    : new ComponentWriteCell(world, record, ordinal, stamp)
+    ? new (freezes ? FreezingNumberWriteCell : NumberWriteCell)(world, record, ordinal, stamp)
+    : new (freezes ? FreezingComponentWriteCell : ComponentWriteCell)(world, record, ordinal, stamp)
   return constructor === undefined ? cell : withConstructor(cell, constructor)
 }
 

@@ -79,6 +79,7 @@ import { makeQueryEngine } from "./internal/queries.ts"
 import type { Reverts as QueryReverts } from "./internal/queries.ts"
 import { requirementIndex } from "./internal/requirements.ts"
 import * as Streams from "./internal/streams.ts"
+import { deepFreeze } from "./internal/freeze.ts"
 import { makeWorld } from "./internal/world.ts"
 import type { WorldHooks, WorldMark, WorldRewind } from "./internal/world.ts"
 import type * as Machine from "./Machine.ts"
@@ -637,6 +638,9 @@ export interface Runtime<
    *
    * The first expected system failure stops the tick and is returned; that
    * system's ECS writes are rolled back and earlier systems stay committed.
+   *
+   * To tick at a fixed rate from a frame loop, use `FixedLoop.start`
+   * instead of an accumulator of your own.
    */
   readonly tick: {
     <const Schedules extends ReadonlyArray<ExecutableScheduleDefinition<S, any, Root, any, any>>>(
@@ -786,7 +790,7 @@ const makeValidatedRuntime = <
   readonly saves: Snapshot.Migrations | undefined
   readonly checkpoints: number
 }): Runtime<S, Services, Resources, Root, Machines> => {
-  const world = makeWorld(options.schema, streamCapacity)
+  const world = makeWorld(options.schema, streamCapacity, options.debug !== undefined)
   const queries = makeQueryEngine(world)
 
   /**
@@ -853,6 +857,8 @@ const makeValidatedRuntime = <
    * boolean check at each system, schedule, and marker boundary.
    */
   const debugEnabled = options.debug !== undefined
+  /** With `debug`, the world owns what it is given: provided values, then every write (`deepFreeze`). */
+  if (debugEnabled) for (const value of resources.values()) deepFreeze(value)
   const pendingOrigins: Array<string> = []
   const traceListeners = new Set<(event: Debug.TraceEvent) => void>()
   let tracing = false
@@ -901,7 +907,9 @@ const makeValidatedRuntime = <
   /** Machines the runtime was given an initial value for. */
   const providedMachineKeys = new Set<symbol>()
   for (const provision of machineEntries) {
-    currentMachines.set(provision.machine.key, sharedValue(provision.machine, provision.initial))
+    const initial = sharedValue(provision.machine, provision.initial)
+    if (debugEnabled) deepFreeze(initial)
+    currentMachines.set(provision.machine.key, initial)
     providedMachineKeys.add(provision.machine.key)
   }
 
@@ -1417,8 +1425,13 @@ const makeValidatedRuntime = <
       }
       store.set(key, value)
     }
-  const writeResource = journalStoreWrite(resources, resourceOriginals)
-  const writeCommittedMachine = journalStoreWrite(currentMachines, committedMachineOriginals)
+  const owned = (write: (key: symbol, value: unknown) => void) =>
+    debugEnabled ? (key: symbol, value: unknown): void => {
+      deepFreeze(value)
+      write(key, value)
+    } : write
+  const writeResource = owned(journalStoreWrite(resources, resourceOriginals))
+  const writeCommittedMachine = owned(journalStoreWrite(currentMachines, committedMachineOriginals))
 
   /**
    * Resource change ticks for `changedResource` readers. Only resources some
@@ -1580,6 +1593,7 @@ const makeValidatedRuntime = <
 
   const makeEventWriteView = <T>(descriptorKey: symbol): EventWriteView<T> => ({
     emit(value) {
+      if (debugEnabled) deepFreeze(value)
       const queue = emittedEvents.get(descriptorKey)
       if (queue) {
         queue.push(value)
@@ -1705,6 +1719,7 @@ const makeValidatedRuntime = <
     journalMachine(stateMachine.key)
     value = sharedValue(stateMachine, value)
     if (debugEnabled) {
+      deepFreeze(value)
       const previous = pendingMachines.get(stateMachine.key)
       // A set from a transition schedule waits for the next marker: it replaces nothing queued for this one.
       if (previous?.by !== undefined && previous.by !== runningSystem && !sameValue(previous.value, value) && activeTransitions.size === 0) {
@@ -1994,7 +2009,7 @@ const makeValidatedRuntime = <
     let slot = slots.get(stateKey(system))
     if (!slot) {
       const reader: ReaderState = { since: 0, lastRun: 0, streamSince: 0, streamLastRun: 0, registeredAt: world.currentTick(), reverts: undefined }
-      const commands = Command.makeCommands<S, Root>(() => world.allocateEntity())
+      const commands = Command.makeCommands<S, Root>(() => world.allocateEntity(), debugEnabled ? deepFreeze : undefined)
       slot = { context: makeContext(system, reader, commands), commands, reader }
       slots.set(stateKey(system), slot)
       allReaders.add(reader)
@@ -2463,6 +2478,7 @@ const makeValidatedRuntime = <
     if (frameOpen) throw openFrameDefect(`runtime.send(${descriptor.name})`)
     if (inTick) throw new Error(`runtime.send(${descriptor.name}) was called while a schedule is running: emit from a system instead`)
     if (!eventsByKey.has(descriptor.key)) throw new Error(`runtime.send: ${descriptor.name} is not an event of this runtime's schema`)
+    if (debugEnabled) deepFreeze(value)
     const published = world.advanceTick()
     events.append(descriptor.key, published, [value], true)
     // Bound host traffic even when it sends repeatedly without ticking.

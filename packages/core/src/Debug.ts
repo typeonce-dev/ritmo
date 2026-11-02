@@ -27,8 +27,13 @@
  *   a tool can read the world between two systems (see {@link FrameCursor}).
  *
  * Values in descriptions, dumps, and traces are shared with the world, not
- * copied. World values are immutable by contract, so they stay valid as a
- * history, but serialize them before sending them elsewhere.
+ * copied. World values are immutable, so they stay valid as a history, but
+ * serialize them before sending them elsewhere. A debug runtime enforces
+ * it: every value written to the world (components, resources, events,
+ * machine values, and the values `Game.Runtime.make` is given) is frozen,
+ * so code that mutates one after handing it over throws a `TypeError` where
+ * it mutates. Typed arrays cannot be frozen, and `Map` and `Set` contents
+ * stay writable; runtimes without `debug` freeze nothing.
  *
  * `@typeonce/ritmo-devtools` builds sessions, histories, formatting, and invariants
  * on top of this handle.

@@ -427,9 +427,11 @@ export interface WorldHooks {
 
 /**
  * `lifecycleCapacity` caps each removed/despawned log, like
- * `Runtime.streamCapacity` caps event streams.
+ * `Runtime.streamCapacity` caps event streams. `freezesValues` (a runtime
+ * made with `debug`) makes `componentWrite` hand out cells that freeze what
+ * they write (`deepFreeze`).
  */
-export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: number) => {
+export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: number, freezesValues = false) => {
   let nextEntity = 1
   const records = new Map<number, EntityRecord>()
 
@@ -1646,6 +1648,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     allocateEntity,
     spawnEntity,
     transactionState: transactionState as Readonly<TransactionState>,
+    freezesValues,
     /** Starts a run: matches handed out from now on are valid until `endRun`. */
     beginRun: (): void => {
       inRun = true
