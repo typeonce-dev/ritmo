@@ -25,9 +25,8 @@ To build, start from the whole game in the `BrowserTickSource` module header (`n
 
 ## Finding the fun
 
-- Start from the feeling the user wants and the smallest thing that can be fun: the verb and the feedback that shows its effect, or the smallest goal when the game is about goals. Draw shapes until the human brings a look; then follow it.
+- Start from the feeling the user wants and prototype where the fun lives, the smallest version first: a verb, the verb and the feedback that shows its effect; goals, the smallest goal; a story, characters, or a mystery, a small hand-written slice (on paper or in text if that is faster), not more mechanics; a place to explore, a small hand-built map with a landmark seen before it can be reached and something off the obvious path; a mood, the look and sound early. Otherwise draw shapes until the human brings a look; then follow it.
 - Explore broadly. Read all the verdicts together: when they keep pointing the same way, or the core is in question, offer a change of course (the shape, the verb, the genre) as two or three options, each named by the choice it gives the player ("when do I cross?"), and build once the human picks. Tune numbers (double or halve, not 5%) only in a direction the human likes.
-- Some fun lives in content (story, characters, a mystery): test it with a small hand-written slice, not more mechanics.
 - What the human reports is a symptom: find the cause and fix that, building any fix they propose too.
 
 ## Each round
