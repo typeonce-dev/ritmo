@@ -23,6 +23,7 @@ import { fitScale, previewArt, previewFix, previewSheet } from "../core/preview.
 import { animationOf, cropImage, defaultSheet, isAnimationName, playOrder, withFrames, type Sheet, type SheetAnimation } from "../core/sheet.ts"
 import { atlasOf, clipsOfSpritesheet, imageOfSpritesheet, isSpritesheet, spritesheetJson, type AtlasClip } from "../core/spritesheet.ts"
 import { BACKDROPS, lookPicture, zoomOf, type Backdrop, type LookPiece } from "../core/look.ts"
+import { decodePlan, drawParts, partColors, partsOverlay } from "../core/parts.ts"
 import { encodeRecipe, type GridChoice, type Recipe } from "../core/recipe.ts"
 import { checkImage, compareReports, reportOfArt, reportOfFix, reportOfSheet, reportOfSpritesheet, type Report, type Verdict } from "../core/report.ts"
 import { artOfImage, formatSprite } from "../core/sprite.ts"
@@ -346,6 +347,75 @@ const lint = Command.make(
   )
 )
 
+const parts = Command.make(
+  "parts",
+  {
+    plan: Argument.String("plan").pipe(Argument.withDescription("A parts plan (JSON): the subject's main parts, ranked, each a simple shape measured on the reference, back to front.")),
+    sizes: Flag.String("sizes").pipe(
+      Flag.withDescription('The sizes to draw, each the longest side in pixels, like "16,32,64" (default: the longest side of each of the config\'s sizes, or 16,32,64).'),
+      Flag.optional
+    ),
+    reference: Flag.String("reference").pipe(Flag.withDescription("The reference picture (default: the plan's reference)."), Flag.optional),
+    config,
+    out,
+    scale
+  },
+  Effect.fn("parts")(function* (flags) {
+    const project = yield* loadConfig(flags.config)
+    const path = yield* Path.Path
+    const decoded = decodePlan(yield* readText(flags.plan))
+    if (!decoded.ok) return yield* new CliFailure({ message: `${flags.plan}: ${decoded.error}` })
+    const plan = decoded.value
+    const referenceFile = Option.isSome(flags.reference) ? Option.some(flags.reference.value) : Option.fromUndefinedOr(plan.reference).pipe(Option.map((file) => path.resolve(path.dirname(flags.plan), file)))
+    const reference = Option.isSome(referenceFile) ? yield* readPicture(referenceFile.value) : undefined
+    const colors = partColors(plan, reference)
+    if (!colors.ok) return yield* new CliFailure({ message: `${flags.plan}: ${colors.error}` })
+    const fromConfig = project.rules.sizes?.map((size) => Math.max(size.width, size.height))
+    const sizes = Option.isSome(flags.sizes) ? flags.sizes.value.split(/[\s,]+/).filter((text) => text.length > 0).map(Number) : fromConfig ?? [16, 32, 64]
+    if (sizes.length === 0 || sizes.some((size) => !Number.isInteger(size) || size < 3)) return yield* new CliFailure({ message: `--sizes takes whole numbers of at least 3, like "16,32,64"` })
+    const base = yield* outputBase(flags.plan, Option.getOrUndefined(flags.out), "parts")
+    // The size rules are the plan's to set here: every other rule of the project applies.
+    const rules: LintRules = { ...rulesOf(project, project.recipe), sizes: undefined }
+    const drawn: Array<Record<string, unknown>> = []
+    let worst: Verdict = "clean"
+    for (const size of [...new Set(sizes)].sort((a, b) => a - b)) {
+      const result = drawParts(plan, colors.value, size, { palette: project.palette?.colors })
+      const files: Record<string, string> = {}
+      files.png = yield* writePng(`${base}.${size}.png`, toRgba(result.art))
+      if (flags.scale > 1) files.scaled = yield* writePng(`${base}.${size}@${flags.scale}x.png`, toRgba(result.art, flags.scale))
+      files.source = yield* writeText(`${base}.${size}.txt`, formatSprite(result.art, `${plan.subject}, drawn from ${path.basename(flags.plan)} at ${size}`))
+      const report = yield* withAccepted(project, files.png, reportOfArt(result.art, rules))
+      if (report.verdict !== "clean") worst = "fixable"
+      drawn.push({
+        size,
+        width: result.art.width,
+        height: result.art.height,
+        colors: result.art.palette.length,
+        files,
+        kept: result.kept,
+        dropped: result.dropped,
+        ...(result.grown.length > 0 ? { grown: result.grown } : {}),
+        verdict: report.verdict,
+        issues: report.issues.map((issue) => `${issue.severity} ${issue.rule}: ${issue.message}`)
+      })
+    }
+    yield* printJson({
+      plan: flags.plan,
+      subject: plan.subject,
+      reference: Option.getOrNull(referenceFile),
+      ...(reference === undefined ? {} : { overlay: yield* writePng(`${base}.overlay.png`, partsOverlay(plan, reference)) }),
+      colors: Object.fromEntries(plan.parts.map((part, k) => [part.id, toHex(colors.value[k]!)])),
+      drawn,
+      next: "Read the overlay first: does every shape sit on its part (tier 1 green, 2 yellow, 3 magenta)? Fix the plan, not the pixels. Then `pixel look` the sizes the game uses: does each read as the subject at a glance? If a size does not, change the plan (a part's tier, its shape, its color) and draw again; edit a size's .txt by hand only for its last touches."
+    })
+    yield* exitWith(exitCode[worst])
+  })
+).pipe(
+  Command.withDescription(
+    "Draws pixel art from a parts plan at each size: the parts that name the subject always, supporting parts from 32 pixels, details from 64, with pixel rules for shapes, light, and outline. Writes each size's PNG and sprite source, and the plan over the reference. Use it to turn a detailed reference (a photo, a render, a drawing) into sprites."
+  )
+)
+
 const look = Command.make(
   "look",
   {
@@ -636,6 +706,6 @@ const init = Command.make(
 
 export const pixel = Command.make("pixel").pipe(
   Command.withDescription("Ritmo's pixel fixer: checks, fixes, and makes pixel art. Prints JSON; exit 0 clean, 2 usage error, 3 fixable, 4 needs a person."),
-  Command.withSubcommands([check, fix, sheetCommand, pixelate, render, lint, look, previewCommand, compare, palettes, init])
+  Command.withSubcommands([check, fix, sheetCommand, pixelate, parts, render, lint, look, previewCommand, compare, palettes, init])
 )
 

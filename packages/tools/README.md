@@ -278,7 +278,8 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 | `check <file>` | Clean pixel art, fixable with confidence, or needs a person? Writes nothing. |
 | `fix <png>` | Fixes it, writing `.png` (1x), `@Nx.png` (`--scale N`), `.svg`, `.json` map, `.sprite.txt`, `.recipe.json`, and `.preview.png`; `--project` also writes `<name>.project.png`. |
 | `sheet <png>` | Fixes an animation sheet: `.png` (each animation's frames in a strip from a new row, or `--columns N` per row), its `.json`, a `.<animation>.gif` each, `.frames/<animation>/` (one PNG per frame), `.recipe.json`, and `.preview.png` (the boxes found over the source, and each animation's fixed frames). The report lists the animations with their frame numbers. |
-| `pixelate <png> -w N` | Cuts a picture that is not pixel art into N pixels across, on the palette (or `--colors N` proposed from it). |
+| `parts <plan.json>` | Draws a reference's parts at each size (`--sizes 16,32,64`, the longest side): `.<size>.png` and a sprite source each, and `.overlay.png`, the plan over the reference. The report lists, per size, the parts kept, left out, and enlarged to read. |
+| `pixelate <png> -w N` | Cuts a picture that is already as simple as the sprite into N pixels across, on the palette (or `--colors N` proposed from it). |
 | `render <sprite>` | Renders a sprite source or JSON map to PNG and SVG, and lints it. |
 | `lint <file>` | The pixels as they are: the project's rules, the craft (jaggies, doubles, holes), and for a sprite sheet (its `.json`) each animation's flicker and motion. |
 | `look <files...>` | One picture to read: the pieces at display size on the game's backdrop beside its stand-in, then each frame up close with every warning's pixels ringed in magenta. |
@@ -308,6 +309,28 @@ player's sprite, to judge size by). `accept` sets apart warnings judged
 deliberate, per file, each with why: `{"art/torch.png": {"doubles": "the
 flame's tip is two pixels on purpose"}}`; reports list them under `accepted`,
 and errors cannot be accepted.
+
+**A parts plan** turns a detailed reference (a photo, a render, a drawing)
+into sprites without copying its pixels. It names the subject (`subject`, with
+its view), the picture it was measured on (`reference`, relative to the plan),
+the light (`top-left`, `top-right`, or `top`), and its parts, back to front.
+Each part has an `id`, a `tier` (1 names the object, 2 supports it, 3 is
+detail), a `material` (`plain`, which keeps the reference's lightness, `paint`,
+`matte`, `leather`, `rubber`, `chrome`, `glass`, `glow`), and a `shape` in the
+reference's pixels: `{"kind": "ellipse", "cx", "cy", "rx", "ry"}`, `{"kind":
+"ring", ..., "thick"}`, `{"kind": "poly", "points": [[x, y], ...]}`, `{"kind":
+"line", "a": [x, y], "b": [x, y], "width"}`, or `{"kind": "path", "points",
+"width"}`. Optional: `color` (`#rrggbb`, when the reference's lighting would
+mislead; default the median inside the shape), `attach` (the tier-1 ring or
+ellipse it sits on, which it follows when that part is enlarged), `pattern:
+"stripes"`, and `form: "hollow"` (seen into, like the inside of a cup). Each
+size keeps tier 1, tier 2 from 32 pixels and tier 3 from 64 (each only when at
+least about a pixel wide there), enlarges a tier-1 ring to at least 7 pixels
+across and a tier-1 ellipse to 2, shades from the light (a part is in shadow
+where a copy shifted away from the light leaves it), takes values from the
+material and hue from the part, outlines the outside only, and darkens the
+edge where two parts of one color meet; on the project's palette when it has
+one. `examples/pixel/parts/` has two plans with their references and results.
 
 **What the checks measure.** Errors break the project's rules (size,
 palette, color count, half-transparent pixels, a background left in).
