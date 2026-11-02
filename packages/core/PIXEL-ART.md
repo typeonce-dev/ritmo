@@ -212,15 +212,18 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 
 - Aseprite community, "16x16 Radio (via references)" ([link][aseprite-radio]): "Pixel art is alot to do with associating what we can see on screen to something that we know exists in real life" … "I would have started with the smallest detail being the red logo and made that only 1 single pixel." … "Try going up a tile size and drawing this again at 24x24 or 32x32".
 - **Ritmo:** "which you can also ask the user" is the maintainer's. A parts list written before any geometry is how the Anatomy skill works ("Write the concept and the parts list before any geometry. Most of the quality is decided there"; described here, not quoted as practice, see "Sources left out").
+- **Ritmo:** ranking it yourself and writing the ranking down when the person cannot be asked comes from the skill's first test (2026-11-02): two fresh agents given only the skill and a reference (a cat, an astronaut) could not ask anyone and asked what to do then; both ranked the parts themselves and wrote why.
 
 ### Measure each part as a simple shape, with its own color and material; keep the plan next to the art
 
 - iLKke ([link][ilkke]): flat base colors first, "just set the basic colours and avoid any shading", then one darker shade per color, and colored outlines: "One neat trick is to use outline colour to imply shading as well." The tool's ramps (values from the material, hue from the part, an outline on the outside darker than what it touches) are that order.
 - **Ritmo:** measuring the reference instead of copying it follows the rossark-motion skill, whose tools measure a reference video frame by frame (described, not quoted). The plan kept next to the art is that skill's `MOTION.md` beside the drawing, and Anatomy's model that every number comes from.
+- **Ritmo:** a given color keeping its lightness, and `cut`, come from the same test: the astronaut's orange suit, given as `matte`, came out dark brown, and the bust got an outline along the chest where the reference crops it. Both agents switched every part to `plain` to keep their colors.
 
 ### Read the overlay first, then look at the sizes; change the plan, not the pixels
 
 - **Ritmo:** the overlay is `pixel look`'s rule (read a still picture before anyone else does) applied to the measures. The test sheets of 2026-11-02 showed the failures it catches: a shape off its part, and a part that names the object ranked too low (the motorcycle's engine, without which it read as a bicycle at 24 pixels).
+- Aseprite community ([link][aseprite-radio]) on the smallest sizes: the smallest detail "only 1 single pixel", the rest cut. **Ritmo:** a plan of its own for the smallest size, and hand edits kept in a copy, come from the skill's first test: the astronaut's 16-pixel sprite needed a second plan with bigger eyes, and both agents' hand edits would have been overwritten by drawing again.
 
 ## What you see, and the usual fix
 
