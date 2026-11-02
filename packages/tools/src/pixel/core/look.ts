@@ -6,7 +6,8 @@
  * - on top, every piece at display size (the game's whole-number scale), on
  *   the game's backdrop (a color or one of its floor tiles, repeated), beside
  *   the game's stand-in sprite (its player), all standing on one ground line;
- * - below, every piece up close (a row each), on the same backdrop, with the pixels a
+ * - below, every piece up close (a row for each animation, the single
+ *   pictures side by side), on the backdrop's color, with the pixels a
  *   check found ringed in magenta.
  *
  * An animation is its frames, side by side, in both rows.
@@ -85,14 +86,27 @@ export const lookPicture = (pieces: ReadonlyArray<LookPiece>, options: LookOptio
   const topHeight = tallest + GAP * 2
   const ground = topHeight - GAP
 
-  // Below: each piece's frames up close, a row each (wrapping at `ROW` frames), in cells the size of that piece.
+  // Below: every piece up close, in cells the size of what shares their row: each animation's frames in a row of their own, and the
+  // pictures of one frame side by side (each run of them in rows of `ROW`).
   const pad = GAP * scale
-  const lines = pieces.flatMap((piece) => {
-    const cellW = Math.max(1, ...piece.frames.map((art) => art.width)) * zoom
-    const cellH = Math.max(1, ...piece.frames.map((art) => art.height)) * zoom
-    const frames = piece.frames.map((art, f) => ({ art, marks: piece.marks.filter((mark) => (mark[2] ?? 1) === f + 1) }))
-    const out: Array<{ readonly cellW: number; readonly cellH: number; readonly cells: typeof frames }> = []
-    for (let i = 0; i < frames.length; i += ROW) out.push({ cellW, cellH, cells: frames.slice(i, i + ROW) })
+  type Cell = { readonly art: PixelArt; readonly marks: LookPiece["marks"] }
+  const groups: Array<Array<Cell>> = []
+  let singles: Array<Cell> | undefined
+  for (const piece of pieces) {
+    const cells = piece.frames.map((art, f) => ({ art, marks: piece.marks.filter((mark) => (mark[2] ?? 1) === f + 1) }))
+    if (cells.length === 1) {
+      if (singles === undefined) groups.push((singles = []))
+      singles.push(cells[0]!)
+    } else {
+      singles = undefined
+      groups.push(cells)
+    }
+  }
+  const lines = groups.flatMap((cells) => {
+    const cellW = Math.max(1, ...cells.map((cell) => cell.art.width)) * zoom
+    const cellH = Math.max(1, ...cells.map((cell) => cell.art.height)) * zoom
+    const out: Array<{ readonly cellW: number; readonly cellH: number; readonly cells: ReadonlyArray<Cell> }> = []
+    for (let i = 0; i < cells.length; i += ROW) out.push({ cellW, cellH, cells: cells.slice(i, i + ROW) })
     return out
   })
   const bottomWidth = Math.max(0, ...lines.map((line) => line.cells.length * line.cellW + (line.cells.length + 1) * pad))
@@ -118,11 +132,22 @@ export const lookPicture = (pieces: ReadonlyArray<LookPiece>, options: LookOptio
     const i = ((ay % tile.height) * tile.width + (ax % tile.width)) * 4
     return (tile.data[i]! << 16) | (tile.data[i + 1]! << 8) | tile.data[i + 2]!
   }
-  /** Fills an area with the backdrop, `size` screen pixels per art pixel. */
-  const fill = (left: number, top: number, w: number, h: number, size: number): void => {
+  /** Up close, a tile would be drawn as large as the art and hide it: its most common color stands in for it. */
+  const flat = ((): number => {
+    const backdrop = options.backdrop
+    if (backdrop.kind === "color") return backdrop.rgb
+    const counts = new Map<number, number>()
+    for (let i = 0; i < backdrop.tile.data.length; i += 4) {
+      const rgb = (backdrop.tile.data[i]! << 16) | (backdrop.tile.data[i + 1]! << 8) | backdrop.tile.data[i + 2]!
+      counts.set(rgb, (counts.get(rgb) ?? 0) + 1)
+    }
+    return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0
+  })()
+  /** Fills an area with the backdrop, `size` screen pixels per art pixel; up close (`plain`), with its one color. */
+  const fill = (left: number, top: number, w: number, h: number, size: number, plain = false): void => {
     for (let ay = 0; ay < Math.ceil(h / size); ay++)
       for (let ax = 0; ax < Math.ceil(w / size); ax++) {
-        const rgb = backdropAt(ax, ay)
+        const rgb = plain ? flat : backdropAt(ax, ay)
         for (let dy = 0; dy < size; dy++) for (let dx = 0; dx < size; dx++) if (ax * size + dx < w && ay * size + dy < h) set(left + ax * size + dx, top + ay * size + dy, rgb)
       }
   }
@@ -144,7 +169,7 @@ export const lookPicture = (pieces: ReadonlyArray<LookPiece>, options: LookOptio
   for (const line of lines) {
     line.cells.forEach((cell, i) => {
       const left = pad + i * (line.cellW + pad)
-      fill(left, lineTop, line.cellW, line.cellH, zoom)
+      fill(left, lineTop, line.cellW, line.cellH, zoom, true)
       draw(cell.art, left, lineTop, zoom)
       // Each mark: a square ring two screen pixels thick around its pixel, leaving the pixel itself visible.
       for (const [x, y] of cell.marks) {

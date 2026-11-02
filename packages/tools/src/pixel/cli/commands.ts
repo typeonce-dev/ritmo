@@ -383,7 +383,9 @@ const look = Command.make(
     }
     const named = Option.getOrElse(flags.backdrop, () => Object.keys(project.look.backdrops)[0] ?? "dark")
     const backdrop = yield* backdropOf(project, named)
-    const standIn = flags.alone || project.look.standIn === undefined ? undefined : (yield* readPiece(project.look.standIn))
+    // The stand-in is drawn first for size, unless it is one of the pieces looked at.
+    const among = flags.inputs.some((input) => path.resolve(input) === project.look.standIn)
+    const standIn = flags.alone || among || project.look.standIn === undefined ? undefined : (yield* readPiece(project.look.standIn))
     const scaleUsed = Option.getOrElse(flags.scale, () => project.look.scale ?? 3)
     const file = Option.getOrElse(flags.out, () => path.join(path.dirname(flags.inputs[0]!), `${path.basename(flags.inputs[0]!, path.extname(flags.inputs[0]!))}.look.png`))
     const picture = lookPicture(pieces, { scale: scaleUsed, backdrop, standIn: standIn?.kind === "art" ? standIn.art : standIn?.clips[0]?.frames[0] })
