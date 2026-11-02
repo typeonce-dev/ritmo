@@ -47,7 +47,7 @@ Read it before writing code; a change of several kinds reads each.
 
 **Each fact has one home.** Define each closed set (items, kinds) once and derive labels, menus, and lookups from it; tables that must cover it are `satisfies Record<Id, T>`, so a new id fails to compile until each has an entry.
 
-**Each piece of state has an owner and a lifetime.** Every mutable value lives in saved world state, unsaved runtime state, or host state, with a defined fate on new game, restore, and dispose. Never a module variable: it survives restore, ignores rollback, and is shared by every runtime.
+**Each piece of state has an owner and a lifetime.** Every mutable value lives in saved world state, unsaved runtime state, or host state, with a defined fate on new game, restore, and dispose. Never a module variable or a variable a system closes over: it survives restore, ignores rollback, and is shared by every runtime. Host input reaches systems through a resource, an event the host sends, or an input source service.
 
 **Make impossible states unrepresentable.** A field that means something only in one state belongs to that state (`Descriptor.EntityState` per entity, `Game.StateMachine` game-wide), never next to a mode field or boolean flag where it can go stale. Two values that must agree are one state.
 

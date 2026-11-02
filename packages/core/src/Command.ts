@@ -288,7 +288,8 @@ const unspawnedId = Entity.makeEntityId<any, any>(-1)
 /**
  * Creates a typed component entry, the same as a `[Descriptor, value]`
  * tuple. Use {@link entryRaw} for unvalidated input to a constructed
- * descriptor.
+ * descriptor. Once queued, the world owns `value`: never mutate it
+ * afterwards (a runtime made with `debug` freezes it).
  */
 export const entry = <D extends Descriptor<"component", string, any>>(
   descriptor: D,
@@ -396,7 +397,8 @@ const build = (
  * Drafts are plain values: build them anywhere (including small factories),
  * then queue them with `commands.spawn(...)`. Entries may be `[Descriptor,
  * value]` pairs or results from `entryRaw(...)`; see `extend(...)` for how
- * failures are reported.
+ * failures are reported. Once queued, the world owns each value: never
+ * mutate one afterwards (a runtime made with `debug` freezes them).
  *
  * @example
  * ```ts
@@ -911,7 +913,9 @@ const noCommands: ReadonlyArray<never> = []
  * mutations stay deferred until `flush()` is applied by the runtime.
  */
 export const makeCommands = <S extends Schema.Any, Root = unknown>(
-  allocateId: () => Entity.EntityId<S, Root>
+  allocateId: () => Entity.EntityId<S, Root>,
+  /** A runtime made with `debug` freezes component values as they are queued. */
+  freeze?: (value: unknown) => void
 ): CommandQueue<S, Root> => {
   /**
    * The per-system command buffer.
@@ -930,6 +934,7 @@ export const makeCommands = <S extends Schema.Any, Root = unknown>(
   return {
     spawn(draft) {
       const id = allocateId()
+      if (freeze !== undefined) for (const [, value] of draft.components) freeze(value)
       spawnedThisRun.add(id)
       queue.push({
         tag: "spawn",
@@ -944,6 +949,7 @@ export const makeCommands = <S extends Schema.Any, Root = unknown>(
     },
     spawnIn(scope, draft) {
       const id = allocateId()
+      if (freeze !== undefined) for (const [, value] of draft.components) freeze(value)
       spawnedThisRun.add(id)
       queue.push({
         tag: "spawnIn",
@@ -959,6 +965,7 @@ export const makeCommands = <S extends Schema.Any, Root = unknown>(
     },
     insert(target, ...entries) {
       const entity = typeof target === "object" ? target.id : target
+      if (freeze !== undefined) for (const [, value] of entries) freeze(value)
       queue.push({
         tag: "insert",
         apply(world) {

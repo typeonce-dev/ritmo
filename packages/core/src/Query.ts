@@ -559,6 +559,8 @@ export namespace Query {
  *
  * Helpers that take values read from cells type their parameter
  * `ReadonlyValue<T>`, not `T`, so `get()` results pass in without a cast.
+ * To change a value, write a new one with the cell's `update`; stored values
+ * are never mutated in place (a runtime made with `debug` freezes them).
  *
  * @example
  * ```ts
@@ -607,10 +609,16 @@ export interface WriteCell<T> extends ReadCell<T> {
   /**
    * Replaces the current value. Takes the readonly shape reads return, so a
    * value read from any cell can be written back as it is.
+   *
+   * The world owns `value` from here: never mutate it afterwards, build a new
+   * one. A runtime made with `debug` freezes it, so a later mutation throws
+   * where it happens.
    */
   set(value: ReadonlyValue<T>): void
   /**
-   * Updates the current value based on the previous one.
+   * Updates the current value based on the previous one. Return a new value
+   * (`(body) => ({ ...body, x: body.x + 1 })`); the world owns it, as with
+   * `set`.
    */
   update(f: (current: ReadonlyValue<T>) => ReadonlyValue<T>): void
 }
