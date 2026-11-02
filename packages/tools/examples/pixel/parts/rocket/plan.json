@@ -1,0 +1,147 @@
+{
+  "subject": "rocket on its launch pad, standing",
+  "reference": "rocket.jpg",
+  "light": "top-left",
+  "parts": [
+    {
+      "id": "pad",
+      "tier": 1,
+      "material": "plain",
+      "shape": {
+        "kind": "poly",
+        "points": [
+          [268, 407],
+          [372, 407],
+          [372, 427],
+          [268, 427]
+        ]
+      },
+      "color": "#8f8d88"
+    },
+    {
+      "id": "tower-left",
+      "tier": 2,
+      "material": "matte",
+      "shape": {
+        "kind": "path",
+        "points": [
+          [311, 330],
+          [298, 352],
+          [291, 406]
+        ],
+        "width": 4
+      }
+    },
+    {
+      "id": "tower-right",
+      "tier": 2,
+      "material": "matte",
+      "shape": {
+        "kind": "path",
+        "points": [
+          [335, 330],
+          [348, 352],
+          [356, 406]
+        ],
+        "width": 4
+      }
+    },
+    {
+      "id": "body",
+      "tier": 1,
+      "material": "plain",
+      "shape": {
+        "kind": "poly",
+        "points": [
+          [312, 180],
+          [334, 180],
+          [334, 404],
+          [312, 404]
+        ]
+      },
+      "color": "#ecebe6"
+    },
+    {
+      "id": "engines",
+      "tier": 3,
+      "material": "matte",
+      "shape": {
+        "kind": "poly",
+        "points": [
+          [314, 398],
+          [332, 398],
+          [334, 406],
+          [312, 406]
+        ]
+      }
+    },
+    {
+      "id": "fairing",
+      "tier": 1,
+      "material": "plain",
+      "shape": {
+        "kind": "poly",
+        "points": [
+          [312, 177],
+          [311, 152],
+          [314, 138],
+          [322, 127],
+          [330, 138],
+          [333, 152],
+          [334, 177]
+        ]
+      },
+      "color": "#ecebe6"
+    },
+    {
+      "id": "interstage",
+      "tier": 2,
+      "material": "matte",
+      "shape": {
+        "kind": "line",
+        "a": [312, 179],
+        "b": [334, 179],
+        "width": 3
+      }
+    },
+    {
+      "id": "logo",
+      "tier": 3,
+      "material": "matte",
+      "color": "#2a3a6a",
+      "shape": {
+        "kind": "ellipse",
+        "cx": 322,
+        "cy": 148,
+        "rx": 9,
+        "ry": 5
+      }
+    },
+    {
+      "id": "pad-light-left",
+      "tier": 3,
+      "material": "glow",
+      "color": "#ffd27a",
+      "shape": {
+        "kind": "ellipse",
+        "cx": 279,
+        "cy": 403,
+        "rx": 4,
+        "ry": 4
+      }
+    },
+    {
+      "id": "pad-light-right",
+      "tier": 3,
+      "material": "glow",
+      "color": "#ffd27a",
+      "shape": {
+        "kind": "ellipse",
+        "cx": 364,
+        "cy": 397,
+        "rx": 4,
+        "ry": 4
+      }
+    }
+  ]
+}

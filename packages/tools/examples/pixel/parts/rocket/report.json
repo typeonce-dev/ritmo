@@ -1,0 +1,91 @@
+{
+  "plan": "plan.json",
+  "subject": "rocket on its launch pad, standing",
+  "reference": "/home/claude/ritmo/packages/tools/examples/pixel/parts/rocket/rocket.jpg",
+  "overlay": "rocket.overlay.png",
+  "colors": {
+    "pad": "#8f8d88",
+    "tower-left": "#575867",
+    "tower-right": "#6a5a51",
+    "body": "#ecebe6",
+    "engines": "#debc8b",
+    "fairing": "#ecebe6",
+    "interstage": "#726a59",
+    "logo": "#2a3a6a",
+    "pad-light-left": "#ffd27a",
+    "pad-light-right": "#ffd27a"
+  },
+  "drawn": [
+    {
+      "size": 16,
+      "width": 7,
+      "height": 16,
+      "colors": 4,
+      "files": {
+        "png": "rocket.16.png",
+        "source": "rocket.16.txt"
+      },
+      "kept": ["pad", "body", "fairing"],
+      "dropped": ["tower-left", "tower-right", "engines", "interstage", "logo", "pad-light-left", "pad-light-right"],
+      "verdict": "clean",
+      "issues": ["warning stray-pixel: 2 lone pixels surrounded by another color: noise, unless it is a deliberate highlight"]
+    },
+    {
+      "size": 24,
+      "width": 10,
+      "height": 24,
+      "colors": 5,
+      "files": {
+        "png": "rocket.24.png",
+        "source": "rocket.24.txt"
+      },
+      "kept": ["pad", "body", "fairing"],
+      "dropped": ["tower-left", "tower-right", "engines", "interstage", "logo", "pad-light-left", "pad-light-right"],
+      "verdict": "clean",
+      "issues": []
+    },
+    {
+      "size": 32,
+      "width": 12,
+      "height": 32,
+      "colors": 6,
+      "files": {
+        "png": "rocket.32.png",
+        "source": "rocket.32.txt"
+      },
+      "kept": ["pad", "body", "fairing"],
+      "dropped": ["tower-left", "tower-right", "engines", "interstage", "logo", "pad-light-left", "pad-light-right"],
+      "verdict": "clean",
+      "issues": ["warning stray-pixel: 1 lone pixel surrounded by another color: noise, unless it is a deliberate highlight"]
+    },
+    {
+      "size": 64,
+      "width": 23,
+      "height": 64,
+      "colors": 14,
+      "files": {
+        "png": "rocket.64.png",
+        "source": "rocket.64.txt"
+      },
+      "kept": ["pad", "tower-left", "tower-right", "body", "engines", "fairing", "interstage", "logo", "pad-light-left", "pad-light-right"],
+      "dropped": [],
+      "verdict": "clean",
+      "issues": ["warning stray-pixel: 1 lone pixel surrounded by another color: noise, unless it is a deliberate highlight", "warning near-duplicate-colors: 6 pairs of colors too close to tell apart (#2e333f/#282e3b, #2e333f/#2d2d31, #02031b/#030414, #282e3b/#2d2d31, #101834/#15192c, #15192c/#11141f): merge them", "warning jaggies: 3 uneven steps along the outline (a run of 1 between runs of 3, or 3 between 1s): the curve looks broken; make the steps grow or shrink steadily"]
+    },
+    {
+      "size": 128,
+      "width": 46,
+      "height": 128,
+      "colors": 14,
+      "files": {
+        "png": "rocket.128.png",
+        "source": "rocket.128.txt"
+      },
+      "kept": ["pad", "tower-left", "tower-right", "body", "engines", "fairing", "interstage", "logo", "pad-light-left", "pad-light-right"],
+      "dropped": [],
+      "verdict": "clean",
+      "issues": ["warning stray-pixel: 1 lone pixel surrounded by another color: noise, unless it is a deliberate highlight", "warning near-duplicate-colors: 6 pairs of colors too close to tell apart (#2e333f/#282e3b, #2e333f/#2d2d31, #282e3b/#2d2d31, #101834/#15192c, #02031b/#030414, #15192c/#11141f): merge them", "warning jaggies: 3 uneven steps along the outline (a run of 1 between runs of 3, or 3 between 1s): the curve looks broken; make the steps grow or shrink steadily"]
+    }
+  ],
+  "next": "Read the overlay first: does every shape sit on its part (tier 1 green, 2 yellow, 3 magenta)? Fix the plan, not the pixels. Then `pixel look` the sizes the game uses: does each read as the subject at a glance? If a size does not, change the plan (a part's tier, its shape, its color) and draw again; edit a size's .txt by hand only for its last touches."
+}

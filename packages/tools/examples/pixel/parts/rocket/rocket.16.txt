@@ -1,0 +1,26 @@
+# rocket on its launch pad, standing, drawn from plan.json at 16
+
+palette
+. transparent
+W #ecebe6
+L #8f8d88
+D #2e333f
+K #030414
+
+pixels
+...K...
+..KWK..
+..KDK..
+..KWK..
+..KWK..
+..KWK..
+..KWK..
+..KWK..
+..KWK..
+..KWK..
+..KWK..
+..KWK..
+..KWK..
+.KKWKK.
+KLLLLLK
+.KKKKK.

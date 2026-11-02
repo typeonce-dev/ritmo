@@ -1,0 +1,31 @@
+# espresso cup on a saucer, seen from above at an angle, drawn from plan.json at 16
+
+palette
+. transparent
+Y #fff2d4
+W #f8e9da
+O #ff580d
+L #c6bfc5
+o #a27861
+R #970000
+K #d29e70
+G #f1b677
+r #d11d00
+B #660000
+
+pixels
+......BBBBB.....
+.....BYYWWWB....
+....BY.....WB...
+...BYOOOOOO.LB..
+..BOWOooooORLB..
+.BOOWooKKGGRLRB.
+BOOrrWGGGGrLrRRB
+BOrrrOWLLLLRrRRB
+BOrrrOBrrrRRrRRB
+BOrrrBBRRRRrRRRB
+BOrrrRRrrrrRRRRB
+.BRrrrrrrRRRRRB.
+..BRRRRRRRRRRB..
+...BBRRRRRRBB...
+.....BBBBBB.....

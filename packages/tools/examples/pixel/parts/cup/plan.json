@@ -1,0 +1,141 @@
+{
+  "subject": "espresso cup on a saucer, seen from above at an angle",
+  "reference": "coffee.jpg",
+  "light": "top-left",
+  "parts": [
+    {
+      "id": "saucer",
+      "tier": 1,
+      "material": "paint",
+      "shape": {
+        "kind": "ellipse",
+        "cx": 278,
+        "cy": 230,
+        "rx": 202,
+        "ry": 160
+      }
+    },
+    {
+      "id": "saucer-well",
+      "tier": 3,
+      "material": "paint",
+      "shape": {
+        "kind": "ring",
+        "cx": 285,
+        "cy": 245,
+        "rx": 150,
+        "ry": 115,
+        "thick": 6
+      }
+    },
+    {
+      "id": "spoon-handle",
+      "tier": 2,
+      "material": "chrome",
+      "shape": {
+        "kind": "line",
+        "a": [384, 250],
+        "b": [413, 74],
+        "width": 11
+      }
+    },
+    {
+      "id": "cup",
+      "tier": 1,
+      "material": "paint",
+      "shape": {
+        "kind": "poly",
+        "points": [
+          [175, 115],
+          [405, 115],
+          [399, 200],
+          [372, 252],
+          [330, 280],
+          [262, 286],
+          [214, 266],
+          [186, 218]
+        ]
+      }
+    },
+    {
+      "id": "handle",
+      "tier": 1,
+      "material": "paint",
+      "shape": {
+        "kind": "poly",
+        "points": [
+          [202, 236],
+          [250, 228],
+          [263, 262],
+          [252, 300],
+          [216, 306],
+          [198, 286]
+        ]
+      }
+    },
+    {
+      "id": "rim",
+      "tier": 1,
+      "material": "plain",
+      "shape": {
+        "kind": "ring",
+        "cx": 289,
+        "cy": 112,
+        "rx": 116,
+        "ry": 95,
+        "thick": 17
+      }
+    },
+    {
+      "id": "inside",
+      "tier": 2,
+      "material": "plain",
+      "shape": {
+        "kind": "ellipse",
+        "cx": 289,
+        "cy": 112,
+        "rx": 100,
+        "ry": 78
+      },
+      "form": "hollow"
+    },
+    {
+      "id": "coffee",
+      "tier": 1,
+      "material": "plain",
+      "shape": {
+        "kind": "ellipse",
+        "cx": 287,
+        "cy": 145,
+        "rx": 83,
+        "ry": 50
+      },
+      "form": "hollow"
+    },
+    {
+      "id": "crema-ring",
+      "tier": 3,
+      "material": "plain",
+      "shape": {
+        "kind": "ring",
+        "cx": 287,
+        "cy": 145,
+        "rx": 60,
+        "ry": 32,
+        "thick": 5
+      }
+    },
+    {
+      "id": "spoon-bowl",
+      "tier": 2,
+      "material": "chrome",
+      "shape": {
+        "kind": "ellipse",
+        "cx": 366,
+        "cy": 280,
+        "rx": 40,
+        "ry": 46
+      }
+    }
+  ]
+}
