@@ -1,92 +1,35 @@
 {
-  "plan": "plan.json",
-  "subject": "espresso cup on a saucer, seen from above at an angle",
-  "reference": "/home/claude/ritmo/packages/tools/examples/pixel/parts/cup/coffee.jpg",
-  "overlay": "cup.overlay.png",
-  "colors": {
-    "saucer": "#a22b11",
-    "saucer-well": "#891b07",
-    "spoon-handle": "#c69e78",
-    "cup": "#561507",
-    "handle": "#6f1f10",
-    "rim": "#f8e9da",
-    "inside": "#d29e70",
-    "coffee": "#e08936",
-    "crema-ring": "#e18b3d",
-    "spoon-bowl": "#5c3825"
-  },
-  "drawn": [
+  "look": "look.png",
+  "scale": 2,
+  "zoom": 3,
+  "backdrop": "slate",
+  "standIn": null,
+  "judged": [
     {
-      "size": 16,
-      "width": 16,
-      "height": 15,
-      "colors": 10,
-      "files": {
-        "png": "cup.16.png",
-        "source": "cup.16.txt"
-      },
-      "kept": ["saucer", "cup", "handle", "rim", "coffee"],
-      "dropped": ["saucer-well", "spoon-handle", "inside", "crema-ring", "spoon-bowl"],
-      "grown": ["rim"],
+      "file": "cup.16.png",
       "verdict": "clean",
       "issues": ["warning stray-pixel: 1 lone pixel surrounded by another color: noise, unless it is a deliberate highlight", "warning near-duplicate-colors: 1 pair of colors too close to tell apart (#fff2d4/#f8e9da): merge them"]
     },
     {
-      "size": 24,
-      "width": 24,
-      "height": 22,
-      "colors": 10,
-      "files": {
-        "png": "cup.24.png",
-        "source": "cup.24.txt"
-      },
-      "kept": ["saucer", "cup", "handle", "rim", "coffee"],
-      "dropped": ["saucer-well", "spoon-handle", "inside", "crema-ring", "spoon-bowl"],
+      "file": "cup.24.png",
       "verdict": "clean",
       "issues": ["warning stray-pixel: 1 lone pixel surrounded by another color: noise, unless it is a deliberate highlight", "warning near-duplicate-colors: 1 pair of colors too close to tell apart (#fff2d4/#f8e9da): merge them"]
     },
     {
-      "size": 32,
-      "width": 32,
-      "height": 30,
-      "colors": 16,
-      "files": {
-        "png": "cup.32.png",
-        "source": "cup.32.txt"
-      },
-      "kept": ["saucer", "spoon-handle", "cup", "handle", "rim", "inside", "coffee", "spoon-bowl"],
-      "dropped": ["saucer-well", "crema-ring"],
+      "file": "cup.32.png",
       "verdict": "clean",
       "issues": ["warning stray-pixel: 2 lone pixels surrounded by another color: noise, unless it is a deliberate highlight", "warning near-duplicate-colors: 3 pairs of colors too close to tell apart (#363136/#312f38, #fff2d4/#f8e9da, #f8e9da/#f6e6cd): merge them"]
     },
     {
-      "size": 64,
-      "width": 64,
-      "height": 59,
-      "colors": 16,
-      "files": {
-        "png": "cup.64.png",
-        "source": "cup.64.txt"
-      },
-      "kept": ["saucer", "spoon-handle", "cup", "handle", "rim", "inside", "coffee", "spoon-bowl"],
-      "dropped": ["saucer-well", "crema-ring"],
+      "file": "cup.64.png",
       "verdict": "clean",
       "issues": ["warning stray-pixel: 4 lone pixels surrounded by another color: noise, unless it is a deliberate highlight", "warning near-duplicate-colors: 3 pairs of colors too close to tell apart (#363136/#312f38, #fff2d4/#f8e9da, #f8e9da/#f6e6cd): merge them", "warning holes: 3 single empty pixels inside the shape: pinholes, often left by a background removal or two outlines a pixel apart; fill them"]
     },
     {
-      "size": 128,
-      "width": 128,
-      "height": 118,
-      "colors": 16,
-      "files": {
-        "png": "cup.128.png",
-        "source": "cup.128.txt"
-      },
-      "kept": ["saucer", "saucer-well", "spoon-handle", "cup", "handle", "rim", "inside", "coffee", "crema-ring", "spoon-bowl"],
-      "dropped": [],
+      "file": "cup.128.png",
       "verdict": "clean",
       "issues": ["warning stray-pixel: 86 lone pixels surrounded by another color: noise, unless it is a deliberate highlight", "warning near-duplicate-colors: 3 pairs of colors too close to tell apart (#363136/#312f38, #fff2d4/#f8e9da, #f8e9da/#f6e6cd): merge them"]
     }
   ],
-  "next": "Read the overlay first: does every shape sit on its part (tier 1 green, 2 yellow, 3 magenta)? Fix the plan, not the pixels. Then `pixel look` the sizes the game uses: does each read as the subject at a glance? If a size does not, change the plan (a part's tier, its shape, its color) and draw again; edit a size's .txt by hand only for its last touches."
+  "next": "Read the picture. Top: every piece at display size on the backdrop, after the stand-in, all on one ground line: does each read at a glance, at the right size, in one style with the others? Bottom: each frame up close, magenta rings on the pixels a warning names: fix each, or accept it in the config with why."
 }
