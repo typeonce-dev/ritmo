@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "grid": {
+    "kind": "auto"
+  },
+  "follow": false,
+  "moved": [],
+  "sample": {
+    "inset": 0.25,
+    "alphaThreshold": 128
+  },
+  "palette": {
+    "name": "Sweetie 16",
+    "colors": [
+      "#1a1c2c",
+      "#5d275d",
+      "#b13e53",
+      "#ef7d57",
+      "#ffcd75",
+      "#a7f070",
+      "#38b764",
+      "#257179",
+      "#29366f",
+      "#3b5dc9",
+      "#41a6f6",
+      "#73eff7",
+      "#f4f4f4",
+      "#94b0c2",
+      "#566c86",
+      "#333c57"
+    ],
+    "locked": []
+  },
+  "metric": "oklab",
+  "dither": "none",
+  "ditherStrength": 0.5,
+  "cleanup": {
+    "size": 0,
+    "strength": 0.5
+  },
+  "cleanKeep": {
+    "size": "",
+    "cells": []
+  },
+  "targetWidth": null,
+  "reduceMode": "outlines",
+  "removeBackground": true,
+  "crop": false,
+  "background": {
+    "tolerance": 0.08,
+    "enclosed": false,
+    "specks": true,
+    "shadow": false
+  },
+  "lostThreshold": 0.06,
+  "edits": {
+    "size": "",
+    "strokes": []
+  },
+  "sheet": {
+    "frames": [
+      {
+        "box": {
+          "x": 120,
+          "y": 291,
+          "width": 350,
+          "height": 421
+        },
+        "include": true,
+        "nudge": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "box": {
+          "x": 470,
+          "y": 291,
+          "width": 433,
+          "height": 421
+        },
+        "include": true,
+        "nudge": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "box": {
+          "x": 903,
+          "y": 291,
+          "width": 450,
+          "height": 421
+        },
+        "include": true,
+        "nudge": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "box": {
+          "x": 1353,
+          "y": 291,
+          "width": 494,
+          "height": 421
+        },
+        "include": true,
+        "nudge": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "box": {
+          "x": 1847,
+          "y": 291,
+          "width": 366,
+          "height": 421
+        },
+        "include": true,
+        "nudge": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "box": {
+          "x": 2213,
+          "y": 291,
+          "width": 88,
+          "height": 421
+        },
+        "include": false,
+        "nudge": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "box": {
+          "x": 2301,
+          "y": 291,
+          "width": 366,
+          "height": 421
+        },
+        "include": true,
+        "nudge": {
+          "x": 0,
+          "y": 0
+        }
+      }
+    ],
+    "animations": [
+      {
+        "name": "run",
+        "frames": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "include": true,
+        "fps": 8,
+        "loop": "forward"
+      }
+    ],
+    "anchor": "center",
+    "padding": 1
+  }
+}

@@ -1,0 +1,27 @@
+# A prop: a chest, quieter than the slime and the player.
+palette
+. transparent
+K #1a1c2c
+O #ef7d57
+R #b13e53
+M #5d275d
+A #94b0c2
+Y #ffcd75
+
+pixels
+................
+................
+................
+................
+...KKKKKKKKKK...
+..KOOOOOOOOOOK..
+..KOOOOOOOOOMK..
+..KMMMMMMMMMMK..
+..KAAAAYYAAAAK..
+..KRRRRYYRRRMK..
+..KRRRRRRRRRMK..
+..KAAAAAAAAAAK..
+..KRRRRRRRRRMK..
+...KKKKKKKKKK...
+................
+................

@@ -1,0 +1,186 @@
+{
+  "frames": {
+    "run 0": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 36
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 36
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 36
+      },
+      "duration": 125,
+      "anchor": {
+        "x": 0.5968,
+        "y": 0.6111
+      }
+    },
+    "run 1": {
+      "frame": {
+        "x": 31,
+        "y": 0,
+        "w": 31,
+        "h": 36
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 36
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 36
+      },
+      "duration": 125,
+      "anchor": {
+        "x": 0.5968,
+        "y": 0.6111
+      }
+    },
+    "run 2": {
+      "frame": {
+        "x": 62,
+        "y": 0,
+        "w": 31,
+        "h": 36
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 36
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 36
+      },
+      "duration": 125,
+      "anchor": {
+        "x": 0.5968,
+        "y": 0.6111
+      }
+    },
+    "run 3": {
+      "frame": {
+        "x": 93,
+        "y": 0,
+        "w": 31,
+        "h": 36
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 36
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 36
+      },
+      "duration": 125,
+      "anchor": {
+        "x": 0.5968,
+        "y": 0.6111
+      }
+    },
+    "run 4": {
+      "frame": {
+        "x": 124,
+        "y": 0,
+        "w": 31,
+        "h": 36
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 36
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 36
+      },
+      "duration": 125,
+      "anchor": {
+        "x": 0.5968,
+        "y": 0.6111
+      }
+    },
+    "run 5": {
+      "frame": {
+        "x": 155,
+        "y": 0,
+        "w": 31,
+        "h": 36
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 31,
+        "h": 36
+      },
+      "sourceSize": {
+        "w": 31,
+        "h": 36
+      },
+      "duration": 125,
+      "anchor": {
+        "x": 0.5968,
+        "y": 0.6111
+      }
+    }
+  },
+  "animations": {
+    "run": [
+      "run 0",
+      "run 1",
+      "run 2",
+      "run 3",
+      "run 4",
+      "run 5"
+    ]
+  },
+  "meta": {
+    "app": "https://ritmo.typeonce.dev/tools/pixel/",
+    "version": "1",
+    "image": "fire-spirit.png",
+    "format": "RGBA8888",
+    "size": {
+      "w": 186,
+      "h": 36
+    },
+    "scale": "1",
+    "frameTags": [
+      {
+        "name": "run",
+        "from": 0,
+        "to": 5,
+        "direction": "forward"
+      }
+    ],
+    "fps": {
+      "run": 8
+    }
+  }
+}

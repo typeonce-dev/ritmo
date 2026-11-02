@@ -1,0 +1,18 @@
+{
+  "palette": "sweetie-16",
+  "sizes": [
+    "16x16"
+  ],
+  "maxColors": 16,
+  "scale": 4,
+  "backdrops": {
+    "floor": "floor.png",
+    "night": "#1a1c2c"
+  },
+  "standIn": "hero.txt",
+  "accept": {
+    "hero.txt": {
+      "stray-pixel": "the eyes are single dark pixels on purpose"
+    }
+  }
+}
