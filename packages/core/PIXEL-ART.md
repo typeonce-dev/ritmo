@@ -7,7 +7,7 @@ Every principle in [`skills/ritmo-pixel-art`](skills/ritmo-pixel-art/SKILL.md) t
 - **Practice:** advice from pixel artists, art directors, and engine documentation, quoted below with a link.
 - **Ritmo:** how `ritmo-tools pixel` works, how the library draws, or a direction from the maintainer. These are conventions, not craft claims, and are marked as such. Most maintainer directions come from the *Still Time* art pass (2026-10-30): seven review rounds between a reviewing agent acting for the maintainer and an image-making agent, on a 24×24 top-down game, judged on phone captures.
 
-A rule that is neither does not go in the skill. The skill states principles and leaves the procedure to the agent: a tile count, a shade count, a frame count, or a step-by-step recipe does not go in, even with a source, because it makes every game look the same. The skill also says nothing the tool already says: `pixel lint` checks size, palette, color count, half-transparent pixels, lone pixels, near-duplicate colors, the craft of edges and lines (jaggies, doubles, holes), and on a sheet each animation's flicker and motion (area, skate, seam); `fx check` the craft of effects (jaggies, doubles, holes, flicker, contrast); so the skill covers only what still needs judgement. The skill's Rounds are the one procedure it holds (see "Where we chose against a source"). When you change the skill, change this file in the same commit.
+A rule that is neither does not go in the skill. The skill states principles and leaves the procedure to the agent: a tile count, a shade count, a frame count, or a step-by-step recipe does not go in, even with a source, because it makes every game look the same. The skill also says nothing the tool already says: `pixel lint` checks size, palette, color count, half-transparent pixels, lone pixels, near-duplicate colors, the craft of edges and lines (jaggies, doubles, holes), and on a sheet each animation's flicker and motion (area, skate, seam); `fx check` the craft of effects (jaggies, doubles, holes, flicker, contrast); so the skill covers only what still needs judgement. The skill's Rounds and From a reference are the procedures it holds (see "Where we chose against a source"). When you change the skill, change this file in the same commit.
 
 Quotes were checked against the text of the linked page on 2026-11-01. A quote marked "via" was checked on that secondary page, not in the original. Engine documentation (Godot, Unity, MDN) is quoted for what a renderer must do, not as a style authority. Pedro Medeiros's picture tutorials (clusters, outlines, silhouettes, tiles) and Michael Azzi's *Pixel Logic* are the field's references on sprite craft, but they are images and a paid book, so they are not quoted; his written articles are.
 
@@ -19,6 +19,7 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 - **Whole-pixel parallax is the default, not the law.** Schlitter: "you can't move a half pixel" ([Pixelblog 23][slynyrd-23]); Godot documents the cost of snapping, "less smooth movement" ([Project settings][godot-settings]). The skill says layers scroll whole pixels and lists a smooth parallax among the exceptions a person may choose.
 - **Still Time's read order was not kept.** The game's order (what can hurt, what you can act on, characters, props, floor) came from a top-down room where the floor is backdrop. In a platformer the ground is what the player stands on, so the skill ranks by what the player needs to play and separates "what supports or blocks" from "what is only backdrop" instead of naming the floor.
 - **The skill holds one procedure, its Rounds.** The rule above keeps procedure out; the maintainer asked for the rounds (2026-11-02) after a study of agent skills that draw machines and animations (Anatomy, claude-animation), whose quality came from a written plan before drawing, checks run to the end, and close looks before the owner's, more than from any one rule. The rounds name the order of brief, check, look, and the person's notes, the same shape as the `ritmo-fx` skill's loop; they set no count.
+- **A second procedure: From a reference.** The maintainer rejected a measured resampling of a reference (2026-11-02: "you are basically transcribing the source image [1:1] into pixels, which is the wrong way of approaching the problem. It should be mostly about deciding which are the main parts, which you can also ask the user") and approved drawing from a ranked parts list after tests on a motorcycle, a cup, and a rocket. The steps set no count: the tiers' sizes, the smallest a wheel or a light may be, and the material values are the tool's (`pixel parts`), where a game can see and change them.
 - **Sources left out.** The bugnet.io articles that search engines return for every query in this area (resolution, jitter, readability) carry rotating bylines and templated slugs across thousands of posts, and two cited pages vanished during the check; nothing is quoted from them. Other agents' pixel-art skills are not quoted either: they show what others have built, not established practice.
 
 ## The intro: one game, judged by eye; the lint is not a verdict
@@ -199,6 +200,28 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 - Rickett, "Walk Cycles", UCLA Game Lab, 2011 ([link][rickett]): "we need to make sure the feet wont slide across the ground unrealistically." … "This is called "slippage"– when the character looks like he's rollerskating." … "The animation speed vs ground speed is matched pretty well".
 - **Ritmo:** `ground.pixelsPerSecond` is Rickett's "animation speed vs ground speed" as a number the game's code uses. "Read motion as numbers" is the `fx` rule that an agent cannot watch motion; the rossark-motion skill measures reference videos frame by frame for the same reason (described, not quoted).
 
+## From a reference
+
+### A detailed reference is never shrunk into a sprite; decide what it is made of, then draw that
+
+- csanyk, "Pixel Art: a little theory and philosophy on technique", 2012 ([link][csanyk]): "You're creating an impression." … "you don't need to draw something fully realized, just enough to get the point across."
+- iLKke, "16×16 Pixel Art Tutorial", Photon Storm, 2011 ([link][ilkke]): "Make sure your drawing is fully articulated and readable at this stage." … "it is always good to simplify the shapes and focus on giving them volume."
+- **Ritmo:** the maintainer's direction quoted under "Where we chose against a source"; `pixel pixelate` stays for pictures already as simple as the sprite.
+
+### Rank the parts: tier 1 names the object; ask the person when unsure
+
+- Aseprite community, "16x16 Radio (via references)" ([link][aseprite-radio]): "Pixel art is alot to do with associating what we can see on screen to something that we know exists in real life" … "I would have started with the smallest detail being the red logo and made that only 1 single pixel." … "Try going up a tile size and drawing this again at 24x24 or 32x32".
+- **Ritmo:** "which you can also ask the user" is the maintainer's. A parts list written before any geometry is how the Anatomy skill works ("Write the concept and the parts list before any geometry. Most of the quality is decided there"; described here, not quoted as practice, see "Sources left out").
+
+### Measure each part as a simple shape, with its own color and material; keep the plan next to the art
+
+- iLKke ([link][ilkke]): flat base colors first, "just set the basic colours and avoid any shading", then one darker shade per color, and colored outlines: "One neat trick is to use outline colour to imply shading as well." The tool's ramps (values from the material, hue from the part, an outline on the outside darker than what it touches) are that order.
+- **Ritmo:** measuring the reference instead of copying it follows the rossark-motion skill, whose tools measure a reference video frame by frame (described, not quoted). The plan kept next to the art is that skill's `MOTION.md` beside the drawing, and Anatomy's model that every number comes from.
+
+### Read the overlay first, then look at the sizes; change the plan, not the pixels
+
+- **Ritmo:** the overlay is `pixel look`'s rule (read a still picture before anyone else does) applied to the measures. The test sheets of 2026-11-02 showed the failures it catches: a shape off its part, and a part that names the object ranked too low (the motorcycle's engine, without which it read as a bicycle at 24 pixels).
+
 ## What you see, and the usual fix
 
 Each row restates a principle above as the symptom a person names; its sources are that principle's.
@@ -210,6 +233,8 @@ Each row restates a principle above as the symptom a person names; its sources a
 - **Flat or pillowy → shade from the light:** Cure ([link][cure]): "Pillow-shading is bad because it pays no attention to the light source,".
 - **Decoration fights the player → backdrop recedes:** Conway ([link][conway]): "The assets on screen should not be fighting for your attention." (What the player must notice is read first.)
 - **Busy tiles or a void → quiet base, rare clustered details:** Tiles hide the grid, and its sources.
+- **A sprite from a reference is noise → a parts plan:** From a reference, and its sources.
+- **Colors as muddy as the photo → the part's own color and material:** the motorcycle test (2026-11-02), where colors measured from the photo came out grey-brown until the material set their values.
 
 [saint-consistency]: https://saint11.art/blog/consistency/
 [saint-scaling]: https://saint11.art/blog/scaling/
@@ -259,3 +284,6 @@ Each row restates a principle above as the symptom a person names; its sources a
 [george]: https://www.gamedeveloper.com/design/crafting-the-perfect-game-art-brief
 [gimate]: https://www.gamedeveloper.com/blogs/from-references-to-concept-art
 [rickett]: https://games.ucla.edu/?p=985
+[csanyk]: https://csanyk.com/2012/10/pixel-art-a-little-theory-and-philosophy-on-technique/
+[ilkke]: https://photonstorm.com/art/tutorials-art/16x16-pixel-art-tutorial
+[aseprite-radio]: https://community.aseprite.org/t/16x16-radio-via-references/14510
