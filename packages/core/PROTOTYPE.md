@@ -83,13 +83,22 @@ Ritmo convention (the `ritmo` skill). It is what makes graduation a refactor.
 
 ## Finding the fun
 
-### Start from the feeling and the smallest thing that can be fun; draw shapes until the human brings a look
+### Start from the feeling; prototype where the fun lives, smallest version first; otherwise draw shapes until the human brings a look
 
 - EGP ([link][egp]): "Build the Toy First. Start with the core mechanic. … This "toy" should be the core mechanic of the game minus any goals or decisions. There is no win or lose state, just a fun thing to play with." And on goals: "The best goals, we found, were an innate part of the gameplay". Hence "the smallest goal when the game is about goals": in the Grid Tactics and Mystery Map tests, giving and combining meant nothing without something to want.
 - Metzen, Wowhead interview, 2023 ([via Wayback][metzen]): "whatever it is, you know you start with a fantasy. We try to build a structure that enables the player to feel their accomplishments, to feel the fantasy through the gameplay." EGP: "an initial emotional target basically wrote the entire game."
 - Crawford, "The Two Faces of Reality", 2013 ([link][crawford]): "If you examine a game and write down all the verbs available to the player, then give that list of verbs to me, I can tell you exactly what that game is about".
 - Cook, "Loops and Arcs", 2012 ([link][cook-loops]): "Functional feedback that helps players understand causation."
 - EGP ([link][egp]): "It's entirely possible to have fun with basic primitives … Prove to yourself that your core mechanic is worthwhile with a simple prototype. Once you're convinced, then you can make it pretty." A look the human brings (a mockup, reference images) is that moment: the maintainer's direction (Ritmo), from the Web Platformer test, where two agents read "art waits" against the human's own references.
+
+Where the fun lives decides what the prototype is. The cases below were checked on 2026-11-02. They are one rule, not exceptions: a prototype answers the riskiest question, and the riskiest question sits where the fun is.
+
+- Hecker & Gingold ([slides][hecker]): "Behind every successful prototype stands a good question".
+- **A story, characters, or a mystery: a small hand-written slice, not more mechanics.** Cook, "Loops and Arcs" ([link][cook-loops]): "For arcs, the feedback is 99% of the payload and the actions and systems are simply a means to an end." … "The simplest method of analysis is to ask "What repeats and what does not?"" From the Mystery Map test (Ritmo): six rounds of mechanics never produced what the human was missing, "how intriguing the game becomes".
+- **The slice can be on paper or in text.** Beachum on *Outer Wilds*, 2015 ([link][outer-wilds-igf]): "Early on we used paper prototypes and even a tabletop roleplaying session to experiment with different approaches" … "we recreated the entire game as a 2D text adventure".
+- **A place to explore: a small hand-built map, a landmark seen before it can be reached, something off the obvious path.** Disney's "wienie", Bob Thomas via Clarke-Willson ([link][wienies]): "A wienie was a lure, an inducement". Robinson-Yu on *A Short Hike* ([link][short-hike]): "I wanted to encourage exploring the road less travelled, and have your curiosity be rewarded." Nintendo's CEDEC 2017 talk on *Breath of the Wild*, via GMTK ([link][gmtk-botw]): "these triangles simply block whatever's behind" … "as you go towards these mountains, whatever's behind is gradually revealed"; play-test heat maps first showed "about 80 percent dutifully followed the main route from tower to tower". The Level Design Book ([link][ldb-blockout]): "You can't playtest a design document or a layout sketch, but you can playtest a blockout." From the maintainer (Ritmo): for a concept of moving on a grid, collecting, and talking, a one-screen loop (pick up, trade, open a gate) tests nothing the maintainer cared about, since "enjoyment mostly comes from exploration".
+- **A mood: the look and sound early.** Jane Ng on *Firewatch*, GDC 2016, via the Level Design Book ([link][ldb-blockout]): "Greyboxing did not answer any of the important questions". Beachum ([link][outer-wilds-igf]): "one of our colleagues had the brilliant suggestion of making an "emotional prototype" to explore the game's mood."
+- Left out on purpose: fun that lives in other players (no Ritmo game needs it yet), and fun that shows over weeks (`genres/SIMULATION.md` fakes the days instead).
 
 ### Explore broadly: read all the verdicts together; offer a change of course as options named by the choice they give
 
@@ -107,11 +116,6 @@ Ritmo convention (the `ritmo` skill). It is what makes graduation a refactor.
 - Sid Meier, via Soren Johnson ([link][sids-rules]): "If a unit seems too weak, don't lower its cost by 5%; instead, double its strength." In his memoir (book, via [Kartones][kartones]): "double it, or cut it in half".
 - Griesemer, "Design in Detail", GDC 2010 ([slides][griesemer-sniper], slide 122): "Don't make changes less than 10% / It's very easy to convince yourself you can feel tiny changes / But even if you can, nobody else will be able to".
 - "Only in a direction the human likes" is the maintainer's direction (Ritmo): in the Grid Tactics test, tuning a direction nobody liked took four rounds.
-
-### Some fun lives in content: test it with a small hand-written slice
-
-- Cook, "Loops and Arcs" ([link][cook-loops]): "For arcs, the feedback is 99% of the payload and the actions and systems are simply a means to an end." … "The simplest method of analysis is to ask "What repeats and what does not?""
-- From the Mystery Map test: six rounds of mechanics never produced what the human was missing, "how intriguing the game becomes".
 
 ### What the human reports is a symptom: find the cause behind a named case or a proposed fix
 
@@ -175,3 +179,8 @@ The reply is the link, the direction being tried, what the check did not run, an
 [cg-agent]: https://github.com/Donchitos/Claude-Code-Game-Studios/blob/05ad7c8a5b8aa2aa86bbd3439ae7cf7295cac418/.claude/agents/prototyper.md
 [cg-rule]: https://github.com/Donchitos/Claude-Code-Game-Studios/blob/05ad7c8a5b8aa2aa86bbd3439ae7cf7295cac418/.claude/rules/prototype-code.md
 [cg-brainstorm]: https://github.com/Donchitos/Claude-Code-Game-Studios/blob/05ad7c8a5b8aa2aa86bbd3439ae7cf7295cac418/.claude/skills/brainstorm/SKILL.md
+[outer-wilds-igf]: https://www.gamedeveloper.com/design/road-to-the-igf-alex-beachum-s-i-outer-wilds-i-
+[wienies]: https://www.above-the-garage.com/wienies/
+[short-hike]: https://blog.playstation.com/2021/08/05/crafting-a-tiny-open-world-a-look-behind-the-scenes-at-the-creation-of-a-short-hike/
+[gmtk-botw]: https://gmtk.substack.com/p/how-nintendo-solved-zeldas-open-world
+[ldb-blockout]: https://book.leveldesignbook.com/process/blockout
