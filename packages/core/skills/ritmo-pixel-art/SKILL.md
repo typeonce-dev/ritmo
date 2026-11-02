@@ -5,7 +5,7 @@ description: "Apply whenever a game's pixel art is made, changed, laid out, or c
 
 # Pixel art for a game
 
-Pixel art is a decision about the whole game, not one sprite at a time: one grid, one palette, one order in which the screen is read, one style. [`ritmo-tools pixel`](#the-tool) checks the grid, the palette, the color count, and lone pixels; whether a scene reads is judged by eye, in the game ([Judging](#judging)). Below, "art pixel" is one pixel of the art, "screen pixel" one of the display, and "display size" the art at the game's scale on the player's screen, not zoomed.
+Pixel art is a decision about the whole game, not one sprite at a time: one grid, one palette, one order in which the screen is read, one style. [`ritmo-tools pixel`](#the-tool) checks the grid, the palette, the color count, lone pixels, the craft of edges and lines, and an animation's motion, and draws art as the player will see it; whether a scene reads is judged by eye, in the game ([Judging](#judging)). Below, "art pixel" is one pixel of the art, "screen pixel" one of the display, and "display size" the art at the game's scale on the player's screen, not zoomed.
 
 ## Principles
 
@@ -28,7 +28,7 @@ Pixel art is a decision about the whole game, not one sprite at a time: one grid
 - **The characters set the rules; everything else follows them.** The characters, or the pieces in a game without them, are seen most, so their outline weight, shades per material, cluster size, and color count are the game's numbers: tiles, props, text, effects, and every generated or fixed asset keep to them, so a crack is a cluster like a fold in a cloak, not a hairline. A second style, if the game has one, lives in its own area and never leaks.
 - **One palette, few colors, ramps that shift hue.** The game's palette holds a few ramps that shift hue as they brighten; each asset pulls its colors from it, and a material is one ramp in different values (a wall, its floor, and its ledges from one stone, not three). Start from an existing palette (`pixel palettes`, or Lospec's list) rather than inventing one.
 - **Tiles hide the grid, unless the grid is the game.** A base texture that loops on all four sides and stays quiet; a few variants, chosen by hand or by a fixed function of the tile's position; rare details clustered where the world would wear (edges, corners, places that get used); decoration as its own layer. Rare is not none: a scene with every detail removed is a void, a detail on every tile is noise, and a variant is drawn, not recolored. Where the grid is gameplay (tactics, puzzles), it reads evenly and quietly instead.
-- **Lines and shades follow the pixel craft.** Edges step in even runs, one-pixel lines stay one pixel, and shading follows the form from one light chosen before drawing, never the outline. The `ritmo-fx` skill's Craft lists these rules; `pixel lint` does not check them on sprites and tiles.
+- **Lines and shades follow the pixel craft.** Edges step in even runs, one-pixel lines stay one pixel, and shading follows the form from one light chosen before drawing, never the outline. `pixel lint` finds broken steps (jaggies), thickened lines (doubles), and pinholes, with their pixels; the shading it cannot judge.
 - **One light.** Every asset is shaded from the same light direction. When the engine lights the scene, assets carry their own few even shades and no strong baked lighting; the engine's light changes with the room, and gameplay signals stay at full brightness under it.
 
 ### Motion
@@ -40,6 +40,29 @@ Pixel art is a decision about the whole game, not one sprite at a time: one grid
 - **Judge in the game, at display size, on the target screen.** A sprite is one piece of a crowded screen: look at captures of real scenes at display size, on the smallest screen the game targets, under the game's lighting if it has any, still and in motion, before anything goes in. Squint: the shapes that matter must still be there. A zoomed-in canvas shows the pixels, not the read. When the target screen is out of reach, say so; the person who plays judges there.
 - **A reference is a set of named qualities, not a picture to copy.** Say what the reference gives (scale, proportion, palette, mood, detail level) and what the game keeps regardless; say what is not wanted too. Change what was asked for and nothing else, and show two or three options at display size and zoomed 4× beside the reference and in a game capture before integrating one.
 - **An exception is a decision, written down.** A second pixel size, a rotating sprite, a smooth parallax, a broken constraint: each is fine when the person chooses it for a reason and the game's design notes say why, and wrong when it happens to one asset. A clean lint, or two agents agreeing, never settles a look; the person who plays does.
+
+## Rounds
+
+You cannot see a sprite at the player's size, nor watch an animation play: you write a brief, draw, measure, and read still pictures; the person looks and decides. Quality comes from rounds of their notes, not from a first draft.
+
+1. **Write the brief before the first pixel**, in the game's design notes: what the piece is and where it is seen, its size next to the player, the silhouette that tells it apart, each material and the ramp it is drawn from, the one light, and the reference as named qualities, with what is not wanted. For a set (a tileset, a cast), one brief covers it. The next piece reads the brief as written, word for word, not a summary of it, so the second asset matches the first.
+2. **Draw or fix** with the case that fits ([Pick the case](#pick-the-case)).
+3. **Check** every piece: `pixel lint` (or the report of `render`, `fix`, and `sheet`). Fix every error. Each warning names its pixels in `at` (with the frame, in an animation): fix it, or, when it is the look you want, add it to the file's `accept` in `pixel.config.json` with why (`"accept": {"art/torch.png": {"doubles": "the flame's tip is two pixels on purpose"}}`). Errors cannot be accepted. A change made only to quiet a check (a highlight deleted, an outline broken) is a new fault, not a fix.
+4. **Look** with `pixel look` at every piece of the scene together, and read the picture it writes: on top, the pieces at display size on the game's backdrop beside its player (`scale`, `backdrops`, and `standIn` in the config); below, each frame up close, with every warning's pixels ringed in magenta. Judge the top first: does each piece read at a glance, at its size, in one style with the others? Fix what reads wrong before the person sees it.
+5. **Read motion as numbers.** On a sheet, the report's `motion` gives the body's area per frame, the steps of the foot on the ground, and `ground.pixelsPerSecond`, the speed the game moves the sprite at so that foot stays planted; `area`, `skate`, and `seam` warn where it breaks.
+6. **Show the person** two or three options at display size ([Judging](#judging)), in a game capture when the game runs; act on every note, and go back to 3.
+
+## What you see, and the usual fix
+
+| You see (at display size, or in the person's notes) | Fix |
+| --- | --- |
+| Mush: the piece does not read at a glance | Fewer colors and bigger clusters; a clear silhouette first, details after. |
+| "Off-pixel": a piece looks drawn at another size | Redraw it on the game's grid; never scale it. |
+| A piece looks like two materials glued together | One ramp in different values for the whole material. |
+| Hairline cracks, scratches, or folds | Clusters the size of the characters' details. |
+| Flat or pillowy | Shade from the one light, not from the outline inward. |
+| Decoration fights the player for attention | Less value contrast and saturation in the backdrop; keep the strongest for what the player must notice. |
+| Every tile busy, or the floor a void | Quiet base tiles, with rare details clustered where the world wears. |
 
 ## The tool
 
@@ -56,15 +79,15 @@ Every command prints a JSON report on stdout and exits with what to do next:
 
 ### The project's rules
 
-A `pixel.config.json` at the game's root (`pixel init -p <palette>` writes one) holds the palette, the allowed sizes, the color limit, and whether the background must be transparent. Every command reads it from the working directory up, so never repeat them on the command line; change the config instead when the rules change. `pixel palettes` lists the presets.
+A `pixel.config.json` at the game's root (`pixel init -p <palette>` writes one) holds the palette, the allowed sizes, the color limit, and whether the background must be transparent; how the game shows its art, for `pixel look` (`scale`: its whole number on the smallest target screen; `backdrops`: colors or floor tiles by name; `standIn`: the player's sprite); and the warnings judged deliberate (`accept`, per file, each with why). Every command reads it from the working directory up, so never repeat them on the command line; change the config instead when the rules change. `pixel palettes` lists the presets.
 
 ### Pick the case
 
-- **Drawing a sprite with code.** Write a sprite source (below), then `pixel render sprite.txt --scale 8`: it writes `.png`, `@8x.png`, `.svg`, and `.preview.png`, and lints the art. Fix every error in the source, never in the PNG. The preview shows the pixels; whether the sprite reads is judged in a game capture ([Judging](#judging)).
+- **Drawing a sprite with code.** Write a sprite source (below), then `pixel render sprite.txt --scale 8`: it writes `.png`, `@8x.png`, `.svg`, and `.preview.png`, and lints the art. Fix every error in the source, never in the PNG. The preview shows the pixels; `pixel look sprite.txt` shows it at display size beside the player, and whether it reads is judged in a game capture ([Judging](#judging)).
 - **A picture from an image generator.** `pixel check pic.png` first. `fixable` → `pixel fix pic.png` writes the true-size `.png`, `.svg`, a JSON map, a `.sprite.txt` (to edit by text), its `.recipe.json`, and a `.preview.png` (the source and its grid beside the fix). Add `--colors N` when there is no palette, `--remove-background` for a sprite, `--cleanup 1` against noise specks.
 - **An animation sheet from an image generator** (frames side by side in boxes, often labelled). `pixel sheet sheet.png --colors 16` clears the background and labels, finds the frames, fixes them on one grid and palette, lines them up (by default on the ground: sideways drift removed, hops kept; `--anchor feet` pins the feet to one row), and writes the sheet `.png` and its `.json` (Pixi, Phaser, Aseprite), a `.gif` per animation, `.frames/`, the recipe, and a `.preview.png`. Each row of frames is one animation (`animation-1`, ... in reading order; `animation.animations` in the report lists each one's frame numbers): name them and keep the ones the game uses with `--animations "walk-down=1-4;throw-down=5-8;explode=29-38"` (every frame in one; a row that is not one animation is split or joined here) and `--only walk-down,explode`, then play them by name from the JSON's `animations`. Open the preview: each frame's box must hold the whole frame, and each animation's boxes share a color. Pass `--boxes "x,y,w,h;..."` when one is cut, `--skip 3` to leave a bad frame out, `--anchor center` for things that float, `--fps` and `--pingpong` for the timing, and `--columns N` for rows. Look at each `.gif` before using it.
 - **A reference image (a drawing, a render, a photo) to turn into game art.** `pixel pixelate ref.png -w 32` cuts it into 32 pixels across on the project's palette (or `--colors N` proposed from the picture). Pixelating loses detail by design: compare widths by their previews, keep the smallest one that still reads, then touch up the `.sprite.txt` and `render` it.
-- **Checking assets before they ship.** `pixel lint` each PNG at its true size (exit 0 for all of them), or `pixel check` for pictures that may be upscaled. `pixel compare a.png b.png` says which of two versions is better and why.
+- **Checking assets before they ship.** `pixel lint` each PNG at its true size and each sheet's `.json` (exit 0 for all of them, every warning fixed or accepted), or `pixel check` for pictures that may be upscaled. `pixel look` the pieces that share a scene, together. `pixel compare a.png b.png` says which of two versions is better and why.
 
 ### Sprite sources
 

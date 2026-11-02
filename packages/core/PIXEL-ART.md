@@ -7,7 +7,7 @@ Every principle in [`skills/ritmo-pixel-art`](skills/ritmo-pixel-art/SKILL.md) t
 - **Practice:** advice from pixel artists, art directors, and engine documentation, quoted below with a link.
 - **Ritmo:** how `ritmo-tools pixel` works, how the library draws, or a direction from the maintainer. These are conventions, not craft claims, and are marked as such. Most maintainer directions come from the *Still Time* art pass (2026-10-30): seven review rounds between a reviewing agent acting for the maintainer and an image-making agent, on a 24×24 top-down game, judged on phone captures.
 
-A rule that is neither does not go in the skill. The skill states principles and leaves the procedure to the agent: a tile count, a shade count, a frame count, or a step-by-step recipe does not go in, even with a source, because it makes every game look the same. The skill also says nothing the tool already says: `pixel lint` checks size, palette, color count, half-transparent pixels, lone pixels, and near-duplicate colors, and `fx check` the craft of effects (jaggies, doubles, holes, flicker, contrast), so the skill covers only what still needs judgement. When you change the skill, change this file in the same commit.
+A rule that is neither does not go in the skill. The skill states principles and leaves the procedure to the agent: a tile count, a shade count, a frame count, or a step-by-step recipe does not go in, even with a source, because it makes every game look the same. The skill also says nothing the tool already says: `pixel lint` checks size, palette, color count, half-transparent pixels, lone pixels, near-duplicate colors, the craft of edges and lines (jaggies, doubles, holes), and on a sheet each animation's flicker and motion (area, skate, seam); `fx check` the craft of effects (jaggies, doubles, holes, flicker, contrast); so the skill covers only what still needs judgement. The skill's Rounds are the one procedure it holds (see "Where we chose against a source"). When you change the skill, change this file in the same commit.
 
 Quotes were checked against the text of the linked page on 2026-11-01. A quote marked "via" was checked on that secondary page, not in the original. Engine documentation (Godot, Unity, MDN) is quoted for what a renderer must do, not as a style authority. Pedro Medeiros's picture tutorials (clusters, outlines, silhouettes, tiles) and Michael Azzi's *Pixel Logic* are the field's references on sprite craft, but they are images and a paid book, so they are not quoted; his written articles are.
 
@@ -18,6 +18,7 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 - **Outlines are not legislated.** Medeiros calls outlines "one of the first things to throw away" at very low resolution ([Low resolution][saint-lowres]); Schlitter writes that for projectiles "outlines are almost certainly necessary" ([Pixelblog 31][slynyrd-31]). Both are right for their case, so the skill makes the outline the characters' rule, whatever it is, and has everything else follow it.
 - **Whole-pixel parallax is the default, not the law.** Schlitter: "you can't move a half pixel" ([Pixelblog 23][slynyrd-23]); Godot documents the cost of snapping, "less smooth movement" ([Project settings][godot-settings]). The skill says layers scroll whole pixels and lists a smooth parallax among the exceptions a person may choose.
 - **Still Time's read order was not kept.** The game's order (what can hurt, what you can act on, characters, props, floor) came from a top-down room where the floor is backdrop. In a platformer the ground is what the player stands on, so the skill ranks by what the player needs to play and separates "what supports or blocks" from "what is only backdrop" instead of naming the floor.
+- **The skill holds one procedure, its Rounds.** The rule above keeps procedure out; the maintainer asked for the rounds (2026-11-02) after a study of agent skills that draw machines and animations (Anatomy, claude-animation), whose quality came from a written plan before drawing, checks run to the end, and close looks before the owner's, more than from any one rule. The rounds name the order of brief, check, look, and the person's notes, the same shape as the `ritmo-fx` skill's loop; they set no count.
 - **Sources left out.** The bugnet.io articles that search engines return for every query in this area (resolution, jitter, readability) carry rotating bylines and templated slugs across thousands of posts, and two cited pages vanished during the check; nothing is quoted from them. Other agents' pixel-art skills are not quoted either: they show what others have built, not established practice.
 
 ## The intro: one game, judged by eye; the lint is not a verdict
@@ -122,11 +123,11 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 - Cure ([link][cure]): "Noise is any sort of information that does not contribute to the piece".
 - **Ritmo:** "clustered where wear happens" and "placed by hash" are Still Time directions (review 1: "Make cracks and moss rare (about one tile in eight) and cluster them near walls and cover, not spread evenly"; review 5: braziers "copy-pasted", "Vary it by hash"). "Rare is not none" is review 2: "The room is now a grey void … I asked for *rare*, not *none*." The skill keeps the principle and drops the one-in-eight; "by hand or by a fixed function of the tile's position" replaces "by hash", which a hand-placed tilemap never uses.
 
-### Lines and shades follow the pixel craft; `pixel lint` does not check them
+### Lines and shades follow the pixel craft; `pixel lint` finds broken steps, thickened lines, and pinholes
 
 - Yu ([link][yu]): "With curved lines, jaggies crop up when the length of the line segments don't grow or shrink in a consistent manner." … "clean up the outline by removing stray pixels and reducing every line to a single pixel in thickness." … "By shading, you're not just adding color - you're sculpting out a form."
 - Cure ([link][cure]): "Jaggies occur when a pixel or group of pixels are out of place, interrupting the flow of a line." … "Pillow-shading is bad because it pays no attention to the light source,".
-- **Ritmo:** `fx check` measures jaggies, doubles, and holes on effects and the `ritmo-fx` skill's Craft explains them with their sources (`FX.md`); `pixel lint` checks none of them on sprites and tiles, so the skill names the rules once and points there.
+- **Ritmo:** `pixel lint` and `fx check` share one measure (`packages/tools/src/pixel/core/craft.ts`): jaggies and holes on the silhouette, doubles on the silhouette and on the outline's own color (a filled shape has no one-pixel line but its outline), and a box's corner is not a double. The skill names the rules once and leaves the measure to the report; shading from one light is still judged by eye.
 
 ### One light; under engine lighting, assets carry even shades and no strong baked light
 
@@ -170,6 +171,45 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 - Yacht Club Games, "Breaking the NES" ([link][yacht]): "Instead of emulating the NES exactly, we would create a rose-tinted view of an 8-bit game." … on the NES's one-axis screen shake, which they dropped: "And this is something we broke, because we didn't find a compelling reason to keep it."
 - Godot docs ([link][godot-settings]) and Schlitter ([link][slynyrd-23]) each name the cost of the pixel-perfect default (less smooth movement; "you can't move a half pixel"), which is what makes smoothing a choice with a reason rather than a mistake.
 - **Ritmo:** "the game's design notes" is where the `ritmo-prototype` skill's graduation keeps what is worth keeping, so a game already has the place. The same shape as the repo's lint (`// oxlint-disable-next-line ritmo/<rule> -- <reason>`) and `fx`'s `accept` with a reason: a judged exception is written with why. "Two agents agreeing never settles a look" is the maintainer's lesson from Still Time, where a briefing two models agreed on was rejected by the first playtest; the person who plays decides, as in `ritmo-prototype` ("Never say it is fun").
+
+## Rounds
+
+### You cannot see it at size nor watch it play; quality comes from rounds of the person's notes
+
+- **Ritmo:** the `ritmo-fx` skill's opening ("You cannot watch an effect play … Quality comes from rounds of their picks and notes, not from your first draft"), applied to sprites, tiles, and sheets. Rounds are what Still Time was: seven reviews of phone captures, each acted on.
+
+### A brief before the first pixel, in the design notes, read word for word by the next piece
+
+- George, "Crafting the perfect game art brief" ([link][george]): "provide explanations for each image included in your mood board." … "Show what you don't want – this can be more helpful than showing what you do want."
+- Pixel Parmesan ([link][parmesan]): "What is the smallest necessary detail?" The brief's size and silhouette are the skill's One grid and Readability decided for one piece; materials and ramps are One style's "a material is one ramp in different values"; "the one light" is Medeiros's "choosing a good light source is a skill as important as rendering the scene correctly" ([Basic Shading][saint-shading]).
+- **Ritmo:** "word for word, not a summary" is the maintainer's direction (2026-11-02). In the study behind it, the claude-animation skill keeps a style bible pasted at the top of each film for this reason (described here, not quoted as practice; see "Sources left out"); Still Time's review 6 is what retelling cost: a reference retold as "match it" became an overhaul of the cast.
+
+### Check, then fix or accept with why; a change made only to quiet a check is a fault
+
+- **Ritmo:** `accept` is `fx`'s accept and the repo's `// oxlint-disable-next-line ritmo/<rule> -- <reason>`, per file in `pixel.config.json`, where the person can read it. "A change made only to quiet a check" is the maintainer's direction from the same study, where Anatomy's audit had to learn to fail a stand-in shape recorded only to silence it; for pixel art, the likely versions are a highlight deleted as a "stray pixel" and an outline broken to lose a "double".
+
+### Look at every piece of the scene together, at display size beside the player, then up close
+
+- Schlitter, "Pixelblog 20" ([link][slynyrd-20]): "it's very helpful to have a preview window open that displays the scene from a zoomed out view,". Tsugumo, ch. 2 ([link][tsugumo-2]): "You have to look at how your tile will look when it's on a map." Wesnoth wiki ([link][wesnoth]): "Compare the size of your unit to the size of similar existing core units."
+- **Ritmo:** `pixel look` draws that picture for an agent, which reads still images: the top row is the zoomed-out view on the game's backdrop beside its player, the bottom the close-up with the measured spots ringed (`fx look`'s magenta). It is not a game capture; Judging still asks for one when the game runs.
+
+### Motion as numbers: area, the foot on the ground, the loop
+
+- Medeiros, "A Basic Aseprite Animation" ([link][saint-anim]): "Keeping the volume is very important so your object doesn't look like it got smaller or bigger."
+- Rickett, "Walk Cycles", UCLA Game Lab, 2011 ([link][rickett]): "we need to make sure the feet wont slide across the ground unrealistically." … "This is called "slippage"– when the character looks like he's rollerskating." … "The animation speed vs ground speed is matched pretty well".
+- **Ritmo:** `ground.pixelsPerSecond` is Rickett's "animation speed vs ground speed" as a number the game's code uses. "Read motion as numbers" is the `fx` rule that an agent cannot watch motion; the rossark-motion skill measures reference videos frame by frame for the same reason (described, not quoted).
+
+## What you see, and the usual fix
+
+Each row restates a principle above as the symptom a person names; its sources are that principle's.
+
+- **Mush → fewer colors, bigger clusters, silhouette first:** Yu ([link][yu]): "if you squint, a few large clusters of light and dark should still emerge." Readability's silhouette sources.
+- **"Off-pixel" → redraw on the game's grid:** the maintainer's Still Time note "Some decorations look too complex and off-pixel compared to the characters" (One pixel size).
+- **Two materials glued together → one ramp:** Still Time review 3, "Each block reads as two materials glued together" (One palette).
+- **Hairlines → clusters like the characters':** Still Time review 4, "A crack is a 2–3 px cluster with a highlight pixel, not a 1 px diagonal line." The skill drops the count (The characters set the rules).
+- **Flat or pillowy → shade from the light:** Cure ([link][cure]): "Pillow-shading is bad because it pays no attention to the light source,".
+- **Decoration fights the player → backdrop recedes:** Conway ([link][conway]): "The assets on screen should not be fighting for your attention." (What the player must notice is read first.)
+- **Busy tiles or a void → quiet base, rare clustered details:** Tiles hide the grid, and its sources.
 
 [saint-consistency]: https://saint11.art/blog/consistency/
 [saint-scaling]: https://saint11.art/blog/scaling/
@@ -218,3 +258,4 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 [wesnoth]: https://wiki.wesnoth.org/Creating_Unit_Art
 [george]: https://www.gamedeveloper.com/design/crafting-the-perfect-game-art-brief
 [gimate]: https://www.gamedeveloper.com/blogs/from-references-to-concept-art
+[rickett]: https://games.ucla.edu/?p=985
