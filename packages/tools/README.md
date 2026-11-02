@@ -315,22 +315,37 @@ into sprites without copying its pixels. It names the subject (`subject`, with
 its view), the picture it was measured on (`reference`, relative to the plan),
 the light (`top-left`, `top-right`, or `top`), and its parts, back to front.
 Each part has an `id`, a `tier` (1 names the object, 2 supports it, 3 is
-detail), a `material` (`plain`, which keeps the reference's lightness, `paint`,
-`matte`, `leather`, `rubber`, `chrome`, `glass`, `glow`), and a `shape` in the
+detail), a `material`, and a `shape` in the
 reference's pixels: `{"kind": "ellipse", "cx", "cy", "rx", "ry"}`, `{"kind":
 "ring", ..., "thick"}`, `{"kind": "poly", "points": [[x, y], ...]}`, `{"kind":
 "line", "a": [x, y], "b": [x, y], "width"}`, or `{"kind": "path", "points",
 "width"}`. Optional: `color` (`#rrggbb`, when the reference's lighting would
 mislead; default the median inside the shape), `attach` (the tier-1 ring or
 ellipse it sits on, which it follows when that part is enlarged), `pattern:
-"stripes"`, and `form: "hollow"` (seen into, like the inside of a cup). Each
+"stripes"`, and `form: "hollow"` (seen into, like the inside of a cup). The
+plan may list `cut` sides (`top`, `bottom`, `left`, `right`) where the subject
+is cut off, like a bust at the chest: no margin and no outline there.
+
+The material sets how far a part's shadow and light step from its color. A
+color measured on the reference also takes the material's lightness and
+saturation, since a photo's lighting misleads; a given `color` keeps its own
+lightness and hue. `plain`: the color as it is, soft steps (skin, cloth, fur,
+porcelain); `paint`: saturated, with a highlight (a car's body); `matte`: dark
+and greyed (cast iron); `leather`: dark, a soft highlight; `rubber`: the
+darkest (a tire); `chrome`: light, wide steps and a hard highlight; `glass`:
+very light, a highlight (a lens, a visor); `glow`: light and saturated (a
+lamp). Each
 size keeps tier 1, tier 2 from 32 pixels and tier 3 from 64 (each only when at
 least about a pixel wide there), enlarges a tier-1 ring to at least 7 pixels
 across and a tier-1 ellipse to 2, shades from the light (a part is in shadow
 where a copy shifted away from the light leaves it), takes values from the
 material and hue from the part, outlines the outside only, and darkens the
 edge where two parts of one color meet; on the project's palette when it has
-one. `examples/pixel/parts/` has two plans with their references and results.
+one. A size that is the longest side of one of the project's `sizes` is drawn
+on that canvas, centered and standing on its bottom edge. The report lists, per
+size, the parts kept, left out (with `why`), and enlarged. `parts` overwrites
+its files: hand edits go in a copy. `examples/pixel/parts/` has two plans with
+their references and results.
 
 **What the checks measure.** Errors break the project's rules (size,
 palette, color count, half-transparent pixels, a background left in).

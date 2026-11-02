@@ -28,7 +28,9 @@
  *   material and whose hue comes from the part, an outline on the outside
  *   only, and a darker edge where two parts of one color meet.
  *
- * The size is the longest side; the other side follows the subject.
+ * The size is the longest side; the other side follows the subject. A side
+ * the plan marks `cut` (a bust cut off at the chest) gets no margin and no
+ * outline: the shapes run to the sprite's edge there.
  */
 import { makeMatcher, parseHex, toHex, toOklab, fromOklab, type Lab, type Rgb } from "./color.ts"
 import { TRANSPARENT, type PixelArt } from "./fix.ts"
@@ -46,7 +48,20 @@ export type PartShape =
   | { readonly kind: "line"; readonly a: Point; readonly b: Point; readonly width: number }
   | { readonly kind: "path"; readonly points: ReadonlyArray<Point>; readonly width: number }
 
-/** What a part is made of: it sets the ramp's values (chrome is bright with a hard highlight, rubber stays dark). `plain` keeps the reference's own lightness (porcelain, concrete). */
+/**
+ * What a part is made of: it sets how far its shadow and light step from its color, and, for a color measured on the reference, the
+ * lightness and saturation too (a photo's muddy lighting is replaced by the material's). A part that gives its own `color` keeps
+ * that color's lightness and hue, whatever the material.
+ *
+ * - `plain`: the color as it is, soft steps (skin, cloth, fur, porcelain, concrete).
+ * - `paint`: saturated, mid-light, with a highlight (a car's body, a tank).
+ * - `matte`: dark and greyed, no highlight (cast iron, a dark plastic).
+ * - `leather`: dark and greyed, with a soft highlight (a seat, a boot).
+ * - `rubber`: the darkest, nearly grey, no highlight (a tire).
+ * - `chrome`: light and nearly grey, wide steps and a hard highlight (a pipe, a rim).
+ * - `glass`: very light, with a highlight (a lens, a visor, a window).
+ * - `glow`: light and very saturated (a lamp, an eye that glows, fire).
+ */
 export type Material = "plain" | "paint" | "matte" | "leather" | "rubber" | "chrome" | "glass" | "glow"
 
 export const MATERIALS: ReadonlyArray<Material> = ["plain", "paint", "matte", "leather", "rubber", "chrome", "glass", "glow"]
@@ -72,9 +87,13 @@ export interface Part {
 
 export type Light = "top-left" | "top-right" | "top"
 
+export type Side = "top" | "bottom" | "left" | "right"
+
 export interface PartsPlan {
   /** What the subject is, and its view: "motorcycle, side view, facing right". */
   readonly subject: string
+  /** The sides where the subject is cut off (a bust at the chest): no margin and no outline there. Default: none. */
+  readonly cut: ReadonlyArray<Side>
   /** The reference picture the shapes were measured on, relative to the plan. */
   readonly reference?: string | undefined
   /** Where the light comes from. Default: top-left. */
@@ -127,6 +146,13 @@ export const decodePlan = (text: string): Decoded<PartsPlan> => {
   const subject = typeof raw.subject === "string" && raw.subject.length > 0 ? raw.subject : (problems.push('"subject" says what the subject is and its view'), "")
   const reference = raw.reference === undefined ? undefined : typeof raw.reference === "string" ? raw.reference : (problems.push('"reference" is the path of the picture the shapes were measured on'), undefined)
   const light: Light = raw.light === undefined ? "top-left" : raw.light === "top-left" || raw.light === "top-right" || raw.light === "top" ? raw.light : (problems.push('"light" is top-left, top-right, or top'), "top-left")
+  const SIDES: ReadonlyArray<Side> = ["top", "bottom", "left", "right"]
+  const cut: Array<Side> = []
+  if (raw.cut !== undefined) {
+    const given: unknown = raw.cut
+    if (Array.isArray(given) && given.every((side: unknown) => SIDES.some((s) => s === side))) cut.push(...SIDES.filter((side) => given.includes(side)))
+    else problems.push('"cut" lists sides where the subject is cut off: top, bottom, left, right')
+  }
   if (!Array.isArray(raw.parts) || raw.parts.length === 0) return { ok: false, error: [...problems, '"parts" lists the parts, back to front'].join("; ") }
   const point = (value: unknown): value is Point => Array.isArray(value) && value.length === 2 && isNumber(value[0]) && isNumber(value[1])
   const parts: Array<Part> = []
@@ -168,7 +194,7 @@ export const decodePlan = (text: string): Decoded<PartsPlan> => {
     return undefined
   })
   if (!parts.some((p) => p.tier === 1)) problems.push("at least one part is tier 1: the parts that name the object")
-  return problems.length > 0 ? { ok: false, error: problems.join("; ") } : { ok: true, value: { subject, reference, light, parts } }
+  return problems.length > 0 ? { ok: false, error: problems.join("; ") } : { ok: true, value: { subject, reference, light, cut, parts } }
 }
 
 // ---- Geometry
@@ -262,9 +288,14 @@ interface Ramp {
   readonly line: Lab
 }
 
-/** A ramp per part: values from the material, hue from the part; parts of one material and hue share one. Shadows cooler, lights warmer. */
+/**
+ * A ramp per part, its steps from the material. A measured color takes the material's lightness and saturation too (`plain` keeps its
+ * own); a given color keeps its lightness and hue. Parts of one material, hue, and lightness share a ramp, so the palette stays small,
+ * but two parts given different colors never do. Shadows cooler, lights warmer.
+ */
 const rampsOf = (plan: PartsPlan, colors: ReadonlyArray<Rgb>): ReadonlyArray<Ramp> => {
   const labs = colors.map(toOklab)
+  const own = (part: Part): boolean => part.color !== undefined || part.material === "plain"
   const group: Array<number> = []
   plan.parts.forEach((part, k) => {
     const lab = labs[k]!
@@ -272,16 +303,25 @@ const rampsOf = (plan: PartsPlan, colors: ReadonlyArray<Rgb>): ReadonlyArray<Ram
       (other, j) =>
         j < k &&
         other.material === part.material &&
+        own(other) === own(part) &&
+        (other.color === undefined || part.color === undefined || toHex(other.color) === toHex(part.color)) &&
         Math.hypot(labs[j]!.a - lab.a, labs[j]!.b - lab.b) < SAME_HUE &&
-        (part.material !== "plain" || Math.abs(labs[j]!.l - lab.l) < 0.08)
+        (!own(part) || Math.abs(labs[j]!.l - lab.l) < 0.08)
     )
     group.push(same < 0 ? k : group[same]!)
   })
   return plan.parts.map((part, k) => {
     const lab = labs[group[k]!]!
     const values = VALUES[part.material]
+    if (own(part)) {
+      // The part's own lightness and hue, with the material's steps around it.
+      const chroma = part.material === "plain" ? 1 : Math.max(1, Math.min(values.chroma, 1.2))
+      const at = (l: number, warm: number): Lab => ({ l: Math.min(0.97, Math.max(0.06, l)), a: lab.a * chroma, b: lab.b * chroma + warm })
+      const down = part.material === "plain" ? values.dark : values.dark - values.base
+      const up = part.material === "plain" ? values.light : values.light - values.base
+      return { base: at(lab.l, 0), dark: at(lab.l + down, -0.03), light: at(lab.l + up, 0.02), line: at(Math.max(0.12, Math.min(0.32, lab.l + down - 0.3)), -0.03) }
+    }
     const at = (l: number, warm: number): Lab => ({ l: Math.min(0.97, Math.max(0.06, l)), a: lab.a * values.chroma, b: lab.b * values.chroma + warm })
-    if (part.material === "plain") return { base: at(lab.l, 0), dark: at(lab.l + values.dark, -0.03), light: at(lab.l + values.light, 0.02), line: at(Math.max(0.12, Math.min(0.32, lab.l - 0.45)), -0.03) }
     return { base: at(values.base, 0), dark: at(values.dark, -0.03), light: at(values.light, 0.02), line: at(Math.max(0.12, values.dark - 0.14), -0.03) }
   })
 }
@@ -294,6 +334,8 @@ export interface PartsArt {
   readonly kept: ReadonlyArray<string>
   readonly dropped: ReadonlyArray<string>
   readonly grown: ReadonlyArray<string>
+  /** Why each part in `dropped` was left out. */
+  readonly why: Readonly<Record<string, string>>
 }
 
 export interface PartsOptions {
@@ -306,12 +348,16 @@ export const drawParts = (plan: PartsPlan, colors: ReadonlyArray<Rgb>, size: num
   const subject = subjectOf(plan)
   const sw = subject[2] - subject[0]
   const sh = subject[3] - subject[1]
-  // One pixel of margin on each side, for the outline.
-  const scale = (Math.max(3, Math.round(size)) - 2) / Math.max(sw, sh, 1)
-  const W = Math.round(sw * scale) + 2
-  const H = Math.round(sh * scale) + 2
-  const tx = (x: number): number => (x - subject[0]) * scale + 1
-  const ty = (y: number): number => (y - subject[1]) * scale + 1
+  // One pixel of margin on each side, for the outline, except where the subject is cut off.
+  const margin = (side: Side): number => (plan.cut.includes(side) ? 0 : 1)
+  const mx = margin("left") + margin("right")
+  const my = margin("top") + margin("bottom")
+  const side = Math.max(3, Math.round(size))
+  const scale = Math.min((side - mx) / Math.max(sw, 1), (side - my) / Math.max(sh, 1))
+  const W = Math.round(sw * scale) + mx
+  const H = Math.round(sh * scale) + my
+  const tx = (x: number): number => (x - subject[0]) * scale + margin("left")
+  const ty = (y: number): number => (y - subject[1]) * scale + margin("top")
 
   // What this size holds.
   const smallest = (shape: PartShape): number => {
@@ -330,6 +376,14 @@ export const drawParts = (plan: PartsPlan, colors: ReadonlyArray<Rgb>, size: num
     }
   }
   const kept = plan.parts.map((part) => size >= TIER_FROM[part.tier] && smallest(part.shape) >= TIER_MIN[part.tier])
+  const why: Record<string, string> = {}
+  plan.parts.forEach((part, k) => {
+    if (kept[k]) return
+    why[part.id] =
+      size < TIER_FROM[part.tier]
+        ? `tier ${part.tier} joins at ${TIER_FROM[part.tier]} pixels`
+        : `its narrowest measure is ${smallest(part.shape).toFixed(2)} pixels here, under tier ${part.tier}'s ${TIER_MIN[part.tier]}`
+  })
 
   // What must read gets the pixels it needs, and takes what is attached to it along, around its own middle.
   const grow = new Map<string, number>()
@@ -346,11 +400,20 @@ export const drawParts = (plan: PartsPlan, colors: ReadonlyArray<Rgb>, size: num
     const s = part.shape
     if (factor === undefined || host === undefined || (host.shape.kind !== "ring" && host.shape.kind !== "ellipse")) return s
     const { cx: hx, cy: hy } = host.shape
-    if (s.kind === "ellipse" || s.kind === "ring") {
-      const moved = { cx: hx + (s.cx - hx) * factor, cy: hy + (s.cy - hy) * factor, rx: s.rx * factor, ry: s.ry * factor }
-      return s.kind === "ring" ? { ...s, ...moved, thick: s.thick * factor } : { ...s, ...moved }
+    const move = ([x, y]: Point): Point => [hx + (x - hx) * factor, hy + (y - hy) * factor]
+    switch (s.kind) {
+      case "ellipse":
+      case "ring": {
+        const moved = { cx: hx + (s.cx - hx) * factor, cy: hy + (s.cy - hy) * factor, rx: s.rx * factor, ry: s.ry * factor }
+        return s.kind === "ring" ? { ...s, ...moved, thick: s.thick * factor } : { ...s, ...moved }
+      }
+      case "poly":
+        return { ...s, points: s.points.map(move) }
+      case "line":
+        return { ...s, a: move(s.a), b: move(s.b), width: s.width * factor }
+      case "path":
+        return { ...s, points: s.points.map(move), width: s.width * factor }
     }
-    return s
   }
 
   // Each part's own shape at this size (before later parts cover it: shading follows the shape), and which part shows where.
@@ -557,8 +620,26 @@ export const drawParts = (plan: PartsPlan, colors: ReadonlyArray<Rgb>, size: num
     art: { width: W, height: H, palette, indices: out },
     kept: plan.parts.filter((_, k) => kept[k]).map((part) => part.id),
     dropped: plan.parts.filter((_, k) => !kept[k]).map((part) => part.id),
-    grown: [...grow.keys()].filter((id) => kept[plan.parts.findIndex((part) => part.id === id)])
+    grown: [...grow.keys()].filter((id) => kept[plan.parts.findIndex((part) => part.id === id)]),
+    why
   }
+}
+
+/**
+ * The art on a canvas of `width`×`height` (a size the project's rules ask for), centered across and standing on the bottom edge; or
+ * centered both ways with `align: "center"`. The canvas must hold the art.
+ */
+export const padArt = (art: PixelArt, width: number, height: number, align: "bottom" | "center" = "bottom"): PixelArt => {
+  const left = Math.floor((width - art.width) / 2)
+  const top = align === "bottom" ? height - art.height : Math.floor((height - art.height) / 2)
+  const indices = new Int32Array(width * height).fill(TRANSPARENT)
+  for (let y = 0; y < art.height; y++)
+    for (let x = 0; x < art.width; x++) {
+      const tx = x + left
+      const ty = y + top
+      if (tx >= 0 && ty >= 0 && tx < width && ty < height) indices[ty * width + tx] = art.indices[y * art.width + x]!
+    }
+  return { width, height, palette: art.palette, indices }
 }
 
 // ---- The plan over the reference

@@ -23,7 +23,7 @@ import { fitScale, previewArt, previewFix, previewSheet } from "../core/preview.
 import { animationOf, cropImage, defaultSheet, isAnimationName, playOrder, withFrames, type Sheet, type SheetAnimation } from "../core/sheet.ts"
 import { atlasOf, clipsOfSpritesheet, imageOfSpritesheet, isSpritesheet, spritesheetJson, type AtlasClip } from "../core/spritesheet.ts"
 import { BACKDROPS, lookPicture, zoomOf, type Backdrop, type LookPiece } from "../core/look.ts"
-import { decodePlan, drawParts, partColors, partsOverlay } from "../core/parts.ts"
+import { decodePlan, drawParts, padArt, partColors, partsOverlay } from "../core/parts.ts"
 import { encodeRecipe, type GridChoice, type Recipe } from "../core/recipe.ts"
 import { checkImage, compareReports, reportOfArt, reportOfFix, reportOfSheet, reportOfSpritesheet, type Report, type Verdict } from "../core/report.ts"
 import { artOfImage, formatSprite } from "../core/sprite.ts"
@@ -352,7 +352,9 @@ const parts = Command.make(
   {
     plan: Argument.String("plan").pipe(Argument.withDescription("A parts plan (JSON): the subject's main parts, ranked, each a simple shape measured on the reference, back to front.")),
     sizes: Flag.String("sizes").pipe(
-      Flag.withDescription('The sizes to draw, each the longest side in pixels, like "16,32,64" (default: the longest side of each of the config\'s sizes, or 16,32,64).'),
+      Flag.withDescription(
+        'The sizes to draw, each the longest side in pixels, like "16,32,64" (default: the longest side of each of the config\'s sizes, or 16,32,64). A size that is the longest side of one of the config\'s sizes is drawn on that canvas, centered and standing on its bottom edge.'
+      ),
       Flag.optional
     ),
     reference: Flag.String("reference").pipe(Flag.withDescription("The reference picture (default: the plan's reference)."), Flag.optional),
@@ -374,26 +376,29 @@ const parts = Command.make(
     const sizes = Option.isSome(flags.sizes) ? flags.sizes.value.split(/[\s,]+/).filter((text) => text.length > 0).map(Number) : fromConfig ?? [16, 32, 64]
     if (sizes.length === 0 || sizes.some((size) => !Number.isInteger(size) || size < 3)) return yield* new CliFailure({ message: `--sizes takes whole numbers of at least 3, like "16,32,64"` })
     const base = yield* outputBase(flags.plan, Option.getOrUndefined(flags.out), "parts")
-    // The size rules are the plan's to set here: every other rule of the project applies.
-    const rules: LintRules = { ...rulesOf(project, project.recipe), sizes: undefined }
     const drawn: Array<Record<string, unknown>> = []
     let worst: Verdict = "clean"
     for (const size of [...new Set(sizes)].sort((a, b) => a - b)) {
       const result = drawParts(plan, colors.value, size, { palette: project.palette?.colors })
+      // On the project's canvas for this size when it has one, so the sprite passes its size rule; otherwise the size is the plan's to set.
+      const canvas = project.rules.sizes?.find((s) => Math.max(s.width, s.height) === size && s.width >= result.art.width && s.height >= result.art.height)
+      const art = canvas === undefined ? result.art : padArt(result.art, canvas.width, canvas.height, plan.cut.includes("top") && !plan.cut.includes("bottom") ? "center" : "bottom")
+      const rules: LintRules = canvas === undefined ? { ...rulesOf(project, project.recipe), sizes: undefined } : rulesOf(project, project.recipe)
       const files: Record<string, string> = {}
-      files.png = yield* writePng(`${base}.${size}.png`, toRgba(result.art))
-      if (flags.scale > 1) files.scaled = yield* writePng(`${base}.${size}@${flags.scale}x.png`, toRgba(result.art, flags.scale))
-      files.source = yield* writeText(`${base}.${size}.txt`, formatSprite(result.art, `${plan.subject}, drawn from ${path.basename(flags.plan)} at ${size}`))
-      const report = yield* withAccepted(project, files.png, reportOfArt(result.art, rules))
+      files.png = yield* writePng(`${base}.${size}.png`, toRgba(art))
+      if (flags.scale > 1) files.scaled = yield* writePng(`${base}.${size}@${flags.scale}x.png`, toRgba(art, flags.scale))
+      files.source = yield* writeText(`${base}.${size}.txt`, formatSprite(art, `${plan.subject}, drawn from ${path.basename(flags.plan)} at ${size}`))
+      const report = yield* withAccepted(project, files.png, reportOfArt(art, rules))
       if (report.verdict !== "clean") worst = "fixable"
       drawn.push({
         size,
-        width: result.art.width,
-        height: result.art.height,
-        colors: result.art.palette.length,
+        width: art.width,
+        height: art.height,
+        colors: art.palette.length,
         files,
         kept: result.kept,
         dropped: result.dropped,
+        ...(result.dropped.length > 0 ? { why: result.why } : {}),
         ...(result.grown.length > 0 ? { grown: result.grown } : {}),
         verdict: report.verdict,
         issues: report.issues.map((issue) => `${issue.severity} ${issue.rule}: ${issue.message}`)
@@ -406,7 +411,7 @@ const parts = Command.make(
       ...(reference === undefined ? {} : { overlay: yield* writePng(`${base}.overlay.png`, partsOverlay(plan, reference)) }),
       colors: Object.fromEntries(plan.parts.map((part, k) => [part.id, toHex(colors.value[k]!)])),
       drawn,
-      next: "Read the overlay first: does every shape sit on its part (tier 1 green, 2 yellow, 3 magenta)? Fix the plan, not the pixels. Then `pixel look` the sizes the game uses: does each read as the subject at a glance? If a size does not, change the plan (a part's tier, its shape, its color) and draw again; edit a size's .txt by hand only for its last touches."
+      next: "Read the overlay first: does every shape sit on its part (tier 1 green, 2 yellow, 3 magenta)? Fix the plan, not the pixels. Then `pixel look` the sizes the game uses: does each read as the subject at a glance? If a size does not, change the plan (a part's tier, its shape, its color) and draw again; edit a size's .txt by hand only for its last touches, in a copy: drawing again overwrites these files."
     })
     yield* exitWith(exitCode[worst])
   })

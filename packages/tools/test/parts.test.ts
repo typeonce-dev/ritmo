@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 
 import { TRANSPARENT } from "@typeonce/ritmo-tools/pixel/core/fix.ts"
-import { decodePlan, drawParts, partColors, partsOverlay, type PartsPlan } from "@typeonce/ritmo-tools/pixel/core/parts.ts"
+import { decodePlan, drawParts, padArt, partColors, partsOverlay, type PartsPlan } from "@typeonce/ritmo-tools/pixel/core/parts.ts"
 
 /** A bicycle-like plan, 200×100 reference pixels: two wheels (tier 1), a frame (tier 1), a seat (tier 2), a bell (tier 3). */
 const bike = {
@@ -65,6 +65,22 @@ describe("each part's color", () => {
     expect(colors).toEqual({ ok: true, value: [{ r: 200, g: 0, b: 0 }, { r: 0, g: 255, b: 0 }] })
   })
 
+  it("keeps a given color's lightness whatever the material, and never shares a ramp between two given colors", () => {
+    const plan = decoded({ subject: "a suit and a mouth", parts: [
+      { id: "suit", tier: 1, material: "matte", color: "#e07a2a", shape: { kind: "poly", points: [[0, 0], [40, 0], [40, 40], [0, 40]] } },
+      { id: "hair", tier: 1, material: "matte", color: "#6a3e22", shape: { kind: "poly", points: [[0, 0], [40, 0], [40, 8], [0, 8]] } },
+      { id: "mouth", tier: 1, material: "matte", color: "#a83228", shape: { kind: "ellipse", cx: 20, cy: 30, rx: 6, ry: 3 } }
+    ] })
+    const colors = partColors(plan, undefined)
+    if (!colors.ok) throw new Error(colors.error)
+    const { art } = drawParts(plan, colors.value, 64)
+    // The suit's own orange is in the sprite, not a dark brown.
+    expect(art.palette.map((c) => c.r)).toContain(0xe0)
+    const hair = art.indices[3 * art.width + 20]!
+    const mouth = art.indices[Math.round((30 / 40) * 62 + 1) * art.width + 32]!
+    expect(art.palette[hair]).not.toEqual(art.palette[mouth])
+  })
+
   it("needs every part's color when there is no reference", () => {
     const plan = decoded({ subject: "a dot", parts: [{ id: "dot", tier: 1, material: "matte", shape: { kind: "ellipse", cx: 5, cy: 5, rx: 5, ry: 5 } }] })
     expect(partColors(plan, undefined)).toMatchObject({ ok: false })
@@ -97,6 +113,30 @@ describe("drawing a plan", () => {
     const cx = Math.floor((40 - 2) * scale + 1)
     const cy = Math.floor((60 - 20) * scale + 1)
     expect(art.indices[cy * art.width + cx]).toBe(TRANSPARENT)
+  })
+
+  it("says why each part was left out", () => {
+    expect(drawParts(plan, colors.value, 16).why).toEqual({ seat: "tier 2 joins at 32 pixels", bell: "tier 3 joins at 64 pixels" })
+  })
+
+  it("draws no margin and no outline on a side the subject is cut off at", () => {
+    const bust = decoded({ subject: "a block cut off below", cut: ["bottom"], parts: [{ id: "block", tier: 1, material: "plain", color: "#c08040", shape: { kind: "poly", points: [[0, 0], [20, 0], [20, 20], [0, 20]] } }] })
+    const colors = partColors(bust, undefined)
+    if (!colors.ok) throw new Error(colors.error)
+    const { art } = drawParts(bust, colors.value, 16)
+    expect([art.width, art.height]).toEqual([16, 15])
+    // The last row is the block itself, in its own colors, not the outline.
+    const outline = art.indices[0]
+    expect(outline).toBe(TRANSPARENT)
+    expect(art.indices[(art.height - 1) * art.width + 8]).not.toBe(art.indices[8])
+  })
+
+  it("stands the art on the bottom of a larger canvas, centered across", () => {
+    const { art } = drawParts(plan, colors.value, 16)
+    const padded = padArt(art, 16, 16)
+    expect([padded.width, padded.height]).toEqual([16, 16])
+    expect(padded.indices[0]).toBe(TRANSPARENT)
+    expect(Array.from(padded.indices.slice((16 - art.height) * 16))).toEqual(Array.from(art.indices))
   })
 
   it("draws only the project's palette when it has one", () => {
