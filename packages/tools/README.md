@@ -87,12 +87,21 @@ node packages/tools/bin/ritmo-tools.mjs pixel check art.png   # from its source,
    `1015/51` (51 pixels across 1015 source pixels), or `*2` or `/2` to
    double or halve the value there; ArrowUp and ArrowDown step it (with
    Shift, ten steps), and Escape puts it back. Lines moved by hand
-   turn yellow. **Follow drifting lines** moves every line onto its nearest
-   edge, for pictures whose cells grow or shrink across the picture.
+   turn yellow. **Follow lines** moves the lines onto the picture's edges:
+   **Straight** places every line at once (each on a strong edge, every gap
+   near the cell size), for cells that drift or are uneven; **Bend** places
+   them in each row and column of cells on its own, so a line bends where
+   the generator warped the grid (off by default: on a straight grid it
+   changes nothing). **Outlines** handles one-pixel dark outlines that an
+   image generator drew off the grid: a stroke a grid line split between two
+   pixels goes back to one (never breaking the outline or a corner), and
+   followed lines keep off dark strokes. **Auto** turns it on when the
+   picture's dark strokes are about one cell wide, and says which it chose.
    **Size** makes the picture smaller than one pixel per cell (a width, or
-   ½, ⅓, ¼): each new pixel merges a block. **Keep outlines** lets a dark
-   line through a block win over its most common color, so one-pixel
-   outlines survive; a lone dark pixel does not.
+   ½, ⅓, ¼): each new pixel merges a block. **Keep outlines** carries the
+   outlines over as strokes: thinned back to one pixel, never broken, with
+   one-pixel steps turned into clean diagonals; a lone dark pixel does not
+   grow into a block.
 2. **Palette.** Pick a preset (Game Boy, PICO-8, Sweetie 16, DawnBringer
    16/32, Endesga 32, NES, AAP-64, Ritmo), import a `.hex` or `.gpl` file, paste hex
    colors, or fetch a palette from Lospec by name. Click a swatch to edit it.
@@ -287,8 +296,9 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 | `init` | Writes a starting `pixel.config.json`. |
 
 `fix`, `check`, `pixelate`, and `preview` take the page's settings as flags
-(`--palette`, `--cell 8x8 --offset 2,3`, `--follow`, `--cleanup`,
-`--remove-background`, `--crop`, `--dither`, `--metric`, `--shrink-to`), over a
+(`--palette`, `--cell 8x8 --offset 2,3`, `--follow straight` or `bend`,
+`--outlines auto|on|off`, `--cleanup`, `--remove-background`, `--crop`,
+`--dither`, `--metric`, `--shrink-to`), over a
 `--recipe` file (or the recipe a project PNG holds), over the config. `ritmo-tools pixel <command> --help` lists them. `sheet` takes them too, plus
 `--boxes`, `--skip`, `--animations` (which frames make which animation:
 `"walk=1-4;throw=5-8;explode=9-18"`, every frame in one), `--only` (the
@@ -358,7 +368,8 @@ of the true size, which are as clean but have half their lines mid-cell.
 - `src/pixel/core/`: the headless core, tested in `test/` with fake AI pictures made
   from known sprites (`pnpm test` from the repository root runs them).
   `color.ts` (OKLab, CIELAB, CIEDE2000, nearest color), `grid.ts` (detection,
-  drifting lines), `fix.ts` (reading cells, quantizing, dithering),
+  following and bending lines), `outline.ts` (one-pixel outlines), `fix.ts`
+  (reading cells, quantizing, dithering),
   `cleanup.ts` (specks), `palette.ts` (presets, files, extraction, proposals), `reduce.ts`
   (fewer, bigger pixels), `background.ts` (background removal), `lost.ts`
   (colors the palette lost), `export.ts` (PNG pixels,
@@ -370,7 +381,9 @@ of the true size, which are as clean but have half their lines mid-cell.
   `preview.ts` (pictures to look at), `sheet.ts` (clearing a sheet, finding
   its frames, anchors, and laying frames on one canvas), `animation.ts` (the
   whole fix for a sheet), `spritesheet.ts` (sheet layouts and their JSON),
-  `gif.ts` (animated GIFs), `zip.ts` (stored ZIP files).
+  `gif.ts` (animated GIFs), `zip.ts` (stored ZIP files). The outline
+  handling, bent lines, and the outline-keeping shrink follow
+  [ToPixel](https://github.com/daisuqe/ToPixel).
 - `src/pixel/ui/`: the page (plain DOM and a canvas, no framework; `player.ts` plays
   animations), exported as
   `@typeonce/ritmo-tools/pixel/page` and `/pixel/page.css` inside the repository

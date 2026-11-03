@@ -37,6 +37,8 @@ export interface Report {
     readonly confidence?: number
     /** How much of the middle of each cell is one color, 0 to 1. */
     readonly fit: number
+    /** Whether a split one-pixel outline was given back to one pixel (the recipe's `outlines`, "auto" judged here). */
+    readonly outlines?: boolean
   }
   /** The output's size is one frame's; `colors` counts every frame's. */
   readonly output: { readonly width: number; readonly height: number; readonly colors: number }
@@ -233,7 +235,8 @@ export const reportOfFix = (image: RgbaImage, recipe: Recipe, outcome: Outcome, 
       offsetX: round(spec.offsetX, 2),
       offsetY: round(spec.offsetY, 2),
       ...(confidence === undefined ? {} : { confidence: round(confidence) }),
-      fit: round(fit)
+      fit: round(fit),
+      outlines: outcome.outlines
     },
     output: { width: outcome.exported.width, height: outcome.exported.height, colors },
     ...(recipe.palette === undefined

@@ -2,8 +2,9 @@
  * The whole fix, from a picture and a recipe to the fixed pixel art: the one
  * pipeline the web page and the CLI both run, so they always agree.
  *
- * Grid, then reading cells, snapping to the palette, cleaning specks,
- * shrinking, and removing the background, in that order. A cache lets the
+ * Grid, then reading cells, snapping to the palette, thinning split
+ * outlines, cleaning specks, shrinking, and removing the background, in
+ * that order. A cache lets the
  * page rerun it on every slider move without detecting the grid again.
  *
  * The background is found in the cells' own colors, not the palette's: a
@@ -19,11 +20,13 @@ import type { Rgb } from "./color.ts"
 import { quantize, sampleCells, type CellSamples, type PixelArt } from "./fix.ts"
 import { detectGrid, gridSize, refineGrid, uniformGrid, type Detection, type Grid, type GridSpec, type RgbaImage } from "./grid.ts"
 import { lostColors, type LostColor } from "./lost.ts"
+import { hasOutlines, outlineMask, thinOutlines, type OutlineMask } from "./outline.ts"
 import type { GridChoice, Recipe } from "./recipe.ts"
 import { reduce } from "./reduce.ts"
 
 /** Steps kept between runs: the grid and the cells read only change when their settings do. */
 export interface PipelineCache {
+  mask?: { readonly image: RgbaImage; readonly mask: OutlineMask }
   baseGrid?: { readonly image: RgbaImage; readonly key: string; readonly grid: Grid }
   samples?: { readonly grid: Grid; readonly key: string; readonly samples: CellSamples }
 }
@@ -34,6 +37,8 @@ export interface Outcome {
   /** What auto-detection found, when the recipe asked for it. */
   readonly detection: Detection | undefined
   readonly grid: Grid
+  /** Whether the outline handling ran: the recipe's "on", or "auto" finding one-pixel outlines. */
+  readonly outlines: boolean
   readonly samples: CellSamples
   readonly art: PixelArt
   /** What is exported and checked: `art`, cropped to its subject when the recipe asks. */
@@ -71,24 +76,48 @@ export const resolveGrid = (
   }
 }
 
-/** The grid's cuts: uniform, then moved onto edges when following, then the lines dragged by hand. */
-export const buildGrid = (image: RgbaImage, spec: GridSpec, recipe: Recipe, cache: PipelineCache = {}): Grid => {
-  const key = JSON.stringify([spec, recipe.follow])
+/** The picture's outline pixels, and whether the recipe's outline handling applies to it with cells of this size. */
+export const outlinesOf = (
+  image: RgbaImage,
+  spec: GridSpec,
+  recipe: Recipe,
+  cache: PipelineCache = {}
+): { readonly mask: OutlineMask; readonly on: boolean } => {
+  if (cache.mask?.image !== image) cache.mask = { image, mask: outlineMask(image) }
+  const mask = cache.mask.mask
+  const cell = (spec.cellWidth + spec.cellHeight) / 2
+  // Pictures at their own size (one pixel per cell) have no strokes to split.
+  if (recipe.outlines === "off" || cell < 2) return { mask, on: false }
+  return { mask, on: recipe.outlines === "on" || hasOutlines(mask, cell) }
+}
+
+/**
+ * The grid's cuts: uniform, then moved onto edges when following (with
+ * outlines, kept off dark strokes), then the lines dragged by hand.
+ */
+export const buildGrid = (image: RgbaImage, spec: GridSpec, recipe: Recipe, cache: PipelineCache = {}, outlines?: OutlineMask): Grid => {
+  const key = JSON.stringify([spec, recipe.follow, outlines !== undefined])
   if (cache.baseGrid?.image !== image || cache.baseGrid.key !== key) {
     let next = uniformGrid(image.width, image.height, spec)
-    if (recipe.follow) next = refineGrid(image, next)
+    if (recipe.follow !== "off") next = refineGrid(image, next, { bend: recipe.follow === "bend", outlines })
     cache.baseGrid = { image, key, grid: next }
   }
-  if (recipe.moved.length === 0) return cache.baseGrid.grid
-  const xs = [...cache.baseGrid.grid.xs]
-  const ys = [...cache.baseGrid.grid.ys]
+  const base = cache.baseGrid.grid
+  if (recipe.moved.length === 0) return base
+  const xs = [...base.xs]
+  const ys = [...base.ys]
+  const bend = base.bend === undefined ? undefined : { xs: base.bend.xs.map((line) => [...line]), ys: base.bend.ys.map((line) => [...line]) }
   for (const [id, position] of recipe.moved) {
     const [axis, index] = id.split(":")
     const cuts = axis === "x" ? xs : ys
     const i = Number(index)
-    if (i >= 0 && i < cuts.length) cuts[i] = position
+    if (i < 0 || i >= cuts.length) continue
+    // A bent line dragged by hand moves as a whole.
+    const line = bend === undefined ? undefined : (axis === "x" ? bend.xs : bend.ys)[i]
+    if (line !== undefined) for (let j = 0; j < line.length; j++) line[j]! += position - cuts[i]!
+    cuts[i] = position
   }
-  return { xs, ys }
+  return bend === undefined ? { xs, ys } : { xs, ys, bend }
 }
 
 /** Runs the recipe on a picture; undefined when the recipe asks for "auto" and the picture has no grid to find. */
@@ -106,7 +135,8 @@ export const runWithSpec = (
   detection: Detection | undefined,
   cache: PipelineCache = {}
 ): Outcome => {
-  const grid = buildGrid(image, spec, recipe, cache)
+  const outlines = outlinesOf(image, spec, recipe, cache)
+  const grid = buildGrid(image, spec, recipe, cache, outlines.on ? outlines.mask : undefined)
   const sampleKey = JSON.stringify(recipe.sample)
   if (cache.samples?.grid !== grid || cache.samples.key !== sampleKey) {
     cache.samples = { grid, key: sampleKey, samples: sampleCells(image, grid, recipe.sample) }
@@ -119,6 +149,7 @@ export const runWithSpec = (
     dither: recipe.dither,
     ditherStrength: recipe.ditherStrength
   })
+  if (outlines.on) art = thinOutlines(art, grid, outlines.mask)
 
   // Each cell's own color, where the background is told apart from the subject.
   const own = palette.length > 0 ? quantize(samples, { palette: [], metric: recipe.metric, dither: "none", ditherStrength: 0 }) : art
@@ -172,7 +203,7 @@ export const runWithSpec = (
   if (mask !== undefined) art = clearMasked(art, mask)
 
   const exported = recipe.crop ? cropToContent(art) : art
-  return { spec, detection, grid, samples, art, exported, lost, specks, backgroundFound, painted, editsStale, cleanKeepStale }
+  return { spec, detection, grid, outlines: outlines.on, samples, art, exported, lost, specks, backgroundFound, painted, editsStale, cleanKeepStale }
 }
 
 /** The size ("WxH") of the fixed picture before shrinking: what kept specks are recorded against. */
