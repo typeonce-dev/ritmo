@@ -261,6 +261,23 @@ export const makeViewer = (canvas: HTMLCanvasElement, events: ViewerEvents): Vie
       context.strokeStyle = isHover ? HOVER_COLOR : scene.moved.has(`${axis}:${index}`) ? MOVED_COLOR : GRID_COLOR
       context.lineWidth = isHover ? 2 : 1
       context.beginPath()
+      // A bent line: through its position in each row (column) of cells, at the row's middle.
+      const bent = grid.bend === undefined ? undefined : (axis === "x" ? grid.bend.xs : grid.bend.ys)[index]
+      if (bent !== undefined) {
+        const across = axis === "x" ? grid.ys : grid.xs
+        const other: Axis = axis === "x" ? "y" : "x"
+        const point = (along: number, position: number): void => {
+          const a = toScreen(position, axis)
+          const b = toScreen(along, other)
+          if (axis === "x") context.lineTo(a, b)
+          else context.lineTo(b, a)
+        }
+        point(across[0]!, bent[0]!)
+        bent.forEach((position, j) => point((across[j]! + across[j + 1]!) / 2, position))
+        point(across[across.length - 1]!, bent[bent.length - 1]!)
+        context.stroke()
+        return
+      }
       if (axis === "x") {
         if (at < 0 || at > view.width) return
         context.moveTo(at, Math.max(0, top))

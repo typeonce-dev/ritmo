@@ -9,7 +9,7 @@
  * median of its colors. Specks left over are cleaned up in `cleanup.ts`.
  */
 import { channel, makeMatcher, pack, unpack, type Metric, type Rgb } from "./color.ts"
-import { gridSize, type Grid, type RgbaImage } from "./grid.ts"
+import { cellBox, gridSize, type Grid, type RgbaImage } from "./grid.ts"
 
 /** The fixed picture: one entry per pixel, an index into `palette`, or -1 where it is transparent. */
 export interface PixelArt {
@@ -48,9 +48,7 @@ export const defaultSampleOptions: SampleOptions = { inset: 0.25, alphaThreshold
 export const sampleCells = (image: RgbaImage, grid: Grid, options: SampleOptions): CellSamples => {
   const { width, height } = gridSize(grid)
   const inset = Math.min(0.45, Math.max(0, options.inset))
-  const span = (cuts: ReadonlyArray<number>, i: number, limit: number): readonly [number, number] => {
-    const from = cuts[i]!
-    const to = cuts[i + 1]!
+  const span = (from: number, to: number, limit: number): readonly [number, number] => {
     const margin = (to - from) * inset
     // Pixels whose centers fall inside the trimmed cell; at least the one in the middle.
     let first = Math.ceil(from + margin - 0.5)
@@ -58,11 +56,12 @@ export const sampleCells = (image: RgbaImage, grid: Grid, options: SampleOptions
     if (last < first) first = last = Math.floor((from + to) / 2)
     return [Math.max(0, Math.min(limit - 1, first)), Math.max(0, Math.min(limit - 1, last))]
   }
-  const columns = Array.from({ length: width }, (_, i) => span(grid.xs, i, image.width))
-  const rows = Array.from({ length: height }, (_, i) => span(grid.ys, i, image.height))
   const cells: Array<Cell> = []
-  for (const [y0, y1] of rows) {
-    for (const [x0, x1] of columns) {
+  for (let cy = 0; cy < height; cy++) {
+    for (let cx = 0; cx < width; cx++) {
+      const [left, top, right, bottom] = cellBox(grid, cx, cy)
+      const [x0, x1] = span(left, right, image.width)
+      const [y0, y1] = span(top, bottom, image.height)
       const colors: Array<number> = []
       let transparent = 0
       for (let y = y0; y <= y1; y++) {

@@ -137,3 +137,29 @@ export const fakeSheet = (frames: ReadonlyArray<PixelArt>, scale: number, seed =
   })
   return { image: { width, height, data }, frames: placed }
 }
+
+/**
+ * The sprite drawn on a warped grid: every line bent by a sine wave of
+ * `bend` cells across the picture (`period` cells long), each axis its own way,
+ * then blurred once. `scale` source pixels per cell, starting `offset` in.
+ */
+export const warped = (sprite: PixelArt, scale: number, offset: number, bend: number, period: number): RgbaImage => {
+  const width = Math.round(2 * offset + sprite.width * scale)
+  const height = Math.round(2 * offset + sprite.height * scale)
+  const column = (k: number, y: number): number => offset + k * scale + bend * scale * Math.sin((2 * Math.PI * y) / (period * scale))
+  const row = (k: number, x: number): number => offset + k * scale + bend * scale * Math.sin((2 * Math.PI * x) / (period * scale) + 1)
+  const sharp = new Uint8ClampedArray(width * height * 4)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let u = -1
+      while (u < sprite.width && column(u + 1, y + 0.5) <= x + 0.5) u++
+      let v = -1
+      while (v < sprite.height && row(v + 1, x + 0.5) <= y + 0.5) v++
+      const index = u >= 0 && v >= 0 && u < sprite.width && v < sprite.height ? sprite.indices[v * sprite.width + u]! : TRANSPARENT
+      if (index === TRANSPARENT) continue
+      const color = sprite.palette[index]!
+      sharp.set([color.r, color.g, color.b, 255], (y * width + x) * 4)
+    }
+  }
+  return { width, height, data: sharp }
+}

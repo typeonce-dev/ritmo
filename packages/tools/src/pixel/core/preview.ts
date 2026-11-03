@@ -88,14 +88,25 @@ export const previewFix = (source: RgbaImage, grid: Grid, art: PixelArt, height 
   const spacing = ((grid.xs[grid.xs.length - 1]! - grid.xs[0]!) / Math.max(1, grid.xs.length - 1)) * scale
   if (spacing >= 4) {
     const pink = [255, 64, 160, 200] as const
-    for (const cut of grid.xs) {
-      const x = Math.min(left - 1, Math.round(cut * scale))
-      for (let y = Math.round(grid.ys[0]! * scale); y < Math.min(top, Math.round(grid.ys[grid.ys.length - 1]! * scale)); y++) blend(data, (y * width + x) * 4, pink)
+    // A bent line is where it crosses each row (column) of cells: `lineAt` finds that row.
+    const lineAt = (bent: ReadonlyArray<number> | undefined, across: ReadonlyArray<number>, cut: number, position: number): number => {
+      if (bent === undefined) return cut
+      let j = 0
+      while (j < bent.length - 1 && position >= across[j + 1]!) j++
+      return bent[j]!
     }
-    for (const cut of grid.ys) {
-      const y = Math.min(top - 1, Math.round(cut * scale))
-      for (let x = Math.round(grid.xs[0]! * scale); x < Math.min(left, Math.round(grid.xs[grid.xs.length - 1]! * scale)); x++) blend(data, (y * width + x) * 4, pink)
-    }
+    grid.xs.forEach((cut, i) => {
+      for (let y = Math.round(grid.ys[0]! * scale); y < Math.min(top, Math.round(grid.ys[grid.ys.length - 1]! * scale)); y++) {
+        const x = Math.min(left - 1, Math.round(lineAt(grid.bend?.xs[i], grid.ys, cut, y / scale) * scale))
+        blend(data, (y * width + x) * 4, pink)
+      }
+    })
+    grid.ys.forEach((cut, i) => {
+      for (let x = Math.round(grid.xs[0]! * scale); x < Math.min(left, Math.round(grid.xs[grid.xs.length - 1]! * scale)); x++) {
+        const y = Math.min(top - 1, Math.round(lineAt(grid.bend?.ys[i], grid.xs, cut, x / scale) * scale))
+        blend(data, (y * width + x) * 4, pink)
+      }
+    })
   }
   // The fixed art, nearest pixel.
   const pixel = top / Math.max(1, art.height)

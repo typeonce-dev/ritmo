@@ -26,6 +26,21 @@ export type GridChoice =
   | { readonly kind: "cells"; readonly spec: GridSpec }
   | { readonly kind: "size"; readonly width: number; readonly height?: number | undefined }
 
+/**
+ * How the grid's lines follow the picture: kept where the cell size puts
+ * them ("off"), each moved onto its edges as a straight line, for cells that
+ * drift or are uneven ("straight"), or also bent along the picture, for a
+ * grid that is warped ("bend").
+ */
+export type Follow = "off" | "straight" | "bend"
+
+/**
+ * The handling of one-pixel dark outlines (grid lines kept off dark strokes,
+ * and a stroke split between two pixels given back to one): on when the
+ * picture's dark strokes are about one cell wide ("auto"), always, or never.
+ */
+export type Outlines = "auto" | "on" | "off"
+
 export interface RecipePalette {
   readonly name: string
   readonly colors: ReadonlyArray<Rgb>
@@ -35,8 +50,8 @@ export interface RecipePalette {
 
 export interface Recipe {
   readonly grid: GridChoice
-  /** Moves each line onto its nearest edge, for pictures whose cells drift. */
-  readonly follow: boolean
+  readonly follow: Follow
+  readonly outlines: Outlines
   /** Lines dragged by hand, as ["x:3", position] in source pixels. */
   readonly moved: ReadonlyArray<readonly [string, number]>
   readonly sample: SampleOptions
@@ -70,7 +85,8 @@ export interface Recipe {
 
 export const defaultRecipe: Recipe = {
   grid: { kind: "auto" },
-  follow: false,
+  follow: "off",
+  outlines: "auto",
   moved: [],
   sample: defaultSampleOptions,
   palette: undefined,
@@ -313,7 +329,8 @@ export const decodeRecipe = (text: string): Decoded<Recipe> => {
 
   const recipe: Recipe = {
     grid,
-    follow: boolean(raw.follow, "follow", defaultRecipe.follow),
+    follow: oneOf(raw.follow, "follow", ["off", "straight", "bend"], defaultRecipe.follow),
+    outlines: oneOf(raw.outlines, "outlines", ["auto", "on", "off"], defaultRecipe.outlines),
     moved,
     sample: {
       inset: number(sample.inset, "sample.inset", defaultSampleOptions.inset),

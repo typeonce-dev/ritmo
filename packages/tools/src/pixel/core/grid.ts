@@ -24,11 +24,28 @@ export interface GridSpec {
   readonly offsetY: number
 }
 
-/** Cut positions on each axis, ascending, from the left (top) edge of the picture. */
+/**
+ * Cut positions on each axis, ascending, from the left (top) edge of the
+ * picture. With `bend`, the lines are not straight: each moves a little in
+ * every row (column) of cells, and `xs` / `ys` are where they would be
+ * straight.
+ */
 export interface Grid {
   readonly xs: ReadonlyArray<number>
   readonly ys: ReadonlyArray<number>
+  /**
+   * Bent lines: `bend.xs[i][j]` is column cut i where it crosses row j of
+   * cells (between `ys[j]` and `ys[j + 1]`), and `bend.ys[i][j]` row cut i
+   * in column j.
+   */
+  readonly bend?: { readonly xs: ReadonlyArray<ReadonlyArray<number>>; readonly ys: ReadonlyArray<ReadonlyArray<number>> } | undefined
 }
+
+/** The source box of the cell in column x, row y: [left, top, right, bottom]. */
+export const cellBox = (grid: Grid, x: number, y: number): readonly [number, number, number, number] =>
+  grid.bend === undefined
+    ? [grid.xs[x]!, grid.ys[y]!, grid.xs[x + 1]!, grid.ys[y + 1]!]
+    : [grid.bend.xs[x]![y]!, grid.bend.ys[y]![x]!, grid.bend.xs[x + 1]![y]!, grid.bend.ys[y + 1]![x]!]
 
 /** What auto-detection found on one axis. */
 export interface AxisFit {
@@ -394,56 +411,199 @@ export const detectGrid = (image: RgbaImage): Detection | undefined => {
 }
 
 /**
- * Moves each inner cut onto the strongest nearby edge, for pictures whose
- * cells drift. Each cut is expected one cell after the previous (already
- * moved) cut and may move up to a third of a cell; where there is no clear
- * edge (two cells of one color) it stays where it is expected. Cuts on the
- * picture's border never move.
+ * Outline pixels, for keeping grid lines off dark strokes: 1 where a pixel is
+ * one, row by row (`outline.ts`'s `outlineMask` makes it).
  */
-export const refineCuts = (profile: Float64Array, cuts: ReadonlyArray<number>, length: number): Array<number> => {
-  if (cuts.length < 3) return [...cuts]
-  // Smoothed, so a blurred edge (a plateau a few pixels wide) peaks in its middle.
-  const smooth = smoothed(profile)
-  const inner = cuts.filter((cut) => cut > 0 && cut < length)
-  const strengths = inner.map((cut) => at(smooth, cut)).sort((a, b) => a - b)
-  const typical = strengths[Math.floor(strengths.length * 0.75)] ?? 0
-  const threshold = 0.3 * typical
+export interface DarkMask {
+  readonly width: number
+  readonly height: number
+  readonly dark: Uint8Array
+}
 
-  const out: Array<number> = [cuts[0]!]
-  for (let i = 1; i < cuts.length; i++) {
-    const original = cuts[i]!
-    if (original <= 0 || original >= length) {
-      out.push(original)
-      continue
+/**
+ * How much a cut at each position would split a dark stroke: `profile[x]`
+ * is the share of lines (rows from `from` to `to`, for "x") where the pixels
+ * on both sides of the boundary before x are outline pixels.
+ */
+export const crossingProfile = (mask: DarkMask, axis: Axis, from = 0, to = axis === "x" ? mask.height : mask.width): Float64Array => {
+  const { width, dark } = mask
+  const length = axis === "x" ? mask.width : mask.height
+  const out = new Float64Array(length + 1)
+  const lines = Math.max(1, to - from)
+  for (let a = 1; a < length; a++) {
+    let count = 0
+    for (let line = from; line < to; line++) {
+      const i = axis === "x" ? line * width + a : a * width + line
+      if (dark[i] === 1 && dark[axis === "x" ? i - 1 : i - width] === 1) count++
     }
-    const spacing = original - cuts[i - 1]!
-    const expected = out[i - 1]! + spacing
-    const reach = spacing / 3
-    let best = expected
-    let bestScore = -1
-    for (let position = expected - reach; position <= expected + reach; position += 0.05) {
-      const d = (position - expected) / reach
-      const score = at(smooth, position) * (1 - 0.2 * d * d)
-      if (score > bestScore) {
-        bestScore = score
-        best = position
-      }
-    }
-    const moved = at(smooth, best) >= threshold ? best : expected
-    const clamped = Math.min(length - 0.5, Math.max(out[i - 1]! + spacing / 2, moved))
-    out.push(Math.round(clamped * 100) / 100)
+    out[a] = count / lines
   }
-  // Moving cuts can leave a sliver at either end of the picture: it joins its neighbour.
-  if (out.length > 3 && out[1]! - out[0]! < (out[2]! - out[1]!) / 2) out.splice(1, 1)
-  const n = out.length
-  if (n > 3 && out[n - 1]! - out[n - 2]! < (out[n - 2]! - out[n - 3]!) / 2) out.splice(n - 2, 1)
   return out
 }
 
-/** A uniform grid with every inner cut moved onto its nearest edge. */
-export const refineGrid = (image: RgbaImage, grid: Grid): Grid => {
-  const { columns, rows } = edgeProfiles(image)
-  return { xs: refineCuts(columns, grid.xs, image.width), ys: refineCuts(rows, grid.ys, image.height) }
+/** The edge profile of one axis over a band of lines only (rows from `from` to `to`, for "x"). */
+const bandProfile = (image: RgbaImage, axis: Axis, from: number, to: number): Float64Array => {
+  const { width, data } = image
+  const length = axis === "x" ? image.width : image.height
+  const out = new Float64Array(length + 1)
+  const stride = width * 4
+  const lines = Math.max(1, to - from)
+  for (let a = 1; a < length; a++) {
+    let sum = 0
+    for (let line = from; line < to; line++) {
+      const i = axis === "x" ? line * stride + a * 4 : a * stride + line * 4
+      sum += difference(data, i, axis === "x" ? i - 4 : i - stride)
+    }
+    out[a] = sum / lines
+  }
+  return out
+}
+
+/** How much a cut on a dark stroke costs, in units of a typical edge's worth. */
+const CROSSING_COST = 4
+/** How much a gap a share `s` off the expected cell size costs: `SPACING_COST * s * s`. */
+const SPACING_COST = 20
+
+/**
+ * Moves the inner cuts onto edges, for pictures whose cells drift or are
+ * uneven. All cuts are placed together (dynamic programming): each lands on
+ * a strong edge where there is one, every gap stays near the typical cell,
+ * and a cut costs more where it would split a dark stroke (`crossings`, with
+ * outlines on). Each cut stays within half a cell of where it was, so the
+ * number of cells only changes when a sliver left at either end of the
+ * picture joins its neighbour; cuts on the picture's border never move.
+ */
+export const refineCuts = (profile: Float64Array, cuts: ReadonlyArray<number>, length: number, crossings?: Float64Array): Array<number> => {
+  const out = placeCuts(profile, cuts, length, crossings)
+  // Moving cuts can leave a sliver at either end of the picture: it joins its neighbour.
+  if (out.length > 3 && out[0] === 0 && out[1]! < (out[2]! - out[1]!) / 2) out.splice(1, 1)
+  const n = out.length
+  if (n > 3 && out[n - 1] === length && length - out[n - 2]! < (out[n - 2]! - out[n - 3]!) / 2) out.splice(n - 2, 1)
+  return out
+}
+
+/** `refineCuts` without joining slivers: always as many cuts as given. */
+const placeCuts = (profile: Float64Array, cuts: ReadonlyArray<number>, length: number, crossings?: Float64Array): Array<number> => {
+  const movable = cuts.map((cut, i) => (cut > 0 && cut < length ? i : -1)).filter((i) => i >= 0)
+  if (movable.length < 2) return [...cuts]
+  // Smoothed, so a blurred edge (a plateau a few pixels wide) peaks in its middle.
+  const smooth = smoothed(profile)
+  let mean = 0
+  for (let x = 1; x < length; x++) mean += smooth[x]!
+  mean = mean / Math.max(1, length - 1) || 1
+  const first = movable[0]!
+  const last = movable[movable.length - 1]!
+  const spacing = (cuts[last]! - cuts[first]!) / (last - first)
+  const step = Math.max(0.25, spacing / 40)
+  const reach = spacing / 2
+  const gain = (position: number): number => Math.min(at(smooth, position) / mean, 6) - (crossings === undefined ? 0 : CROSSING_COST * at(crossings, position))
+  const candidates = movable.map((i) => {
+    const list: Array<number> = []
+    for (let position = cuts[i]! - reach; position <= cuts[i]! + reach + 1e-9; position += step) {
+      if (position > 0.5 && position < length - 0.5) list.push(position)
+    }
+    return list.length > 0 ? list : [cuts[i]!]
+  })
+  let score = candidates[0]!.map(gain)
+  const back: Array<Int32Array> = [new Int32Array(candidates[0]!.length).fill(-1)]
+  for (let k = 1; k < candidates.length; k++) {
+    const here = candidates[k]!
+    const before = candidates[k - 1]!
+    const gaps = movable[k]! - movable[k - 1]!
+    const next = new Array<number>(here.length).fill(Number.NEGATIVE_INFINITY)
+    const from = new Int32Array(here.length).fill(-1)
+    here.forEach((position, b) => {
+      for (let a = 0; a < before.length; a++) {
+        const gap = (position - before[a]!) / gaps
+        if (gap < spacing / 2) continue
+        const value = score[a]! - SPACING_COST * ((gap - spacing) / spacing) ** 2
+        if (value > next[b]!) {
+          next[b] = value
+          from[b] = a
+        }
+      }
+      next[b]! += gain(position)
+    })
+    score = next
+    back.push(from)
+  }
+  let pick = 0
+  for (let b = 1; b < score.length; b++) if (score[b]! > score[pick]!) pick = b
+  const out = [...cuts]
+  for (let k = candidates.length - 1; k >= 0; k--) {
+    out[movable[k]!] = Math.round(candidates[k]![pick]! * 100) / 100
+    pick = Math.max(0, back[k]![pick]!)
+  }
+  return out
+}
+
+/** Rows (columns) of cells on each side whose edges also place a bent line's cuts in a row, so it bends smoothly. */
+const BEND_SPAN = 1
+
+/**
+ * Bent lines for one axis: in every band of cells across it (each row, for
+ * column lines), the cuts are placed as `refineCuts` places them, from the
+ * edges of that band and its `BEND_SPAN` neighbours. `bend[i][j]` is cut i
+ * in band j; `profiles[j]` (and `crossings[j]`) are band j's own profiles.
+ */
+const bendCuts = (
+  profiles: ReadonlyArray<Float64Array>,
+  crossings: ReadonlyArray<Float64Array> | undefined,
+  cuts: ReadonlyArray<number>,
+  length: number
+): Array<Array<number>> => {
+  const sum = (list: ReadonlyArray<Float64Array>, j: number): Float64Array => {
+    const out = new Float64Array(length + 1)
+    for (let k = Math.max(0, j - BEND_SPAN); k <= Math.min(list.length - 1, j + BEND_SPAN); k++) {
+      for (let x = 0; x <= length; x++) out[x]! += list[k]![x]!
+    }
+    return out
+  }
+  const bands = profiles.map((_, j) => placeCuts(sum(profiles, j), cuts, length, crossings === undefined ? undefined : sum(crossings, j)))
+  return cuts.map((_, i) => bands.map((band) => band[i]!))
+}
+
+export interface RefineOptions {
+  /** Let lines bend across the picture (each row and column of cells on its own), for pictures whose grid is warped. */
+  readonly bend: boolean
+  /** The picture's outline pixels: lines keep off its dark strokes. */
+  readonly outlines?: DarkMask | undefined
+}
+
+/**
+ * A grid with every inner cut moved onto its nearest edges (`refineCuts`),
+ * or with `bend`, placed in every row and column of cells on its own
+ * (`bendCuts`), each line then straight where its mean is.
+ */
+export const refineGrid = (image: RgbaImage, grid: Grid, options: RefineOptions = { bend: false }): Grid => {
+  const mask = options.outlines
+  if (!options.bend || grid.xs.length < 3 || grid.ys.length < 3) {
+    const { columns, rows } = edgeProfiles(image)
+    return {
+      xs: refineCuts(columns, grid.xs, image.width, mask === undefined ? undefined : crossingProfile(mask, "x")),
+      ys: refineCuts(rows, grid.ys, image.height, mask === undefined ? undefined : crossingProfile(mask, "y"))
+    }
+  }
+  const band = (cuts: ReadonlyArray<number>, j: number, limit: number): readonly [number, number] => [
+    Math.max(0, Math.round(cuts[j]!)),
+    Math.min(limit, Math.max(Math.round(cuts[j]!) + 1, Math.round(cuts[j + 1]!)))
+  ]
+  const rowBands = Array.from({ length: grid.ys.length - 1 }, (_, j) => band(grid.ys, j, image.height))
+  const columnBands = Array.from({ length: grid.xs.length - 1 }, (_, j) => band(grid.xs, j, image.width))
+  const xs = bendCuts(
+    rowBands.map(([from, to]) => bandProfile(image, "x", from, to)),
+    mask === undefined ? undefined : rowBands.map(([from, to]) => crossingProfile(mask, "x", from, to)),
+    grid.xs,
+    image.width
+  )
+  const ys = bendCuts(
+    columnBands.map(([from, to]) => bandProfile(image, "y", from, to)),
+    mask === undefined ? undefined : columnBands.map(([from, to]) => crossingProfile(mask, "y", from, to)),
+    grid.ys,
+    image.height
+  )
+  const mean = (line: ReadonlyArray<number>): number => Math.round((line.reduce((total, value) => total + value, 0) / line.length) * 100) / 100
+  return { xs: xs.map(mean), ys: ys.map(mean), bend: { xs, ys } }
 }
 
 /**

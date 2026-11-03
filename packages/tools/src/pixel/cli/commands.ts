@@ -22,7 +22,7 @@ import { toGif } from "../core/gif.ts"
 import { fitScale, previewArt, previewFix, previewSheet } from "../core/preview.ts"
 import { animationOf, defaultSheet, isAnimationName, playOrder, withFrames, type Sheet, type SheetAnimation } from "../core/sheet.ts"
 import { atlasOf, spritesheetJson } from "../core/spritesheet.ts"
-import { encodeRecipe, type GridChoice, type Recipe } from "../core/recipe.ts"
+import { encodeRecipe, type GridChoice, type Outlines, type Recipe } from "../core/recipe.ts"
 import { checkImage, compareReports, reportOfArt, reportOfFix, reportOfSheet, type Report, type Verdict } from "../core/report.ts"
 import { artOfImage, formatSprite } from "../core/sprite.ts"
 import { CliFailure, CONFIG_FILE, decodeOrFail, loadConfig, loadPalette, starterConfig, type Config } from "./config.ts"
@@ -58,6 +58,10 @@ const cleanup = Flag.Int("cleanup").pipe(Flag.withDescription("Merge specks up t
 const metric = Flag.Literals("metric", ["oklab", "ciede2000"]).pipe(Flag.withDescription("How color distance is measured."), Flag.optional)
 const dither = Flag.Boolean("dither").pipe(Flag.withDefault(false), Flag.withDescription("Ordered dithering where the palette has no close color."))
 const shrink = Flag.Int("shrink-to").pipe(Flag.withDescription("Merge pixels down to this width, keeping outlines."), Flag.optional)
+const outlines = Flag.Literals("outlines", ["auto", "on", "off"]).pipe(
+  Flag.withDescription("One-pixel dark outlines: grid lines kept off dark strokes, and a stroke split between two pixels given back to one (auto: when the picture's dark strokes are about one cell wide)."),
+  Flag.optional
+)
 
 /** Settings given on the command line, over the recipe. */
 interface Overrides {
@@ -68,9 +72,10 @@ interface Overrides {
   readonly metric: Option.Option<Metric>
   readonly dither: boolean
   readonly shrink: Option.Option<number>
+  readonly outlines: Option.Option<Outlines>
 }
 
-const overrides = { palette, removeBackground, crop, cleanup, metric, dither, shrink }
+const overrides = { palette, removeBackground, crop, cleanup, metric, dither, shrink, outlines }
 
 /**
  * The recipe a command runs: the config's, then the recipe file (or, without
@@ -92,6 +97,7 @@ const recipeOf = Effect.fn("recipeOf")(function* (project: Config, file: Option.
   if (Option.isSome(flags.metric)) recipe = { ...recipe, metric: flags.metric.value }
   if (flags.dither) recipe = { ...recipe, dither: "ordered" }
   if (Option.isSome(flags.shrink)) recipe = { ...recipe, targetWidth: flags.shrink.value }
+  if (Option.isSome(flags.outlines)) recipe = { ...recipe, outlines: flags.outlines.value }
   return { recipe, stored: Option.isSome(inside) }
 })
 
@@ -197,7 +203,10 @@ const fix = Command.make(
     colors,
     cell: Flag.String("cell").pipe(Flag.withDescription('The grid\'s cell size in source pixels, "8" or "8x6", instead of finding it.'), Flag.optional),
     offset: Flag.String("offset").pipe(Flag.withDescription('Where the grid starts, "x,y" in source pixels (with --cell).'), Flag.optional),
-    follow: Flag.Boolean("follow").pipe(Flag.withDefault(false), Flag.withDescription("Move each grid line onto its nearest edge, for cells that drift.")),
+    follow: Flag.Literals("follow", ["off", "straight", "bend"]).pipe(
+      Flag.withDescription("Move each grid line onto its edges: as a straight line, for cells that drift or are uneven, or bent along the picture, for a warped grid."),
+      Flag.optional
+    ),
     project: Flag.Boolean("project").pipe(
       Flag.withDefault(false),
       Flag.withDescription("Also write a project PNG: the input with this fix's recipe stored inside, to open in the web page and finish by hand. Not a game asset.")
@@ -211,7 +220,7 @@ const fix = Command.make(
     const stored = start.stored
     let recipe = start.recipe
     if (Option.isSome(flags.cell)) recipe = { ...recipe, grid: yield* parseCell(flags.cell.value, flags.offset) }
-    if (flags.follow) recipe = { ...recipe, follow: true }
+    if (Option.isSome(flags.follow)) recipe = { ...recipe, follow: flags.follow.value }
     const image = yield* readPicture(flags.input)
     const fixed = fixImage(image, recipe, rulesOf(project, recipe), flags.colors, "dominant")
     const base = yield* outputBase(flags.input, Option.getOrUndefined(flags.out), "fixed")

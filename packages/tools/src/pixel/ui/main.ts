@@ -53,7 +53,7 @@ import {
 import type { LintRules } from "../core/lint.ts"
 import { describeDetection, gridKeyOf, resolveGrid, runWithSpec, type PipelineCache } from "../core/pipeline.ts"
 import { isPng, readProjectRecipe, withProjectRecipe } from "../core/project.ts"
-import { decodeRecipe, encodeRecipe, presetPalette, type Recipe } from "../core/recipe.ts"
+import { decodeRecipe, encodeRecipe, presetPalette, type Follow, type Outlines, type Recipe } from "../core/recipe.ts"
 import { isNative, reportOfArt, reportOfFix, reportOfSheet, type Report } from "../core/report.ts"
 import { atlasClips, detectFrames, exportedClips, isAnimationSheet, proposeForSheet, runSheet, type AnimationCache, type AnimationOutcome, type ClipOutcome } from "../core/animation.ts"
 import { toGif } from "../core/gif.ts"
@@ -137,7 +137,8 @@ interface State {
   exportLayout: { kind: "strip" | "grid"; columns: number; spacing: number }
   spec: GridSpec
   linked: boolean
-  follow: boolean
+  follow: Follow
+  outlines: Outlines
   /** Lines dragged by hand, by "axis:index", in source pixels. Cleared when the grid's numbers change. */
   moved: Map<string, number>
   detection: Detection | undefined
@@ -202,7 +203,8 @@ const state: State = {
   exportLayout: { kind: "strip", columns: 4, spacing: 0 },
   spec: { cellWidth: 8, cellHeight: 8, offsetX: 0, offsetY: 0 },
   linked: true,
-  follow: false,
+  follow: "off",
+  outlines: "auto",
   moved: new Map(),
   detection: undefined,
   detectionNote: "",
@@ -244,6 +246,7 @@ const undoable = [
   "spec",
   "linked",
   "follow",
+  "outlines",
   "moved",
   "detection",
   "detectionNote",
@@ -311,11 +314,14 @@ let animation: AnimationOutcome | undefined
 let animationCache: AnimationCache = {}
 /** The sheet with its background cleared, ready to draw, for the sheet view. */
 let clearedCanvas: { readonly image: RgbaImage; readonly canvas: HTMLCanvasElement } | undefined
+/** Whether the last run's outline handling was on, for the "Auto" choice to say what it chose. */
+let lastOutlines: boolean | undefined
 
 /** The page's settings as a recipe: what the shared pipeline runs, and what Save recipe writes. */
 const recipeOf = (): Recipe => ({
   grid: { kind: "cells", spec: state.spec },
   follow: state.follow,
+  outlines: state.outlines,
   moved: [...state.moved],
   sample: state.sample,
   palette:
@@ -389,6 +395,7 @@ const recompute = (): void => {
   }
   animation = undefined
   const outcome = runWithSpec(source.image, recipeOf(), state.spec, state.detection, cache)
+  lastOutlines = outcome.outlines
   grid = outcome.grid
   samples = outcome.samples
   lost = [...outcome.lost]
@@ -601,6 +608,7 @@ const applyRecipe = (recipe: Recipe, name: string, message = `Applied ${name}.`)
     state.noteGood = true
   }
   state.follow = recipe.follow
+  state.outlines = recipe.outlines
   state.moved = new Map(recipe.moved)
   state.sample = recipe.sample
   if (recipe.palette === undefined) state.paletteName = ORIGINAL
@@ -876,7 +884,7 @@ const gridPanel = (): HTMLElement => {
     {
       action: button("Auto-detect", autoDetect, { variant: "ghost", small: true, icon: "wand", title: "Find the grid again" }),
       help:
-        "The grid marks the picture's fake pixels: each cell becomes one pixel. Cell sizes may be fractions (AI pictures are often scaled by 7.6 or 23.3). To move one line by hand, choose Lines in the toolbar and drag it; moved lines turn yellow. Following drifting lines moves every line onto its nearest edge, for pictures whose cells grow or shrink."
+        "The grid marks the picture's fake pixels: each cell becomes one pixel. Cell sizes may be fractions (AI pictures are often scaled by 7.6 or 23.3). To move one line by hand, choose Lines in the toolbar and drag it; moved lines turn yellow. Follow lines moves the lines onto the picture's edges: straight, for cells that drift or are uneven, or bent, where the grid is warped. Outlines gives a dark one-pixel stroke split between two pixels back to one."
     },
     state.detectionNote !== "" && callout(state.noteGood ? "good" : "warn", state.detectionNote),
     prop(
@@ -904,15 +912,40 @@ const gridPanel = (): HTMLElement => {
       if (checked) setSpec({ cellHeight: state.spec.cellWidth })
       else update()
     }),
-    switchRow(
-      "Follow drifting lines",
-      state.follow,
-      (checked) => {
-        state.follow = checked
-        state.moved.clear()
-        update()
-      },
-      "Moves each line onto the nearest edge, for pictures whose cells grow or shrink across the picture."
+    prop(
+      "Follow lines",
+      segmented(
+        state.follow,
+        [
+          { id: "off", label: "Off", title: "Lines where the cell size puts them." },
+          { id: "straight", label: "Straight", title: "Each line moved onto its edges, for cells that drift or are uneven." },
+          { id: "bend", label: "Bend", title: "Lines also bent along the picture, for a warped grid." }
+        ],
+        (value) => {
+          state.follow = value
+          state.moved.clear()
+          update()
+        },
+        { label: "Follow lines", class: "fill" }
+      ),
+      "Moves the lines onto the picture's edges: straight, or bent where the grid is warped."
+    ),
+    prop(
+      "Outlines",
+      segmented(
+        state.outlines,
+        [
+          { id: "auto", label: lastOutlines === undefined ? "Auto" : `Auto (${lastOutlines ? "on" : "off"})`, title: "On when the dark strokes are about one cell wide." },
+          { id: "on", label: "On" },
+          { id: "off", label: "Off" }
+        ],
+        (value) => {
+          state.outlines = value
+          update()
+        },
+        { label: "Outlines", class: "fill" }
+      ),
+      "One-pixel dark outlines: a stroke split between two pixels goes back to one, and followed lines keep off strokes."
     ),
     switchRow("Show grid", state.showGrid, (checked) => {
       state.showGrid = checked
