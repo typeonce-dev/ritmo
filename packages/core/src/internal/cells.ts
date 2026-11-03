@@ -11,7 +11,7 @@ import type { Construction } from "./schema.ts"
 import { deepFreeze } from "./freeze.ts"
 import { emptyStates } from "./states.ts"
 import type { EntityRecord, Page, World } from "./world.ts"
-import { ABSENT, beforeNumbersOf, holdsNumber, numbersOf, PAGE_MASK, PRESENT } from "./world.ts"
+import { ABSENT, beforeNumbersOf, holdsNumber, numbersOf, PAGE_BITS, PAGE_MASK, PAGE_SIZE, PRESENT } from "./world.ts"
 
 /**
  * Validation behavior shared by every writable cell.
@@ -86,6 +86,8 @@ const staleMatch = (record: EntityRecord, ordinal: number): Error =>
  */
 export interface Stamp {
   live: boolean
+  /** The column accessors handed out with it: the end of the run makes them forget their page, so a kept one fails in `enter`. */
+  columns?: ReadonlyArray<{ reset(): void }>
 }
 
 /** A cell used in a later run than the one its match was handed out in. */
@@ -115,6 +117,20 @@ const invalid = (record: EntityRecord, ordinal: number, value: unknown): never =
 // `typeof` first: an object or string value skips the comparison with the imported marker.
 const isPresent = (value: unknown): boolean => typeof value === "symbol" && value === PRESENT
 
+/**
+ * A slot's number is about to be replaced by another kind of value. Saved as a
+ * number, it moves to `before`, since a slot saved as a number still holds
+ * one; `numbers` holds NaN for a slot without a number. Kept out of `write` so
+ * the common writes stay small enough to inline.
+ */
+const replaceNumber = (page: Page, slot: number): void => {
+  if (isPresent(page.before![slot])) {
+    page.before![slot] = page.beforeNumbers![slot]
+    page.savedObjects = true
+  }
+  page.numbers[slot] = NaN
+}
+
 const write = (world: World, page: Page, slot: number, value: unknown, record: EntityRecord, ordinal: number, stamp: Stamp): void => {
   const values = page.values
   const current = values[slot]
@@ -143,11 +159,7 @@ const write = (world: World, page: Page, slot: number, value: unknown, record: E
       values[slot] = PRESENT
     }
   } else {
-    // A saved number replaced by another value moves to `before`: a slot saved as a number still holds one.
-    if (isPresent(current) && isPresent(page.before![slot])) {
-      page.before![slot] = page.beforeNumbers![slot]
-      page.savedObjects = true
-    }
+    if (isPresent(current)) replaceNumber(page, slot)
     values[slot] = value
   }
 }
@@ -385,6 +397,269 @@ class StoreWriteCell extends WriteCellBase<unknown> {
     this.write(this.key, value)
   }
 }
+
+/*
+ * Column accessors: one per query slot, handed the row (the entity's record)
+ * on each access. No object per entity: a query holds its rows, and a row is
+ * an entity's one record. A dead or changed row fails the same checks a cell
+ * does. Rows come in id order, so an accessor keeps the page it is on; a new
+ * hand-out forgets it (`reset`), since a page's arrays only change between runs.
+ */
+const staleColumn = (name: string): never => {
+  throw new Error(
+    `The column of ${name} was used after the run that handed it out: read the query's columns again in each run with queries.x.columns()`
+  )
+}
+
+/** The page of a row, for an accessor entering it. A row from another runtime may name a page this one does not have. */
+const pageOfRow = (pages: Array<Page | undefined>, index: number, row: EntityRecord, ordinal: number, stamp: Stamp): Page => {
+  if (!stamp.live) staleColumn(row.nameAt(ordinal))
+  const page = pages[index]
+  if (page === undefined) {
+    throw new Error(`A row was used with the column of ${row.nameAt(ordinal)} of a runtime it does not belong to: a row is valid in the runtime whose query produced it`)
+  }
+  return page
+}
+const noNumbers = new Float64Array(PAGE_SIZE).fill(NaN)
+const noSaved = new Uint32Array(PAGE_SIZE >>> 5)
+const noValues: Array<unknown> = Array.from({ length: PAGE_SIZE }, () => ABSENT)
+
+class ColumnRead {
+  readonly pages: Array<Page | undefined>
+  readonly ordinal: number
+  readonly stamp: Stamp
+  pageIndex = -1
+  values: Array<unknown> = noValues
+
+  constructor(pages: Array<Page | undefined>, ordinal: number, stamp: Stamp) {
+    this.pages = pages
+    this.ordinal = ordinal
+    this.stamp = stamp
+  }
+
+  reset(): void {
+    this.pageIndex = -1
+  }
+
+  enter(index: number, row: EntityRecord): void {
+    this.values = pageOfRow(this.pages, index, row, this.ordinal, this.stamp).values
+    this.pageIndex = index
+  }
+
+  get(row: EntityRecord): unknown {
+    const id = row.id
+    const index = id >>> PAGE_BITS
+    if (index !== this.pageIndex) this.enter(index, row)
+    const value = this.values[id & PAGE_MASK]
+    if (typeof value !== "symbol") return value
+    return readMarked(this.pages[index]!, id & PAGE_MASK, row, this.ordinal, this.stamp)
+  }
+}
+
+class NumberColumnRead {
+  readonly pages: Array<Page | undefined>
+  readonly ordinal: number
+  readonly stamp: Stamp
+  pageIndex = -1
+  numbers: Float64Array = noNumbers
+
+  constructor(pages: Array<Page | undefined>, ordinal: number, stamp: Stamp) {
+    this.pages = pages
+    this.ordinal = ordinal
+    this.stamp = stamp
+  }
+
+  reset(): void {
+    this.pageIndex = -1
+  }
+
+  enter(index: number, row: EntityRecord): void {
+    this.numbers = pageOfRow(this.pages, index, row, this.ordinal, this.stamp).numbers
+    this.pageIndex = index
+  }
+
+  get(row: EntityRecord): unknown {
+    const id = row.id
+    const index = id >>> PAGE_BITS
+    if (index !== this.pageIndex) this.enter(index, row)
+    const value = this.numbers[id & PAGE_MASK]!
+    if (value === value) return value
+    return readMarked(this.pages[index]!, id & PAGE_MASK, row, this.ordinal, this.stamp)
+  }
+}
+
+class ColumnWrite extends ColumnRead {
+  readonly world: World
+  // The page the running transaction has registered, with the arrays a first write saves into.
+  writeIndex = -1
+  saved: Uint32Array = noSaved
+  before: Array<unknown> = noValues
+
+  constructor(world: World, pages: Array<Page | undefined>, ordinal: number, stamp: Stamp) {
+    super(pages, ordinal, stamp)
+    this.world = world
+  }
+
+  override reset(): void {
+    this.pageIndex = -1
+    this.writeIndex = -1
+  }
+
+  enterWrite(index: number, row: EntityRecord): boolean {
+    const page = pageOfRow(this.pages, index, row, this.ordinal, this.stamp)
+    const world = this.world
+    const transaction = world.transactionState
+    if (!transaction.active) return false
+    if (page.savedIn !== transaction.id) world.touchPage(page)
+    // Commit checks `before` per slot on this page from now on.
+    page.savedObjects = true
+    this.writeIndex = index
+    this.pageIndex = index
+    this.values = page.values
+    this.saved = page.saved
+    this.before = page.before!
+    return true
+  }
+
+  set(row: EntityRecord, value: unknown): void {
+    const id = row.id
+    const index = id >>> PAGE_BITS
+    if (index !== this.writeIndex && !this.enterWrite(index, row)) return this.slowSet(row, value)
+    const slot = id & PAGE_MASK
+    const values = this.values
+    const old = values[slot]
+    // A marker (absent, or a number kept unboxed) or a number written: the general path.
+    if (typeof old === "symbol" || typeof value === "number") return this.slowSet(row, value)
+    const saved = this.saved
+    const word = slot >>> 5
+    const bit = 1 << (slot & 31)
+    const bits = saved[word]!
+    if ((bits & bit) === 0) {
+      saved[word] = bits | bit
+      this.before[slot] = old
+    }
+    values[slot] = value
+  }
+
+  slowSet(row: EntityRecord, value: unknown): void {
+    const id = row.id
+    write(this.world, this.pages[id >>> PAGE_BITS]!, id & PAGE_MASK, value, row, this.ordinal, this.stamp)
+    this.reset()
+  }
+
+  update(row: EntityRecord, f: (current: unknown) => unknown): void {
+    this.set(row, f(this.get(row)))
+  }
+}
+
+class NumberColumnWrite {
+  readonly pages: Array<Page | undefined>
+  readonly ordinal: number
+  readonly stamp: Stamp
+  readonly world: World
+  pageIndex = -1
+  numbers: Float64Array = noNumbers
+  // The page the running transaction has registered, with the arrays a first write saves into.
+  writeIndex = -1
+  saved: Uint32Array = noSaved
+  beforeNumbers: Float64Array = noNumbers
+
+  constructor(world: World, pages: Array<Page | undefined>, ordinal: number, stamp: Stamp) {
+    this.pages = pages
+    this.ordinal = ordinal
+    this.stamp = stamp
+    this.world = world
+  }
+
+  reset(): void {
+    this.pageIndex = -1
+    this.writeIndex = -1
+  }
+
+  enter(index: number, row: EntityRecord): void {
+    this.numbers = pageOfRow(this.pages, index, row, this.ordinal, this.stamp).numbers
+    this.pageIndex = index
+  }
+
+  /** Registers the page with the running transaction; false when no transaction runs or the page holds no numbers yet. */
+  enterWrite(index: number, row: EntityRecord): boolean {
+    const page = pageOfRow(this.pages, index, row, this.ordinal, this.stamp)
+    const world = this.world
+    const transaction = world.transactionState
+    if (!transaction.active) return false
+    if (page.savedIn !== transaction.id) world.touchPage(page)
+    if (page.beforeNumbers === undefined) return false
+    this.writeIndex = index
+    this.pageIndex = index
+    this.numbers = page.numbers
+    this.saved = page.saved
+    this.beforeNumbers = page.beforeNumbers
+    return true
+  }
+
+  get(row: EntityRecord): unknown {
+    const id = row.id
+    const index = id >>> PAGE_BITS
+    if (index !== this.pageIndex) this.enter(index, row)
+    const value = this.numbers[id & PAGE_MASK]!
+    if (value === value) return value
+    return readMarked(this.pages[index]!, id & PAGE_MASK, row, this.ordinal, this.stamp)
+  }
+
+  set(row: EntityRecord, value: unknown): void {
+    const id = row.id
+    const index = id >>> PAGE_BITS
+    if (index !== this.writeIndex && !this.enterWrite(index, row)) return this.slowSet(row, value)
+    const slot = id & PAGE_MASK
+    const numbers = this.numbers
+    const old = numbers[slot]!
+    if (old !== old || typeof value !== "number") return this.slowSet(row, value)
+    const saved = this.saved
+    const word = slot >>> 5
+    const bit = 1 << (slot & 31)
+    const bits = saved[word]!
+    if ((bits & bit) === 0) {
+      saved[word] = bits | bit
+      this.beforeNumbers[slot] = old
+    }
+    numbers[slot] = value
+  }
+
+  /** Every write that is not a number over a number: the general path, then forget the page (its arrays may have changed). */
+  slowSet(row: EntityRecord, value: unknown): void {
+    const id = row.id
+    write(this.world, this.pages[id >>> PAGE_BITS]!, id & PAGE_MASK, value, row, this.ordinal, this.stamp)
+    this.reset()
+  }
+
+  update(row: EntityRecord, f: (current: unknown) => unknown): void {
+    this.set(row, f(this.get(row)))
+  }
+}
+
+/** The column accessors of a runtime made with `debug`: each freezes what it writes (`deepFreeze`). */
+class FreezingColumnWrite extends ColumnWrite {
+  override set(row: EntityRecord, value: unknown): void {
+    deepFreeze(value)
+    super.set(row, value)
+  }
+}
+
+class FreezingNumberColumnWrite extends NumberColumnWrite {
+  override set(row: EntityRecord, value: unknown): void {
+    deepFreeze(value)
+    super.set(row, value)
+  }
+}
+
+/** A slot's column accessor; `numeric` picks the class that sees numbers (both read and write every value). */
+export const columnRead = (world: World, ordinal: number, stamp: Stamp, numeric: boolean): { reset(): void } =>
+  new (numeric ? NumberColumnRead : ColumnRead)(world.pagesOf(ordinal), ordinal, stamp)
+
+export const columnWrite = (world: World, ordinal: number, stamp: Stamp, numeric: boolean): { reset(): void } =>
+  new (world.freezesValues
+    ? (numeric ? FreezingNumberColumnWrite : FreezingColumnWrite)
+    : (numeric ? NumberColumnWrite : ColumnWrite))(world, world.pagesOf(ordinal), ordinal, stamp)
 
 export const componentRead = (world: World, record: EntityRecord, ordinal: number, stamp: Stamp): { get(): unknown } =>
   holdsNumber(pageOf(world, record, ordinal), record.id & PAGE_MASK)

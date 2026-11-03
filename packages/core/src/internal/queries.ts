@@ -101,7 +101,12 @@ interface QueryState {
    */
   readonly handout: Cells.Stamp
   matches: ReadonlyArray<AnyMatch> | undefined
+  /** Whether `matches` is built for the current `records`: rows never build them. */
+  matchesCurrent: boolean
   records: ReadonlyArray<EntityRecord>
+  built: boolean
+  columns: Record<string, unknown> | undefined
+  columnsChosen: boolean
 }
 
 const unique = <T>(values: ReadonlyArray<T>): ReadonlyArray<T> => [...new Set(values)]
@@ -273,7 +278,11 @@ export const makeQueryEngine = (world: World) => {
       entitiesSeen: -1,
       handout,
       matches: undefined,
-      records: []
+      matchesCurrent: false,
+      records: [],
+      built: false,
+      columns: undefined,
+      columnsChosen: false
     }
   }
 
@@ -397,7 +406,7 @@ export const makeQueryEngine = (world: World) => {
   }
 
   const isStale = (state: QueryState): boolean => {
-    if (state.matches === undefined) return true
+    if (!state.built) return true
     if (state.required.length === 0 && state.entitiesSeen !== world.entitiesVersion()) return true
     const componentDeps = state.componentDeps
     for (let index = 0; index < componentDeps.length; index++) {
@@ -439,7 +448,7 @@ export const makeQueryEngine = (world: World) => {
    * possible or not worth it.
    */
   const affectedRecords = (state: QueryState): ReadonlyArray<EntityRecord> | undefined => {
-    if (state.matches === undefined || state.required.length === 0) return undefined
+    if (!state.built || state.required.length === 0) return undefined
     for (let index = 0; index < state.relationDeps.length; index++) {
       if (state.relationSeen[index] !== world.relationVersion(state.relationDeps[index]!)) return undefined
     }
@@ -460,7 +469,6 @@ export const makeQueryEngine = (world: World) => {
    */
   const refreshIncrementally = (state: QueryState, affected: ReadonlyArray<EntityRecord>): void => {
     const records = state.records.slice()
-    const matches = state.matches!.slice()
     const visited = new Set<EntityRecord>()
     for (const record of affected) {
       if (visited.has(record)) continue
@@ -470,14 +478,21 @@ export const makeQueryEngine = (world: World) => {
       const belongs = record.alive && matchesStructure(state, record)
       if (belongs && !present) {
         records.splice(index, 0, record)
-        matches.splice(index, 0, matchFor(state, record))
       } else if (!belongs && present) {
         records.splice(index, 1)
-        matches.splice(index, 1)
       }
     }
     state.records = records
-    state.matches = matches
+    state.matchesCurrent = false
+  }
+
+  /** The matches of the current rows, built on the first `each()` after they changed. */
+  const currentMatches = (state: QueryState): ReadonlyArray<AnyMatch> => {
+    if (!state.matchesCurrent) {
+      state.matches = state.records.map((record) => matchFor(state, record))
+      state.matchesCurrent = true
+    }
+    return state.matches!
   }
 
   const refresh = (state: QueryState): void => {
@@ -512,24 +527,21 @@ export const makeQueryEngine = (world: World) => {
     if (!sorted) records.sort(byId)
 
     state.records = records
-    state.matches = records.map((record) => matchFor(state, record))
+    state.matchesCurrent = false
+    state.built = true
     markSeen(state)
   }
 
   /**
-   * Current matches of a query. `since` is the tick of the reading system's
-   * previous run; `added`/`changed` filters match changes made after it.
+   * The records a query's filters pass. `since` is the tick of the reading
+   * system's previous run; `added`/`changed` filters match changes made after it.
    */
-  const matchesOf = (state: QueryState, since: number, reverts: Reverts | undefined): ReadonlyArray<AnyMatch> => {
-    refresh(state)
-    if (state.filters.length === 0) {
-      return state.matches!
-    }
+  const filteredRecords = (state: QueryState, since: number, reverts: Reverts | undefined): ReadonlyArray<EntityRecord> => {
     // A reader with changes from a rewind scans: change logs do not hold them.
     if (reverts !== undefined) {
-      const result: Array<AnyMatch> = []
+      const result: Array<EntityRecord> = []
       for (const record of state.records) {
-        if (matchesFilters(state, record, since, reverts)) result.push(matchFor(state, record))
+        if (matchesFilters(state, record, since, reverts)) result.push(record)
       }
       return result
     }
@@ -547,9 +559,9 @@ export const makeQueryEngine = (world: World) => {
     // When changes cover a large share of the matches, an in-order scan of the
     // cached set is cheaper than deduplicating and sorting the candidates.
     if (candidates === undefined || candidates.length * 4 >= state.records.length) {
-      const result: Array<AnyMatch> = []
+      const result: Array<EntityRecord> = []
       for (const record of state.records) {
-        if (matchesFilters(state, record, since, undefined)) result.push(matchFor(state, record))
+        if (matchesFilters(state, record, since, undefined)) result.push(record)
       }
       return result
     }
@@ -565,7 +577,14 @@ export const makeQueryEngine = (world: World) => {
       }
     }
     records.sort(byId)
-    return records.map((record) => matchFor(state, record))
+    return records
+  }
+
+  /** Current matches of a query. */
+  const matchesOf = (state: QueryState, since: number, reverts: Reverts | undefined): ReadonlyArray<AnyMatch> => {
+    refresh(state)
+    if (state.filters.length === 0) return currentMatches(state)
+    return filteredRecords(state, since, reverts).map((record) => matchFor(state, record))
   }
 
   const matchOf = (
@@ -600,5 +619,36 @@ export const makeQueryEngine = (world: World) => {
     return matchOf(id, state, since, reverts)
   }
 
-  return { each, get }
+  /** The rows of a query: the records of its entities, in id order. */
+  const rows = (query: AnyQuery, since: number, reverts: Reverts | undefined): ReadonlyArray<EntityRecord> => {
+    const state = stateOf(query)
+    world.handOut(state.handout)
+    refresh(state)
+    return state.filters.length === 0 ? state.records : filteredRecords(state, since, reverts)
+  }
+
+  /** The query's column accessors, one per read or write slot, made once. */
+  const columns = (query: AnyQuery): Record<string, unknown> => {
+    const state = stateOf(query)
+    world.handOut(state.handout)
+    refresh(state)
+    // An empty query cannot tell which class its slots want: choose again once it has rows.
+    if (state.columns === undefined || (!state.columnsChosen && state.records.length > 0)) {
+      const first = state.records[0]
+      state.columnsChosen = first !== undefined
+      const built: Record<string, unknown> = {}
+      for (const plan of state.slots) {
+        if (plan.mode !== "read" && plan.mode !== "write") continue
+        const numeric = first !== undefined && typeof world.valueAt(first, plan.ordinal) === "number"
+        built[plan.slot] = plan.mode === "read"
+          ? Cells.columnRead(world, plan.ordinal, state.handout, numeric)
+          : Cells.columnWrite(world, plan.ordinal, state.handout, numeric)
+      }
+      state.columns = built
+      state.handout.columns = Object.values(built) as ReadonlyArray<{ reset(): void }>
+    }
+    return state.columns
+  }
+
+  return { each, get, rows, columns }
 }

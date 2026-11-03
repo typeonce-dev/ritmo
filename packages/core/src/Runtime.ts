@@ -84,6 +84,7 @@ import { makeWorld } from "./internal/world.ts"
 import type { WorldHooks, WorldMark, WorldRewind } from "./internal/world.ts"
 import type * as Machine from "./Machine.ts"
 import * as Query from "./Query.ts"
+import type { QueryColumns, QueryRowOf } from "./Query.ts"
 import type { QueryMatch, ReadonlyValue } from "./Query.ts"
 import * as Relation from "./Relation.ts"
 import * as RelationErrors from "./internal/relations.ts"
@@ -1343,6 +1344,8 @@ const makeValidatedRuntime = <
     }
     return {
       each,
+      rows: () => queries.rows(query, reader.since, reader.reverts) as unknown as ReadonlyArray<QueryRowOf<S, Q>>,
+      columns: () => queries.columns(query) as QueryColumns<Q>,
       get(target) {
         return resolve(target, query, reader)
       },

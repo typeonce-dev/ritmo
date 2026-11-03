@@ -209,6 +209,62 @@ const numberWrite: BenchCase = {
   }
 }
 
+const rowsNumberWrite: BenchCase = {
+  name: "query/rows-number-write-10k",
+  description: "Write a number component (Health) on 10k entities through rows and columns",
+  setup: () => {
+    const runtime = makeRuntime()
+    populate(runtime, N, 0)
+    const Decay = Game.System("Bench/RowsDecay", {
+      queries: { healths: Game.Query({ selection: { health: Game.Query.write(Health) } }) }
+    }, ({ queries }) => {
+      const { health } = queries.healths.columns()
+      for (const row of queries.healths.rows()) health.set(row, health.get(row) - 0.5)
+    })
+    const schedule = Game.Schedule(Decay)
+    return { run: () => runtime.tick(schedule) }
+  }
+}
+
+const rowsWrite: BenchCase = {
+  name: "query/rows-write-10k",
+  description: "Integrate velocity into position on 10k entities through rows and columns",
+  setup: () => {
+    const runtime = makeRuntime()
+    populate(runtime, N, 0)
+    const Move = Game.System("Bench/RowsMove", { queries: { movers: Movers } }, ({ queries }) => {
+      const { position, velocity } = queries.movers.columns()
+      for (const row of queries.movers.rows()) {
+        const p = position.get(row)
+        const v = velocity.get(row)
+        position.set(row, { x: p.x + v.x, y: p.y + v.y })
+      }
+    })
+    const schedule = Game.Schedule(Move)
+    return { run: () => runtime.tick(schedule) }
+  }
+}
+
+const rowsRead: BenchCase = {
+  name: "query/rows-read-10k-of-20k",
+  description: "Read 2 components on 10k matching entities in a 20k-entity world through rows and columns",
+  setup: () => {
+    const runtime = makeRuntime()
+    populate(runtime, N, N)
+    const SumPositions = Game.System("Bench/RowsSum", {
+      queries: { movers: ReadMovers },
+      resources: { sum: Game.System.writeResource(Sum) }
+    }, ({ queries, resources }) => {
+      const { position, velocity } = queries.movers.columns()
+      let total = 0
+      for (const row of queries.movers.rows()) total += position.get(row).x + velocity.get(row).x
+      resources.sum.set(total)
+    })
+    const schedule = Game.Schedule(SumPositions)
+    return { run: () => runtime.tick(schedule) }
+  }
+}
+
 const setRaw: BenchCase = {
   name: "query/set-raw-10k",
   description: "Write position through its schema (setRaw) on 10k entities",
@@ -738,6 +794,9 @@ export const cases: ReadonlyArray<BenchCase> = [
   iterateOptional,
   iterateWrite,
   numberWrite,
+  rowsNumberWrite,
+  rowsWrite,
+  rowsRead,
   setRaw,
   entityStates,
   machineUpdates,

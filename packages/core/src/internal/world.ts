@@ -57,7 +57,9 @@ export interface Page {
   /**
    * Each slot's value, `ABSENT`, or `PRESENT` when the value is a number:
    * numbers are kept unboxed in `numbers`, which the page creates with its
-   * first number.
+   * first number. `numbers` holds NaN in every other slot, so one load of a
+   * slot both reads a number and shows there is one (a number that is NaN
+   * takes the slow path).
    */
   values: Array<unknown>
   numbers: Float64Array
@@ -112,11 +114,11 @@ const filled = (value: unknown): Array<unknown> => {
 
 const emptyValues: Array<unknown> = filled(ABSENT)
 const emptyTicks = new Float64Array(PAGE_SIZE)
-const emptyNumbers = new Float64Array(PAGE_SIZE)
+const emptyNumbers = new Float64Array(PAGE_SIZE).fill(NaN)
 
 /** The page's `numbers`, created on its first number. */
 export const numbersOf = (page: Page): Float64Array =>
-  page.numbers === emptyNumbers ? (page.numbers = new Float64Array(PAGE_SIZE)) : page.numbers
+  page.numbers === emptyNumbers ? (page.numbers = new Float64Array(PAGE_SIZE).fill(NaN)) : page.numbers
 
 /**
  * Whether a slot holds a number, or, when empty, whether its page holds
@@ -132,6 +134,8 @@ export const beforeNumbersOf = (page: Page): Float64Array =>
   page.beforeNumbers ??= new Float64Array(PAGE_SIZE)
 
 export interface EntityRecord {
+  /** What a row is typed as for `commands`. */
+  readonly kind: "EntityRef"
   readonly id: number
   /**
    * The public id value handed out for this entity, created once.
@@ -509,7 +513,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
    */
   let inRun = false
   // Reused, with an explicit count: resetting an array's `length` is a runtime call.
-  const handedOut: Array<{ live: boolean }> = []
+  const handedOut: Array<{ live: boolean; columns?: ReadonlyArray<{ reset(): void }> }> = []
   let handedOutCount = 0
   /** The running transaction, shared with write cells so their hot path stays inline. */
   const transactionState: TransactionState = { id: 0, active: false }
@@ -635,7 +639,9 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   const clearSlot = (record: EntityRecord, ordinal: number): void => {
     const page = pageAt(ordinal, record.id)!
     if (newestMark !== undefined) keepPage(page)
-    page.values[record.id & PAGE_MASK] = ABSENT
+    const slot = record.id & PAGE_MASK
+    page.values[slot] = ABSENT
+    if (page.numbers !== emptyNumbers) page.numbers[slot] = NaN
     page.count -= 1
     if (page.count === 0 && !inTransaction && !inPhase) {
       page.values = emptyValues
@@ -702,6 +708,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     let record = records.get(entityId)
     if (!record) {
       record = {
+        kind: "EntityRef",
         id: entityId,
         entityId,
         held: [],
@@ -790,6 +797,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       page.values[slot] = PRESENT
     } else {
       page.values[slot] = value
+      if (page.numbers !== emptyNumbers) page.numbers[slot] = NaN
     }
   }
 
@@ -827,20 +835,38 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     savedCount = 0
   }
 
-  /** Commits a page on which the transaction saved only numbers. */
+  /** Stamps a saved slot whose number differs; `NaN` equals itself. Dense pages take the all-set word path. */
   const commitNumbers = (page: Page): void => {
     const saved = page.saved
     const beforeNumbers = page.beforeNumbers!
     const numbers = page.numbers
+    const changed = page.changed
+    const now = tick
+    const logged = changedLogFrom[page.ordinal] !== undefined
     for (let word = 0; word < saved.length; word++) {
-      let bits = saved[word]!
+      let bits = saved[word]! | 0
+      if (bits === 0) continue
+      saved[word] = 0
+      const base = word << 5
+      if (bits === -1 && !logged) {
+        for (let slot = base, end = base + 32; slot < end; slot++) {
+          const a = beforeNumbers[slot]!
+          const b = numbers[slot]!
+          if (a !== b && (a === a || b === b)) changed[slot] = now
+        }
+        continue
+      }
       while (bits !== 0) {
         const lowest = bits & -bits
-        const slot = (word << 5) + 31 - Math.clz32(lowest)
-        if (differs(beforeNumbers[slot], numbers[slot])) stampChanged(page, slot)
+        const slot = base + 31 - Math.clz32(lowest)
+        const a = beforeNumbers[slot]!
+        const b = numbers[slot]!
+        if (a !== b && (a === a || b === b)) {
+          if (logged) stampChanged(page, slot)
+          else changed[slot] = now
+        }
         bits ^= lowest
       }
-      saved[word] = 0
     }
   }
 
@@ -849,23 +875,33 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     const saved = page.saved
     const before = page.before!
     const values = page.values
+    const changed = page.changed
+    const now = tick
+    const logged = changedLogFrom[page.ordinal] !== undefined
     for (let word = 0; word < saved.length; word++) {
-      let bits = saved[word]!
+      let bits = saved[word]! | 0
+      if (bits === 0) continue
+      saved[word] = 0
+      const base = word << 5
       while (bits !== 0) {
         const lowest = bits & -bits
-        const slot = (word << 5) + 31 - Math.clz32(lowest)
+        const slot = base + 31 - Math.clz32(lowest)
+        bits ^= lowest
         const old = before[slot]
+        let differ: boolean
         if (typeof old === "symbol" && old === PRESENT) {
-          if (differs(page.beforeNumbers![slot], page.numbers[slot])) stampChanged(page, slot)
+          differ = differs(page.beforeNumbers![slot], page.numbers[slot])
         } else {
           const after = values[slot]
-          if (differs(old, typeof after === "symbol" && after === PRESENT ? page.numbers[slot] : after)) stampChanged(page, slot)
+          differ = differs(old, typeof after === "symbol" && after === PRESENT ? page.numbers[slot] : after)
           // Old values do not outlive the transaction.
           before[slot] = PRESENT
         }
-        bits ^= lowest
+        if (differ) {
+          if (logged) stampChanged(page, slot)
+          else changed[slot] = now
+        }
       }
-      saved[word] = 0
     }
     page.savedObjects = false
   }
@@ -917,6 +953,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
           numbers![slot] = value
         } else {
           values[slot] = value
+          if (numbers !== undefined) numbers[slot] = NaN
         }
       }
     })
@@ -1004,11 +1041,12 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
           values[slot] = PRESENT
           numbers[slot] = page.beforeNumbers![slot]!
         } else if (typeof value === "number") {
-          if (numbers === emptyNumbers) numbers = new Float64Array(PAGE_SIZE)
+          if (numbers === emptyNumbers) numbers = new Float64Array(PAGE_SIZE).fill(NaN)
           values[slot] = PRESENT
           numbers[slot] = value
         } else {
           values[slot] = value
+          if (numbers !== emptyNumbers) numbers[slot] = NaN
         }
       }
     }
@@ -1644,6 +1682,8 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     valueAt,
     /** The page holding `id`'s slot of a component, for cells that read it directly. */
     pageFor,
+    /** A component's pages by page index, for column accessors. */
+    pagesOf: (ordinal: number): Array<Page | undefined> => stores[ordinal]!.pages,
     entityIdOf,
     allocateEntity,
     spawnEntity,
@@ -1656,11 +1696,16 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     /** Ends the run: every match handed out in it stops being usable. */
     endRun: (): void => {
       inRun = false
-      for (let index = 0; index < handedOutCount; index++) handedOut[index]!.live = false
+      for (let index = 0; index < handedOutCount; index++) {
+        const stamp = handedOut[index]!
+        stamp.live = false
+        const columns = stamp.columns
+        if (columns !== undefined) for (let column = 0; column < columns.length; column++) columns[column]!.reset()
+      }
       handedOutCount = 0
     },
     /** Makes a query's matches usable until the running run ends. */
-    handOut: (stamp: { live: boolean }): void => {
+    handOut: (stamp: { live: boolean; columns?: ReadonlyArray<{ reset(): void }> }): void => {
       if (inRun && !stamp.live) {
         stamp.live = true
         handedOut[handedOutCount++] = stamp

@@ -59,7 +59,7 @@ import type { Descriptor } from "./Descriptor.ts"
 import type * as Entity from "./Entity.ts"
 import * as Machine from "./Machine.ts"
 import type * as Relation from "./Relation.ts"
-import type { Query, QueryMatch } from "./Query.ts"
+import type { Query, QueryColumns, QueryMatch, QueryRowOf } from "./Query.ts"
 import type { ConstructedWriteCell, ReadCell, ReadonlyValue, StateExactFields, StateUpdateResult, WriteCell } from "./Query.ts"
 import * as Requirement from "./Requirement.ts"
 import type * as Result from "./Result.ts"
@@ -914,6 +914,33 @@ export interface QueryIteration<S extends Schema.Any, Q extends Query.Any> {
    * that takes them).
    */
   each(): ReadonlyArray<QueryMatch<S, Q>>
+  /**
+   * Returns the query's rows, in spawn order (ascending entity id), with its
+   * `added` / `changed` filters applied. Read and write them through
+   * {@link columns}. Use this over `each()` for a loop over many entities: a
+   * query keeps no object per entity for its rows, and the loop does not build
+   * any.
+   *
+   * @example
+   * ```ts
+   * const Movers = Game.Query({ selection: { position: Game.Query.write(Position), velocity: Game.Query.read(Velocity) } })
+   *
+   * Game.System("Game/Move", { queries: { movers: Movers } }, ({ queries }) => {
+   *   const { position, velocity } = queries.movers.columns()
+   *   for (const row of queries.movers.rows()) {
+   *     const p = position.get(row)
+   *     const v = velocity.get(row)
+   *     position.set(row, { x: p.x + v.x, y: p.y + v.y })
+   *   }
+   * })
+   * ```
+   */
+  rows(): ReadonlyArray<QueryRowOf<S, Q>>
+  /**
+   * Returns one accessor per read and write slot, valid during this run: each
+   * takes a row of {@link rows}. A read slot has no `set`.
+   */
+  columns(): QueryColumns<Q>
   /**
    * Returns a single match when zero or one entity satisfies the query.
    *

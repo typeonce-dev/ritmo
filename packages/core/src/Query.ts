@@ -827,6 +827,71 @@ export type QueryMatch<S extends Schema.Any, Q extends Query.Any> =
       }
 
 /**
+ * One entity of a query's rows: its `id`, and what the query proves about it.
+ * Pass it to the query's columns (`column.get(row)`), or to `commands` where a
+ * match's `entity` goes. Rows come from `queries.x.rows()`.
+ *
+ * A row keeps naming its entity in later runs, since ids are never reused: a
+ * column reads that entity's current value, or throws once the entity no
+ * longer holds the component, so a kept row never reads another entity. It
+ * does not re-check the query: an entity that left through `without` is still
+ * readable. To follow an entity across runs and re-check the query, keep the
+ * `id` and resolve it with `queries.x.get(id)`.
+ */
+export interface QueryRow<S extends Schema.Any, Root, in Proves, in Lacks> {
+  readonly kind: "EntityRef"
+  readonly id: EntityId<S, Root>
+  readonly __proves?: (_: Proves) => void
+  readonly __lacks?: (_: Lacks) => void
+  readonly __schemaRoot?: Root | undefined
+  /** Type-level only: what makes a row a row, so an id or a hand-written object is not one. */
+  readonly __row: (_: Proves) => void
+}
+
+/** What a column asks of a row: that its query proves the column's component. */
+export interface RowProving<in D> {
+  readonly __row: (_: D) => void
+}
+
+/** The row type of a query: what `queries.x.rows()` holds. */
+export type QueryRowOf<S extends Schema.Any, Q extends Query.Any> =
+  QueryRow<S, Query.Root<Q>, Query.Proven<Q>, Query.Excluded<Q>>
+
+/**
+ * A read slot of a query, from `queries.x.columns()`: reads the value of any
+ * row that proves `D`. Valid during the run that handed it out; it throws when
+ * used later. It costs nothing per entity, unlike a match's {@link ReadCell}.
+ */
+export interface ReadColumn<D extends ComponentDescriptor> {
+  get(row: RowProving<D>): ReadonlyValue<Descriptor.Value<D>>
+}
+
+/**
+ * A write slot of a query: {@link ReadColumn}, and writes the value of any row
+ * that proves `D`. Writes join the system's transaction like a
+ * {@link WriteCell}'s: a failed system rolls them back, and `changed` sees a
+ * value that differs when the system commits.
+ */
+export interface WriteColumn<D extends ComponentDescriptor> extends ReadColumn<D> {
+  /** Replaces the value of one row. The world owns `value` from here, as with {@link WriteCell.set}. */
+  set(row: RowProving<D>, value: ReadonlyValue<Descriptor.Value<D>>): void
+  /** Updates the value of one row from its current one. */
+  update(row: RowProving<D>, f: (current: ReadonlyValue<Descriptor.Value<D>>) => ReadonlyValue<Descriptor.Value<D>>): void
+}
+
+/**
+ * The column accessors of a query's read and write slots. Optional, relation,
+ * constructed, and entity state slots have none yet: reach them through
+ * `each()`.
+ */
+export type QueryColumns<Q extends Query.Any> = {
+  readonly [K in keyof Q["selection"] as Q["selection"][K] extends ReadAccess<any> | WriteAccess<any> ? K : never]:
+    Q["selection"][K] extends WriteAccess<infer D> ? WriteColumn<D>
+    : Q["selection"][K] extends ReadAccess<infer D> ? ReadColumn<D>
+    : never
+}
+
+/**
  * Creates a typed missing-entity error.
  */
 export const missingEntityError = (entityId: number): Query.MissingEntityError => ({
