@@ -210,7 +210,14 @@ const read = async (asset: PixelAsset): Promise<AssetRead> => {
       const frames: ReadonlyArray<Frame> = [{ name: "", index: 0, x: 0, y: 0, w: image.width, h: image.height, hash: hashFrame(image, 0, 0, image.width, image.height) }]
       return { ok: true, width: image.width, height: image.height, png: encodePng(image), frames, animations: [], sheet: undefined, lint: await lintOf(asset, image, frames, parsed.art) }
     }
-    const image = decodePicture(await readFile(asset.file))
+    const bytes = await readFile(asset.file)
+    let image: RgbaImage
+    try {
+      image = decodePicture(bytes)
+    } catch (error) {
+      // Said as the other pixel commands say it: the decoder's words alone ("unrecognised content at end of stream") name no file.
+      return { ok: false, problem: `it is not a PNG or a JPEG that decodes: ${message(error)}` }
+    }
     const sheetFile = sheetFileOf(asset)
     const json: unknown = sheetFile === undefined ? undefined : await readFile(sheetFile, "utf8").then((text): unknown => JSON.parse(text)).catch(() => undefined)
     const sheet = readSpritesheet(json, image)
