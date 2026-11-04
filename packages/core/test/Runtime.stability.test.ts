@@ -38,7 +38,7 @@ describe("Runtime stabilization APIs", () => {
       ({ queries, resources, events, nextMachines, commands }) => {
         const position = queries.positions.single()
         if (position.ok) {
-          position.value.data.position.set({ x: 99 })
+          queries.positions.data.position.set(position.value, { x: 99 })
         }
         resources.count.set(99)
         events.signal.emit(99)
@@ -66,7 +66,7 @@ describe("Runtime stabilization APIs", () => {
       },
       ({ queries, resources, events, machines }) => {
         const position = queries.positions.single()
-        observedPosition = position.ok ? position.value.data.position.get().x : -1
+        observedPosition = position.ok ? queries.positions.data.position.get(position.value).x : -1
         observedCount = resources.count.get()
         observedSignals = events.signal.all()
         observedMode = machines.mode.get()._tag
@@ -119,7 +119,7 @@ describe("Runtime stabilization APIs", () => {
       "Scopes/Observe",
       { queries: { actors: Actors } },
       ({ queries }) => {
-        names = queries.actors.each().map(({ data }) => data.actor.get().name)
+        names = queries.actors.each().map((entity) => queries.actors.data.actor.get(entity).name)
       }
     )
 
@@ -154,7 +154,7 @@ describe("Runtime stabilization APIs", () => {
         resources: { score: Game.System.readResource(Score) }
       },
       ({ queries, resources }) => ({
-        positions: queries.positions.each().map(({ data }) => data.position.get().x),
+        positions: queries.positions.each().map((entity) => queries.positions.data.position.get(entity).x),
         score: resources.score.get()
       })
     )

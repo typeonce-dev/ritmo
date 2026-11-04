@@ -479,8 +479,8 @@ export const removes = <const Components extends readonly [ComponentDescriptor, 
   ({ permission: "removes", values: components })
 
 /**
- * Allows `despawn(entity)` where `entity` comes from a query match proving one
- * of `components` (`match.entity`), never a raw id: the system can only
+ * Allows `despawn(entity)` where `entity` comes from a query proving one
+ * of `components`, never a raw id: the system can only
  * despawn what it has proven is, for example, an `Enemy`.
  */
 export const despawns = <const Components extends readonly [ComponentDescriptor, ...ReadonlyArray<ComponentDescriptor>]>(...components: Components): Permission<"despawns", Components[number]> =>
@@ -569,10 +569,10 @@ type RemoveAllowed<D, Removes> =
 /**
  * Why each possible target of a despawn is not allowed (`never` when it is).
  * Computed per member, so a target chosen from several queries
- * (`cond ? a.entity : b.entity`) must pass for every one of them.
+ * (`cond ? a : b`) must pass for every one of them.
  */
 type DespawnRejections<E, Despawns> =
-  E extends { readonly kind: "EntityRef" | "EntityMut"; readonly __proves?: (_: infer Proves) => void }
+  E extends { readonly kind: "EntityRef"; readonly __proves?: (_: infer Proves) => void }
     ? [Extract<Proves, Despawns>] extends [never]
       ? `despawn needs an entity from a query proving ${Names<Despawns>} (declared in despawns)`
       : never
@@ -580,7 +580,7 @@ type DespawnRejections<E, Despawns> =
       ? [Extract<Spawned, Names<Despawns>>] extends [never]
         ? `despawn needs an entity spawned with ${Names<Despawns>} (declared in despawns)`
         : never
-      : `despawn needs an entity from a query proving ${Names<Despawns>} (declared in despawns), not a raw id: pass match.entity`
+      : `despawn needs an entity from a query proving ${Names<Despawns>} (declared in despawns), not a raw id: pass the entity from each()`
 
 type DespawnAllowed<E, Despawns> =
   [DespawnRejections<E, Despawns>] extends [never] ? unknown : Fix<DespawnRejections<E, Despawns>>
@@ -626,9 +626,9 @@ type DraftRequirementsMet<S extends Schema.Any, P> =
     ? unknown
     : Fix<`${MissingMessages<DraftViolations<S, P>>}: add the missing entries to the draft`>
 
-/** What one possible target holds: a query match's proof, or a `SpawnedId`'s draft. A raw id proves nothing. */
+/** What one possible target holds: a query's proof, or a `SpawnedId`'s draft. A raw id proves nothing. */
 type HeldBy<E> =
-  E extends { readonly kind: "EntityRef" | "EntityMut"; readonly __proves?: (_: infer Proves) => void }
+  E extends { readonly kind: "EntityRef"; readonly __proves?: (_: infer Proves) => void }
     ? Names<Proves>
     : E extends { readonly [spawnedTypeId]: (_: never) => infer Spawned extends string }
       ? Spawned
@@ -636,7 +636,7 @@ type HeldBy<E> =
 
 /** What one possible target's query proves absent: its `without`. */
 type LackedBy<E> =
-  E extends { readonly kind: "EntityRef" | "EntityMut"; readonly __lacks?: (_: infer Lacks) => void }
+  E extends { readonly kind: "EntityRef"; readonly __lacks?: (_: infer Lacks) => void }
     ? Names<Lacks>
     : never
 
@@ -646,7 +646,7 @@ type MissingFromLacked<E, All> = E extends unknown ? Exclude<All, LackedBy<E>> :
 
 /**
  * What an insert or remove target is known to hold. For a target chosen
- * from several queries (`cond ? a.entity : b.entity`), only what every one
+ * from several queries (`cond ? a : b`), only what every one
  * of them proves.
  */
 type TargetHolds<E> = Exclude<HeldBy<E>, MissingFromHeld<E, HeldBy<E>>>
@@ -679,7 +679,7 @@ type InsertViolations<S extends Schema.Any, E, Entries extends ReadonlyArray<rea
 type InsertRequirementsMet<S extends Schema.Any, E, Entries extends ReadonlyArray<readonly [ComponentDescriptor, unknown]>> =
   [InsertViolations<S, E, Entries>] extends [never]
     ? unknown
-    : Fix<`${MissingMessages<InsertViolations<S, E, Entries>>}: insert it in the same call, or pass match.entity from a query that proves it`>
+    : Fix<`${MissingMessages<InsertViolations<S, E, Entries>>}: insert it in the same call, or pass an entity from a query that proves it`>
 
 /**
  * Removing `Removed` is sound when every component that requires one of
@@ -699,13 +699,13 @@ type RemoveViolations<S extends Schema.Any, E, Removed extends string> =
 type RemoveRequirementsMet<S extends Schema.Any, E, Removed extends string> =
   [RemoveViolations<S, E, Removed>] extends [never] ? unknown : Fix<RemoveViolations<S, E, Removed>>
 
-/** A remove target: `match.entity`, or the id `spawn` returned in this run; never a raw id, not even as one of several. */
+/** A remove target: an entity from a query, or the id `spawn` returned in this run; never a raw id, not even as one of several. */
 type RemoveTargetRejections<S extends Schema.Any, Root, E> =
-  E extends { readonly kind: "EntityRef" | "EntityMut"; readonly id: Entity.EntityId<S, Root> }
+  E extends { readonly kind: "EntityRef"; readonly id: Entity.EntityId<S, Root> }
     ? never
     : E extends SpawnedId<S, Root, string>
       ? never
-      : "remove needs an entity from a query (pass match.entity) or the id spawn returned in this run, not a raw id"
+      : "remove needs an entity from a query (pass the entity from each()) or the id spawn returned in this run, not a raw id"
 
 type RemoveTargetAllowed<S extends Schema.Any, Root, E> =
   [RemoveTargetRejections<S, Root, E>] extends [never] ? unknown : Fix<RemoveTargetRejections<S, Root, E>>
@@ -733,9 +733,9 @@ export type RequiredDescriptors<S extends Schema.Any, Names extends string> =
 
 type SchemaComponent<S extends Schema.Any> = Extract<Schema.Components<S>[keyof Schema.Components<S>], ComponentDescriptor>
 
-/** An entity a system has proven something about: `match.entity`, or the id `spawn` returned. */
+/** An entity a system has proven something about: an entity from a query, or the id `spawn` returned. */
 type EntityTarget<S extends Schema.Any, Root> =
-  | { readonly kind: "EntityRef" | "EntityMut"; readonly id: Entity.EntityId<S, Root> }
+  | { readonly kind: "EntityRef"; readonly id: Entity.EntityId<S, Root> }
   | SpawnedId<S, Root, string>
 
 /** The keys every member of a union of proofs requires (what a draft holds in every case). */
@@ -799,7 +799,7 @@ export interface CommandsApi<
    * matched, write through a query (`Game.Query.write`) instead; components
    * declared `immutable: true` change only through `insert`.
    *
-   * Pass `match.entity`: its query proves what the entity holds, which must
+   * Pass an entity from a query: its query proves what the entity holds, which must
    * cover what the inserted components require (`Schema.requires`) together
    * with the entries inserted in the same call. The id `spawn` returned in
    * this run proves its draft. A raw `EntityId` proves nothing, so it only
@@ -821,10 +821,10 @@ export interface CommandsApi<
    *
    * That includes the rest of this system's run: a later loop over the same
    * query still matches it, so a bug killed by one shot is hit again by the
-   * next. Keep the `match.entity.id`s this run despawned in a local `Set` and
+   * next. Keep the `entity.id`s this run despawned in a local `Set` and
    * skip them.
    *
-   * Pass `match.entity` from a query proving one of the `despawns`
+   * Pass an entity from a query proving one of the `despawns`
    * components, or the id `spawn` returned in this run (it holds its draft's
    * components); never a raw id.
    */
@@ -841,7 +841,7 @@ export interface CommandsApi<
    * Queues the removal of one or more components from an existing entity,
    * applied together at the next `applyDeferred()`.
    *
-   * Pass `match.entity` from a query, or the id `spawn` returned in this run;
+   * Pass an entity from a query, or the id `spawn` returned in this run;
    * never a raw id. A component another one requires (`Schema.requires`) can
    * only go together with that requirer, in the same call, or from an
    * entity whose query has `without: [Requirer]`.

@@ -17,7 +17,8 @@ describe("a query naming a look-alike descriptor", () => {
     const Flip = Game.System("Identity/Flip", {
       queries: { modes: Game.Query({ selection: { mode: Game.Query.write(ModeState) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.modes.each()) data.mode.transition({ from: "a", to: "b" })
+      const { data } = queries.modes
+      for (const entity of queries.modes.each()) data.mode.transition(entity, { from: "a", to: "b" })
     })
     const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred()))
@@ -33,7 +34,8 @@ describe("a query naming a look-alike descriptor", () => {
     const Retag = Game.System("Identity/Retag", {
       queries: { kinds: Game.Query({ selection: { kind: write(PlainKind) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.kinds.each()) data.kind.set({ _tag: "a" })
+      const { data } = queries.kinds
+      for (const entity of queries.kinds.each()) data.kind.set(entity, { _tag: "a" })
     })
     const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred()))
@@ -46,7 +48,8 @@ describe("a query naming a look-alike descriptor", () => {
     const Read = Game.System("Identity/Read", {
       queries: { modes: Game.Query({ selection: { mode: Game.Query.read(SameMode) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.modes.each()) seen.push(data.mode.get()._tag)
+      const { data } = queries.modes
+      for (const entity of queries.modes.each()) seen.push(data.mode.get(entity)._tag)
     })
     const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred(), Read))

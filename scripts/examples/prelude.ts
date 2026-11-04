@@ -88,9 +88,10 @@ export const Move = Game.System("Game/Move", {
   resources: { time: Game.System.readResource(Time) }
 }, ({ queries, resources }) => {
   const { dt } = resources.time.get()
-  for (const { data } of queries.moving.each()) {
-    const velocity = data.velocity.get()
-    data.position.update((position) => ({ x: position.x + velocity.x * dt, y: position.y + velocity.y * dt }))
+  const { data } = queries.moving
+  for (const entity of queries.moving.each()) {
+    const velocity = data.velocity.get(entity)
+    data.position.update(entity, (position) => ({ x: position.x + velocity.x * dt, y: position.y + velocity.y * dt }))
   }
 })
 

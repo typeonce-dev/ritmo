@@ -17,8 +17,9 @@ describe("Game.Query.anyOf", () => {
       filters: [Game.Query.anyOf(Game.Query.changed(Position), Game.Query.changed(Sprite))]
     })
     Game.System("AnyOfTypes/Redraw", { queries: { redraw: Redraw } }, ({ queries }) => {
-      for (const { data } of queries.redraw.each()) {
-        expect(data.position.get()).type.toBe<{ readonly x: number; readonly y: number }>()
+      const { data } = queries.redraw
+      for (const entity of queries.redraw.each()) {
+        expect(data.position.get(entity)).type.toBe<{ readonly x: number; readonly y: number }>()
       }
     })
   })

@@ -81,11 +81,12 @@ const Move = Game.System(
   },
   ({ queries, resources }) => {
     const { dt } = resources.time.get()
-    for (const match of queries.moving.each()) {
-      const position = match.data.position.get()
-      const velocity = match.data.velocity.get()
+    const { data } = queries.moving
+    for (const entity of queries.moving.each()) {
+      const position = data.position.get(entity)
+      const velocity = data.velocity.get(entity)
       //    ^?
-      match.data.position.set({
+      data.position.set(entity, {
         x: position.x + velocity.x * dt,
         y: position.y + velocity.y * dt
       })
@@ -193,7 +194,7 @@ const Positions = Game.Inspector(
     }
   },
   ({ queries }) =>
-    Array.from(queries.all.each(), (match) => match.data.position.get())
+    queries.all.each().map((entity) => queries.all.data.position.get(entity))
 )
 
 // After the sixty ticks above

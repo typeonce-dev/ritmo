@@ -72,16 +72,17 @@ const Bodies = Game.Query({ selection: { contact: Game.Query.write(Contact) } })
 // ---cut---
 // @errors: 2741
 Game.System("Brawl/Breaker", { queries: { bodies: Bodies } }, ({ queries }) => {
-  for (const { data } of queries.bodies.each()) {
+  const { data } = queries.bodies
+  for (const entity of queries.bodies.each()) {
     // Pops the fighter up: it is in the air now, with a speed to fall from
-    data.contact.transition({
+    data.contact.transition(entity, {
       from: "ground",
       to: "air",
       data: { vy: 2, coyote: 0 }
     })
 
     // Landing needs the platform it lands on
-    data.contact.transition({ from: "air", to: "ground", data: {} })
+    data.contact.transition(entity, { from: "air", to: "ground", data: {} })
   }
 })
 ```
@@ -110,14 +111,15 @@ const Bodies = Game.Query({ selection: { contact: Game.Query.write(Contact) } })
 // ---cut---
 // @errors: 2322
 Game.System("Brawl/Fall", { queries: { bodies: Bodies } }, ({ queries }) => {
-  for (const { data } of queries.bodies.each()) {
-    data.contact.update({
+  const { data } = queries.bodies
+  for (const entity of queries.bodies.each()) {
+    data.contact.update(entity, {
       state: "air",
       data: (air) => ({ ...air, vy: air.vy - 0.6 })
     })
 
     // A field of another state is caught, even through a spread
-    data.contact.update({
+    data.contact.update(entity, {
       state: "air",
       data: (air) => ({ ...air, platform: 1 })
     })
@@ -136,7 +138,7 @@ Pure functions that build the next value can spread the old state and change
 error ritmo(no-state-spread): This sets `_tag` over a spread of `air`: every
 field of the previous state survives at runtime, though the type of the new
 state hides it, so it comes back when the value is saved, compared, or
-spread again. Move an entity state with `cell.transition({ from, to, data })`,
+spread again. Move an entity state with `data.state.transition(entity, { from, to, data })`,
 which takes the new state's fields; anywhere else, write the new state's
 fields out: `{ _tag: "air", vy, coyote }`.
 ```

@@ -54,7 +54,7 @@ describe("what a filtered query proves", () => {
       queries: { tagged: Tagged },
       commands: Game.System.commands(Game.System.despawns(Tag))
     }, ({ queries, commands }) => {
-      for (const match of queries.tagged.each()) commands.despawn(match.entity)
+      for (const entity of queries.tagged.each()) commands.despawn(entity)
     })
   })
 })
@@ -65,8 +65,8 @@ describe("lookups through a filtered query", () => {
 
   it("iterates a filtered query and resolves through an unfiltered one", () => {
     Game.System("QueryShape/Follow", { queries: { moved: Moved, positions: Positions } }, ({ queries }) => {
-      for (const match of queries.moved.each()) {
-        const again = queries.positions.get(match.entity.id)
+      for (const entity of queries.moved.each()) {
+        const again = queries.positions.get(entity.id)
         expect(again.ok).type.toBe<boolean>()
       }
       expect(queries.moved.singleOptional().ok).type.toBe<boolean>()
@@ -79,9 +79,9 @@ describe("lookups through a filtered query", () => {
       const [first] = queries.positions.each()
       if (first === undefined) return
       // @ts-expect-error lookups need a query without added/changed filters: declare a second query for resolving entities
-      queries.moved.get(first.entity.id)
+      queries.moved.get(first.id)
       // @ts-expect-error lookups need a query without added/changed filters
-      queries.moved.getHandle(Game.Entity.handle(first.entity))
+      queries.moved.getHandle(Game.Entity.handle(first))
       // @ts-expect-error lookups need a query without added/changed filters
       queries.moved.single()
     })

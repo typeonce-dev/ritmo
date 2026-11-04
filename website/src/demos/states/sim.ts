@@ -78,30 +78,32 @@ const Act = Game.System(
   },
   ({ queries, events }) => {
     const jumped = events.jump.all().length > 0
-    for (const { data } of queries.bodies.each()) {
-      if (jumped && data.contact.get()._tag === "ground") {
-        data.contact.transition({ from: "ground", to: "air", data: { vy: JUMP } })
+    const { data } = queries.bodies
+    for (const entity of queries.bodies.each()) {
+      if (jumped && data.contact.get(entity)._tag === "ground") {
+        data.contact.transition(entity, { from: "ground", to: "air", data: { vy: JUMP } })
       }
       // The guard's hop exists only in the air: on the ground there is no vy to set
-      if (events.guard.all().length > 0 && data.contact.get()._tag === "air") {
-        data.contact.update({ state: "air", data: (air) => ({ vy: Math.max(air.vy, GUARD_HOP) }) })
+      if (events.guard.all().length > 0 && data.contact.get(entity)._tag === "air") {
+        data.contact.update(entity, { state: "air", data: (air) => ({ vy: Math.max(air.vy, GUARD_HOP) }) })
       }
     }
   }
 )
 
 const Fall = Game.System("States/Fall", { queries: { bodies: Bodies } }, ({ queries }) => {
-  for (const { data } of queries.bodies.each()) {
-    const contact = data.contact.get()
+  const { data } = queries.bodies
+  for (const entity of queries.bodies.each()) {
+    const contact = data.contact.get(entity)
     if (contact._tag !== "air") continue
     const vy = contact.vy - GRAVITY
-    const y = data.height.get() + vy
+    const y = data.height.get(entity) + vy
     if (y <= 0) {
-      data.height.set(0)
-      data.contact.transition({ from: "air", to: "ground", data: { platform: null } })
+      data.height.set(entity, 0)
+      data.contact.transition(entity, { from: "air", to: "ground", data: { platform: null } })
     } else {
-      data.height.set(y)
-      data.contact.update({ state: "air", data: () => ({ vy }) })
+      data.height.set(entity, y)
+      data.contact.update(entity, { state: "air", data: () => ({ vy }) })
     }
   }
 })
@@ -115,7 +117,8 @@ const Seen = Game.Query({
 
 export const ReadBody = Game.Inspector("States/ReadBody", { queries: { bodies: Seen } }, ({ queries }) => {
   const found = queries.bodies.each()[0]
-  return { y: found?.data.height.get() ?? 0, contact: found?.data.contact.get() ?? { _tag: "ground" as const, platform: null } }
+  if (found === undefined) return { y: 0, contact: { _tag: "ground" as const, platform: null } }
+  return { y: queries.bodies.data.height.get(found), contact: queries.bodies.data.contact.get(found) }
 })
 
 export const makeFighter = () => {

@@ -23,7 +23,7 @@ export const ResolveFacingSystem = Game.System(
         return
       }
 
-      const velocity = player.value.data.velocity.get()
+      const velocity = queries.player.data.velocity.get(player.value)
       const ax = Math.abs(velocity.x)
       const ay = Math.abs(velocity.y)
       if (ax === 0 && ay === 0) {
@@ -57,7 +57,7 @@ export const ResolveLocomotionSystem = Game.System(
         return
       }
 
-      const velocity = player.value.data.velocity.get()
+      const velocity = queries.player.data.velocity.get(player.value)
       nextMachines.locomotion.setIfChanged({
         _tag: Vec2.lengthSquared(velocity) > 0 ? "Walking" : "Idle"
       })

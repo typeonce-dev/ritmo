@@ -22,7 +22,7 @@ const start = (timeline: Keyboard.Timeline<typeof inputBindings>, pad: Gamepad.T
 }
 
 const PlayerPosition = Game.Inspector("Test/PlayerPosition", { queries: { player: PlayerPositionQuery } }, ({ queries }) =>
-  queries.player.each().map((match) => match.data.position.get()))
+  queries.player.each().map((entity) => queries.player.data.position.get(entity)))
 
 const LastUsed = Game.Inspector("Test/LastUsed", { resources: { input: Game.System.readResource(InputState) } }, ({ resources }) =>
   resources.input.get().lastUsed)

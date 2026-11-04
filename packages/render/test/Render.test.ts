@@ -102,8 +102,9 @@ describe("@typeonce/ritmo-render", () => {
     const Move = Game.System("RenderTest/Move", {
       queries: { moving: Game.Query({ selection: { position: Game.Query.write(Position) }, with: [Sprite] }) }
     }, ({ queries }) => {
-      for (const { data } of queries.moving.each()) {
-        data.position.update((position) => ({ x: position.x + 10, y: position.y }))
+      const { data } = queries.moving
+      for (const entity of queries.moving.each()) {
+        data.position.update(entity, (position) => ({ x: position.x + 10, y: position.y }))
       }
     })
     const Despawn = Game.System("RenderTest/Despawn", {
@@ -111,7 +112,7 @@ describe("@typeonce/ritmo-render", () => {
       commands: Game.System.commands(Game.System.despawns(Sprite))
     }, ({ queries, commands }) => {
       const hero = queries.sprites.get(ids[0]!)
-      if (hero.ok) commands.despawn(hero.value.entity)
+      if (hero.ok) commands.despawn(hero.value)
     })
 
     const runtime = Game.Runtime.make({
@@ -191,9 +192,10 @@ describe("@typeonce/ritmo-render", () => {
     const step = (moves: boolean) => Animated.System(`RenderTest/Step${moves}`, {
       queries: { heroes: Animated.Query({ selection: { position: Animated.Query.write(Position), frame: Animated.Query.write(Frame) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.heroes.each()) {
-        data.frame.update((frame) => frame + 1)
-        if (moves) data.position.update((position) => ({ x: position.x + 1, y: position.y }))
+      const { data } = queries.heroes
+      for (const entity of queries.heroes.each()) {
+        data.frame.update(entity, (frame) => frame + 1)
+        if (moves) data.position.update(entity, (position) => ({ x: position.x + 1, y: position.y }))
       }
     })
 
@@ -225,7 +227,7 @@ describe("@typeonce/ritmo-render", () => {
       queries: { sprites: Game.Query({ selection: { sprite: Game.Query.read(Sprite) } }) },
       commands: Game.System.commands(Game.System.removes(Sprite))
     }, ({ queries, commands }) => {
-      for (const match of queries.sprites.each()) commands.remove(match.entity, Sprite)
+      for (const entity of queries.sprites.each()) commands.remove(entity, Sprite)
     })
     const Readd = Game.System("RenderTest/ReaddSprite", { commands: Game.System.commands(Game.System.inserts(Sprite)) }, ({ commands }) => {
       commands.insert(ids[0]!, [Sprite, { label: "new" }])
@@ -288,10 +290,12 @@ describe("@typeonce/ritmo-render", () => {
       ids.push(commands.spawn(Game.Command.spawn([Position, { x: 0, y: 0 }], [Sprite, { label: "a" }])))
     })
     const Move = Game.System("RenderTest/MoveNoTransform", { queries: { all: Game.Query({ selection: { position: Game.Query.write(Position) } }) } }, ({ queries }) => {
-      for (const { data } of queries.all.each()) data.position.update((position) => ({ x: position.x + 1, y: position.y }))
+      const { data } = queries.all
+      for (const entity of queries.all.each()) data.position.update(entity, (position) => ({ x: position.x + 1, y: position.y }))
     })
     const Relabel = Game.System("RenderTest/Relabel", { queries: { all: Game.Query({ selection: { sprite: Game.Query.write(Sprite) } }) } }, ({ queries }) => {
-      for (const { data } of queries.all.each()) data.sprite.set({ label: "b" })
+      const { data } = queries.all
+      for (const entity of queries.all.each()) data.sprite.set(entity, { label: "b" })
     })
     const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Nodes, inLayer(layer))) }).value
     runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred(), render))

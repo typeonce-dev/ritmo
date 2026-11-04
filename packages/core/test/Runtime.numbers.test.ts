@@ -27,7 +27,7 @@ const spawner = (count: number) =>
 
 const AllSpeeds = Game.Inspector("Numbers/AllSpeeds", {
   queries: { all: Game.Query({ selection: { speed: Game.Query.read(Speed) } }) }
-}, ({ queries }) => queries.all.each().map((match) => match.data.speed.get()))
+}, ({ queries }) => queries.all.each().map((entity) => queries.all.data.speed.get(entity)))
 
 describe("number values", () => {
   it("validate raw input through the component's codec", () => {
@@ -35,9 +35,10 @@ describe("number values", () => {
     runtime.tick(Game.Schedule(spawner(1), Game.Schedule.applyDeferred()))
     const results: Array<boolean> = []
     const Raw = Game.System("Numbers/Raw", { queries: { all: Speeds } }, ({ queries }) => {
-      for (const { data } of queries.all.each()) {
-        results.push(data.speed.setRaw(4).ok, data.speed.setRaw(Number.POSITIVE_INFINITY).ok)
-        results.push(data.speed.updateRaw((speed) => speed + 1).ok)
+      const { data } = queries.all
+      for (const entity of queries.all.each()) {
+        results.push(data.speed.setRaw(entity, 4).ok, data.speed.setRaw(entity, Number.POSITIVE_INFINITY).ok)
+        results.push(data.speed.updateRaw(entity, (speed) => speed + 1).ok)
       }
     })
     runtime.tick(Game.Schedule(Raw))
@@ -55,7 +56,8 @@ describe("number values", () => {
     const Read = Game.System("Numbers/ReadShield", {
       queries: { all: Game.Query({ selection: { speed: Game.Query.read(Speed), shield: Game.Query.optional(Shield) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.all.each()) seen.push(data.shield?.get())
+      const { data } = queries.all
+      for (const entity of queries.all.each()) seen.push(data.shield.get(entity))
     })
     runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred(), Read))
     expect(seen).toEqual([3, undefined])
@@ -65,13 +67,14 @@ describe("number values", () => {
     const runtime = makeRuntime()
     const seen: Array<Array<number>> = []
     const Slow = Game.System("Numbers/Slow", { queries: { all: Speeds } }, ({ queries }) => {
-      for (const { data } of queries.all.each()) data.speed.set(data.speed.get() + 100)
+      const { data } = queries.all
+      for (const entity of queries.all.each()) data.speed.set(entity, data.speed.get(entity) + 100)
     })
     const Fail = Game.System("Numbers/Fail", {}, () => Result.failure("busy"))
     const Watch = Game.System("Numbers/Watch", {
       queries: { changed: Game.Query({ selection: { speed: Game.Query.read(Speed) }, filters: [Game.Query.changed(Speed)] }) }
     }, ({ queries }) => {
-      seen.push(queries.changed.each().map((match) => match.data.speed.get()))
+      seen.push(queries.changed.each().map((entity) => queries.changed.data.speed.get(entity)))
     })
     const transitions = Game.Schedule.transitions(
       Game.Schedule.onExit(Flow, "Playing", [Slow]),
@@ -97,7 +100,7 @@ describe("number values", () => {
     })
     const Read = Saved.Inspector("Numbers/ReadSaved", {
       queries: { all: Saved.Query({ selection: { speed: Saved.Query.read(Speed) } }) }
-    }, ({ queries }) => queries.all.each().map((match) => match.data.speed.get()))
+    }, ({ queries }) => queries.all.each().map((entity) => queries.all.data.speed.get(entity)))
     const source = make()
     source.tick(Saved.Schedule(Spawn, Saved.Schedule.applyDeferred()))
     const taken = source.snapshot()
@@ -117,7 +120,8 @@ describe("number values", () => {
     runtime.debug.observe((event) => events.push(event))
     // Entity 1 keeps its speed (an equal write is not a change); entity 2 doubles.
     const Double = Game.System("Numbers/Double", { queries: { all: Speeds } }, ({ queries }) => {
-      for (const { data } of queries.all.each()) data.speed.set(data.speed.get() * 2)
+      const { data } = queries.all
+      for (const entity of queries.all.each()) data.speed.set(entity, data.speed.get(entity) * 2)
     })
     runtime.tick(Game.Schedule(Double))
     const run = events.find((event): event is Debug.SystemEvent => event.type === "system")!
@@ -129,7 +133,7 @@ describe("number values", () => {
     const Targets = Game.Query({ selection: { target: Game.Query.write(Target) } })
     const AllTargets = Game.Inspector("Numbers/AllTargets", {
       queries: { all: Game.Query({ selection: { target: Game.Query.read(Target) } }) }
-    }, ({ queries }) => queries.all.each().map((match) => match.data.target.get()))
+    }, ({ queries }) => queries.all.each().map((entity) => queries.all.data.target.get(entity)))
     const changed: Array<number> = []
     const Watch = Game.System("Numbers/WatchTargets", {
       queries: { changed: Game.Query({ selection: { target: Game.Query.read(Target) }, filters: [Game.Query.changed(Target)] }) }
@@ -142,21 +146,24 @@ describe("number values", () => {
     })
     // Each value swaps kinds: the number becomes an object, the object a number.
     const Swap = Game.System("Numbers/Swap", { queries: { all: Targets } }, ({ queries }) => {
-      for (const { data } of queries.all.each()) {
-        const current = data.target.get()
-        data.target.set(typeof current === "number" ? { x: current } : current.x)
+      const { data } = queries.all
+      for (const entity of queries.all.each()) {
+        const current = data.target.get(entity)
+        data.target.set(entity, typeof current === "number" ? { x: current } : current.x)
       }
     })
     const SwapAndFail = Game.System("Numbers/SwapAndFail", { queries: { all: Targets } }, ({ queries }) => {
-      for (const { data } of queries.all.each()) {
-        const current = data.target.get()
-        data.target.set(typeof current === "number" ? { x: current } : current.x)
+      const { data } = queries.all
+      for (const entity of queries.all.each()) {
+        const current = data.target.get(entity)
+        data.target.set(entity, typeof current === "number" ? { x: current } : current.x)
       }
       return Result.failure("Rejected" as const)
     })
     // Writing the same number back is not a change.
     const Same = Game.System("Numbers/Same", { queries: { all: Targets } }, ({ queries }) => {
-      for (const { data } of queries.all.each()) data.target.set(data.target.get())
+      const { data } = queries.all
+      for (const entity of queries.all.each()) data.target.set(entity, data.target.get(entity))
     })
     runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred(), Watch))
     expect(runtime.inspect(AllTargets)).toEqual([1, { x: 2 }])
@@ -184,7 +191,7 @@ describe("number values", () => {
     const Targets = Game.Query({ selection: { target: Game.Query.write(Target) } })
     const AllTargets = Game.Inspector("Numbers/RoundTripTargets", {
       queries: { all: Game.Query({ selection: { target: Game.Query.read(Target) } }) }
-    }, ({ queries }) => queries.all.each().map((match) => match.data.target.get()))
+    }, ({ queries }) => queries.all.each().map((entity) => queries.all.data.target.get(entity)))
     const changed: Array<number> = []
     const Watch = Game.System("Numbers/WatchRoundTrip", {
       queries: { changed: Game.Query({ selection: { target: Game.Query.read(Target) }, filters: [Game.Query.changed(Target)] }) }
@@ -195,13 +202,15 @@ describe("number values", () => {
       commands.spawn(Game.Command.spawn([Target, 1.5]))
     })
     const RoundTrip = Game.System("Numbers/RoundTrip", { queries: { all: Targets } }, ({ queries }) => {
-      for (const { data } of queries.all.each()) {
-        data.target.set({ x: 0 })
-        data.target.set(1.5)
+      const { data } = queries.all
+      for (const entity of queries.all.each()) {
+        data.target.set(entity, { x: 0 })
+        data.target.set(entity, 1.5)
       }
     })
     const ReplaceAndFail = Game.System("Numbers/ReplaceAndFail", { queries: { all: Targets } }, ({ queries }) => {
-      for (const { data } of queries.all.each()) data.target.set({ x: 0 })
+      const { data } = queries.all
+      for (const entity of queries.all.each()) data.target.set(entity, { x: 0 })
       return Result.failure("Rejected" as const)
     })
     runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred(), Watch))
@@ -221,7 +230,8 @@ describe("number values", () => {
     const Rewrite = Game.System("Numbers/RewriteNaN", {
       queries: { all: Game.Query({ selection: { health: Game.Query.write(Health) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.all.each()) data.health.set(Number.NaN)
+      const { data } = queries.all
+      for (const entity of queries.all.each()) data.health.set(entity, Number.NaN)
     })
     const Watch = Game.System("Numbers/WatchNaN", {
       queries: { changed: Game.Query({ selection: { health: Game.Query.read(Health) }, filters: [Game.Query.changed(Health)] }) }

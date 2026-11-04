@@ -29,7 +29,7 @@ export interface ValueOptions {
  * `Desync.compare`.
  */
 export interface Labels {
-  // A method, so a map keyed by branded entity ids (`match.entity.id`) is labels too.
+  // A method, so a map keyed by branded entity ids (`entity.id`) is labels too.
   get(entity: number): string | undefined
 }
 

@@ -125,9 +125,10 @@ const changed: BenchCase = {
     const Move = Game.System("RenderBench/Move", { queries: { movers: Movers } }, ({ queries }) => {
       frame++
       let index = 0
-      for (const { data } of queries.movers.each()) {
+      const { data } = queries.movers
+      for (const entity of queries.movers.each()) {
         if (index++ % 10 === frame % 10) {
-          data.position.update((position) => ({ x: position.x + 1, y: position.y }))
+          data.position.update(entity, (position) => ({ x: position.x + 1, y: position.y }))
         }
       }
     })
@@ -146,9 +147,10 @@ const tree: BenchCase = {
     const Move = Game.System("RenderBench/MoveTree", { queries: { movers: Movers } }, ({ queries }) => {
       frame++
       let index = 0
-      for (const { data } of queries.movers.each()) {
+      const { data } = queries.movers
+      for (const entity of queries.movers.each()) {
         if (index++ % 10 === frame % 10) {
-          data.position.update((position) => ({ x: position.x + 1, y: position.y }))
+          data.position.update(entity, (position) => ({ x: position.x + 1, y: position.y }))
         }
       }
     })
@@ -166,7 +168,7 @@ const churn: BenchCase = {
     const Rendered = Game.Query({ selection: { sprite: Game.Query.read(Sprite) } })
     const Despawn = Game.System("RenderBench/Despawn", { queries: { rendered: Rendered }, commands: Game.System.commands(Game.System.despawns(Sprite)) }, ({ queries, commands }) => {
       let count = 0
-      for (const { entity } of queries.rendered.each()) {
+      for (const entity of queries.rendered.each()) {
         if (count++ === 500) break
         commands.despawn(entity)
       }

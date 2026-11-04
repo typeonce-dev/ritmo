@@ -11,7 +11,7 @@ import type { InputStateValue } from "../types.ts"
 /** A planted rule the game does not keep: the player never walks left of where it starts. */
 const NeverLeftOfStart = Invariant.fromInspector(Game.Inspector("never left of start", { queries: { player: PlayerPositionQuery } }, ({ queries }) => {
   const [player] = queries.player.each()
-  const position = player?.data.position.get()
+  const position = player === undefined ? undefined : queries.player.data.position.get(player)
   return position === undefined || position.x >= 640 ? undefined : `player at x ${position.x}`
 }))
 

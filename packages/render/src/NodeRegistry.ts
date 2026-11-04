@@ -8,8 +8,8 @@
  * loses its renderable or is despawned, and teardown. It does not import or
  * assume any renderer: what attaching and detaching mean is passed to `make`.
  *
- * Nodes are keyed by the entity's numeric value, so an `EntityId`, a query
- * match's `entity.id`, or a stored `Handle` all address the same node.
+ * Nodes are keyed by the entity's numeric value, so an `EntityId`, an
+ * `entity.id` from a query, or a stored `Handle` all address the same node.
  *
  * @module NodeRegistry
  * @docGroup render

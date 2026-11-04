@@ -32,10 +32,11 @@ const Step = Game.System("Rewind/Step", {
 }, ({ services, queries, commands }) => {
   const plan = services.plans.snapshot()
   if (plan._tag === "Spawn") commands.spawn(Game.Command.spawn([Sprite, { label: "shot" }], [Position, { x: plan.x }]))
-  if (plan._tag === "Move") for (const { data } of queries.sprites.each()) data.position.set({ x: plan.x })
+  const { data } = queries.sprites
+  if (plan._tag === "Move") for (const entity of queries.sprites.each()) data.position.set(entity, { x: plan.x })
   if (plan._tag === "Despawn") {
     const first = queries.sprites.each()[0]
-    if (first !== undefined) commands.despawn(first.entity)
+    if (first !== undefined) commands.despawn(first)
   }
 })
 const simulate = Game.Schedule(Step, Game.Schedule.applyDeferred())

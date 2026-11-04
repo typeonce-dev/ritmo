@@ -19,9 +19,10 @@ const Separate = Game.System("Game/Separate", {
 }, ({ queries, local: { grid, bodies } }) => {
   grid.clear()
   bodies.length = 0
-  for (const { data } of queries.bodies.each()) {
-    const at = data.position.get()
-    grid.insert(bodies.length, at.x, at.y, data.body.get().radius)
+  const { data } = queries.bodies
+  for (const entity of queries.bodies.each()) {
+    const at = data.position.get(entity)
+    grid.insert(bodies.length, at.x, at.y, data.body.get(entity).radius)
     bodies.push(at)
   }
   for (const [index, at] of bodies.entries()) {

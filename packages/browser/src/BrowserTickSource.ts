@@ -37,11 +37,12 @@
  * }, ({ queries, resources }) => {
  *   const { dt } = resources.time.get()
  *   const input = resources.input.get()
- *   for (const { data } of queries.player.each()) {
- *     const { x, y } = data.position.get()
+ *   const { data } = queries.player
+ *   for (const entity of queries.player.each()) {
+ *     const { x, y } = data.position.get(entity)
  *     // A button reads as `held` / `pressed` / `released`; `act` sends the square home.
- *     if (input.actions.act.pressed) data.position.set({ x: 100, y: 100 })
- *     else data.position.set({ x: x + input.vectors.move.x * 200 * dt, y: y + input.vectors.move.y * 200 * dt })
+ *     if (input.actions.act.pressed) data.position.set(entity, { x: 100, y: 100 })
+ *     else data.position.set(entity, { x: x + input.vectors.move.x * 200 * dt, y: y + input.vectors.move.y * 200 * dt })
  *   }
  * })
  * const setup = Game.Schedule(Spawn, Game.Schedule.applyDeferred())
@@ -54,7 +55,7 @@
  * // What the page draws: plain data, read once per frame.
  * const ReadSquares = Game.Inspector("Toy/ReadSquares", {
  *   queries: { squares: Game.Query({ selection: { position: Game.Query.read(Position) } }) }
- * }, ({ queries }) => queries.squares.each().map(({ data }) => data.position.get()))
+ * }, ({ queries }) => queries.squares.each().map((entity) => queries.squares.data.position.get(entity)))
  *
  * // The page
  * const keyboard = Keyboard.actions(window, keys)

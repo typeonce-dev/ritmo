@@ -690,7 +690,7 @@ export namespace Schema {
     ) => BoundInspector<S, Root, System.SystemSpec<S, Access, Root>, Value, Name, System.SystemAccessNeeds<Access>>
     readonly Entity: {
       /**
-       * Converts an entity id or query match into a durable handle, optionally
+       * Converts an entity id or an entity from a query into a durable handle, optionally
        * with an intent component that later resolution must prove.
        */
       handle: <const D extends ComponentDescriptor<S> | undefined = undefined>(
@@ -735,7 +735,7 @@ export namespace Schema {
       read: <D extends ComponentDescriptor<S>>(descriptor: D) => QueryModule.ReadAccess<D>
       /** A required writable slot; immutable components cannot be written (replace them with `commands.insert`). */
       write: <D extends ComponentDescriptor<S>>(descriptor: D & QueryModule.Writable<D>) => QueryModule.WriteAccess<D>
-      /** A read-only slot that does not constrain matching: the read cell, or `undefined` when the entity lacks the component. To match only holders, use `with: [X]`. */
+      /** A read-only slot that does not constrain matching: it reads `undefined` when the entity lacks the component. To match only holders, use `with: [X]`. */
       optional: <D extends ComponentDescriptor<S>>(descriptor: D) => QueryModule.OptionalReadAccess<D>
       /** A `filters` entry: entities whose component was added since this system's previous run. */
       added: <D extends ComponentDescriptor<S>>(descriptor: D) => QueryModule.AddedFilter<D>

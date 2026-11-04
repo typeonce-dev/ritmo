@@ -27,8 +27,9 @@
  * const PlayerInsideWorld = Invariant.fromInspector(Game.Inspector("player inside world", {
  *   queries: { players: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] }) }
  * }, ({ queries }) => {
- *   for (const { entity, data } of queries.players.each()) {
- *     const { x } = data.position.get()
+ *   const { data } = queries.players
+ *   for (const entity of queries.players.each()) {
+ *     const { x } = data.position.get(entity)
  *     if (x < 0 || x > WORLD_WIDTH) return `e${entity.id} at x=${x}`
  *   }
  *   return undefined

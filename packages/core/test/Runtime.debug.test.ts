@@ -42,8 +42,9 @@ const Move = Game.System("Debug/Move", {
   events: { ping: Game.System.writeEvent(Ping) },
   nextMachines: { flow: Game.System.nextState(Flow) }
 }, ({ queries, resources, events, nextMachines }) => {
-  for (const match of queries.moving.each()) {
-    match.data.position.update((position) => ({ x: position.x + 1 }))
+  const { data } = queries.moving
+  for (const entity of queries.moving.each()) {
+    data.position.update(entity, (position) => ({ x: position.x + 1 }))
   }
   resources.score.update((score) => score + 10)
   events.ping.emit(7)
@@ -286,7 +287,8 @@ describe("Runtime debug handle", () => {
       queries: { moving: Moving },
       commands: Game.System.commands(Game.System.spawns(Tagged))
     }, ({ queries, commands }) => {
-      for (const match of queries.moving.each()) match.data.position.set({ x: 99 })
+      const { data } = queries.moving
+      for (const entity of queries.moving.each()) data.position.set(entity, { x: 99 })
       commands.spawn(Game.Command.spawn([Tagged, {}]))
       return Result.failure("Nope" as const)
     })
@@ -395,7 +397,7 @@ describe("Runtime debug handle", () => {
       queries: { tagged: Game.Query({ selection: { tagged: Game.Query.read(Tagged) } }) },
       commands: Game.System.commands(Game.System.removes(Tagged))
     }, ({ queries, commands }) => {
-      for (const match of queries.tagged.each()) commands.remove(match.entity, Tagged)
+      for (const entity of queries.tagged.each()) commands.remove(entity, Tagged)
     })
     const read = Game.Schedule(ReadRemoved)
     runtime.tick(read)
@@ -420,7 +422,7 @@ describe("Runtime debug handle", () => {
       queries: { all: Game.Query({ selection: {}, with: [Tagged] }) },
       commands: Game.System.commands(Game.System.despawns(Tagged))
     }, ({ queries, commands }) => {
-      for (const match of queries.all.each()) commands.despawn(match.entity)
+      for (const entity of queries.all.each()) commands.despawn(entity)
     })
     const read = Game.Schedule(ReadDespawned)
     runtime.tick(read)

@@ -153,8 +153,9 @@ describe("Schema", () => {
       ({ queries, resources }) =>
         {
           resources.time.get()
-          for (const match of queries.moving.each()) {
-            match.data.position.get()
+          const { data } = queries.moving
+          for (const entity of queries.moving.each()) {
+            data.position.get(entity)
           }
         }
     )
@@ -196,17 +197,16 @@ describe("Schema", () => {
       },
       ({ queries }) =>
         {
-          for (const match of queries.moving.each()) {
-            expect(match.data.velocity).type.toBe<QueryTypes.ReadCell<{ dx: number; dy: number }> | undefined>()
-            expect(match.entity.proof).type.toBe<{
-              readonly position: QueryTypes.ReadonlyValue<{ x: number; y: number }>
-            }>()
+          const { data } = queries.moving
+          for (const entity of queries.moving.each()) {
+            expect(data.velocity).type.toBe<QueryTypes.OptionalSlot<{ dx: number; dy: number }>>()
 
-            // @ts-expect-error 'match.data.velocity' is possibly 'undefined'
-            match.data.velocity.get()
+            // @ts-expect-error Object is possibly 'undefined'
+            data.velocity.get(entity).dx
 
-            if (match.data.velocity !== undefined) {
-              expect(match.data.velocity.get()).type.toBe<QueryTypes.ReadonlyValue<{ dx: number; dy: number }>>()
+            const velocity = data.velocity.get(entity)
+            if (velocity !== undefined) {
+              expect(velocity).type.toBe<QueryTypes.ReadonlyValue<{ dx: number; dy: number }>>()
             }
           }
         }
@@ -245,7 +245,7 @@ describe("Schema", () => {
         {
           const result = queries.moving.singleOptional()
           expect(result).type.toBe<Result.Result<
-            QueryTypes.QueryMatch<typeof schema, typeof MovingQuery> | undefined,
+            QueryTypes.QueryEntity<typeof schema, typeof MovingQuery> | undefined,
             QueryTypes.Query.MultipleEntitiesError
           >>()
 
@@ -253,12 +253,9 @@ describe("Schema", () => {
             return
           }
 
-          expect(result.value.entity.proof).type.toBe<{
-            readonly position: QueryTypes.ReadonlyValue<{ x: number; y: number }>
-            readonly velocity: QueryTypes.ReadonlyValue<{ dx: number; dy: number }>
-          }>()
-          result.value.data.position.set({ x: 0, y: 0 })
-          expect(result.value.data.velocity.get()).type.toBe<QueryTypes.ReadonlyValue<{ dx: number; dy: number }>>()
+          expect(queries.moving.data.position.get(result.value)).type.toBe<QueryTypes.ReadonlyValue<{ x: number; y: number }>>()
+          queries.moving.data.position.set(result.value, { x: 0, y: 0 })
+          expect(queries.moving.data.velocity.get(result.value)).type.toBe<QueryTypes.ReadonlyValue<{ dx: number; dy: number }>>()
         }
     )
 
@@ -337,8 +334,9 @@ describe("Schema", () => {
       },
       ({ queries, removed, despawned }) =>
         {
-          for (const match of queries.moved.each()) {
-            expect(match.data.velocity).type.toBe<QueryTypes.ReadCell<{ dx: number; dy: number }> | undefined>()
+          for (const entity of queries.moved.each()) {
+            expect(queries.moved.data.velocity).type.toBe<QueryTypes.OptionalSlot<{ dx: number; dy: number }>>()
+            expect(queries.moved.data.velocity.get(entity)).type.toBe<QueryTypes.ReadonlyValue<{ dx: number; dy: number }> | undefined>()
           }
 
           expect(removed.positions.all()).type.toBe<ReadonlyArray<EntityId<typeof schema, typeof schema>>>()
@@ -508,11 +506,11 @@ describe("Schema", () => {
             typeof Game.schema
           >>>()
           expect(queries.nodes.children(entityId, ChildOf)).type.toBeAssignableTo<Result.Result<
-            ReadonlyArray<QueryTypes.QueryMatch<typeof schema, typeof query>>,
+            ReadonlyArray<QueryTypes.QueryEntity<typeof schema, typeof query>>,
             Relation.Relation.MissingEntityError
           >>()
           expect(queries.nodes.descendants(entityId, ChildOf, { order: "breadth" })).type.toBeAssignableTo<Result.Result<
-            ReadonlyArray<QueryTypes.QueryMatch<typeof schema, typeof query>>,
+            ReadonlyArray<QueryTypes.QueryEntity<typeof schema, typeof query>>,
             Relation.Relation.MissingEntityError
           >>()
 
@@ -569,56 +567,57 @@ describe("Schema", () => {
       },
       ({ queries }) =>
         {
-          for (const match of queries.player.each()) {
-            match.data.position.get()
-            // @ts-expect-error Property 'velocity' does not exist on type 'Cells<QuerySpec<{ readonly position
-            match.data.velocity.get()
+          const { data } = queries.player
+          for (const entity of queries.player.each()) {
+            data.position.get(entity)
+            // @ts-expect-error Property 'velocity' does not exist on type 'QueryData<QuerySpec<{ readonly position
+            data.velocity.get(entity)
           }
 
           const single = queries.player.single()
           if (single.ok) {
-            single.value.data.position.get()
-            // @ts-expect-error Property 'velocity' does not exist on type 'Cells<QuerySpec<{ readonly position
-            single.value.data.velocity.get()
+            queries.player.data.position.get(single.value)
+            // @ts-expect-error Property 'velocity' does not exist on type 'QueryData<QuerySpec<{ readonly position
+            queries.player.data.velocity.get(single.value)
           }
 
           const singleOptional = queries.player.singleOptional()
           if (singleOptional.ok && singleOptional.value) {
-            singleOptional.value.data.position.get()
-            // @ts-expect-error Property 'velocity' does not exist on type 'Cells<QuerySpec<{ readonly position
-            singleOptional.value.data.velocity.get()
+            queries.player.data.position.get(singleOptional.value)
+            // @ts-expect-error Property 'velocity' does not exist on type 'QueryData<QuerySpec<{ readonly position
+            queries.player.data.velocity.get(singleOptional.value)
 
-            const handle = Game.Entity.handle(singleOptional.value.entity.id, Position)
+            const handle = Game.Entity.handle(singleOptional.value.id, Position)
             const fromHandle = queries.player.getHandle(handle)
             if (fromHandle.ok) {
-              fromHandle.value.data.position.get()
-              // @ts-expect-error Property 'velocity' does not exist on type 'Cells<QuerySpec<{ readonly position
-              fromHandle.value.data.velocity.get()
+              queries.player.data.position.get(fromHandle.value)
+              // @ts-expect-error Property 'velocity' does not exist on type 'QueryData<QuerySpec<{ readonly position
+              queries.player.data.velocity.get(fromHandle.value)
             }
           }
 
           const direct = queries.player.get(entityId)
           if (direct.ok) {
-            direct.value.data.position.get()
-            // @ts-expect-error Property 'velocity' does not exist on type 'Cells<QuerySpec<{ readonly position
-            direct.value.data.velocity.get()
+            queries.player.data.position.get(direct.value)
+            // @ts-expect-error Property 'velocity' does not exist on type 'QueryData<QuerySpec<{ readonly position
+            queries.player.data.velocity.get(direct.value)
           }
 
           const children = queries.player.children(entityId, ChildOf)
           if (children.ok) {
             for (const child of children.value) {
-              child.data.position.get()
-              // @ts-expect-error Property 'velocity' does not exist on type 'Cells<QuerySpec<{ readonly position
-              child.data.velocity.get()
+              queries.player.data.position.get(child)
+              // @ts-expect-error Property 'velocity' does not exist on type 'QueryData<QuerySpec<{ readonly position
+              queries.player.data.velocity.get(child)
             }
           }
 
           const descendants = queries.player.descendants(entityId, ChildOf, { order: "depth" })
           if (descendants.ok) {
             for (const descendant of descendants.value) {
-              descendant.data.position.get()
-              // @ts-expect-error Property 'velocity' does not exist on type 'Cells<QuerySpec<{ readonly position
-              descendant.data.velocity.get()
+              queries.player.data.position.get(descendant)
+              // @ts-expect-error Property 'velocity' does not exist on type 'QueryData<QuerySpec<{ readonly position
+              queries.player.data.velocity.get(descendant)
             }
           }
         }
@@ -662,22 +661,23 @@ describe("Schema", () => {
       },
       ({ queries, lookup }) =>
         {
-          for (const match of queries.targets.each()) {
-            const current = match.data.target.get().target
+          const { data } = queries.targets
+          for (const entity of queries.targets.each()) {
+            const current = data.target.get(entity).target
             if (!current) {
               continue
             }
 
-            expect(queries.positions.getHandle(current)).type.toBe<Result.Result<QueryTypes.QueryMatch<typeof schema, typeof PositionQuery>, QueryTypes.Query.LookupError>>()
+            expect(queries.positions.getHandle(current)).type.toBe<Result.Result<QueryTypes.QueryEntity<typeof schema, typeof PositionQuery>, QueryTypes.Query.LookupError>>()
             queries.withPosition.getHandle(current)
 
-            const unqualified = Game.Entity.handle(match.entity.id)
+            const unqualified = Game.Entity.handle(entity.id)
             expect(unqualified).type.toBe<Entity.Handle<typeof Root>>()
-            const fromRef = Game.Entity.handle(match.entity)
+            const fromRef = Game.Entity.handle(entity)
             expect(fromRef).type.toBe<Entity.Handle<typeof Root>>()
-            const qualified = Game.Entity.handle(match.entity.id, Position)
+            const qualified = Game.Entity.handle(entity.id, Position)
             expect(qualified).type.toBe<Entity.Handle<typeof Root, typeof Position>>()
-            const fromRefQualified = Game.Entity.handle(match.entity, Position)
+            const fromRefQualified = Game.Entity.handle(entity, Position)
             expect(fromRefQualified).type.toBe<Entity.Handle<typeof Root, typeof Position>>()
             // A handle without an intent resolves through any declared query.
             queries.wrong.getHandle(unqualified)
@@ -709,8 +709,8 @@ describe("Schema", () => {
     }, ({ queries, lookup }) => {
       const read = queries.readers.get(entityId)
       if (read.ok) {
-        // @ts-expect-error Property 'set' does not exist on type 'ReadCell<number>'.
-        read.value.data.hp.set(0)
+        // @ts-expect-error Property 'set' does not exist on type 'ReadSlot<number,
+        queries.readers.data.hp.set(read.value, 0)
       }
       // @ts-expect-error Property 'get' does not exist on type 'LookupApi
       lookup.get(entityId, Game.Query({ selection: { hp: Game.Query.write(Hp) } }))

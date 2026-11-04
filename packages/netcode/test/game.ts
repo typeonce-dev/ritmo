@@ -56,10 +56,11 @@ const Move = Game.System("NetTest/Move", {
   commands: Game.System.commands(Game.System.spawns(Marker))
 }, ({ resources, queries, events, commands }) => {
   const inputs = resources.inputs.get()
-  for (const { data } of queries.players.each()) {
-    const player = data.player.get()
+  const { data } = queries.players
+  for (const entity of queries.players.each()) {
+    const player = data.player.get(entity)
     const input = inputs[player.seat]!
-    data.player.set({ ...player, x: player.x + input.dx })
+    data.player.set(entity, { ...player, x: player.x + input.dx })
     resources.total.update((total) => (total * 3 + input.dx + resources.drift.get()) % 1_000_003)
     if (input.fire) {
       commands.spawn(Game.Command.spawn([Marker, 4]))
@@ -72,10 +73,11 @@ const Fade = Game.System("NetTest/Fade", {
   queries: { markers: Game.Query({ selection: { marker: Game.Query.write(Marker) } }) },
   commands: Game.System.commands(Game.System.despawns(Marker))
 }, ({ queries, commands }) => {
-  for (const { entity, data } of queries.markers.each()) {
-    const left = data.marker.get() - 1
+  const { data } = queries.markers
+  for (const entity of queries.markers.each()) {
+    const left = data.marker.get(entity) - 1
     if (left <= 0) commands.despawn(entity)
-    else data.marker.set(left)
+    else data.marker.set(entity, left)
   }
 })
 

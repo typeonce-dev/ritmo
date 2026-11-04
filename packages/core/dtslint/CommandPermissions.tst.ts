@@ -81,11 +81,11 @@ describe("declared commands", () => {
       commands.insert(id, [Turned, { seconds: 1 }])
       // @ts-expect-error Perms/Noise is not declared in this system's commands: add it to Game.System.inserts(...)
       commands.insert(id, [Turned, { seconds: 1 }], [Noise, 2])
-      for (const match of queries.positions.each()) {
-        commands.insert(match.entity, [Turned, { seconds: 1 }])
-        commands.remove(match.entity, Turned)
+      for (const entity of queries.positions.each()) {
+        commands.insert(entity, [Turned, { seconds: 1 }])
+        commands.remove(entity, Turned)
         // @ts-expect-error Perms/Position is not declared in this system's commands: add it to Game.System.removes(...)
-        commands.remove(match.entity, Position)
+        commands.remove(entity, Position)
       }
     })
   })
@@ -98,11 +98,11 @@ describe("declared commands", () => {
       const spawned = commands.spawn(Game.Command.spawn([Turned, { seconds: 1 }]))
       commands.remove(spawned, Turned)
       for (const match of queries.positions.each()) {
-        commands.remove(match.entity, Turned)
-        // @ts-expect-error remove needs an entity from a query (pass match.entity) or the id spawn returned in this run, not a raw id
-        commands.remove(match.entity.id, Turned)
+        commands.remove(match, Turned)
+        // @ts-expect-error remove needs an entity from a query (pass the entity from each())
+        commands.remove(match.id, Turned)
       }
-      // @ts-expect-error remove needs an entity from a query (pass match.entity)
+      // @ts-expect-error remove needs an entity from a query (pass the entity from each())
       commands.remove(id, Turned)
     })
   })
@@ -112,12 +112,12 @@ describe("declared commands", () => {
       queries: { enemies: Enemies, positions: Positions },
       commands: Game.System.commands(Game.System.despawns(Enemy))
     }, ({ queries, commands }) => {
-      for (const match of queries.enemies.each()) commands.despawn(match.entity)
+      for (const entity of queries.enemies.each()) commands.despawn(entity)
       for (const match of queries.positions.each()) {
         // @ts-expect-error despawn needs an entity from a query proving Perms/Enemy (declared in despawns)
-        commands.despawn(match.entity)
-        // @ts-expect-error not a raw id: pass match.entity
-        commands.despawn(match.entity.id)
+        commands.despawn(match)
+        // @ts-expect-error not a raw id: pass the entity from each()
+        commands.despawn(match.id)
       }
     })
   })
@@ -129,7 +129,7 @@ describe("declared commands", () => {
     }, ({ queries, commands }) => {
       for (const match of queries.positions.each()) {
         // @ts-expect-error despawn needs an entity from a query proving Perms/Enemy (declared in despawns)
-        commands.despawn(match.entity)
+        commands.despawn(match)
       }
     })
     const inline = Game.Query({ selection: { position: Game.Query.read(Position) } })
@@ -151,7 +151,7 @@ describe("declared commands", () => {
       // @ts-expect-error despawn needs an entity spawned with Perms/Enemy (declared in despawns)
       commands.despawn(maybe)
       const stored: Id = enemy
-      // @ts-expect-error not a raw id: pass match.entity
+      // @ts-expect-error not a raw id: pass the entity from each()
       commands.despawn(stored)
     })
   })

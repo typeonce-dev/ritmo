@@ -28,7 +28,8 @@ import { Game } from "@typeonce/ritmo-integration-top-down/schema.ts"
 import { PlayerPositionQuery } from "@typeonce/ritmo-integration-top-down/queries.ts"
 import { Invariant } from "@typeonce/ritmo-devtools"
 const NeverLeftOfStart = Invariant.fromInspector(Game.Inspector("never left of start", { queries: { player: PlayerPositionQuery } }, ({ queries }) => {
-  const position = queries.player.each()[0]?.data.position.get()
+  const player = queries.player.each()[0]
+  const position = player === undefined ? undefined : queries.player.data.position.get(player)
   return position === undefined || position.x >= 640 ? undefined : `player at x ${position.x}`
 }))
 // ---cut---
@@ -76,7 +77,8 @@ import { makeReplaySimulation } from "@typeonce/ritmo-integration-top-down/simul
 import { Game } from "@typeonce/ritmo-integration-top-down/schema.ts"
 import { PlayerPositionQuery } from "@typeonce/ritmo-integration-top-down/queries.ts"
 const NeverLeftOfStart = Invariant.fromInspector(Game.Inspector("never left of start", { queries: { player: PlayerPositionQuery } }, ({ queries }) => {
-  const position = queries.player.each()[0]?.data.position.get()
+  const player = queries.player.each()[0]
+  const position = player === undefined ? undefined : queries.player.data.position.get(player)
   return position === undefined || position.x >= 640 ? undefined : `player at x ${position.x}`
 }))
 declare const file: Replay.ReplayFile

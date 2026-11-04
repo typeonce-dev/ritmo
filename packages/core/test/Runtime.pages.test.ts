@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import type { QueryEntity } from "@typeonce/ritmo/Query"
 import { Descriptor, Result, Schema } from "@typeonce/ritmo"
 import type * as Entity from "@typeonce/ritmo/Entity"
 
@@ -20,13 +21,13 @@ const spawner = (count: number, ids: Array<Id> = []) =>
 
 const AllHealth = Game.Inspector("Pages/AllHealth", {
   queries: { all: Game.Query({ selection: { health: Game.Query.read(Health) } }) }
-}, ({ queries }) => queries.all.each().map((match) => match.data.health.get()))
+}, ({ queries }) => queries.all.each().map((entity) => queries.all.data.health.get(entity)))
 
 /** What a `changed(Health)` reader sees on each run. */
 const watcher = () => {
   const runs: Array<Array<number>> = []
   const system = Game.System("Pages/Watch", { queries: { changed: Changed } }, ({ queries }) => {
-    runs.push(queries.changed.each().map((match) => match.data.health.get()))
+    runs.push(queries.changed.each().map((entity) => queries.changed.data.health.get(entity)))
   })
   return { system, runs }
 }
@@ -37,7 +38,8 @@ describe("component storage in pages", () => {
     // 600 entities span three pages.
     runtime.tick(Game.Schedule(spawner(600), Game.Schedule.applyDeferred()))
     const Fail = Game.System("Pages/Fail", { queries: { all: Healths } }, ({ queries }) => {
-      for (const { data } of queries.all.each()) data.health.set(-1)
+      const { data } = queries.all
+      for (const entity of queries.all.each()) data.health.set(entity, -1)
       return Result.failure("Rejected" as const)
     })
     const failed = runtime.tick(Game.Schedule(Fail))
@@ -52,12 +54,13 @@ describe("component storage in pages", () => {
     })
     const Positions = Game.Query({ selection: { position: Game.Query.write(Position) } })
     const Fail = Game.System("Pages/FailPositions", { queries: { all: Positions } }, ({ queries }) => {
-      for (const { data } of queries.all.each()) data.position.set({ x: -1 })
+      const { data } = queries.all
+      for (const entity of queries.all.each()) data.position.set(entity, { x: -1 })
       return Result.failure("Rejected" as const)
     })
     const Xs = Game.Inspector("Pages/Xs", {
       queries: { all: Game.Query({ selection: { position: Game.Query.read(Position) } }) }
-    }, ({ queries }) => queries.all.each().map((match) => match.data.position.get().x))
+    }, ({ queries }) => queries.all.each().map((entity) => queries.all.data.position.get(entity).x))
     runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred()))
     expect(runtime.tick(Game.Schedule(Fail)).ok).toBe(false)
     expect(runtime.inspect(Xs)).toEqual(Array.from({ length: 600 }, (_, index) => index))
@@ -69,9 +72,10 @@ describe("component storage in pages", () => {
     runtime.tick(Game.Schedule(spawner(3), Game.Schedule.applyDeferred(), watch.system))
     // Writes 0 → 0 (equal), 1 → 10, 2 → NaN; then NaN → NaN, which is equal too.
     const Write = Game.System("Pages/Write", { queries: { all: Healths } }, ({ queries }) => {
-      for (const { data } of queries.all.each()) {
-        const health = data.health.get()
-        data.health.set(health === 1 ? 10 : health === 2 || Number.isNaN(health) ? Number.NaN : health)
+      const { data } = queries.all
+      for (const entity of queries.all.each()) {
+        const health = data.health.get(entity)
+        data.health.set(entity, health === 1 ? 10 : health === 2 || Number.isNaN(health) ? Number.NaN : health)
       }
     })
     runtime.tick(Game.Schedule(Write, watch.system))
@@ -89,12 +93,14 @@ describe("component storage in pages", () => {
       queries: { positions: Game.Query({ selection: { position: Game.Query.write(Position) } }) }
     }, ({ queries }) => {
       // Writing back the value read is not a change; an equal new object is.
-      for (const { data } of queries.positions.each()) data.position.set(data.position.get())
+      const { data } = queries.positions
+      for (const entity of queries.positions.each()) data.position.set(entity, data.position.get(entity))
     })
     const Move = Game.System("Pages/Move", {
       queries: { positions: Game.Query({ selection: { position: Game.Query.write(Position) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.positions.each()) data.position.set({ x: data.position.get().x })
+      const { data } = queries.positions
+      for (const entity of queries.positions.each()) data.position.set(entity, { x: data.position.get(entity).x })
     })
     const Watch = Game.System("Pages/WatchPosition", {
       queries: { changed: Game.Query({ selection: { position: Game.Query.read(Position) }, filters: [Game.Query.changed(Position)] }) }
@@ -114,14 +120,15 @@ describe("component storage in pages", () => {
       queries: { all: Healths },
       commands: Game.System.commands(Game.System.despawns(Health))
     }, ({ queries, commands }) => {
-      for (const match of queries.all.each()) commands.despawn(match.entity)
+      for (const entity of queries.all.each()) commands.despawn(entity)
     })
     runtime.tick(Game.Schedule(spawner(3, ids), Game.Schedule.applyDeferred()))
     runtime.tick(Game.Schedule(Clear, Game.Schedule.applyDeferred()))
     // The next ids land on the same page, which let go of its storage.
     runtime.tick(Game.Schedule(spawner(2, ids), Game.Schedule.applyDeferred()))
     const Double = Game.System("Pages/Double", { queries: { all: Healths } }, ({ queries }) => {
-      for (const { data } of queries.all.each()) data.health.set(data.health.get() * 2 + 1)
+      const { data } = queries.all
+      for (const entity of queries.all.each()) data.health.set(entity, data.health.get(entity) * 2 + 1)
     })
     runtime.tick(Game.Schedule(Double))
     expect(ids[3]! >> 8).toBe(ids[0]! >> 8)
@@ -129,18 +136,22 @@ describe("component storage in pages", () => {
   })
 })
 
-describe("a query match from an earlier run", () => {
-  it("throws when used again, even while its entity still matches", () => {
+describe("data and entities from an earlier run", () => {
+  it("a kept slot throws when used in a later run, naming the fix", () => {
     const runtime = makeRuntime()
     runtime.tick(Game.Schedule(spawner(1), Game.Schedule.applyDeferred()))
     const outcomes: Array<string> = []
+    const Other = Game.Query({ selection: { position: Game.Query.read(Position) } })
+    let kept: { readonly get: (entity: never) => number } | undefined
     const Aim = Game.System("Pages/Aim", {
-      queries: { all: Healths },
-      local: () => ({ target: undefined as undefined | { readonly data: { readonly health: { get(): number } } } })
+      queries: { all: Healths, other: Other },
+      local: () => ({ runs: 0 })
     }, ({ queries, local }) => {
-      local.target ??= queries.all.each()[0]
+      local.runs += 1
+      const entity = queries.all.each()[0]!
+      if (local.runs === 1) kept = queries.all.data.health as never
       try {
-        outcomes.push(String(local.target!.data.health.get()))
+        outcomes.push(String(kept!.get(entity as never)))
       } catch (error) {
         outcomes.push((error as Error).message)
       }
@@ -149,18 +160,35 @@ describe("a query match from an earlier run", () => {
     runtime.tick(Game.Schedule(Aim))
     expect(outcomes).toEqual([
       "0",
-      "Pages/Health was used through a query match from an earlier run: a match is valid during the system run that produced it; keep the entity id or a handle and resolve it again with queries.x.get(id) or queries.x.getHandle(handle)"
+      "The data of Pages/Health was used after the run that handed it out: read queries.x.data again in each run"
     ])
   })
 
-  it("throws when written after an inspector returned it", () => {
+  it("a kept entity follows its entity in later runs", () => {
+    const runtime = makeRuntime()
+    runtime.tick(Game.Schedule(spawner(1), Game.Schedule.applyDeferred()))
+    const values: Array<number> = []
+    let kept: QueryEntity<typeof Game.schema, typeof Healths> | undefined
+    const Follow = Game.System("Pages/KeptEntity", { queries: { all: Healths } }, ({ queries }) => {
+      const { data } = queries.all
+      kept ??= queries.all.each()[0]!
+      values.push(data.health.get(kept))
+      data.health.set(kept, data.health.get(kept) + 1)
+    })
+    runtime.tick(Game.Schedule(Follow))
+    runtime.tick(Game.Schedule(Follow))
+    expect(values).toEqual([0, 1])
+  })
+
+  it("slots an inspector returned throw after it, and the entity it returned stays one", () => {
     const runtime = makeRuntime()
     runtime.tick(Game.Schedule(spawner(1), Game.Schedule.applyDeferred()))
     const Leak = Game.Inspector("Pages/Leak", {
       queries: { all: Game.Query({ selection: { health: Game.Query.read(Health) } }) }
-    }, ({ queries }) => queries.all.each()[0]!)
+    }, ({ queries }) => ({ entity: queries.all.each()[0]!, data: queries.all.data }))
     const leaked = runtime.inspect(Leak)
-    expect(() => leaked.data.health.get()).toThrow("Pages/Health was used through a query match from an earlier run")
+    expect(leaked.entity.id).toBeTypeOf("number")
+    expect(() => leaked.data.health.get(leaked.entity)).toThrow("The data of Pages/Health was used after the run")
   })
 
   it("is still valid when the same system resolves it again", () => {
@@ -175,8 +203,8 @@ describe("a query match from an earlier run", () => {
       local.target ??= ids[0]
       const found = queries.all.get(local.target!)
       if (found.ok) {
-        values.push(found.value.data.health.get())
-        found.value.data.health.set(found.value.data.health.get() + 1)
+        values.push(queries.all.data.health.get(found.value))
+        queries.all.data.health.set(found.value, queries.all.data.health.get(found.value) + 1)
       }
     })
     runtime.tick(Game.Schedule(Follow))

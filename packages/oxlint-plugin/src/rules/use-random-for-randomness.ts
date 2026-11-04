@@ -17,7 +17,7 @@ export default defineRule({
       random:
         "{{call}} cannot be seeded or saved, so the run cannot replay. Draw from the world's Random resource: `const random = Random.draw(resources.rng)` (declare `rng: Game.System.writeResource(Rng)`), then `random.next()`, `random.range(min, max)`, `random.integer(min, max)`, `random.pick(items)`, or `random.shuffle(items)`.",
       uuid:
-        "crypto.randomUUID() cannot replay. For an id within the world, use the entity's id (`match.entity`, kept as `Game.Entity.handle(...)`) or a counter in a resource. For an id unique across devices or runs (an account item, a save slot), make it in host code and pass it in with `runtime.send(...)`, so the replay records it."
+        "crypto.randomUUID() cannot replay. For an id within the world, use the entity's id (`entity.id`, kept as `Game.Entity.handle(...)`) or a counter in a resource. For an id unique across devices or runs (an account item, a save slot), make it in host code and pass it in with `runtime.send(...)`, so the replay records it."
     },
     schema: []
   },

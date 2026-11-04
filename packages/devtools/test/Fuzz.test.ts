@@ -35,7 +35,8 @@ const Combo = Game.System("Fuzz/Combo", {
     return
   }
   resources.progress.set(0)
-  for (const { data } of queries.players.each()) data.health.setRaw(data.health.get() - 10)
+  const { data } = queries.players
+  for (const entity of queries.players.each()) data.health.setRaw(entity, data.health.get(entity) - 10)
 })
 const setup = Game.Schedule(Spawn, Game.Schedule.applyDeferred())
 const update = Game.Schedule(Combo)
@@ -43,7 +44,7 @@ const update = Game.Schedule(Combo)
 const Alive = Invariant.fromInspector(Game.Inspector("health never negative", {
   queries: { players: Game.Query({ selection: { health: Game.Query.read(Health) } }) }
 }, ({ queries }) => {
-  const low = queries.players.each().map(({ data }) => data.health.get()).filter((health) => health < 0)
+  const low = queries.players.each().map((entity) => queries.players.data.health.get(entity)).filter((health) => health < 0)
   return low.length > 0 ? `health ${low.join(", ")}` : undefined
 }))
 

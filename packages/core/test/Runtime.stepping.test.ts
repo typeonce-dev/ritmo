@@ -16,7 +16,8 @@ const Move = Game.System("Stepping/Move", {
   queries: { movers: Game.Query({ selection: { position: Game.Query.write(Position) } }) },
   events: { ping: Game.System.writeEvent(Ping) }
 }, ({ queries, events }) => {
-  for (const match of queries.movers.each()) match.data.position.update((position) => ({ x: position.x + 1 }))
+  const { data } = queries.movers
+  for (const entity of queries.movers.each()) data.position.update(entity, (position) => ({ x: position.x + 1 }))
   events.ping.emit(1)
 })
 const Seen: Array<number> = []

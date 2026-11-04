@@ -18,11 +18,13 @@ const Spawn = Game.System("Step/Spawn", { commands: Game.System.commands(Game.Sy
   commands.spawn(Game.Command.spawn([Position, { x: 0 }], [Health, 3]))
 })
 const Move = Game.System("Step/Move", { queries: { movers: Movers } }, ({ queries }) => {
-  for (const match of queries.movers.each()) match.data.position.update((position) => ({ x: position.x + 1 }))
+  const { data } = queries.movers
+  for (const entity of queries.movers.each()) data.position.update(entity, (position) => ({ x: position.x + 1 }))
 })
 const Hurt = Game.System("Step/Hurt", { queries: { hurtable: Hurtable }, events: { hit: Game.System.writeEvent(Hit) } }, ({ queries, events }) => {
-  for (const match of queries.hurtable.each()) {
-    match.data.health.update((health) => health - 1)
+  const { data } = queries.hurtable
+  for (const entity of queries.hurtable.each()) {
+    data.health.update(entity, (health) => health - 1)
     events.hit.emit(1)
   }
 })
@@ -185,7 +187,7 @@ describe("session.step", () => {
   it("checks invariants mid-frame only when asked, and at the end of the frame in finish()", () => {
     const Healthy = Invariant.fromInspector(Game.Inspector("full health", {
       queries: { hurt: Game.Query({ selection: { health: Game.Query.read(Health) } }) }
-    }, ({ queries }) => queries.hurt.each().some((match) => match.data.health.get() < 3) ? "hurt" : undefined))
+    }, ({ queries }) => queries.hurt.each().some((entity) => queries.hurt.data.health.get(entity) < 3) ? "hurt" : undefined))
     const runtime = makeRuntime()
     const session = Session.make(runtime, { hostClock, schedules: { setup, update }, invariants: [Healthy] })
     session.run("setup")

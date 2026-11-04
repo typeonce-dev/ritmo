@@ -37,7 +37,7 @@ const readWorld = (runtime: ReturnType<typeof makeRuntime>) => {
     resources: { score: Game.System.readResource(Score) },
     machines: { flow: Game.System.machine(Flow) }
   }, ({ queries, resources, machines }) => ({
-    names: queries.named.each().map((match) => [match.entity.id, match.data.name.get()] as const),
+    names: queries.named.each().map((entity) => [entity.id, queries.named.data.name.get(entity)] as const),
     score: resources.score.get(),
     flow: machines.flow.get()
   }))
@@ -104,10 +104,10 @@ describe("Runtime snapshots", () => {
       }
     }, ({ queries }) => {
       const matches = queries.named.children(Entity.makeEntityId(parent), ChildOf)
-      children = matches.ok ? matches.value.map((match) => match.data.name.get()) : []
-      const handle = queries.targets.each()[0]!.data.target.get().handle
+      children = matches.ok ? matches.value.map((entity) => queries.named.data.name.get(entity)) : []
+      const handle = queries.targets.data.target.get(queries.targets.each()[0]!).handle
       const match = queries.named.getHandle(handle)
-      resolved = match.ok ? match.value.data.name.get() : "missing"
+      resolved = match.ok ? queries.named.data.name.get(match.value) : "missing"
     })
     target.tick(Game.Schedule(Check))
 

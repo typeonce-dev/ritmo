@@ -33,7 +33,8 @@ const OutsideTheZone = Invariant.fromInspector(
     "ball outside the red zone",
     { queries: { ball: Game.Query({ selection: { position: Game.Query.read(Position) } }) } },
     ({ queries }) => {
-      const position = queries.ball.each()[0]?.data.position.get()
+      const ball = queries.ball.each()[0]
+      const position = ball === undefined ? undefined : queries.ball.data.position.get(ball)
       return position !== undefined && inZone(position)
         ? `ball at ${Math.round(position.x)}, ${Math.round(position.y)}`
         : undefined

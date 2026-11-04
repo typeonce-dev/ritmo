@@ -53,8 +53,9 @@ const Chase = Game.System("Algorithms/Chase", {
   resources: { walls: Game.System.readResource(Walls) },
   services: { frame: Game.System.service(Frame) }
 }, ({ queries, resources, services, local }) => {
-  const player = queries.player.each()[0]?.data.position.get()
-  if (player === undefined) return
+  const hero = queries.player.each()[0]
+  if (hero === undefined) return
+  const player = queries.player.data.position.get(hero)
   const walls = resources.walls.get()
   const { paths, grid, bodies } = local
   // Both calls are free when the walls and the player's cell did not change.
@@ -62,15 +63,16 @@ const Chase = Game.System("Algorithms/Chase", {
   paths.setGoal(player)
   grid.clear()
   bodies.length = 0
-  for (const { data } of queries.chasers.each()) {
-    const at = data.position.get()
-    grid.insert(bodies.length, at.x, at.y, data.body.get().radius)
+  const { data } = queries.chasers
+  for (const entity of queries.chasers.each()) {
+    const at = data.position.get(entity)
+    grid.insert(bodies.length, at.x, at.y, data.body.get(entity).radius)
     bodies.push(at)
   }
   let index = 0
-  for (const { data } of queries.chasers.each()) {
-    const at = data.position.get()
-    const { radius, speed } = data.body.get()
+  for (const entity of queries.chasers.each()) {
+    const at = data.position.get(entity)
+    const { radius, speed } = data.body.get(entity)
     // Toward the player around the walls, or straight at her where the field has no way.
     let way = paths.way(at) ?? Vec2.normalizeOr(Vec2.subtract(player, at), Vec2.zero)
     // Keep apart from chasers closer than two radii.
@@ -82,7 +84,7 @@ const Chase = Game.System("Algorithms/Chase", {
       if (distance < radius * 2) way = Vec2.add(way, Vec2.scale(Vec2.normalizeOr(away, Vec2.zero), (radius * 2 - distance) / (radius * 2)))
     })
     const moved = Collide2.moveCircle(at, Vec2.scale(Vec2.clampLength(way, 1), speed * services.frame.dt), radius, { boxes: walls })
-    data.position.set(moved.position)
+    data.position.set(entity, moved.position)
   }
 })
 
@@ -96,20 +98,22 @@ const MoveShots = Game.System("Algorithms/MoveShots", {
   commands: Game.System.commands(Game.System.despawns(Shot))
 }, ({ queries, resources, services, commands }) => {
   const walls = resources.walls.get()
-  for (const { entity, data } of queries.shots.each()) {
-    const at = data.position.get()
-    const { velocity, radius } = data.shot.get()
+  const { data } = queries.shots
+  for (const entity of queries.shots.each()) {
+    const at = data.position.get(entity)
+    const { velocity, radius } = data.shot.get(entity)
     const delta = Vec2.scale(velocity, services.frame.dt)
     // The earliest contact along the whole step wins.
     let first: { kind: "wall" | "chaser"; time: number } | undefined
     const wall = Collide2.sweepCircle(at, delta, radius, { boxes: walls })
     if (wall !== undefined) first = { kind: "wall", time: wall.time }
+    const chasersData = queries.chasers.data
     for (const target of queries.chasers.each()) {
-      const time = Collide2.sweepCircleCircle(at, delta, radius, target.data.position.get(), target.data.body.get().radius)
+      const time = Collide2.sweepCircleCircle(at, delta, radius, chasersData.position.get(target), chasersData.body.get(target).radius)
       if (time !== undefined && (first === undefined || time < first.time)) first = { kind: "chaser", time }
     }
     if (first === undefined) {
-      data.position.set(Vec2.add(at, delta))
+      data.position.set(entity, Vec2.add(at, delta))
       continue
     }
     const hit = { shot: entity.id, ...first }
@@ -156,8 +160,8 @@ export const ReadWorld = Game.Inspector("Algorithms/ReadWorld", {
   },
   resources: { hits: Game.System.readResource(Hits), rng: Game.System.readResource(Rng) }
 }, ({ queries, resources }) => ({
-  chasers: queries.chasers.each().map(({ data }) => data.position.get()),
-  player: queries.player.each()[0]!.data.position.get(),
+  chasers: queries.chasers.each().map((entity) => queries.chasers.data.position.get(entity)),
+  player: queries.player.data.position.get(queries.player.each()[0]!),
   hits: resources.hits.get(),
   rng: resources.rng.get()
 }))

@@ -30,7 +30,7 @@ const bindings = {
 
 const ReadPlayers = Game.Inspector("Rollback/ReadPlayers", {
   queries: { players: Game.Query({ selection: { position: Game.Query.read(Position), player: Game.Query.read(Player) } }) }
-}, ({ queries }) => queries.players.each().map(({ data }) => ({ seat: data.player.get().seat, ...data.position.get() })))
+}, ({ queries }) => queries.players.each().map((entity) => ({ seat: queries.players.data.player.get(entity).seat, ...queries.players.data.position.get(entity) })))
 
 const axis = (value: number): -1 | 0 | 1 => value > 0.5 ? 1 : value < -0.5 ? -1 : 0
 

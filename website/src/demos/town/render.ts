@@ -155,7 +155,7 @@ const FollowPlayers = Game.System(
     services: { camera: Game.System.service(Camera) }
   },
   ({ queries, services }) => {
-    const positions = queries.players.each().map(({ data }) => data.position.get())
+    const positions = queries.players.each().map((entity) => queries.players.data.position.get(entity))
     const points = positions.length > 0 ? positions : [cellPosition(playerStart.cell)]
     const x = points.reduce((sum, point) => sum + point.x, 0) / points.length
     const y = points.reduce((sum, point) => sum + point.y, 0) / points.length

@@ -59,12 +59,12 @@ import type { Schema } from "./Schema.ts"
  * const PlayerQuery = Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] })
  *
  * const FollowPlayer = Game.System("Game/FollowPlayer", { queries: { players: PlayerQuery } }, ({ queries }) => {
- *   for (const match of queries.players.each()) {
- *     const handle = Game.Entity.handle(match.entity, Player)
+ *   for (const entity of queries.players.each()) {
+ *     const handle = Game.Entity.handle(entity, Player)
  *     // Later (another run, or after reading it back from a component):
  *     const resolved = queries.players.getHandle(handle)
  *     if (!resolved.ok) return
- *     console.log(resolved.value.data.position.get())
+ *     console.log(queries.players.data.position.get(resolved.value))
  *   }
  * })
  * ```
@@ -180,11 +180,18 @@ export interface EntityDraft<S extends Schema.Any, out P extends ComponentProof,
 export type StagedComponent = readonly [Descriptor<"component", string, any>, unknown]
 
 /**
- * A read capability for an entity together with a proof of readable components.
+ * One entity from a query: `queries.x.each()`, `single()`, or `get(id)`. It
+ * carries its `id` and what the query proves about it, and goes to the query's
+ * `data` (`data.position.get(entity)`) and to `commands`.
  *
- * Query execution is the main source of `EntityRef` values.
+ * It keeps naming its entity in later runs, since ids are never reused: `data`
+ * reads that entity's current value, or throws once the entity no longer holds
+ * the component, so a kept entity never reads another one. It does not re-check
+ * the query: an entity that left through `without` is still readable. To follow
+ * an entity across runs and re-check the query, keep the `id` and resolve it
+ * with `queries.x.get(id)`, which is fallible.
  */
-export interface EntityRef<S extends Schema.Any, out P extends ComponentProof, Root = unknown, in Proves = never, in Lacks = never> {
+export interface EntityRef<S extends Schema.Any, Root = unknown, in Proves = never, in Lacks = never, in Relates = never> {
   /**
    * Runtime tag for debugging and pattern matching.
    */
@@ -193,8 +200,8 @@ export interface EntityRef<S extends Schema.Any, out P extends ComponentProof, R
    * The component descriptors the query that produced this ref proves (its
    * required slots and `with`): what `commands.despawn`, `insert`, and
    * `remove` check. Type-level only. Contravariant on purpose: a ref proving
-   * more is a subtype, so a union of refs (`cond ? a.entity : b.entity`)
-   * keeps only what both prove.
+   * more is a subtype, so a union of refs (`cond ? a : b`) keeps only what both
+   * prove.
    */
   readonly __proves?: (_: Proves) => void
   /**
@@ -204,51 +211,16 @@ export interface EntityRef<S extends Schema.Any, out P extends ComponentProof, R
    */
   readonly __lacks?: (_: Lacks) => void
   /**
-   * The schema-bound entity identity.
+   * What a slot of a query's `data` asks of an entity: the components and
+   * relations the query proves. Type-level only, and what makes an entity one:
+   * an id or a hand-written object is not.
    */
-  readonly id: EntityId<S, Root>
-  readonly __schemaRoot?: Root | undefined
-  /**
-   * The readable component proof attached to this access value.
-   */
-  readonly proof: P
-}
-
-/**
- * A read/write capability for an entity.
- *
- * `P` tracks readable components and `W` tracks the writable subset. This keeps
- * mutation capabilities explicit in query results.
- */
-export interface EntityMut<
-  S extends Schema.Any,
-  out P extends ComponentProof,
-  out W extends ComponentProof,
-  Root = unknown,
-  in Proves = never,
-  in Lacks = never
-> {
-  /**
-   * Runtime tag for debugging and pattern matching.
-   */
-  readonly kind: "EntityMut"
-  /** The component descriptors the producing query proves; see `EntityRef`. */
-  readonly __proves?: (_: Proves) => void
-  /** The component descriptors the producing query proves absent; see `EntityRef`. */
-  readonly __lacks?: (_: Lacks) => void
+  readonly __entity: (_: Proves | Relates) => void
   /**
    * The schema-bound entity identity.
    */
   readonly id: EntityId<S, Root>
   readonly __schemaRoot?: Root | undefined
-  /**
-   * The readable component proof attached to this access value.
-   */
-  readonly proof: P
-  /**
-   * The writable subset of the proof.
-   */
-  readonly writable: W
 }
 
 /**
@@ -273,8 +245,8 @@ export const makeHandle = <
   value as Handle<Root, Intent>
 
 /**
- * Anything that identifies one current-runtime entity: an id, or a query
- * match's `entity` view.
+ * Anything that identifies one current-runtime entity: an id, or an entity
+ * from a query.
  */
 export type HandleTarget<S extends Schema.Any, Root = unknown> =
   | EntityId<S, Root>
@@ -294,9 +266,9 @@ export type HandleTarget<S extends Schema.Any, Root = unknown> =
  * ```ts
  * declare const playerId: Entity.EntityId<typeof Game.schema, typeof Root>
  * const Players = Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] })
- * declare const match: Query.QueryMatch<typeof Game.schema, typeof Players>
+ * declare const entity: Query.QueryEntity<typeof Game.schema, typeof Players>
  * // ---cut---
- * const any = Game.Entity.handle(match.entity)
+ * const any = Game.Entity.handle(entity)
  * const player = Game.Entity.handle(playerId, Player)
  * ```
  */
@@ -361,30 +333,3 @@ export const draft = <S extends Schema.Any, P extends ComponentProof, Root = unk
   relations
 })
 
-/**
- * Creates a read-only entity proof value.
- */
-export const ref = <S extends Schema.Any, P extends ComponentProof, Root = unknown>(
-  id: EntityId<S, Root>,
-  proof: P
-): EntityRef<S, P, Root> => ({
-  kind: "EntityRef",
-  id,
-  __schemaRoot: undefined,
-  proof
-})
-
-/**
- * Creates a mutable entity proof value.
- */
-export const mut = <S extends Schema.Any, P extends ComponentProof, W extends ComponentProof, Root = unknown>(
-  id: EntityId<S, Root>,
-  proof: P,
-  writable: W
-): EntityMut<S, P, W, Root> => ({
-  kind: "EntityMut",
-  id,
-  __schemaRoot: undefined,
-  proof,
-  writable
-})

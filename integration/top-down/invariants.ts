@@ -12,8 +12,9 @@ import { PlayerPositionQuery } from "./queries.ts"
 import { CollectedCount, Game, TotalCollectables } from "./schema.ts"
 
 export const PlayerInsideWorld = Invariant.fromInspector(Game.Inspector("player inside world", { queries: { player: PlayerPositionQuery } }, ({ queries }) => {
-  for (const match of queries.player.each()) {
-    const position = match.data.position.get()
+  const { data } = queries.player
+  for (const entity of queries.player.each()) {
+    const position = data.position.get(entity)
     if (position.x < 0 || position.x > WORLD_WIDTH || position.y < 0 || position.y > WORLD_HEIGHT) {
       return `player at (${position.x}, ${position.y})`
     }

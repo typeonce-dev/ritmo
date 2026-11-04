@@ -16,7 +16,8 @@ const Read = Game.System("LintTest/Read", { events: { ping: Game.System.readEven
 const Count = Game.System("LintTest/Count", {
   queries: { scores: Game.Query({ selection: { score: Game.Query.write(Score) } }) }
 }, ({ queries }) => {
-  for (const { data } of queries.scores.each()) data.score.update((score) => score + 1)
+  const { data } = queries.scores
+  for (const entity of queries.scores.each()) data.score.update(entity, (score) => score + 1)
 })
 const runtime = () => Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
 

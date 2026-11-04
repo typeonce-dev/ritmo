@@ -104,8 +104,9 @@ const Damage = Game.System(
 
   ({ queries, events }) => {
     for (const hit of events.hits.all()) {
-      for (const { data } of queries.enemies.each()) {
-        data.health.set(data.health.get() - hit.amount)
+      const { data } = queries.enemies
+      for (const entity of queries.enemies.each()) {
+        data.health.set(entity, data.health.get(entity) - hit.amount)
       }
     }
   }
@@ -114,7 +115,7 @@ const Damage = Game.System(
 
 ## Queries
 
-`selection` is the data each match gets, `with` and `without` filter by
+`selection` is the data each entity gets, `with` and `without` filter by
 component, and `changed` keeps only what changed since this system last ran.
 
 Every read in Ritmo works this way: changes, events, and transitions are
@@ -129,7 +130,7 @@ const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }))
 // ---cut---
 const Wounded = Game.Query({
-  // The data each match gets
+  // The data each entity gets
   selection: {
     position: Game.Query.read(Position),
     health: Game.Query.read(Health)
@@ -165,9 +166,10 @@ const Cull = Game.System(
   },
 
   ({ queries, commands }) => {
-    for (const match of queries.enemies.each()) {
-      // match.entity proves this is an Enemy: a raw id would not compile
-      if (match.data.health.get() <= 0) commands.despawn(match.entity) // [!code highlight]
+    const { data } = queries.enemies
+    for (const entity of queries.enemies.each()) {
+      // entity proves this is an Enemy: a raw id would not compile
+      if (data.health.get(entity) <= 0) commands.despawn(entity) // [!code highlight]
     }
   }
 )

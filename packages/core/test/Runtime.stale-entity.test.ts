@@ -11,7 +11,7 @@ const spawn = Game.System("Stale/Spawn", { commands: Game.System.commands(Game.S
   commands.spawn(Game.Command.spawn([Position, { x: 1 }], [Marker, {}]))
 })
 
-describe("a query match kept past its run", () => {
+describe("an entity kept past its run", () => {
   it("throws a named error when its entity was despawned, instead of reading the internal marker", () => {
     const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred()))
@@ -30,14 +30,14 @@ describe("a query match kept past its run", () => {
         }
         return
       }
-      const match = queries.positions.each()[0]!
-      local.held = () => match.data.position.get()
-      commands.despawn(match.entity)
+      const entity = queries.positions.each()[0]!
+      local.held = () => queries.positions.data.position.get(entity)
+      commands.despawn(entity)
     })
     runtime.tick(Game.Schedule(Keep, Game.Schedule.applyDeferred()))
     runtime.tick(Game.Schedule(Keep, Game.Schedule.applyDeferred()))
     expect(outcomes).toEqual([
-      "Stale/Position was used through a query match after its entity was despawned: a match is valid during the system run that produced it; keep the entity id or a handle and resolve it again with queries.x.get(id) or queries.x.getHandle(handle)"
+      "Stale/Position was used for an entity that was despawned: to follow an entity across runs, keep its id and resolve it again with queries.x.get(id), which is fallible"
     ])
   })
 
@@ -59,13 +59,13 @@ describe("a query match kept past its run", () => {
         }
         return
       }
-      const match = queries.positions.each()[0]!
-      local.held = () => match.data.position.set({ x: 5 })
-      commands.remove(match.entity, Position)
+      const entity = queries.positions.each()[0]!
+      local.held = () => queries.positions.data.position.set(entity, { x: 5 })
+      commands.remove(entity, Position)
     })
     runtime.tick(Game.Schedule(Keep, Game.Schedule.applyDeferred()))
     runtime.tick(Game.Schedule(Keep, Game.Schedule.applyDeferred()))
-    expect(outcomes).toEqual(["Stale/Position was used through a query match after its entity lost it"])
+    expect(outcomes).toEqual(["Stale/Position was used for an entity that lost it"])
     const Count = Game.Inspector("Stale/Count", { queries: { positions: Game.Query({ selection: { position: Game.Query.read(Position) } }) } }, ({ queries }) => queries.positions.each().length)
     expect(runtime.inspect(Count)).toBe(0)
   })

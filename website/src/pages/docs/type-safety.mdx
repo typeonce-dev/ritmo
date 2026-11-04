@@ -135,9 +135,10 @@ const Moving = Game.Query({
 })
 
 Game.System("Arena/Move", { queries: { moving: Moving } }, ({ queries }) => {
-  for (const { data } of queries.moving.each()) {
+  const { data } = queries.moving
+  for (const entity of queries.moving.each()) {
     // ...so there is nothing to write with
-    data.position.set({ x: 1, y: 1 })
+    data.position.set(entity, { x: 1, y: 1 })
   }
 })
 ```
@@ -204,7 +205,7 @@ Game.System(
 
 ```ts title="fix"
 commands.despawn(12) // [!code --]
-commands.despawn(match.entity) // a handle from a query with Enemy // [!code ++]
+commands.despawn(entity) // from a query with Enemy // [!code ++]
 ```
 
 </Claim>

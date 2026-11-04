@@ -26,7 +26,8 @@ const Move = Game.System("Replay/Move", {
   services: { input: Game.System.service(Input), config: Game.System.service(Config) }
 }, ({ queries, resources, events, services }) => {
   const dx = services.input.snapshot().dx * services.config.scale + events.bump.all().reduce((total, bump) => total + bump, 0)
-  for (const { data } of queries.movers.each()) data.position.setRaw({ x: data.position.get().x + dx })
+  const { data } = queries.movers
+  for (const entity of queries.movers.each()) data.position.setRaw(entity, { x: data.position.get(entity).x + dx })
   resources.steps.update((steps) => steps + 1)
 })
 const setup = Game.Schedule(Spawn, Game.Schedule.applyDeferred())
@@ -34,7 +35,7 @@ const update = Game.Schedule(Move)
 
 const FarAway = Invariant.fromInspector(Game.Inspector("far away", {
   queries: { movers: Game.Query({ selection: { position: Game.Query.read(Position) } }) }
-}, ({ queries }) => queries.movers.each().some(({ data }) => data.position.get().x > 20) ? "x above 20" : undefined))
+}, ({ queries }) => queries.movers.each().some((entity) => queries.movers.data.position.get(entity).x > 20) ? "x above 20" : undefined))
 
 /** A live game whose input is a scripted list of dx values, one per tick. */
 const live = (dxs: ReadonlyArray<number>) => {
@@ -100,7 +101,7 @@ describe("Replay", () => {
     for (let step = 0; step < 2; step++) runtime.tick(update)
     const Labels = Game.Inspector("labels", {
       queries: { movers: Game.Query({ selection: { position: Game.Query.read(Position) } }) }
-    }, ({ queries }) => new Map(queries.movers.each().map((match) => [match.entity.id, "mover"] as const)))
+    }, ({ queries }) => new Map(queries.movers.each().map((entity) => [entity.id, "mover"] as const)))
     const opened = Replay.session(make, recorder.save("labels"), { labels: Labels })
     if (!opened.ok) throw new Error(JSON.stringify(opened.error))
     opened.value.play()

@@ -16,7 +16,7 @@ const Newest = Game.Query({ selection: { position: Game.Query.read(Position), he
 
 /** Reads this tick's enemies. */
 const Aim = Game.System("Tick/Aim", { queries: { enemies: Game.System.thisTick(Newest) } }, ({ queries }) => {
-  expect(queries.enemies.each()[0]!.data.health.get()).type.toBe<number>()
+  expect(queries.enemies.data.health.get(queries.enemies.each()[0]!)).type.toBe<number>()
 })
 /** Spawns everything `Newest` requires. */
 const SpawnWave = Game.System("Tick/SpawnWave", {
@@ -45,7 +45,7 @@ const Cull = Game.System("Tick/Cull", {
   queries: { enemies: Newest },
   commands: Game.System.commands(Game.System.despawns(Enemy))
 }, ({ queries, commands }) => {
-  for (const { entity } of queries.enemies.each()) commands.despawn(entity)
+  for (const entity of queries.enemies.each()) commands.despawn(entity)
 })
 const Strike = Game.System("Tick/Strike", { events: { hit: Game.System.writeEvent(Hit) } }, () => {})
 const Feel = Game.System("Tick/Feel", { events: { hit: Game.System.thisTick(Game.System.readEvent(Hit)) } }, () => {})

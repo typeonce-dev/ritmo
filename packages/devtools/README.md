@@ -102,14 +102,14 @@ const runtime = Game.Runtime.make({ services, resources, machines, debug: { host
 const HealthNeverNegative = Invariant.fromInspector(Game.Inspector("health >= 0", {
   queries: { player: Game.Query({ selection: { health: Game.Query.read(Health) }, with: [Player] }) }
 }, ({ queries }) => {
-  const health = queries.player.each().map((match) => match.data.health.get())
+  const health = queries.player.each().map((entity) => queries.player.data.health.get(entity))
   return health.some((value) => value < 0) ? `health ${health.join(", ")}` : undefined
 }))
 // Labels name entities in every line: `player e12` instead of `e12`. An
 // inspector returning entity id -> label; any other return does not compile.
 const Labels = Game.Inspector("labels", {
   queries: { players: Game.Query({ selection: { player: Game.Query.read(Player) } }) }
-}, ({ queries }) => new Map(queries.players.each().map((match) => [match.entity.id, "player"] as const)))
+}, ({ queries }) => new Map(queries.players.each().map((entity) => [entity.id, "player"] as const)))
 
 const session = Session.make(runtime, {
   hostClock,                              // times run(); the runtime's clock

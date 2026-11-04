@@ -1,6 +1,7 @@
 // The town's rules. Each system declares exactly what it reads and writes;
 // the schedule (schedules.ts) decides when each runs.
 import { Clock } from "@typeonce/ritmo"
+import type { EntityProving, WriteSlot } from "@typeonce/ritmo/Query"
 import * as Random from "@typeonce/ritmo/Random"
 
 import { cellInFront, cellPosition, directions, isOpenGround, opposite, playerStart, sameCell, signs, TILE_SIZE, villagers } from "./map.ts"
@@ -131,13 +132,14 @@ export const JoinPlayers = Game.System(
     const input = resources.input.get()
     for (const seat of Players.slots) {
       if (input[seat].event === "left") {
-        for (const { entity, data } of queries.players.each()) if (data.seat.get() === seat) commands.despawn(entity)
+        const { data } = queries.players
+        for (const entity of queries.players.each()) if (data.seat.get(entity) === seat) commands.despawn(entity)
       }
       if (input[seat].event !== "joined") continue
       const free = (cell: Cell) => isOpenGround(cell) &&
-        !queries.solids.each().some(({ data }) => occupies({ tile: data.tile.get(), stride: data.stride?.get() }, cell))
-      const other = queries.players.each().find(({ data }) => data.seat.get() !== seat)
-      const near = other === undefined ? playerStart.cell : other.data.tile.get()
+        !queries.solids.each().some((entity) => occupies({ tile: queries.solids.data.tile.get(entity), stride: queries.solids.data.stride.get(entity) }, cell))
+      const other = queries.players.each().find((entity) => queries.players.data.seat.get(entity) !== seat)
+      const near = other === undefined ? playerStart.cell : queries.players.data.tile.get(other)
       const cell = [near, ...directions.map((direction) => cellInFront(near, direction))].find(free)
       if (cell === undefined) continue
       const tint = tints[seat]
@@ -146,7 +148,7 @@ export const JoinPlayers = Game.System(
         Game.Command.entry(Seat, seat),
         Game.Command.entry(Tile, cell),
         Game.Command.entry(Position, cellPosition(cell)),
-        Game.Command.entry(Facing, other?.data.facing.get() ?? playerStart.facing),
+        Game.Command.entry(Facing, other === undefined ? playerStart.facing : queries.players.data.facing.get(other)),
         Game.Command.entry(Look, tint === undefined ? { character: playerStart.character } : { character: playerStart.character, tint }),
         Game.Command.entry(Stride, standing),
         Game.Command.entry(Solid, {})
@@ -157,19 +159,17 @@ export const JoinPlayers = Game.System(
 
 // ── Walking ─────────────────────────────────────────────────────────────
 
-/** One read-write slot of an actor's data: a query write cell. */
-interface Slot<T> {
-  get(): T
-  set(value: T): void
-}
 
 /** The data every walking actor has: the player and the pacing villagers. */
 interface Mover {
-  readonly tile: Slot<Cell>
-  readonly position: Slot<{ readonly x: number; readonly y: number }>
-  readonly facing: Slot<Direction>
-  readonly stride: Slot<StrideValue>
+  readonly tile: WriteSlot<Cell, typeof Tile>
+  readonly position: WriteSlot<{ readonly x: number; readonly y: number }, typeof Position>
+  readonly facing: WriteSlot<Direction, typeof Facing>
+  readonly stride: WriteSlot<StrideValue, typeof Stride>
 }
+
+/** An entity whose query proves everything a {@link Mover} reaches. */
+type MoverEntity = EntityProving<typeof Tile | typeof Position | typeof Facing | typeof Stride>
 
 /** Whether a solid actor stands on `cell`, or is still leaving it mid-step. */
 const occupies = (blocker: { readonly tile: Cell; readonly stride: StrideValue | undefined }, cell: Cell): boolean =>
@@ -212,29 +212,29 @@ const walkPosition = (from: Cell, to: Cell, elapsed: number) => {
  * while one is under way (a begun step always finishes), false once the
  * actor stands on its tile and may decide what to do next.
  */
-const advanceStride = (mover: Mover): boolean => {
-  const stride = mover.stride.get()
+const advanceStride = (mover: Mover, entity: MoverEntity): boolean => {
+  const stride = mover.stride.get(entity)
   if (stride.kind === "still") return false
   const elapsed = stride.elapsed + 1
   if (stride.kind === "walk") {
-    mover.position.set(walkPosition(stride.from, mover.tile.get(), elapsed))
-    mover.stride.set(elapsed >= Clock.steps(WALK) ? { kind: "still", foot: otherFoot(stride.foot), rested: false } : { ...stride, elapsed })
+    mover.position.set(entity, walkPosition(stride.from, mover.tile.get(entity), elapsed))
+    mover.stride.set(entity, elapsed >= Clock.steps(WALK) ? { kind: "still", foot: otherFoot(stride.foot), rested: false } : { ...stride, elapsed })
     return true
   }
   const length = Clock.steps(stride.kind === "turn" ? TURN : BUMP)
-  mover.stride.set(elapsed >= length
+  mover.stride.set(entity, elapsed >= length
     ? { kind: "still", foot: stride.kind === "bump" ? otherFoot(stride.foot) : stride.foot, rested: true }
     : { ...stride, elapsed })
   return true
 }
 
 /** Starts a step onto the tile in front, taking that tile at once so nothing else can claim it meanwhile. */
-const startWalk = (mover: Mover, foot: Foot) => {
-  const tile = mover.tile.get()
-  const target = cellInFront(tile, mover.facing.get())
-  mover.tile.set(target)
-  mover.position.set(walkPosition(tile, target, 1))
-  mover.stride.set({ kind: "walk", foot, elapsed: 1, from: tile })
+const startWalk = (mover: Mover, entity: MoverEntity, foot: Foot) => {
+  const tile = mover.tile.get(entity)
+  const target = cellInFront(tile, mover.facing.get(entity))
+  mover.tile.set(entity, target)
+  mover.position.set(entity, walkPosition(tile, target, 1))
+  mover.stride.set(entity, { kind: "walk", foot, elapsed: 1, from: tile })
 }
 
 /**
@@ -269,36 +269,37 @@ export const WalkPlayer = Game.System(
     if (resources.time.get().dt === 0) return
     const input = resources.input.get()
     const players = queries.players.each()
+    const { data } = queries.players
     for (const player of players) {
-      const mover: Mover = player.data
-      if (advanceStride(mover)) continue
+      const mover: Mover = data
+      if (advanceStride(mover, player)) continue
 
-      const stride = mover.stride.get()
+      const stride = mover.stride.get(player)
       if (stride.kind !== "still") continue
-      const direction = heldDirection(input[player.data.seat.get()], mover.facing.get())
+      const direction = heldDirection(input[data.seat.get(player)], mover.facing.get(player))
       if (direction === undefined) {
-        if (!stride.rested) mover.stride.set({ ...stride, rested: true })
+        if (!stride.rested) mover.stride.set(player, { ...stride, rested: true })
         continue
       }
-      if (direction !== mover.facing.get()) {
-        mover.facing.set(direction)
+      if (direction !== mover.facing.get(player)) {
+        mover.facing.set(player, direction)
         if (stride.rested) {
-          mover.stride.set({ kind: "turn", foot: stride.foot, elapsed: 1 })
+          mover.stride.set(player, { kind: "turn", foot: stride.foot, elapsed: 1 })
           continue
         }
       }
 
-      const target = cellInFront(mover.tile.get(), direction)
-      const others = players.filter((other) => other.entity.id !== player.entity.id)
-      const taken = queries.blockers.each().some(({ data }) => occupies({ tile: data.tile.get(), stride: data.stride?.get() }, target)) ||
-        others.some(({ data }) => occupies({ tile: data.tile.get(), stride: data.stride.get() }, target))
-      const leashed = others.some(({ data }) =>
-        Math.abs(data.tile.get().col - target.col) > LEASH.cols || Math.abs(data.tile.get().row - target.row) > LEASH.rows)
+      const target = cellInFront(mover.tile.get(player), direction)
+      const others = players.filter((other) => other.id !== player.id)
+      const taken = queries.blockers.each().some((entity) => occupies({ tile: queries.blockers.data.tile.get(entity), stride: queries.blockers.data.stride.get(entity) }, target)) ||
+        others.some((other) => occupies({ tile: data.tile.get(other), stride: data.stride.get(other) }, target))
+      const leashed = others.some((other) =>
+        Math.abs(data.tile.get(other).col - target.col) > LEASH.cols || Math.abs(data.tile.get(other).row - target.row) > LEASH.rows)
       if (!isOpenGround(target) || taken || leashed) {
-        mover.stride.set({ kind: "bump", foot: stride.foot, elapsed: 1 })
+        mover.stride.set(player, { kind: "bump", foot: stride.foot, elapsed: 1 })
         continue
       }
-      startWalk(mover, stride.foot)
+      startWalk(mover, player, stride.foot)
     }
   }
 )
@@ -337,29 +338,30 @@ export const PaceVillagers = Game.System(
     if (resources.time.get().dt === 0) return
     const random = Random.draw(resources.rng)
     const rest = Clock.steps(PACE_REST)
-    for (const { data } of queries.walkers.each()) {
+    const { data } = queries.walkers
+    for (const entity of queries.walkers.each()) {
       const mover: Mover = data
-      if (advanceStride(mover)) continue
-      const patrol = data.patrol.get()
+      if (advanceStride(mover, entity)) continue
+      const patrol = data.patrol.get(entity)
       if (patrol.rest > 0) {
-        data.patrol.set({ ...patrol, rest: patrol.rest - 1 })
+        data.patrol.set(entity, { ...patrol, rest: patrol.rest - 1 })
         continue
       }
-      const tile = mover.tile.get()
+      const tile = mover.tile.get(entity)
       const end = patrol.ends[patrol.heading]
       if (sameCell(tile, end)) {
-        data.patrol.set({ ends: patrol.ends, heading: patrol.heading === 0 ? 1 : 0, rest: random.integer(rest, rest * 2 + 1) })
+        data.patrol.set(entity, { ends: patrol.ends, heading: patrol.heading === 0 ? 1 : 0, rest: random.integer(rest, rest * 2 + 1) })
         continue
       }
-      mover.facing.set(towards(tile, end))
-      const target = cellInFront(tile, mover.facing.get())
-      const taken = queries.blockers.each().some((blocker) => occupies({ tile: blocker.data.tile.get(), stride: blocker.data.stride?.get() }, target))
+      mover.facing.set(entity, towards(tile, end))
+      const target = cellInFront(tile, mover.facing.get(entity))
+      const taken = queries.blockers.each().some((blocker) => occupies({ tile: queries.blockers.data.tile.get(blocker), stride: queries.blockers.data.stride.get(blocker) }, target))
       if (!isOpenGround(target) || taken) {
-        data.patrol.set({ ...patrol, rest: random.integer(rest / 2, rest) })
+        data.patrol.set(entity, { ...patrol, rest: random.integer(rest / 2, rest) })
         continue
       }
-      const stride = mover.stride.get()
-      startWalk(mover, stride.kind === "still" ? stride.foot : "left")
+      const stride = mover.stride.get(entity)
+      startWalk(mover, entity, stride.kind === "still" ? stride.foot : "left")
     }
   }
 )
@@ -379,10 +381,11 @@ export const LookAround = Game.System(
   ({ queries, resources }) => {
     if (!Clock.every(resources.time.get(), LOOK_AROUND)) return
     const random = Random.draw(resources.rng)
-    for (const { data } of queries.villagers.each()) {
+    const { data } = queries.villagers
+    for (const entity of queries.villagers.each()) {
       if (random.next() < 0.5) continue
       const next = random.pick(directions)
-      if (next !== undefined) data.facing.set(next)
+      if (next !== undefined) data.facing.set(entity, next)
     }
   }
 )
@@ -416,32 +419,33 @@ export const StartTalk = Game.System(
     const input = resources.input.get()
     // Either player can start a talk; the first one in slot order who can, does.
     const players = queries.players.each()
+    const { data } = queries.players
     for (const player of players) {
-      const seat = player.data.seat.get()
-      if (!input[seat].actions.action.pressed || player.data.stride.get().kind !== "still") continue
-      const facing = player.data.facing.get()
-      const target = cellInFront(player.data.tile.get(), facing)
-      const other = players.find((match) => match.entity.id !== player.entity.id && sameCell(match.data.tile.get(), target))
+      const seat = data.seat.get(player)
+      if (!input[seat].actions.action.pressed || data.stride.get(player).kind !== "still") continue
+      const facing = data.facing.get(player)
+      const target = cellInFront(data.tile.get(player), facing)
+      const other = players.find((candidate) => candidate.id !== player.id && sameCell(data.tile.get(candidate), target))
       if (other !== undefined) {
-        if (other.data.stride.get().kind !== "still") continue
+        if (data.stride.get(other).kind !== "still") continue
         nextMachines.mode.set({
           _tag: "Talking",
           speaker: `Player ${playerNumber(seat)}`,
-          pages: [`Ah, it's player ${playerNumber(other.data.seat.get())}.`, "Ritmo supports multiplayer, of course!"],
+          pages: [`Ah, it's player ${playerNumber(data.seat.get(other))}.`, "Ritmo supports multiplayer, of course!"],
           page: 0,
           typed: 0
         })
-        other.data.facing.set(opposite[facing])
+        data.facing.set(other, opposite[facing])
         return
       }
-      const found = queries.talkables.each().find((match) => sameCell(match.data.tile.get(), target))
+      const found = queries.talkables.each().find((entity) => sameCell(queries.talkables.data.tile.get(entity), target))
       // Someone mid-step is not there yet: wait until they stand on the tile.
-      if (found === undefined || (found.data.stride?.get()?.kind ?? "still") !== "still") continue
+      if (found === undefined || (queries.talkables.data.stride.get(found)?.kind ?? "still") !== "still") continue
 
-      const { speaker, pages } = found.data.talkable.get()
+      const { speaker, pages } = queries.talkables.data.talkable.get(found)
       nextMachines.mode.set({ _tag: "Talking", speaker, pages, page: 0, typed: 0 })
-      const listener = queries.listeners.get(found.entity.id)
-      if (listener.ok) listener.value.data.facing.set(opposite[facing])
+      const listener = queries.listeners.get(found.id)
+      if (listener.ok) queries.listeners.data.facing.set(listener.value, opposite[facing])
       return
     }
   }

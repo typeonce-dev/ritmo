@@ -70,7 +70,7 @@ describe("Invariant.fromInspector", () => {
 
   it("builds an invariant named after an inspector that returns a message or undefined", () => {
     const inspector = Game.Inspector("DevtoolsTypes/NonNegative", { queries: { positions: Positions } }, ({ queries }) =>
-      queries.positions.each().some((match) => match.data.position.get().x < 0) ? "negative x" : undefined)
+      queries.positions.each().some((entity) => queries.positions.data.position.get(entity).x < 0) ? "negative x" : undefined)
     const invariant = Invariant.fromInspector(inspector)
     expect(invariant).type.toBe<Invariant.Invariant<typeof inspector>>()
     expect(invariant.name).type.toBe<"DevtoolsTypes/NonNegative">()
@@ -88,7 +88,7 @@ describe("Invariant.fromInspector", () => {
       queries: { positions: Positions },
       resources: { limit: Game.System.readResource(Limit) }
     }, ({ queries, resources }) =>
-      queries.positions.each().some((match) => match.data.position.get().x > resources.limit.get()) ? "over limit" : undefined))
+      queries.positions.each().some((entity) => queries.positions.data.position.get(entity).x > resources.limit.get()) ? "over limit" : undefined))
 
     const provided = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Limit: 10 }, debug: { hostClock } }).value
     Session.make(provided, { hostClock, schedules: { update }, invariants: [UnderLimit] })
@@ -109,7 +109,7 @@ describe("Invariant.fromInspector", () => {
 describe("Session labels", () => {
   const Positions = Game.Query({ selection: { position: Game.Query.read(Position) } })
   const Labels = Game.Inspector("DevtoolsTypes/Labels", { queries: { positions: Positions } }, ({ queries }) =>
-    new Map(queries.positions.each().map((match) => [match.entity.id, "mover"] as const)))
+    new Map(queries.positions.each().map((entity) => [entity.id, "mover"] as const)))
 
   it("takes an inspector of entity id to label", () => {
     const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
@@ -121,7 +121,7 @@ describe("Session labels", () => {
   it("rejects an inspector that returns anything else", () => {
     const debugged = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
     const Names = Game.Inspector("DevtoolsTypes/Names", { queries: { positions: Positions } }, ({ queries }) =>
-      new Map(queries.positions.each().map((match) => [String(match.entity.id), "mover"] as const)))
+      new Map(queries.positions.each().map((entity) => [String(entity.id), "mover"] as const)))
     // @ts-expect-error labels must return a ReadonlyMap<number, string> from entity id to label
     Session.make(debugged, { hostClock, schedules: { update }, labels: Names })
     const Text = Game.Inspector("DevtoolsTypes/Text", {}, () => "player")

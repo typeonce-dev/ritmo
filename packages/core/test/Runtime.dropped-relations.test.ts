@@ -53,10 +53,11 @@ const setup = () => {
     queries: { named: Named },
     commands: Game.System.commands(Game.System.despawns(Name), Game.System.relates(Targeting))
   }, ({ queries, commands }) => {
-    for (const match of queries.named.each()) {
-      const name = match.data.name.get() as Named
-      if (unrelate.includes(name)) commands.unrelate(match.entity.id, Targeting)
-      if (despawn.includes(name)) commands.despawn(match.entity)
+    const { data } = queries.named
+    for (const entity of queries.named.each()) {
+      const name = data.name.get(entity) as Named
+      if (unrelate.includes(name)) commands.unrelate(entity.id, Targeting)
+      if (despawn.includes(name)) commands.despawn(entity)
     }
     despawn = []
     unrelate = []
@@ -73,7 +74,8 @@ const Kill = (name: string) => Game.System(`Dropped/Kill/${name}`, {
   queries: { named: Named },
   commands: Game.System.commands(Game.System.despawns(Name))
 }, ({ queries, commands }) => {
-  for (const match of queries.named.each()) if (match.data.name.get() === name) commands.despawn(match.entity)
+  const { data } = queries.named
+  for (const entity of queries.named.each()) if (data.name.get(entity) === name) commands.despawn(entity)
 })
 
 const dropped = [`Dropped/Targeting ${ids.archer}->${ids.target}`, `Dropped/Targeting ${ids.mage}->${ids.target}`]

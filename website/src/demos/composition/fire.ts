@@ -64,8 +64,9 @@ const Ignite = Game.System(
   },
   ({ queries, events, commands }) => {
     for (const spark of events.sparks.all()) {
-      for (const { entity, data } of queries.villagers.each()) {
-        if (data.villager.get().id === spark.id) commands.insert(entity, [Burning, {}])
+      const { data } = queries.villagers
+      for (const entity of queries.villagers.each()) {
+        if (data.villager.get(entity).id === spark.id) commands.insert(entity, [Burning, {}])
       }
     }
   }
@@ -82,13 +83,14 @@ const Wander = Game.System(
     }
   },
   ({ queries }) => {
-    for (const { data } of queries.strolling.each()) {
-      const { x, y } = data.position.get()
-      let { x: vx, y: vy } = data.velocity.get()
+    const { data } = queries.strolling
+    for (const entity of queries.strolling.each()) {
+      const { x, y } = data.position.get(entity)
+      let { x: vx, y: vy } = data.velocity.get(entity)
       if (x + vx < 20 || x + vx > AREA.width - 20) vx = -vx
       if (y + vy < 20 || y + vy > AREA.height - 20) vy = -vy
-      data.velocity.set({ x: vx, y: vy })
-      data.position.set({ x: x + vx, y: y + vy })
+      data.velocity.set(entity, { x: vx, y: vy })
+      data.position.set(entity, { x: x + vx, y: y + vy })
     }
   }
 )
@@ -104,10 +106,11 @@ const Spread = Game.System(
     commands: Game.System.commands(Game.System.inserts(Burning))
   },
   ({ queries, resources, commands }) => {
-    const fires = queries.burning.each().map(({ data }) => data.position.get())
+    const fires = queries.burning.each().map((entity) => queries.burning.data.position.get(entity))
     let caught = 0
-    for (const { entity, data } of queries.dry.each()) {
-      const { x, y } = data.position.get()
+    const { data } = queries.dry
+    for (const entity of queries.dry.each()) {
+      const { x, y } = data.position.get(entity)
       if (fires.some((fire) => (fire.x - x) ** 2 + (fire.y - y) ** 2 < REACH * REACH)) {
         commands.insert(entity, [Burning, {}])
         caught++
@@ -121,12 +124,13 @@ const Panic = Game.System(
   "Fire/Panic",
   { queries: { burning: Game.Query({ selection: { position: Game.Query.write(Position) }, with: [Burning] }) } },
   ({ queries }) => {
-    for (const { data } of queries.burning.each()) {
-      const { x, y } = data.position.get()
+    const { data } = queries.burning
+    for (const entity of queries.burning.each()) {
+      const { x, y } = data.position.get(entity)
       const dx = FOUNTAIN.x - x
       const dy = FOUNTAIN.y - y
       const distance = Math.sqrt(dx * dx + dy * dy)
-      if (distance > 1) data.position.set({ x: x + (dx / distance) * RUN, y: y + (dy / distance) * RUN })
+      if (distance > 1) data.position.set(entity, { x: x + (dx / distance) * RUN, y: y + (dy / distance) * RUN })
     }
   }
 )
@@ -140,8 +144,9 @@ const Douse = Game.System(
   },
   ({ queries, resources, commands }) => {
     let doused = 0
-    for (const { entity, data } of queries.burning.each()) {
-      const { x, y } = data.position.get()
+    const { data } = queries.burning
+    for (const entity of queries.burning.each()) {
+      const { x, y } = data.position.get(entity)
       if ((FOUNTAIN.x - x) ** 2 + (FOUNTAIN.y - y) ** 2 < FOUNTAIN.radius ** 2) {
         commands.remove(entity, Burning)
         commands.insert(entity, [Wet, {}])
@@ -184,11 +189,11 @@ export const ReadVillage = Game.Inspector(
     resources: { fired: Game.System.readResource(Fired), heard: Game.System.readResource(Heard) }
   },
   ({ queries, resources }) => ({
-    villagers: queries.villagers.each().map(({ data }) => ({
-      id: data.villager.get().id,
-      ...data.position.get(),
-      burning: data.burning !== undefined,
-      wet: data.wet !== undefined
+    villagers: queries.villagers.each().map((entity) => ({
+      id: queries.villagers.data.villager.get(entity).id,
+      ...queries.villagers.data.position.get(entity),
+      burning: queries.villagers.data.burning.get(entity) !== undefined,
+      wet: queries.villagers.data.wet.get(entity) !== undefined
     })),
     fired: resources.fired.get(),
     heard: resources.heard.get().count

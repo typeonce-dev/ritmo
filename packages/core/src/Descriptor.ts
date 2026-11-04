@@ -673,9 +673,9 @@ type StateRejection<Definition> = Definition extends StandardSchema<infer _Encod
  * library's literal schema.
  *
  * The value is a tagged union: `_tag` is the state's name, next to that
- * state's fields. Its write cell moves with `transition({ from, to, data })`,
+ * state's fields. Its write slot moves with `transition(entity, { from, to, data })`,
  * which takes all of `to`'s fields so nothing carries over from `from`, and
- * changes the current state's fields with `update({ state, data })`. Both are
+ * changes the current state's fields with `update(entity, { state, data })`. Both are
  * a compare-and-set: they write only while the entity is still in `from` (or
  * `state`), and otherwise return an `EntityStateMismatch` failure. With
  * `transitions`, `to` is checked against the graph at compile time; the graph
@@ -701,9 +701,10 @@ type StateRejection<Definition> = Definition extends StandardSchema<infer _Encod
  * const Jump = Game.System("Game/Jump", {
  *   queries: { bodies: Game.Query({ selection: { contact: Game.Query.write(Contact) } }) }
  * }, ({ queries }) => {
- *   for (const { data } of queries.bodies.each()) {
- *     data.contact.transition({ from: "ground", to: "air", data: { vy: 12, coyote: 0 } })
- *     data.contact.update({ state: "air", data: (air) => ({ ...air, vy: air.vy - gravity }) })
+ *   const { data } = queries.bodies
+ *   for (const entity of queries.bodies.each()) {
+ *     data.contact.transition(entity, { from: "ground", to: "air", data: { vy: 12, coyote: 0 } })
+ *     data.contact.update(entity, { state: "air", data: (air) => ({ ...air, vy: air.vy - gravity }) })
  *   }
  * })
  * ```

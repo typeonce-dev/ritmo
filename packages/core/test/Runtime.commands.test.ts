@@ -78,7 +78,7 @@ describe("Runtime commands", () => {
         {
           const result = queries.moving.single()
           resources.count.set(result.ok ? 1 : 0)
-          resources.lastX.set(result.ok ? result.value.data.position.get().x : -1)
+          resources.lastX.set(result.ok ? queries.moving.data.position.get(result.value).x : -1)
         }
     )
 
@@ -160,7 +160,7 @@ describe("Runtime commands", () => {
         {
           if (!storedId) return
           const match = queries.positions.get(storedId)
-          if (match.ok) commands.despawn(match.value.entity)
+          if (match.ok) commands.despawn(match.value)
         }
     )
 
@@ -357,7 +357,7 @@ describe("Runtime commands", () => {
         {
           const result = queries.moving.single()
           resources.count.set(result.ok ? 1 : 0)
-          resources.lastX.set(result.ok ? result.value.data.position.get().x : -1)
+          resources.lastX.set(result.ok ? queries.moving.data.position.get(result.value).x : -1)
         }
     )
 
@@ -426,7 +426,7 @@ describe("Runtime commands", () => {
         {
           const result = queries.moving.single()
           resources.count.set(result.ok ? 1 : 0)
-          resources.lastX.set(result.ok ? result.value.data.position.get().x : -1)
+          resources.lastX.set(result.ok ? queries.moving.data.position.get(result.value).x : -1)
         }
     )
 

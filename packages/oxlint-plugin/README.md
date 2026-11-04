@@ -69,7 +69,7 @@ const started = performance.now()
 | [`no-brand-cast`](#ritmono-brand-cast) | simulation | `raw as UserId`, `1 as Random.State` | the schema or constructor that brands it |
 | [`handle-runtime-result`](#ritmohandle-runtime-result) | everywhere | a dropped or unchecked `runtime.tick(...)` / `restore(...)` / `rewind(...)` / `snapshot()` / `checksum()` result | check `.ok` |
 | [`prefix-descriptor-and-system-names`](#ritmoprefix-descriptor-and-system-names) | everywhere | `"Position"`, `Game.System("Move", ...)` | `"Game/Position"` |
-| [`no-state-spread`](#ritmono-state-spread) | everywhere | `{ ...ground, _tag: "air", vy }` | `cell.transition({ from, to, data })`, `nextMachines.x.set({ _tag, ...fields })`, or the new state's fields written out |
+| [`no-state-spread`](#ritmono-state-spread) | everywhere | `{ ...ground, _tag: "air", vy }` | `data.state.transition(entity, { from, to, data })`, `nextMachines.x.set({ _tag, ...fields })`, or the new state's fields written out |
 
 ## Simulation rules
 
@@ -103,7 +103,7 @@ const crit = random.next() < 0.1
 const kind = random.pick(kinds)
 ```
 
-Catches `Math.random()`, `crypto.getRandomValues()`, and `crypto.randomUUID()`. For an id, the world already has one: use the entity's id (`match.entity`, kept as `Game.Entity.handle(...)`) or a counter in a resource. An id that must be unique across devices or runs (an account item, a save slot) is made in host code, where `crypto.randomUUID()` is fine, and passed in with `runtime.send(...)`.
+Catches `Math.random()`, `crypto.getRandomValues()`, and `crypto.randomUUID()`. For an id, the world already has one: use the entity's id (`entity.id`, kept as `Game.Entity.handle(...)`) or a counter in a resource. An id that must be unique across devices or runs (an account item, a save slot) is made in host code, where `crypto.randomUUID()` is fine, and passed in with `runtime.send(...)`.
 
 ### `ritmo/use-ops-for-math`
 
@@ -164,15 +164,15 @@ A timer counted down by `dt` adds a rounded float every tick, so it ends a step 
 
 ```ts
 cooldown.remaining -= dt                                               // reported
-data.buff.set({ ...buff, left: buff.left - time.dt })                  // reported
+data.buff.set(entity, { ...buff, left: buff.left - time.dt })          // reported
 
 // instead: ready: Clock.Deadline<60> | null, its schema narrowing with Clock.isDeadline(step)
 const cooldown = Clock.duration(step, 0.5)
 const time = resources.time.get()
-const { ready } = data.weapon.get()
+const { ready } = data.weapon.get(entity)
 if (ready === null || Clock.reached(time, ready)) {
   fire()
-  data.weapon.set({ ready: Clock.deadline(time, cooldown) })
+  data.weapon.set(entity, { ready: Clock.deadline(time, cooldown) })
 }
 const bar = ready === null ? 0 : Clock.remaining(time, ready) / Clock.steps(cooldown)   // a readout
 ```
@@ -184,7 +184,7 @@ const GameplayTime = Clock.resource("Game/GameplayTime", step)
 const gameplayClock = Clock.system(Game, { name: "Game/GameplayClock", resource: GameplayTime, hold: [inHitStop] })
 
 // A deadline on GameplayTime waits while inHitStop passes, and saves and rolls back like any deadline
-data.enemy.set({ attackAt: Clock.deadline(gameplay, windup) })
+data.enemy.set(entity, { attackAt: Clock.deadline(gameplay, windup) })
 ```
 
 Time scaled by a fraction (a 0.3x slow motion) has no whole step to end on, so a float is right there: keep it and disable the line with the reason (`// oxlint-disable-next-line ritmo/no-float-timers -- scaled by slow motion`). A value counted up by `dt` is reported too, since it drifts the same way: `Clock.elapsed(time)` is the exact seconds of a clock.
@@ -264,7 +264,7 @@ A tagged value, such as the value of a `Descriptor.EntityState` component or of 
 const popped = { ...ground, _tag: "air", vy: 2 }   // reported: `platform` survives in the air
 
 // instead
-data.contact.transition({ from: "ground", to: "air", data: { vy: 2, coyote: 0 } })
+data.contact.transition(entity, { from: "ground", to: "air", data: { vy: 2, coyote: 0 } })
 nextMachines.mode.set({ _tag: "Exploring" })       // a machine's move, not { ...talking, _tag: "Exploring" }
 const popped = { _tag: "air", vy: 2, coyote: 0 }   // in a pure function
 ```

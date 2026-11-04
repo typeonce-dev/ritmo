@@ -70,7 +70,7 @@ describe("RenderSync keeps one node per entity its query matches", () => {
     step(({ commands, queries }) => {
       const found = queries.sprites.get(ids[0]!)
       if (!found.ok) throw new Error("sprite must still be alive")
-      commands.remove(found.value.entity, Position)
+      commands.remove(found.value, Position)
     })
     expect(registry.size).toBe(0)
     expect(first.destroyed).toBe(true)
@@ -93,7 +93,7 @@ describe("RenderSync keeps one node per entity its query matches", () => {
     step(({ commands, queries }) => {
       const found = queries.sprites.get(ids[0]!)
       if (!found.ok) throw new Error("sprite must still be alive")
-      commands.remove(found.value.entity, Visible)
+      commands.remove(found.value, Visible)
     })
     expect(registry.size).toBe(0)
   })
@@ -106,7 +106,7 @@ describe("RenderSync keeps one node per entity its query matches", () => {
     step(({ commands, queries }) => {
       const found = queries.sprites.get(ids[0]!)
       if (!found.ok) throw new Error("sprite must still be alive")
-      commands.despawn(found.value.entity)
+      commands.despawn(found.value)
     })
     expect(registry.size).toBe(0)
   })

@@ -27,7 +27,7 @@ export const ReadScreen = Game.Inspector("Town/ReadScreen", {
       complete: mode.typed >= page.length,
       more: mode.page + 1 < mode.pages.length
     }
-  const seats: ReadonlyArray<SeatValue> = queries.players.each().map(({ data }) => data.seat.get())
+  const seats: ReadonlyArray<SeatValue> = queries.players.each().map((entity) => queries.players.data.seat.get(entity))
   return { mode: mode._tag, dialogue: box, seats }
 })
 
@@ -47,8 +47,9 @@ export const ReadPlayers = Game.Inspector("Town/ReadPlayers", {
   }
 }, ({ queries }) => {
   const players: Partial<Record<SeatValue, { tile: { col: number; row: number }; position: { x: number; y: number }; facing: string; stride: string }>> = {}
-  for (const { data } of queries.players.each()) {
-    players[data.seat.get()] = { tile: data.tile.get(), position: data.position.get(), facing: data.facing.get(), stride: data.stride.get().kind }
+  const { data } = queries.players
+  for (const entity of queries.players.each()) {
+    players[data.seat.get(entity)] = { tile: data.tile.get(entity), position: data.position.get(entity), facing: data.facing.get(entity), stride: data.stride.get(entity).kind }
   }
   return players
 })

@@ -40,8 +40,9 @@ describe("Descriptor.EntityState", () => {
 
   it("reads a value that narrows on _tag", () => {
     Game.System("StateTypes/Read", { queries: { bodies: Bodies } }, ({ queries }) => {
-      for (const { data } of queries.bodies.each()) {
-        const contact = data.contact.get()
+      const { data } = queries.bodies
+      for (const entity of queries.bodies.each()) {
+        const contact = data.contact.get(entity)
         expect(contact).type.toBe<ContactValue>()
         if (contact._tag === "air") expect(contact.vy).type.toBe<number>()
         // @ts-expect-error Property 'vy' does not exist on type '{ readonly _tag: "ground"; readonly platform: number | null; }'.
@@ -52,46 +53,48 @@ describe("Descriptor.EntityState", () => {
 
   it("moves with transition({ from, to, data }): to's fields, checked against the graph", () => {
     Game.System("StateTypes/Move", { queries: { bodies: Bodies } }, ({ queries }) => {
-      for (const { data } of queries.bodies.each()) {
-        expect(data.contact.transition({ from: "ground", to: "air", data: { vy: 2, coyote: 0 } })).type.toBe<Mismatch>()
-        expect(data.contact.transition({ from: "air", to: "ground", data: { platform: 1 } })).type.not.toRaiseError()
-        expect(data.contact.transition({ from: "ground", to: "crouch" })).type.not.toRaiseError()
+      const { data } = queries.bodies
+      for (const entity of queries.bodies.each()) {
+        expect(data.contact.transition(entity, { from: "ground", to: "air", data: { vy: 2, coyote: 0 } })).type.toBe<Mismatch>()
+        expect(data.contact.transition(entity, { from: "air", to: "ground", data: { platform: 1 } })).type.not.toRaiseError()
+        expect(data.contact.transition(entity, { from: "ground", to: "crouch" })).type.not.toRaiseError()
         // Not an allowed move.
         // @ts-expect-error Type '"crouch"' is not assignable to type '"ground"'.
-        data.contact.transition({ from: "air", to: "crouch" })
+        data.contact.transition(entity, { from: "air", to: "crouch" })
         // Unknown states.
         expect(data.contact.transition).type.not.toBeCallableWith({ from: "swim", to: "ground", data: { platform: 1 } })
         // The target's fields are required, exactly.
         // @ts-expect-error Property 'data' is missing in type
-        data.contact.transition({ from: "air", to: "ground" })
+        data.contact.transition(entity, { from: "air", to: "ground" })
         // @ts-expect-error Property 'coyote' is missing in type '{ vy: number; }' but required in type
-        data.contact.transition({ from: "ground", to: "air", data: { vy: 2 } })
+        data.contact.transition(entity, { from: "ground", to: "air", data: { vy: 2 } })
         // @ts-expect-error Object literal may only specify known properties, and 'platform' does not exist in type
-        data.contact.transition({ from: "ground", to: "air", data: { vy: 2, coyote: 0, platform: 1 } })
+        data.contact.transition(entity, { from: "ground", to: "air", data: { vy: 2, coyote: 0, platform: 1 } })
         // A state without fields takes no data.
         // @ts-expect-error Type '{ platform: number; }' is not assignable to type 'never'.
-        data.contact.transition({ from: "ground", to: "crouch", data: { platform: 1 } })
+        data.contact.transition(entity, { from: "ground", to: "crouch", data: { platform: 1 } })
         // With a union `from`, only the moves every one of them allows.
-        const current = data.contact.get()._tag as "ground" | "crouch"
-        expect(data.contact.transition({ from: current, to: "air", data: { vy: 2, coyote: 0 } })).type.not.toRaiseError()
+        const current = data.contact.get(entity)._tag as "ground" | "crouch"
+        expect(data.contact.transition(entity, { from: current, to: "air", data: { vy: 2, coyote: 0 } })).type.not.toRaiseError()
         // @ts-expect-error Type '"crouch"' is not assignable to type '"air"'.
-        data.contact.transition({ from: current, to: "crouch" })
+        data.contact.transition(entity, { from: current, to: "crouch" })
         // Without a graph any pair of states is accepted, unknown states are not.
-        expect(data.mode.transition({ from: "a", to: "b", data: { n: 1 } })).type.not.toRaiseError()
-        expect(data.mode.transition({ from: "b", to: "b", data: { n: 2 } })).type.not.toRaiseError()
+        expect(data.mode.transition(entity, { from: "a", to: "b", data: { n: 1 } })).type.not.toRaiseError()
+        expect(data.mode.transition(entity, { from: "b", to: "b", data: { n: 2 } })).type.not.toRaiseError()
         // @ts-expect-error Type '"c"' is not assignable to type '"a" | "b"'.
-        data.mode.transition({ from: "a", to: "c" })
-        expect(data.phase.transition({ from: "windup", to: "active" })).type.not.toRaiseError()
+        data.mode.transition(entity, { from: "a", to: "c" })
+        expect(data.phase.transition(entity, { from: "windup", to: "active" })).type.not.toRaiseError()
       }
     })
   })
 
   it("changes the current state's fields with update({ state, data })", () => {
     Game.System("StateTypes/Update", { queries: { bodies: Bodies } }, ({ queries }) => {
-      for (const { data } of queries.bodies.each()) {
-        expect(data.contact.update({ state: "air", data: (air) => ({ ...air, vy: air.vy - 1 }) })).type.toBe<Mismatch>()
-        expect(data.contact.update({ state: "air", data: () => ({ vy: 1, coyote: 0 }) })).type.not.toRaiseError()
-        data.contact.update({
+      const { data } = queries.bodies
+      for (const entity of queries.bodies.each()) {
+        expect(data.contact.update(entity, { state: "air", data: (air) => ({ ...air, vy: air.vy - 1 }) })).type.toBe<Mismatch>()
+        expect(data.contact.update(entity, { state: "air", data: () => ({ vy: 1, coyote: 0 }) })).type.not.toRaiseError()
+        data.contact.update(entity, {
           state: "air",
           data: (air) => {
             expect(air).type.toBe<{ readonly _tag: "air"; readonly vy: number; readonly coyote: number }>()
@@ -99,30 +102,31 @@ describe("Descriptor.EntityState", () => {
           }
         })
         // @ts-expect-error Property 'coyote' is missing in type '{ vy: number; }'
-        data.contact.update({ state: "air", data: () => ({ vy: 1 }) })
+        data.contact.update(entity, { state: "air", data: () => ({ vy: 1 }) })
         // A field of another state does not compile, even through a spread.
         // @ts-expect-error air has no field platform
-        data.contact.update({ state: "air", data: (air) => ({ ...air, platform: 1 }) })
+        data.contact.update(entity, { state: "air", data: (air) => ({ ...air, platform: 1 }) })
         // It cannot leave the state.
         // @ts-expect-error Type '"ground"' is not assignable to type '"air"'.
-        data.contact.update({ state: "air", data: (air) => ({ ...air, _tag: "ground" as const }) })
+        data.contact.update(entity, { state: "air", data: (air) => ({ ...air, _tag: "ground" as const }) })
         // @ts-expect-error Type '"swim"' is not assignable to type '"ground" | "crouch" | "air"'.
-        data.contact.update({ state: "swim", data: (value) => value })
+        data.contact.update(entity, { state: "swim", data: (value) => value })
       }
     })
   })
 
   it("keeps set and setRaw for resets, and drops the unscoped writes", () => {
     Game.System("StateTypes/Reset", { queries: { bodies: Bodies } }, ({ queries }) => {
-      for (const { data } of queries.bodies.each()) {
-        expect(data.contact.set({ _tag: "ground", platform: null })).type.not.toRaiseError()
+      const { data } = queries.bodies
+      for (const entity of queries.bodies.each()) {
+        expect(data.contact.set(entity, { _tag: "ground", platform: null })).type.not.toRaiseError()
         // @ts-expect-error Object literal may only specify known properties, and 'vy' does not exist in type
-        data.contact.set({ _tag: "ground", platform: null, vy: 1 })
-        expect(data.contact.setRaw({ _tag: "crouch" })).type.not.toRaiseError()
+        data.contact.set(entity, { _tag: "ground", platform: null, vy: 1 })
+        expect(data.contact.setRaw(entity, { _tag: "crouch" })).type.not.toRaiseError()
         expect(data.contact).type.not.toHaveProperty("updateRaw")
-        // Two arguments: the positional form is gone.
-        // @ts-expect-error Expected 1 arguments, but got 2.
-        data.phase.transition("ready", "windup")
+        // Three arguments: the positional form is gone.
+        // @ts-expect-error Expected 2 arguments, but got 3.
+        data.phase.transition(entity, "ready", "windup")
       }
     })
   })

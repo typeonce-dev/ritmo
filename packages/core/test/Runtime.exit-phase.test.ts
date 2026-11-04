@@ -86,13 +86,14 @@ describe("the exit phase of a transition", () => {
     const Rename = Game.System("ExitPhase/Rename", {
       queries: { named: Game.Query({ selection: { name: Game.Query.write(Name) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.named.each()) data.name.set("during")
+      const { data } = queries.named
+      for (const entity of queries.named.each()) data.name.set(entity, "during")
     })
     const Fail = Game.System("ExitPhase/Fail", {}, () => Result.failure("busy"))
     const Watch = Game.System("ExitPhase/Watch", {
       queries: { renamed: Game.Query({ selection: { name: Game.Query.read(Name) }, filters: [Game.Query.changed(Name)] }) }
     }, ({ queries }) => {
-      seen.push(queries.renamed.each().map((match) => match.data.name.get()))
+      seen.push(queries.renamed.each().map((entity) => queries.renamed.data.name.get(entity)))
     })
     const transitions = Game.Schedule.transitions(
       Game.Schedule.onExit(Flow, "Playing", [Rename]),

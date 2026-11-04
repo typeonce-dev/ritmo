@@ -21,7 +21,7 @@
  * spawns to render new entities in the same tick.
  *
  * `create` and `apply` receive one context: the renderable and transform
- * values, the entity id, extra read-only slots declared in `select` (as query
+ * values, the entity id, extra read-only slots declared in `select` (as read
  * cells in `data`), resources declared in `resources` (as read cells), and extra
  * services declared in `services`. Those resources and services become
  * runtime requirements like the registry itself.
@@ -256,6 +256,19 @@ export const system = <
     resources[key] = Game.System.readResource(descriptor)
   }
 
+  // The selected slots as read cells of one entity, for the callbacks: an optional slot is `undefined` while empty.
+  const selectedSlots = Object.entries(options.select ?? {}).map(([slot, access]) => [slot, access.mode === "optional"] as const)
+  const noCells = {}
+  const selectedCells = (entity: { readonly id: unknown }, data: Record<string, any>): object => {
+    if (selectedSlots.length === 0) return noCells
+    const cells: Record<string, unknown> = {}
+    for (const [slot, optional] of selectedSlots) {
+      const read = data[slot]
+      cells[slot] = optional && !read.has(entity) ? undefined : { get: () => read.get(entity) }
+    }
+    return cells
+  }
+
   const contextOf = (
     entity: { readonly id: unknown },
     data: Record<string, any>,
@@ -263,9 +276,9 @@ export const system = <
     cells: Record<string, unknown>
   ): Context => ({
     entity: entity.id,
-    renderable: data["__renderable"].get(),
-    transform: data["__transform"]?.get(),
-    data,
+    renderable: data["__renderable"].get(entity),
+    transform: data["__transform"]?.get(entity),
+    data: selectedCells(entity, data),
     resources: cells,
     services: provided
   }) as unknown as Context
@@ -327,17 +340,18 @@ export const system = <
     // entity no longer has one, so none stays on screen.
     if (lagged) {
       const members = new Set<number>()
-      for (const { entity } of queries["members"].each()) members.add(entity.id)
+      for (const entity of queries["members"].each()) members.add(entity.id)
       for (const [entity] of [...registry.entries()]) {
         if (!members.has(entity)) registry.remove(entity)
       }
     }
 
-    for (const { entity, data } of queries["sync"].each()) {
+    const data = queries["sync"].data
+    for (const entity of queries["sync"].each()) {
       const context = contextOf(entity, data, services, resources)
       // A child met before its parent's node exists starts at the root; the
       // pass below moves it under the parent in this same run.
-      const parent: number | undefined = hierarchy === undefined ? undefined : data["__parent"]?.get()
+      const parent: number | undefined = hierarchy === undefined ? undefined : data["__parent"]?.get(entity)
       options.apply(registry.ensure(entity.id, () => options.create(context), parent), context)
     }
 
@@ -352,7 +366,8 @@ interface HierarchyLookup {
 }
 
 interface ParentedQuery {
-  each(): Iterable<{ readonly entity: { readonly id: number }; readonly data: { readonly __parent: { get(): number } } }>
+  each(): Iterable<{ readonly id: number }>
+  readonly data: { readonly __parent: { get(entity: unknown): number } }
 }
 
 // Moves every node whose parent changed since it was attached: the entity
@@ -370,10 +385,11 @@ const reattach = (
   let moves: Array<{ readonly entity: number; readonly parent: number | undefined; depth: number }> | undefined
   // Nested nodes whose entity still has a parent; any other nested node lost it.
   let stillParented = 0
-  for (const { entity, data } of parented.each()) {
+  const { data } = parented
+  for (const entity of parented.each()) {
     const attached = registry.parents.get(entity.id)
     if (attached !== undefined) stillParented++
-    const parent = data.__parent.get()
+    const parent = data.__parent.get(entity)
     if (attached === parent) continue
     const wanted = registry.get(parent) === undefined ? undefined : parent
     if (attached === wanted || registry.get(entity.id) === undefined) continue
@@ -574,15 +590,16 @@ export const interpolate = <
     const alpha = (services.clock as { readonly alpha: number }).alpha
     const blend = options.blend as Blend<unknown, unknown, Placed<Result>> | undefined
     const place = options.place
-    for (const { entity, data } of queries.entities.each()) {
+    const { data } = queries.entities
+    for (const entity of queries.entities.each()) {
       const node = registry.get(entity.id)
       if (node === undefined) continue
       if (blend !== undefined) {
-        place(node, blend(data.previous.get(), data.current.get(), alpha), entity.id)
+        place(node, blend(data.previous.get(entity), data.current.get(entity), alpha), entity.id)
         continue
       }
-      const from = data.previous.get() as Planar
-      const to = data.current.get() as Planar
+      const from = data.previous.get(entity) as Planar
+      const to = data.current.get(entity) as Planar
       place(node, { x: from.x + (to.x - from.x) * alpha, y: from.y + (to.y - from.y) * alpha } as Placed<Result>, entity.id)
     }
   }) as RenderSystem<S, Root, Registry | Clock | ConditionNeedsFromConditions<When>>

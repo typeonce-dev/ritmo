@@ -70,8 +70,9 @@ const SeededGust = Game.System(
   ({ queries, resources }) => {
     if (!gusting(resources.tick.get())) return
     const rng = Random.draw(resources.rng)
-    for (const { data } of queries.balls.each()) {
-      data.velocity.set(push(data.velocity.get(), rng.range(0, 2 * Math.PI), Ops.cos, Ops.sin))
+    const { data } = queries.balls
+    for (const entity of queries.balls.each()) {
+      data.velocity.set(entity, push(data.velocity.get(entity), rng.range(0, 2 * Math.PI), Ops.cos, Ops.sin))
     }
   }
 )
@@ -82,17 +83,19 @@ const UnseededGust = Game.System(
   { queries: { balls: Balls }, resources: { tick: Game.System.readResource(Tick) } },
   ({ queries, resources }) => {
     if (!gusting(resources.tick.get())) return
-    for (const { data } of queries.balls.each()) {
+    const { data } = queries.balls
+    for (const entity of queries.balls.each()) {
       // oxlint-disable-next-line ritmo/use-random-for-randomness -- the demo's point: this copy drifts
       const angle = Math.random() * 2 * Math.PI
-      data.velocity.set(push(data.velocity.get(), angle, Ops.cos, Ops.sin))
+      data.velocity.set(entity, push(data.velocity.get(entity), angle, Ops.cos, Ops.sin))
     }
   }
 )
 
 /** Moves the balls, bounces them off the walls and off each other. */
 const Bounce = Game.System("Drift/Bounce", { queries: { balls: Balls } }, ({ queries }) => {
-  const balls = queries.balls.each().map(({ data }) => ({ data, p: { ...data.position.get() }, v: { ...data.velocity.get() } }))
+  const { data } = queries.balls
+  const balls = queries.balls.each().map((entity) => ({ entity, p: { ...data.position.get(entity) }, v: { ...data.velocity.get(entity) } }))
   for (const ball of balls) {
     ball.p.x += ball.v.x
     ball.p.y += ball.v.y
@@ -126,8 +129,8 @@ const Bounce = Game.System("Drift/Bounce", { queries: { balls: Balls } }, ({ que
     }
   }
   for (const ball of balls) {
-    ball.data.position.set(ball.p)
-    ball.data.velocity.set(ball.v)
+    data.position.set(ball.entity, ball.p)
+    data.velocity.set(ball.entity, ball.v)
   }
 })
 
@@ -138,7 +141,7 @@ export const drifting = Game.Schedule(Count, UnseededGust, Bounce)
 const ReadBalls = Game.Inspector(
   "Drift/Read",
   { queries: { balls: Game.Query({ selection: { position: Game.Query.read(Position) } }) } },
-  ({ queries }) => queries.balls.each().map(({ data }) => data.position.get())
+  ({ queries }) => queries.balls.each().map((entity) => queries.balls.data.position.get(entity))
 )
 
 /** FNV-1a over the bits of every position, as 8 hex digits. */

@@ -19,18 +19,21 @@ const Spawn = Game.System("Labels/Spawn", { commands: Game.System.commands(Game.
 const Move = Game.System("Labels/Move", {
   queries: { movers: Game.Query({ selection: { position: Game.Query.write(Position) } }) }
 }, ({ queries }) => {
-  for (const match of queries.movers.each()) match.data.position.update((position) => ({ x: position.x + 1 }))
+  const { data } = queries.movers
+  for (const entity of queries.movers.each()) data.position.update(entity, (position) => ({ x: position.x + 1 }))
 })
 const Hurt = Game.System("Labels/Hurt", {
   queries: { healthy: Game.Query({ selection: { health: Game.Query.write(Health) } }) }
 }, ({ queries }) => {
-  for (const match of queries.healthy.each()) match.data.health.update((health) => health - 1)
+  const { data } = queries.healthy
+  for (const entity of queries.healthy.each()) data.health.update(entity, (health) => health - 1)
 })
 const Squash = Game.System("Labels/Squash", {
   queries: { slimes: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Slime] }) },
   commands: Game.System.commands(Game.System.despawns(Slime))
 }, ({ queries, commands }) => {
-  for (const { entity, data } of queries.slimes.each()) if (data.position.get().x >= 12) commands.despawn(entity)
+  const { data } = queries.slimes
+  for (const entity of queries.slimes.each()) if (data.position.get(entity).x >= 12) commands.despawn(entity)
 })
 
 /** The player is `player` while healthy and `player:hurt` below 2 health; slimes are `enemy:slime`. */
@@ -40,13 +43,13 @@ const Labels = Game.Inspector("labels", {
     slimes: Game.Query({ selection: { slime: Game.Query.read(Slime) } })
   }
 }, ({ queries }) => new Map([
-  ...queries.players.each().map((match) => [match.entity.id, match.data.health.get() < 2 ? "player:hurt" : "player"] as const),
-  ...queries.slimes.each().map((match) => [match.entity.id, "enemy:slime"] as const)
+  ...queries.players.each().map((entity) => [entity.id, queries.players.data.health.get(entity) < 2 ? "player:hurt" : "player"] as const),
+  ...queries.slimes.each().map((entity) => [entity.id, "enemy:slime"] as const)
 ]))
 
 const PlayerAlive = Invariant.fromInspector(Game.Inspector("player alive", {
   queries: { players: Game.Query({ selection: { health: Game.Query.read(Health) }, with: [Player] }) }
-}, ({ queries }) => queries.players.each().map((match) => match.data.health.get() <= 0 ? `e${match.entity.id} has ${match.data.health.get()} health` : undefined).find((message) => message !== undefined)))
+}, ({ queries }) => queries.players.each().map((entity) => queries.players.data.health.get(entity) <= 0 ? `e${entity.id} has ${queries.players.data.health.get(entity)} health` : undefined).find((message) => message !== undefined)))
 
 const setup = Game.Schedule(Spawn, Game.Schedule.applyDeferred())
 const update = Game.Schedule(Move, Hurt, Squash, Game.Schedule.applyDeferred())
@@ -131,7 +134,8 @@ describe("Session labels", () => {
     const Broken = Game.System("Labels/Broken", {
       queries: { players: Game.Query({ selection: { position: Game.Query.write(Position) }, with: [Player] }) }
     }, ({ queries }) => {
-      for (const match of queries.players.each()) match.data.position.set({ x: Number.NaN })
+      const { data } = queries.players
+      for (const entity of queries.players.each()) data.position.set(entity, { x: Number.NaN })
     })
     const runtime = makeRuntime()
     const session = Session.make(runtime, { hostClock, schedules: { setup, broken: Game.Schedule(Broken) }, labels: Labels })
@@ -176,7 +180,8 @@ describe("labels in diffs", () => {
     const Drift = Game.System("Labels/Drift", {
       queries: { players: Game.Query({ selection: { position: Game.Query.write(Position) }, with: [Player] }) }
     }, ({ queries }) => {
-      for (const match of queries.players.each()) match.data.position.set({ x: ++counter })
+      const { data } = queries.players
+      for (const entity of queries.players.each()) data.position.set(entity, { x: ++counter })
     })
     const result = Determinism.check(({ hostClock }) => {
       const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value

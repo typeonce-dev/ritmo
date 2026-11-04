@@ -78,5 +78,24 @@ export const koota: Library = {
         for (const entity of [...world.query(B)]) entity.remove(B)
       }
     }
+  },
+  move: () => {
+    const world = createWorld()
+    const Position = trait({ x: 0, y: 0 })
+    const Velocity = trait({ x: 1, y: 2 })
+    for (let index = 0; index < 100_000; index++) world.spawn(Position, Velocity)
+    return {
+      run: () => {
+        world.query(Position, Velocity).useStores(([position, velocity], entities) => {
+          const { x: px, y: py } = position
+          const { x: vx, y: vy } = velocity
+          for (const entity of entities) {
+            const id = entity.id()
+            px[id]! += vx[id]!
+            py[id]! += vy[id]!
+          }
+        })
+      }
+    }
   }
 }

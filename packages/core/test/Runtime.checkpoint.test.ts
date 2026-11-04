@@ -56,9 +56,9 @@ const Spawner = Game.System("Checkpoint/Spawner", {
   resources.counter.set(count)
   const root = queries.roots.each()[0]
   const draft = Game.Command.spawn([Pos, { x: seed % 100 }], [Health, 1 + (seed % 4)], [Sprite, { frame: count }])
-  const owned = root === undefined ? draft : Game.Command.extend(draft, [Owner, { id: root.entity.id }])
+  const owned = root === undefined ? draft : Game.Command.extend(draft, [Owner, { id: root.id }])
   const spawned = count % 5 === 3 ? commands.spawnIn(Wave, owned) : commands.spawn(owned)
-  if (root !== undefined) commands.relate(spawned, ChildOf, root.entity.id)
+  if (root !== undefined) commands.relate(spawned, ChildOf, root.id)
 })
 
 const Mover = Game.System("Checkpoint/Mover", {
@@ -66,8 +66,9 @@ const Mover = Game.System("Checkpoint/Mover", {
   queries: { moving: Game.Query({ selection: { pos: Game.Query.write(Pos) }, with: [Owner] }) }
 }, ({ resources, queries }) => {
   const input = resources.input.get()
-  for (const { data } of queries.moving.each()) {
-    if (input % 2 === 0) data.pos.update((pos) => ({ x: pos.x + 1 }))
+  const { data } = queries.moving
+  for (const entity of queries.moving.each()) {
+    if (input % 2 === 0) data.pos.update(entity, (pos) => ({ x: pos.x + 1 }))
   }
 })
 
@@ -78,15 +79,16 @@ const Damager = Game.System("Checkpoint/Damager", {
   commands: Game.System.commands(Game.System.despawns(Health), Game.System.inserts(Shield), Game.System.removes(Shield))
 }, ({ resources, queries, events, commands }) => {
   const input = resources.input.get()
-  for (const { entity, data } of queries.hurt.each()) {
+  const { data } = queries.hurt
+  for (const entity of queries.hurt.each()) {
     if ((entity.id + input) % 4 === 0) {
-      if (data.shield !== undefined) commands.remove(entity, Shield)
+      if (data.shield.get(entity) !== undefined) commands.remove(entity, Shield)
       else commands.insert(entity, Game.Command.entry(Shield, {}))
       continue
     }
-    if (data.shield !== undefined) continue
-    const left = data.health.get() - 1
-    data.health.set(left)
+    if (data.shield.get(entity) !== undefined) continue
+    const left = data.health.get(entity) - 1
+    data.health.set(entity, left)
     events.hit.emit({ id: entity.id, left })
     if (left <= 0) commands.despawn(entity)
   }
@@ -116,8 +118,8 @@ const Watcher = Game.System("Checkpoint/Watcher", {
   transitionEvents: { phase: Game.System.readTransitionEvent(Phase) }
 }, ({ queries, resources, events, removed, despawned, transitionEvents }) => {
   const parts = [
-    `added ${queries.added.each().map(({ entity }) => entity.id).join(",")}`,
-    `changed ${queries.changed.each().map(({ entity, data }) => `${entity.id}=${data.health.get()}`).join(",")}`,
+    `added ${queries.added.each().map((entity) => entity.id).join(",")}`,
+    `changed ${queries.changed.each().map((entity) => `${entity.id}=${queries.changed.data.health.get(entity)}`).join(",")}`,
     `hits ${events.hit.all().map((hit) => `${hit.id}:${hit.left}`).join(",")}`,
     `unshielded ${removed.shield.all().join(",")}`,
     `despawned ${despawned.all.all().join(",")}`,
@@ -152,9 +154,10 @@ const Draw = Game.System("Checkpoint/Draw", {
   for (const id of removed.pos.all()) {
     if (mirror.nodes.delete(id)) mirror.destroyed += 1
   }
-  for (const { entity, data } of queries.shown.each()) {
+  const { data } = queries.shown
+  for (const entity of queries.shown.each()) {
     if (!mirror.nodes.has(entity.id)) mirror.created += 1
-    mirror.nodes.set(entity.id, data.pos.get().x)
+    mirror.nodes.set(entity.id, data.pos.get(entity).x)
   }
 })
 const render = Game.Schedule(Draw)
@@ -163,12 +166,12 @@ const ReadWorld = Game.Inspector("Checkpoint/ReadWorld", {
   queries: {
     all: Game.Query({ selection: { pos: Game.Query.optional(Pos), health: Game.Query.optional(Health), shield: Game.Query.optional(Shield), children: Game.Query.optionalRelated(ChildOf) } })
   }
-}, ({ queries }) => queries.all.each().map(({ entity, data }) => ({
+}, ({ queries }) => queries.all.each().map((entity) => ({
   id: entity.id,
-  pos: data.pos?.get(),
-  health: data.health?.get(),
-  shield: data.shield !== undefined,
-  children: data.children?.get()
+  pos: queries.all.data.pos.get(entity),
+  health: queries.all.data.health.get(entity),
+  shield: queries.all.data.shield.get(entity) !== undefined,
+  children: queries.all.data.children.get(entity)
 })))
 
 const makeGame = () => {
@@ -433,15 +436,16 @@ describe("Runtime checkpoints of mixed pages", () => {
   }, ({ resources, queries }) => {
     const turn = resources.turn.get() + 1
     resources.turn.set(turn)
-    for (const { entity, data } of queries.all.each()) {
+    const { data } = queries.all
+    for (const entity of queries.all.each()) {
       // Each entity alternates between a number and "full", out of step with the others.
-      data.charge.set((entity.id + turn) % 2 === 0 ? "full" : entity.id * 10 + turn)
+      data.charge.set(entity, (entity.id + turn) % 2 === 0 ? "full" : entity.id * 10 + turn)
     }
   })
   const simulate = Mixed.Schedule(Step)
   const ReadCharges = Mixed.Inspector("CheckpointMixed/Read", {
     queries: { all: Mixed.Query({ selection: { charge: Mixed.Query.read(Charge) } }) }
-  }, ({ queries }) => queries.all.each().map(({ entity, data }) => [entity.id, data.charge.get()] as const))
+  }, ({ queries }) => queries.all.each().map((entity) => [entity.id, queries.all.data.charge.get(entity)] as const))
 
   const make = () => {
     const runtime = Mixed.Runtime.make({ services: Mixed.Runtime.services(), resources: { Turn: 0 } }).value
@@ -488,21 +492,22 @@ describe("Runtime checkpoints of mixed pages", () => {
         commands.spawn(Mixed.Command.spawn([Target, { x: 0 }]))
         return
       }
-      for (const { entity, data } of queries.targets.each()) {
+      const { data } = queries.targets
+      for (const entity of queries.targets.each()) {
         const n = turn * 10 + entity.id
         // Within one run: a number then an object, an object then a number, or a number alone.
         if (turn % 3 === 0) {
-          data.target.set(n)
-          data.target.set({ x: n })
+          data.target.set(entity, n)
+          data.target.set(entity, { x: n })
         } else if (turn % 3 === 1) {
-          data.target.set({ x: n })
-          data.target.set(n)
-        } else data.target.set(n + 0.5)
+          data.target.set(entity, { x: n })
+          data.target.set(entity, n)
+        } else data.target.set(entity, n + 0.5)
       }
     })
     const ReadTargets = Mixed.Inspector("CheckpointSwap/Read", {
       queries: { targets: Mixed.Query({ selection: { target: Mixed.Query.read(Target) } }) }
-    }, ({ queries }) => queries.targets.each().map(({ entity, data }) => [entity.id, data.target.get()] as const))
+    }, ({ queries }) => queries.targets.each().map((entity) => [entity.id, queries.targets.data.target.get(entity)] as const))
     const schedule = Mixed.Schedule(Swap, Mixed.Schedule.applyDeferred())
     const runtime = Mixed.Runtime.make({ services: Mixed.Runtime.services(), resources: { Turn: 0 }, debug: { hostClock: HostClock.test() } }).value
 

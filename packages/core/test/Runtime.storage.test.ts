@@ -68,7 +68,7 @@ describe("Runtime storage", () => {
     })
     let seen: Array<number> = []
     const Observe = Game.System("Storage/ObserveOrder", { queries: { tagged: Tagged } }, ({ queries }) => {
-      seen = queries.tagged.each().map((match) => match.data.position.get().x)
+      seen = queries.tagged.each().map((entity) => queries.tagged.data.position.get(entity).x)
     })
 
     const runtime = makeRuntime()
@@ -86,10 +86,11 @@ describe("Runtime storage", () => {
     const matches: Array<unknown> = []
     const values: Array<number> = []
     const Step = Game.System("Storage/Step", { queries: { positions: Positions } }, ({ queries }) => {
-      for (const match of queries.positions.each()) {
-        matches.push(match)
-        values.push(match.entity.proof.position.x)
-        match.data.position.update((position) => ({ x: position.x + 1 }))
+      const { data } = queries.positions
+      for (const entity of queries.positions.each()) {
+        matches.push(entity)
+        values.push(data.position.get(entity).x)
+        data.position.update(entity, (position) => ({ x: position.x + 1 }))
       }
     })
 
@@ -116,7 +117,7 @@ describe("Runtime storage", () => {
       commands: Game.System.commands(Game.System.despawns(Position), Game.System.inserts(Tag))
     }, ({ queries, commands }) => {
       const match = queries.positions.get(target!)
-      if (match.ok) commands.despawn(match.value.entity)
+      if (match.ok) commands.despawn(match.value)
       commands.insert(target!, [Tag, {}])
     })
     let found = true

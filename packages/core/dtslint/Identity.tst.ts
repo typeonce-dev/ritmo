@@ -57,11 +57,11 @@ describe("Game.Entity.id", () => {
   it("returns the entity id a handle names, with or without an intent", () => {
     const Healths = Game.Query({ selection: { health: Game.Query.read(Health) } })
     Game.System("Identity/Ids", { queries: { healths: Healths } }, ({ queries }) => {
-      for (const match of queries.healths.each()) {
-        expect(Game.Entity.id(Game.Entity.handle(match.entity))).type.toBe<typeof match.entity.id>()
-        expect(Game.Entity.id(Game.Entity.handle(match.entity, Health))).type.toBe<typeof match.entity.id>()
+      for (const entity of queries.healths.each()) {
+        expect(Game.Entity.id(Game.Entity.handle(entity))).type.toBe<typeof entity.id>()
+        expect(Game.Entity.id(Game.Entity.handle(entity, Health))).type.toBe<typeof entity.id>()
         // @ts-expect-error is not assignable to parameter of type
-        Other.Entity.id(Game.Entity.handle(match.entity))
+        Other.Entity.id(Game.Entity.handle(entity))
       }
     })
   })

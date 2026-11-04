@@ -32,14 +32,15 @@ describe("immutable components", () => {
     const Watch = Game.System("Immutable/Watch", {
       queries: { kinds: Game.Query({ selection: { kind: Game.Query.read(Kind) }, filters: [Game.Query.changed(Kind)] }) }
     }, ({ queries }) => {
-      seen.push(queries.kinds.each().map((match) => match.data.kind.get()))
+      seen.push(queries.kinds.each().map((entity) => queries.kinds.data.kind.get(entity)))
     })
     const Upgrade = Game.System("Immutable/Upgrade", {
       queries: { kinds: Game.Query({ selection: { kind: Game.Query.read(Kind), position: Game.Query.read(Position) } }) },
       commands: Game.System.commands(Game.System.inserts(Kind))
     }, ({ queries, commands }) => {
-      for (const match of queries.kinds.each()) {
-        if (match.data.position.get().x === 1) commands.insert(match.entity.id, Game.Command.entry(Kind, "pickup"))
+      const { data } = queries.kinds
+      for (const entity of queries.kinds.each()) {
+        if (data.position.get(entity).x === 1) commands.insert(entity.id, Game.Command.entry(Kind, "pickup"))
       }
     })
     const runtime = makeRuntime()

@@ -384,11 +384,12 @@ export interface DeadlineBrand<Hz extends number> {
  *   events: { hit: Game.System.writeEvent(Hit) }
  * }, ({ queries, resources, events }) => {
  *   const time = resources.time.get()
- *   for (const { data } of queries.armed.each()) {
- *     const { ready } = data.weapon.get()
+ *   const { data } = queries.armed
+ *   for (const entity of queries.armed.each()) {
+ *     const { ready } = data.weapon.get(entity)
  *     if (ready === null || Clock.reached(time, ready)) {
  *       events.hit.emit({ amount: 1 })
- *       data.weapon.set({ ready: Clock.deadline(time, cooldown) })
+ *       data.weapon.set(entity, { ready: Clock.deadline(time, cooldown) })
  *     }
  *   }
  * })

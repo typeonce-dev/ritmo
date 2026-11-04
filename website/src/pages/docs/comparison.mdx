@@ -93,9 +93,9 @@ const Stun = Game.System("Arena/Stun", {
   queries: { calm: Calm },
   commands: Game.System.commands(Game.System.inserts(Stunned))
 }, ({ queries, commands }) => {
-  for (const match of queries.calm.each()) {
-    commands.insert(match.entity, [Stunned, 30])
-    commands.insert(match.entity, [Velocity, { x: 0, y: 0 }])
+  for (const entity of queries.calm.each()) {
+    commands.insert(entity, [Stunned, 30])
+    commands.insert(entity, [Velocity, { x: 0, y: 0 }])
   }
 })
 ```
@@ -156,12 +156,12 @@ const Follow = Game.System("Arena/Follow", {
     local.target = undefined
     return
   }
-  const { x, y } = target.value.data.position.get()
+  const { x, y } = queries.guards.data.position.get(target.value)
 })
 ```
 
-A query match kept instead of the id throws on its next use, and the
-message says to keep the id.
+An entity kept from an earlier run keeps naming that entity, and reading a
+component it no longer holds throws, and the message says to keep the id.
 
 </Claim>
 
@@ -422,8 +422,7 @@ const Stun = Game.System(
   },
   ({ queries, events, commands }) => {
     if (events.hits.all().length === 0) return
-    for (const match of queries.calm.each())
-      commands.insert(match.entity, [Stunned, 30])
+    for (const entity of queries.calm.each()) commands.insert(entity, [Stunned, 30])
   }
 )
 
@@ -436,10 +435,11 @@ const Recover = Game.System(
     commands: Game.System.commands(Game.System.removes(Stunned)) // [!code highlight]
   },
   ({ queries, commands }) => {
-    for (const match of queries.stunned.each()) {
-      const frames = match.data.frames.get() - 1
-      if (frames > 0) match.data.frames.set(frames)
-      else commands.remove(match.entity, Stunned)
+    const { data } = queries.stunned
+    for (const entity of queries.stunned.each()) {
+      const frames = data.frames.get(entity) - 1
+      if (frames > 0) data.frames.set(entity, frames)
+      else commands.remove(entity, Stunned)
     }
   }
 )
@@ -459,10 +459,11 @@ const Move = Game.System(
     }
   },
   ({ queries }) => {
-    for (const { data } of queries.moving.each()) {
-      const position = data.position.get()
-      const velocity = data.velocity.get()
-      data.position.set({
+    const { data } = queries.moving
+    for (const entity of queries.moving.each()) {
+      const position = data.position.get(entity)
+      const velocity = data.velocity.get(entity)
+      data.position.set(entity, {
         x: position.x + velocity.x,
         y: position.y + velocity.y
       })
@@ -475,21 +476,39 @@ Ritmo's version is the longest. The extra lines are the declarations, and
 the cards above show what they buy.
 ## Performance
 
-Ritmo gives up some speed for its guarantees. On the
-[community ECS benchmark](https://github.com/noctjs/ecs-benchmark) it runs
-close to Miniplex and well behind bitECS's raw arrays (`pnpm bench:compare`
-in the [repository](https://github.com/typeonce-dev/ritmo/tree/main/bench/compare)
-runs it). The work the others skip:
+Ritmo gives up speed for its guarantees, and this is how much. Each number is
+how many times slower than bitECS with typed arrays, the fastest in each loop:
+
+| Loop | Ritmo | Koota | Miniplex |
+|---|---|---|---|
+| Add and remove a component (`add_remove`) | level | 1.2x | 2.8x |
+| Spawn and despawn (`entity_cycle`) | level | 2.5x | 1.3x |
+| Double one number (`packed_5`) | 6x | 1.6x | 17x |
+| Double one number across shapes (`frag_iter`) | 11x | 2.6x | 21x |
+| Swap two numbers (`simple_iter`) | 14x | 1.9x | 26x |
+| Add velocity to position on 100,000 entities (`move`) | 18x | 3.1x | 5.8x |
+
+The first five are the [community ECS benchmark](https://github.com/noctjs/ecs-benchmark),
+at a few thousand entities. `move` is the loop most games write. In time, it
+costs Ritmo about 25 ns per entity, so 100,000 entities take about 2.5 ms of a
+16.7 ms frame; with `{ x, y }` objects, that time moves between runs by up to
+three times. Measured on an Apple M1 with Node 24;
+`pnpm bench:compare` in the
+[repository](https://github.com/typeonce-dev/ritmo/tree/main/bench/compare) runs
+them. The work the others skip:
 
 - **Every write keeps the old value** until the system finishes, so a
   failing system can be rolled back.
 - **A change is a different value**: old and new are compared when the
   system commits, so `changed` never sees a write that changed nothing.
-- **Every access through a query match is checked**: the match must come
-  from this run, and its entity must still hold the component.
+- **Every access is checked**: a query's `data` must come from this run, and
+  the entity must still hold the component.
 - **Structural changes are queued** until `applyDeferred()`, so no system
   sees the world change shape mid-run.
 - **Values are immutable**: an object component is replaced, not edited in
   place. A number component is stored unboxed, so its writes allocate
   nothing.
 - **Declared access costs lines, not time**: the compiler does those checks.
+
+Ritmo also runs every system on one thread. bitECS's typed arrays can sit on a
+`SharedArrayBuffer` for your own workers; Ritmo's storage cannot.
