@@ -2,7 +2,8 @@
  * The local server under every review page: the page itself, and the tool's
  * small API beside it under `/api`. The published package serves the page as
  * built (`dist/<tool>/page`, made by `prepack`); inside the repository, where
- * it is not built, Vite serves it from its source (`src/<tool>/ui`).
+ * it is not built, Vite serves it from its source (`src/<tool>/ui`, or the
+ * folder the tool names).
  */
 import { existsSync } from "node:fs"
 import { readFile, stat } from "node:fs/promises"
@@ -17,6 +18,8 @@ export type Handler = (request: IncomingMessage, response: ServerResponse) => Pr
 export interface PageOptions {
   /** The folder of the tool's `serve.ts` (`import.meta.url`): `../page` is the built page, `../ui` its source. */
   readonly from: string
+  /** The page's source folder, from `from`, when it is not `../ui` (the pixel fixer's page has that one). */
+  readonly source?: string | undefined
   /** Names the Vite plugin, for its errors. */
   readonly name: string
   readonly port: number
@@ -127,5 +130,5 @@ const serveSource = async (source: string, options: PageOptions, handler: Handle
 /** Starts the page; resolves with its address once it listens. */
 export const servePage = (options: PageOptions, handler: Handler): Promise<Address> => {
   const built = resolve(options.from, "../page")
-  return existsSync(join(built, "index.html")) ? serveBuilt(built, options, handler) : serveSource(resolve(options.from, "../ui"), options, handler)
+  return existsSync(join(built, "index.html")) ? serveBuilt(built, options, handler) : serveSource(resolve(options.from, options.source ?? "../ui"), options, handler)
 }
