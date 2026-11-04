@@ -146,3 +146,93 @@ export const spritesheetJson = (info: SpritesheetInfo): string => {
     ) + "\n"
   )
 }
+
+// ---------------------------------------------------------------------------
+// Reading a sheet's JSON back
+
+/** One frame of a sheet as its JSON places it: a box on the picture, and how long it shows in milliseconds. */
+export interface SheetRect {
+  readonly name: string
+  readonly x: number
+  readonly y: number
+  readonly w: number
+  readonly h: number
+  readonly duration: number
+}
+
+/** One animation of a sheet read back: its frames (indices into the sheet's), as the JSON lists them and in the order they play. */
+export interface SheetAnimationRead {
+  readonly name: string
+  readonly frames: ReadonlyArray<number>
+  /** `frames` played forward, backward, or there and back. */
+  readonly play: ReadonlyArray<number>
+}
+
+/** A sheet as a review shows it: its frames, and its animations. */
+export interface ReadSheet {
+  readonly frames: ReadonlyArray<SheetRect>
+  readonly animations: ReadonlyArray<SheetAnimationRead>
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
+
+/** The frame time Aseprite gives a frame with no duration. */
+const DEFAULT_DURATION = 100
+
+const rectOf = (name: string, raw: unknown): SheetRect | undefined => {
+  if (!isRecord(raw) || !isRecord(raw.frame)) return undefined
+  const { x, y, w, h } = raw.frame
+  if (!Number.isInteger(x) || !Number.isInteger(y) || !Number.isInteger(w) || !Number.isInteger(h) || typeof x !== "number" || typeof y !== "number" || typeof w !== "number" || typeof h !== "number") return undefined
+  return { name, x, y, w, h, duration: typeof raw.duration === "number" && raw.duration > 0 ? raw.duration : DEFAULT_DURATION }
+}
+
+/**
+ * Reads a spritesheet's JSON (`spritesheetJson`'s, or any "hash" or "array"
+ * one with frame boxes, as Aseprite and TexturePacker write) for the picture
+ * it sits beside. `undefined` when it is not a sheet's JSON at all (another
+ * format, a JSON map): the picture is then a still. A sheet whose frames do
+ * not fit the picture is an error.
+ *
+ * Animations come from Pixi's `animations`, else Aseprite's `frameTags`
+ * (played the way each says: forward, reverse, or there and back), else all
+ * the frames in order as one.
+ */
+export const readSpritesheet = (json: unknown, picture: { readonly width: number; readonly height: number }): { readonly ok: true; readonly sheet: ReadSheet } | { readonly ok: false; readonly error: string } | undefined => {
+  if (!isRecord(json)) return undefined
+  const entries: Array<readonly [string, unknown]> = Array.isArray(json.frames)
+    ? json.frames.map((frame: unknown, i) => [isRecord(frame) && typeof frame.filename === "string" ? frame.filename : String(i), frame] as const)
+    : isRecord(json.frames)
+      ? Object.entries(json.frames)
+      : []
+  const frames = entries.map(([name, raw]) => rectOf(name, raw))
+  if (frames.length === 0 || frames.some((frame) => frame === undefined)) return undefined
+  const rects = frames.filter((frame): frame is SheetRect => frame !== undefined)
+  const outside = rects.find((rect) => rect.w < 1 || rect.h < 1 || rect.x < 0 || rect.y < 0 || rect.x + rect.w > picture.width || rect.y + rect.h > picture.height)
+  if (outside !== undefined) return { ok: false, error: `its frame "${outside.name}" (${outside.x},${outside.y} ${outside.w}×${outside.h}) is not on the ${picture.width}×${picture.height} picture` }
+  const index = new Map(rects.map((rect, i) => [rect.name, i]))
+  const meta = isRecord(json.meta) ? json.meta : {}
+  const tags = (Array.isArray(meta.frameTags) ? meta.frameTags : []).filter(
+    (tag): tag is { readonly name: string; readonly from: number; readonly to: number; readonly direction?: unknown } =>
+      isRecord(tag) && typeof tag.name === "string" && Number.isInteger(tag.from) && Number.isInteger(tag.to)
+  )
+  const direction = (name: string): unknown => tags.find((tag) => tag.name === name)?.direction
+  const ordered = (name: string, frames: Array<number>): SheetAnimationRead => {
+    const way = direction(name)
+    if (way === "reverse") return { name, frames, play: [...frames].reverse() }
+    if (way === "pingpong" && frames.length > 2) return { name, frames, play: [...frames, ...frames.slice(1, -1).reverse()] }
+    return { name, frames, play: frames }
+  }
+  const animations = isRecord(json.animations)
+    ? Object.entries(json.animations).flatMap(([name, names]) => {
+        const order = (Array.isArray(names) ? names : []).flatMap((frame) => {
+          const i = typeof frame === "string" ? index.get(frame) : undefined
+          return i === undefined ? [] : [i]
+        })
+        return order.length === 0 ? [] : [ordered(name, order)]
+      })
+    : tags.flatMap((tag) => {
+        const order = Array.from({ length: tag.to - tag.from + 1 }, (_, i) => tag.from + i).filter((i) => i >= 0 && i < rects.length)
+        return order.length === 0 ? [] : [ordered(tag.name, order)]
+      })
+  return { ok: true, sheet: { frames: rects, animations: animations.length > 0 ? animations : [ordered("frames", rects.map((_, i) => i))] } }
+}
