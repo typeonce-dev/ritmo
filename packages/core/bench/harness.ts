@@ -29,6 +29,11 @@ export interface BenchCase {
    * the base commit. Other cases gate only their allocations, and report time.
    */
   readonly critical?: true
+  /**
+   * Replaces the gate's time limit for this case, as a fraction: 1 fails past +100%.
+   * Only for a case V8 settles on several speeds from one process to the next.
+   */
+  readonly timeTolerance?: number
   readonly setup: () => BenchInstance
 }
 
@@ -74,7 +79,7 @@ const collectGarbage = (): void => {
   if (gc) gc()
 }
 
-const median = (values: ReadonlyArray<number>): number => {
+export const median = (values: ReadonlyArray<number>): number => {
   const sorted = [...values].sort((left, right) => left - right)
   const middle = Math.floor(sorted.length / 2)
   return sorted.length % 2 === 0
