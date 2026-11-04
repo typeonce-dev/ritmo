@@ -116,7 +116,9 @@ export type Lint =
 export type AssetRead =
   | {
       readonly ok: true
-      readonly image: RgbaImage
+      /** Its size: the pixels are not kept, so a game's worth of reads stays small. */
+      readonly width: number
+      readonly height: number
       /** The picture as the page draws it: decoded and written again, so it shows exactly the pixels hashed (a text sprite, rendered). */
       readonly png: Uint8Array
       readonly frames: ReadonlyArray<Frame>
@@ -185,7 +187,13 @@ const lintOf = async (asset: PixelAsset, image: RgbaImage, frames: ReadonlyArray
     issues.push(...reportOfArt(read.art, loaded.rules, read.partial).issues)
   } else
     for (const [index, frame] of frames.entries()) {
-      const read = artOfImage(crop(image, frame))
+      const cropped = crop(image, frame)
+      // A frame with nothing drawn shows as a blink when it plays: a box that missed its art.
+      if (!cropped.data.some((value, i) => i % 4 === 3 && value > 0)) {
+        issues.push({ rule: "empty-frame", severity: "error", message: "Nothing is drawn in this frame: its box missed the art, or the frame is left over", count: 0, at: [], frame: index })
+        continue
+      }
+      const read = artOfImage(cropped)
       issues.push(...reportOfArt(read.art, loaded.rules, read.partial).issues.map((issue) => ({ ...issue, frame: index })))
     }
   const count = (severity: Severity): number => issues.filter((issue) => issue.severity === severity).length
@@ -200,7 +208,7 @@ const read = async (asset: PixelAsset): Promise<AssetRead> => {
       if (!parsed.ok) return { ok: false, problem: parsed.problems.map((problem) => (problem.line === undefined ? problem.message : `line ${problem.line}: ${problem.message}`)).join("; ") }
       const image = toRgba(parsed.art)
       const frames: ReadonlyArray<Frame> = [{ name: "", index: 0, x: 0, y: 0, w: image.width, h: image.height, hash: hashFrame(image, 0, 0, image.width, image.height) }]
-      return { ok: true, image, png: encodePng(image), frames, animations: [], sheet: undefined, lint: await lintOf(asset, image, frames, parsed.art) }
+      return { ok: true, width: image.width, height: image.height, png: encodePng(image), frames, animations: [], sheet: undefined, lint: await lintOf(asset, image, frames, parsed.art) }
     }
     const image = decodePicture(await readFile(asset.file))
     const sheetFile = sheetFileOf(asset)
@@ -216,7 +224,7 @@ const read = async (asset: PixelAsset): Promise<AssetRead> => {
             const animation = animations.find((entry) => entry.frames.includes(i))
             return { name: rect.name, animation: animation?.name ?? "frames", index: animation?.frames.indexOf(i) ?? i, x: rect.x, y: rect.y, w: rect.w, h: rect.h, duration: rect.duration, hash: hashFrame(image, rect.x, rect.y, rect.w, rect.h) }
           })
-    return { ok: true, image, png: encodePng(image), frames, animations, sheet: sheet === undefined ? undefined : sheetFile, lint: await lintOf(asset, image, frames, undefined) }
+    return { ok: true, width: image.width, height: image.height, png: encodePng(image), frames, animations, sheet: sheet === undefined ? undefined : sheetFile, lint: await lintOf(asset, image, frames, undefined) }
   } catch (error) {
     return { ok: false, problem: message(error) }
   }
@@ -343,8 +351,8 @@ export const entryOf = async (asset: PixelAsset): Promise<Entry> => {
   return {
     ...base,
     kind: got.sheet === undefined ? "still" : "sheet",
-    width: got.image.width,
-    height: got.image.height,
+    width: got.width,
+    height: got.height,
     frames: got.frames,
     animations: got.animations,
     errors: got.lint.ok ? got.lint.errors : 0,
@@ -360,12 +368,14 @@ export const libraryOf = (assets: ReadonlyArray<PixelAsset>): Promise<ReadonlyAr
 /** What the page shows beside one asset: its lint issues, and the files it comes from. */
 export const detailOf = async (asset: PixelAsset): Promise<Detail> => {
   const got = await readAsset(asset)
+  const config = configOf(asset.file)
   return {
     id: asset.id,
     file: asset.file,
     source: asset.source === undefined ? undefined : idOf(asset.source),
     sheet: got.ok && got.sheet !== undefined ? idOf(got.sheet) : undefined,
-    config: got.ok && got.lint.ok ? got.lint.config : undefined,
+    // The rules it would be linted against, even while it cannot be read.
+    config: config === undefined ? undefined : idOf(config),
     issues: got.ok && got.lint.ok ? got.lint.issues : [],
     version: await assetVersion(asset)
   }

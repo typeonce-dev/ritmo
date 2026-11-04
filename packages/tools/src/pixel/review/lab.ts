@@ -492,7 +492,7 @@ const renderCounter = (): void => {
   const animation = animationOf(entry)
   const frame = entry.frames[screen.global]
   // Frames count from 0, as comments and `pixel notes` count them.
-  replace(screen.counter, `frame ${screen.place} of ${animation.frames.length} · ${frame?.duration ?? 0} ms`)
+  replace(screen.counter, h("span", { class: "pixel-counter-word" }, "frame "), `${screen.place} of ${animation.frames.length} · ${frame?.duration ?? 0} ms`)
 }
 
 /** The pixel of the frame under the pointer, in the middle copy's pixels when it repeats; `undefined` off the art. */
@@ -638,8 +638,8 @@ const renderTopbar = (): void => {
         segmented(
           state.view,
           [
-            { id: "asset", label: "Asset", icon: "image", title: "One asset at a time, zoomed (Tab: the whole set)" },
-            { id: "set", label: "Set", icon: "layers", title: "The whole set side by side at its own size, to judge it as one game (Tab: one asset)" }
+            { id: "asset", label: "Asset", icon: "image", title: "One asset at a time, zoomed (V: the whole set)" },
+            { id: "set", label: "Set", icon: "layers", title: "The whole set side by side at its own size, to judge it as one game (V: one asset)" }
           ],
           setView,
           { label: "View", class: "pixel-views" }
@@ -1229,9 +1229,10 @@ const renderChecks = (): void => {
         title: "Rules",
         help: "The lint against this asset's nearest pixel.config.json, the rules the agent checks with `ritmo-tools pixel lint`: its size, palette, colors, transparency, and stray pixels, each frame of a sheet apart. Warnings to weigh, not a verdict: you judge how it looks.",
         onToggle: renderChecks,
-        action: h("span", { class: "meta" }, entry.problem !== undefined ? "" : entry.errors + entry.warnings === 0 ? "clean" : `${entry.errors} errors · ${entry.warnings} warnings`)
+        action: h("span", { class: "meta" }, entry.problem !== undefined ? "" : entry.errors + entry.warnings === 0 ? "clean" : `${entry.errors} error${entry.errors === 1 ? "" : "s"} · ${entry.warnings} warning${entry.warnings === 1 ? "" : "s"}`)
       },
       entry.lintProblem !== undefined && callout("warn", `Cannot lint it: ${entry.lintProblem}`),
+      entry.problem !== undefined && hint("Not linted: it cannot be read."),
       entry.problem === undefined &&
         entry.lintProblem === undefined &&
         (detail === undefined
@@ -1366,7 +1367,7 @@ const renderAbout = (): void =>
         h("code", {}, "pixel.review.json"),
         " at the game's root. Fixing pixels by hand belongs on the pixel fixer's page."
       ),
-      h("p", { class: "hint" }, "Keys: ↑ ↓ change asset, Space plays, ← → step frames, + − zoom, 0 back to 1×, Tab the whole set, Esc drops a comment being drawn.")
+      h("p", { class: "hint" }, "Keys: ↑ ↓ change asset, Space plays, ← → step frames, + − zoom, 0 back to 1×, V the whole set and back, Esc drops a comment being drawn.")
     )
   )
 
@@ -1416,7 +1417,7 @@ function update(): void {
   renderAbout()
 }
 
-// The arrows move through the list and the frames; Space plays; + and − zoom; Ctrl/Cmd+Z undoes.
+// The arrows move through the list and the frames; Space plays; + and − zoom; V switches the view; Ctrl/Cmd+Z undoes.
 window.addEventListener("keydown", (event) => {
   const target = event.target
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
@@ -1448,8 +1449,8 @@ window.addEventListener("keydown", (event) => {
     setZoom((state.view === "set" ? state.setZoom : state.zoom) - 1)
   } else if (event.key === "0") {
     setZoom(1)
-  } else if (event.key === "Tab" && !event.shiftKey && target === document.body) {
-    event.preventDefault()
+  } else if (event.key === "v" || event.key === "V") {
+    // Not Tab: that key belongs to moving through the page's controls.
     setView(state.view === "asset" ? "set" : "asset")
   } else if (event.key === "Escape" && (state.composing !== undefined || state.marks !== undefined)) {
     state.composing = undefined

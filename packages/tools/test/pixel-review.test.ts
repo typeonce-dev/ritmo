@@ -156,6 +156,16 @@ describe("finding a game's art", () => {
     // Linted against sweetie-16 at the root, each of the five frames apart: pure black and white are off its palette in each.
     const issues = sheetRead?.ok === true && sheetRead.lint.ok ? sheetRead.lint.issues.filter((issue) => issue.rule === "off-palette") : []
     expect(issues.map((issue) => issue.frame)).toEqual([0, 1, 2, 3, 4])
+    // A frame left empty is an error on that frame.
+    const blank = decodePng(readFileSync(join(folder, "public/art/hero.sheet.png")))
+    const layout = readSpritesheet(JSON.parse(readFileSync(join(folder, "public/art/hero.sheet.json"), "utf8")), blank)
+    const box = layout?.ok === true ? layout.sheet.frames[1] : undefined
+    if (box === undefined || hero === undefined) throw new Error("the sheet has no second frame")
+    for (let y = box.y; y < box.y + box.h; y++) blank.data.fill(0, (y * blank.width + box.x) * 4, (y * blank.width + box.x + box.w) * 4)
+    writeFileSync(join(folder, "public/art/hero.sheet.png"), encodePng(blank))
+    utimesSync(join(folder, "public/art/hero.sheet.png"), new Date(), new Date(Date.now() + 5000))
+    const blankRead = await readAsset(hero)
+    expect(blankRead.ok && blankRead.lint.ok ? blankRead.lint.issues.filter((issue) => issue.rule === "empty-frame").map((issue) => issue.frame) : undefined).toEqual([1])
   })
 
   it("says why a sheet whose frames are off its picture cannot be read, and goes on", async () => {

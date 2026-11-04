@@ -29,6 +29,12 @@
   overflow-wrap: anywhere;
 }
 
+/* The files an asset comes from: long paths wrap rather than run past the panel. */
+.inspector .prop-control code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .pixel-source {
   color: #8a8f98;
 }
@@ -323,5 +329,10 @@
 
   .pixel-set-foot {
     max-width: 96px;
+  }
+
+  /* "2 of 7 · 125 ms": the playback bar stays one row on a phone. */
+  .pixel-counter-word {
+    display: none;
   }
 }
