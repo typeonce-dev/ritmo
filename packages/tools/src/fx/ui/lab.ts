@@ -12,6 +12,7 @@
 import { button, callout, cliChip, group, hint, icon, mark, prop, section, segmented, selectInput, sliderRow, textInput } from "../../pixel/ui/kit.ts"
 import { h, replace } from "../../pixel/ui/dom.ts"
 import { parseHex } from "../../pixel/core/color.ts"
+import { approvalOf, changedSince } from "../core/approval.ts"
 import { decodeBank, decodeReview, emptyReview, encodeBank, encodeReview, newEffect, standInSpot, usedDraft, type Bank, type Comment, type Draft, type EffectReview, type Review, type Status } from "../core/bank.ts"
 import { checkEffect, paletteIssues, type Checked, type Context, type Issue } from "../core/check.ts"
 import type { Spot } from "../core/craft.ts"
@@ -130,6 +131,29 @@ const effectOf = (draft: Draft): Effect | undefined => {
 
 const names = (): Array<string> => Object.keys(state.bank.effects)
 const reviewOf = (name: string): EffectReview => state.review.effects[name] ?? newEffect
+
+/** The draft the game gets of an effect, with its id and its frames; `undefined` while it does not draw. */
+const usedRun = (name: string) => {
+  const entry = state.bank.effects[name]
+  const id = entry === undefined ? undefined : usedDraft(entry)
+  const draft = id === undefined ? undefined : entry?.drafts[id]
+  if (id === undefined || draft === undefined) return undefined
+  const checked = checkedOf(draft)
+  return "error" in checked ? undefined : { id, run: checked.run }
+}
+
+/** What the person is approving: the draft the game gets, as it draws now. */
+const approvalNow = (name: string) => {
+  const used = usedRun(name)
+  return used === undefined ? undefined : approvalOf(used.id, used.run, state.bank.palette)
+}
+
+/** What is different in an effect from what the person approved; `undefined` when nothing is. */
+const changedNow = (name: string): string | undefined => {
+  const said = reviewOf(name)
+  const used = usedRun(name)
+  return said.status !== "approved" || said.approved === undefined || used === undefined ? undefined : changedSince(said.approved, used.id, used.run, state.bank.palette)
+}
 
 // ---------------------------------------------------------------------------
 // Saving: the bank and the review go back to their files as they change
@@ -473,12 +497,19 @@ const renderStage = (): void => {
     return [{ w: view.width * state.zoom, h: view.height * state.zoom }]
   })
   const screen = { w: Math.max(220, ...sizes.map((size) => size.w)), h: Math.max(96, ...sizes.map((size) => size.h)) }
+  const changed = changedNow(name)
   replace(
     content,
     h(
       "div",
       { class: "sound-head" },
-      h("div", { class: "sound-title" }, h("h1", {}, name), said.status !== "new" && h("span", { class: `stage-pill ${said.status}` }, statusLabel[said.status])),
+      h(
+        "div",
+        { class: "sound-title" },
+        h("h1", {}, name),
+        said.status !== "new" && h("span", { class: `stage-pill ${said.status}` }, statusLabel[said.status]),
+        changed !== undefined && h("span", { class: "stage-pill changes", title: changed }, "Changed since")
+      ),
       entry.about !== undefined && h("p", { class: "sound-about" }, entry.about)
     ),
     paletteNotice(),
@@ -602,9 +633,10 @@ const renderPlayback = (): void => {
       { label: "Speed" }
     ),
     segmented(
-      String(state.zoom) as "2" | "4" | "6" | "8",
+      String(state.zoom) as "1" | "2" | "4" | "6" | "8",
       [
-        { id: "2", label: "2×", title: "Each pixel 2 screen pixels: near game size" },
+        { id: "1", label: "1×", title: "Each pixel 1 screen pixel: does it read at its native size?" },
+        { id: "2", label: "2×" },
         { id: "4", label: "4×" },
         { id: "6", label: "6×" },
         { id: "8", label: "8×", title: "Each pixel 8 screen pixels: to see detail" }
@@ -648,6 +680,7 @@ const statusOptions = [
 
 const reviewPanel = (name: string): HTMLElement => {
   const said = reviewOf(name)
+  const changed = changedNow(name)
   return section(
     {
       id: "review",
@@ -659,12 +692,26 @@ const reviewPanel = (name: string): HTMLElement => {
       said.status,
       statusOptions,
       (status) => {
-        setReview(name, { status })
+        setReview(name, { status, approved: status === "approved" ? approvalNow(name) : undefined })
         save({ review: true })
         update()
       },
       { label: "Status", class: "fill" }
     ),
+    changed !== undefined &&
+      callout(
+        "warn",
+        `Changed since you approved it: ${changed}.`,
+        h(
+          "div",
+          { class: "fx-approve-again" },
+          button("Approve it as it is now", () => {
+            setReview(name, { approved: approvalNow(name) })
+            save({ review: true })
+            update()
+          })
+        )
+      ),
     h(
       "label",
       { class: "input note" },

@@ -123,11 +123,16 @@
   cursor: crosshair;
 }
 
-/* The playback bar wraps instead of running past a narrow stage. */
+/* The playback bar stays on one line, and wraps only instead of running past a narrow stage. */
 .fx-stage .playback {
   flex-wrap: wrap;
   justify-content: center;
+  width: max-content;
   max-width: calc(100% - 24px);
+}
+
+.fx-approve-again {
+  margin-top: 8px;
 }
 
 .fx-palette-issues {

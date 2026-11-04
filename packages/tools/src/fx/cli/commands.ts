@@ -14,7 +14,8 @@ import { toGif } from "../../pixel/core/gif.ts"
 import { atlasOf, spritesheetJson } from "../../pixel/core/spritesheet.ts"
 import { encodePng } from "../../pixel/cli/png.ts"
 import { Exit } from "../../pixel/cli/commands.ts"
-import { encodeBank, encodeReview, resolveComments, reviewPath, reviewSummary, standInSpot, usedDraft, type Bank } from "../core/bank.ts"
+import { changedSince } from "../core/approval.ts"
+import { encodeBank, encodeReview, newEffect, resolveComments, reviewPath, reviewSummary, standInSpot, usedDraft, type Bank, type EffectReview } from "../core/bank.ts"
 import { toHex } from "../../pixel/core/color.ts"
 import { checkEffect, paletteIssues } from "../core/check.ts"
 import { doubles, flicker, holes, jaggies } from "../core/craft.ts"
@@ -40,6 +41,9 @@ const pick = (bank: Bank, chosen: ReadonlyArray<string>): Effect.Effect<Readonly
   const missing = chosen.filter((name) => !all.includes(name))
   return missing.length === 0 ? Effect.succeed(chosen) : Effect.fail(new CliFailure({ message: `no effect named ${missing.join(", ")}`, details: { effects: all } }))
 }
+
+/** Frames per row in a sprite sheet `fx render` writes: a long effect stays within what a device can hold as one texture. */
+const SHEET_COLUMNS = 8
 
 const check = Command.make(
   "check",
@@ -167,6 +171,7 @@ const renderCommand = Command.make(
   Effect.fn("render")(function* (flags) {
     const path = yield* Path.Path
     const bank = yield* readBank(flags.bank)
+    const review = yield* readReview(flags.bank)
     const folder = Option.getOrElse(flags.out, () => flags.bank.replace(/\.json$/, "") + ".out")
     const scale = Math.max(1, flags.scale)
     const written: Array<Record<string, unknown>> = []
@@ -180,20 +185,22 @@ const renderCommand = Command.make(
       if (run.errors.length > 0) return yield* new CliFailure({ message: `${name} (draft ${id}) does not draw cleanly: ${run.errors.join("; ")}` })
       const frames = framesOf(run, bank.palette)
       const clip = { name, frames, anchor: run.anchor, fps: run.fps, loop: "forward" as const }
-      const atlas = atlasOf([clip], { columns: frames.length, spacing: 0 })
+      const atlas = atlasOf([clip], { columns: SHEET_COLUMNS, spacing: 0 })
       const big = scale === 1 ? atlas.art : { ...atlas.art, width: atlas.art.width * scale, height: atlas.art.height * scale, indices: upscale(atlas.art.indices, atlas.art.width, atlas.art.height, scale) }
       const files = [
         yield* writeBytes(path.join(folder, `${name}.png`), encodePng(rgbaOf(big))),
         yield* writeText(path.join(folder, `${name}.json`), withLoop(spritesheetJson({ image: `${name}.png`, clips: [clip], atlas, scale }), name, run.loop)),
         yield* writeBytes(path.join(folder, `${name}.gif`), toGif(frames, { scale: Math.max(scale, 4), delay: 1000 / run.fps }))
       ]
-      written.push({ effect: name, draft: id, loop: run.loop, anchor: [run.anchor.x, run.anchor.y], frames: frames.length, fps: run.fps, files })
+      const said = review.effects[name] ?? newEffect
+      const changed = said.status === "approved" && said.approved !== undefined ? changedSince(said.approved, id, run, bank.palette) : undefined
+      written.push({ effect: name, draft: id, loop: run.loop, anchor: [run.anchor.x, run.anchor.y], frames: frames.length, fps: run.fps, files, changedSinceApproved: changed })
     }
     yield* printJson({ file: flags.bank, effects: written })
   })
 ).pipe(
   Command.withDescription(
-    "Writes each effect's chosen draft (its `use`, or its first) for the game: a sprite sheet PNG of its frames in one row, its JSON (the hash format Pixi, Phaser, and Aseprite read, with the animation, its fps, each frame's anchor from the draft's `anchor`, and `meta.loop`: whether it loops or plays once), and a GIF to share."
+    "Writes each effect's chosen draft (its `use`, or its first) for the game: a sprite sheet PNG of its frames in rows of up to 8, its JSON (the hash format Pixi, Phaser, and Aseprite read, with each frame's rectangle, the animation, its fps, each frame's anchor from the draft's `anchor`, and `meta.loop`: whether it loops or plays once), and a GIF to share. Lists `changedSinceApproved` for an effect that differs from what the person approved."
   )
 )
 
@@ -254,18 +261,36 @@ const review = Command.make(
   )
 )
 
+/** What is different in an effect from what the person approved; `undefined` when nothing is, or it was never approved with hashes. */
+const changedSinceApproved = Effect.fn("changedSinceApproved")(function* (bankFile: string, bank: Bank, name: string, said: EffectReview) {
+  const entry = bank.effects[name]
+  if (entry === undefined || said.status !== "approved" || said.approved === undefined) return undefined
+  const id = usedDraft(entry)
+  const draft = id === undefined ? undefined : entry.drafts[id]
+  if (id === undefined || draft === undefined) return undefined
+  const loaded = yield* loadDraft(bankFile, draft)
+  if (!loaded.ok) return `draft ${id} no longer loads: ${loaded.error}`
+  const run = runEffect(loaded.effect, bank.palette, { seed: draft.seed, tune: draft.tune, ramps: rampsFor(bank.ramps, draft.recolor) })
+  return run.errors.length > 0 ? `draft ${id} no longer draws cleanly: ${run.errors.join("; ")}` : changedSince(said.approved, id, run, bank.palette)
+})
+
 const notes = Command.make(
   "notes",
   { bank: bankArgument },
   Effect.fn("notes")(function* (flags) {
     const bank = yield* readBank(flags.bank)
     const review = yield* readReview(flags.bank)
+    const changed: Record<string, string> = {}
+    for (const [name, said] of Object.entries(review.effects)) {
+      const change = yield* changedSinceApproved(flags.bank, bank, name, said)
+      if (change !== undefined) changed[name] = change
+    }
     // The palette and ramps too: the person can change them on the page, and every draft draws with them.
-    yield* printJson({ file: flags.bank, review: reviewPath(flags.bank), ...reviewSummary(bank, review), palette: bank.palette, ramps: bank.ramps ?? {} })
+    yield* printJson({ file: flags.bank, review: reviewPath(flags.bank), ...reviewSummary(bank, review, changed), palette: bank.palette, ramps: bank.ramps ?? {} })
   })
 ).pipe(
   Command.withDescription(
-    "What the person said in the review: each effect's status (new, approved, changes asked), note, open comments (each numbered, on a draft, a frame, and a pixel), chosen draft, and tune, the changes first; and the bank's palette and ramps as they are now (the person can change them on the page)."
+    "What the person said in the review: each effect's status (new, approved, changes asked), note, open comments (each numbered, on a draft, a frame, and a pixel), chosen draft, tune, and, for an approved effect that no longer matches what the person saw, `changedSinceApproved`, the changes first; and the bank's palette and ramps as they are now (the person can change them on the page)."
   )
 )
 

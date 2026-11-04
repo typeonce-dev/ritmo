@@ -7,7 +7,7 @@ Every rule in [`skills/ritmo-fx`](skills/ritmo-fx/SKILL.md) traces back to one o
 - **Practice:** advice from pixel artists and animators, quoted below with a link.
 - **Ritmo:** how `ritmo-tools fx` works, or a direction from the maintainer. These are conventions, not craft claims, and are marked as such.
 
-A rule that is neither does not go in the skill. When you change the skill, change this file in the same commit. Quotes were checked against the text of the linked page on 2026-10-30.
+A rule that is neither does not go in the skill. When you change the skill, change this file in the same commit. Quotes were checked against the text of the linked page on 2026-10-30, and those from PVFX Foundry on 2026-11-04.
 
 ## The loop
 
@@ -27,6 +27,21 @@ A rule that is neither does not go in the skill. When you change the skill, chan
 
 - Patch, pixelfx `README.md` ([link][pixelfx]): "A 24×38 stock character stands in for status effects, auras and hits."
 - **Ritmo:** the stand-in is the game's own sprite, from the bank, not a stock one, so the size it shows is the game's.
+
+### A finished pack to look at, and the Strict tier
+
+- nerijs, PVFX Foundry ([link][foundry]): "Every effect has anticipation, a peak, and a decay."
+- **Ritmo:** the skill points at the Strict tier because it is the closest to what `fx` draws (the page: "limited palette", "binary alpha"), and says look, not read: the download has sheets and JSON, no code.
+
+### Judge at native size, in a fraction of a second
+
+- nerijs, "PVFX Foundry 1.0" devlog ([link][foundry-devlog]): "judged on one question: does it read in a game, at native size, in a fraction of a second?"
+- **Ritmo:** the page's zoom starts at 1× for this, and a contact sheet cannot answer it, so the skill asks the person.
+
+### Say when an approved effect has changed
+
+- nerijs, PVFX Foundry ([link][foundry]) records "per-frame pixel hashes" in each manifest.
+- **Ritmo:** `fx` keeps a hash per frame when the person approves, so `fx notes`, `fx render`, and the page can say what changed: only the person's `approved` says an effect looks right, and that holds only for what they saw. Hashes are of final colors, so a palette edit counts.
 
 ### Compare drafts at the same moments
 
@@ -80,6 +95,11 @@ A rule that is neither does not go in the skill. When you change the skill, chan
 
 - "Twelve basic principles of animation", Wikipedia, after Thomas and Johnston, *The Illusion of Life*, 1981 ([link][twelve]): "For this reason, more pictures are drawn near the beginning and end of an action, creating a slow in and slow out effect" … "Timing refers to the number of drawings or frames for a given action, which translates to the speed of the action on film." … on exaggeration: "animated motions that strive for a perfect imitation" of reality can look static and lifeless.
 
+### Each material dies its own way
+
+- nerijs, PVFX Foundry ([link][foundry]): "Fire cools from white through gold to ember, smoke breaks into clusters and thins out, sparks scatter and vanish".
+- nerijs, "PVFX Foundry 1.0" devlog ([link][foundry-devlog]): "Smoke breaks apart and thins instead of fading out as one blob."
+
 ### Choreography in phases, with a hero frame
 
 - Patch, pixelfx `docs/AUTHORING.md` ([link][pixelfx-authoring]): "Choreography in phases. Anticipation or charge (things gathering in), release (a 1 to 2 frame white hero frame, a flare, light, a burst), spread, hold (twinkles, glints, embers), break or melt, a long decay. Many small events, each varied in size, speed, timing and life."
@@ -99,6 +119,8 @@ A rule that is neither does not go in the skill. When you change the skill, chan
 - PremiumBeat, "How to Create Line Boil Animations" ([link][boil]): "Line boils occur when the images of a frame-by-frame animation don't align perfectly."
 - **Ritmo:** the `flicker` check counts pixels that change for one frame and change back; its threshold (6%) was set on this repo's example drafts, where a boiling torch measured 22% and clean ones 0 to 5%.
 
+[foundry]: https://nerijs.itch.io/pvfx-foundry
+[foundry-devlog]: https://nerijs.itch.io/pvfx-foundry/devlog/1750877/pvfx-foundry-10-101-new-effects-rebuilt-for-quality
 [spritefusion]: https://www.spritefusion.com/blog/how-to-make-good-pixel-art-effects-with-claude
 [yu]: https://www.derekyu.com/makegames/pixelart.html
 [kenlo]: https://community.kde.org/GSoC/2024/StatusReports/KenLo
