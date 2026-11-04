@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 
+import { approvalOf, changedSince } from "@typeonce/ritmo-tools/fx/core/approval.ts"
 import { decodeBank, decodeReview, encodeBank, encodeReview, resolveComments, reviewPath, reviewSummary, standInSpot, usedDraft, type Bank } from "@typeonce/ritmo-tools/fx/core/bank.ts"
 import { checkEffect, OTHER_SEEDS, paletteIssues } from "@typeonce/ritmo-tools/fx/core/check.ts"
 import { doubles, faintOn, flicker, holes, jaggies } from "@typeonce/ritmo-tools/fx/core/craft.ts"
@@ -336,6 +337,53 @@ describe("banks and reviews", () => {
   })
 })
 
+describe("what the person approved", () => {
+  const moving = (reach: number, frames = 4, fps = 12) => runEffect(effect((fx) => fx.disc(fx.cx, fx.cy, fx.frame === 2 ? reach : 2, "white"), { frames, fps }), palette)
+  const approved = approvalOf("a", moving(3), palette)
+
+  it("is unchanged when the same draft draws the same frames", () => {
+    expect(changedSince(approved, "a", moving(3), palette)).toBeUndefined()
+  })
+
+  it("names the frames that look different", () => {
+    expect(changedSince(approved, "a", moving(1), palette)).toBe("frame 2 looks different")
+  })
+
+  it("sees a palette color change, with the pixels in the same places", () => {
+    const repainted = { ...palette, white: "#eeeeee" }
+    expect(changedSince(approved, "a", moving(3), repainted)).toBe("frames 0-3 look different")
+  })
+
+  it("tells a drawn black pixel from an empty one", () => {
+    const black = { white: "#000000", red: "#e43b44" }
+    const empty = runEffect(effect(() => {}), black)
+    expect(changedSince(approvalOf("a", empty, black), "a", moving(3), black)).toBe("frames 0-3 look different")
+  })
+
+  it("sees a different draft, a different length, and a different speed", () => {
+    expect(changedSince(approved, "b", moving(3), palette)).toBe("the game gets draft b, the person approved draft a")
+    expect(changedSince(approved, "a", moving(3, 6), palette)).toBe("6 frames, 4 when approved")
+    expect(changedSince(approved, "a", moving(3, 4, 24), palette)).toBe("24 fps, 12 when approved")
+  })
+
+  it("round-trips through the review, and a review from before hashes still reads", () => {
+    const review = { effects: { hit: { status: "approved" as const, note: "", comments: [], approved } } }
+    expect(decodeReview(encodeReview(review))).toEqual({ ok: true, value: review })
+    expect(decodeReview(JSON.stringify({ version: 1, effects: { hit: { status: "approved" } } }))).toEqual({ ok: true, value: { effects: { hit: { status: "approved", note: "", comments: [] } } } })
+    const broken = decodeReview(JSON.stringify({ version: 1, effects: { hit: { status: "approved", approved: { draft: "a", fps: 12, frames: [1] } } } }))
+    expect(broken.ok === false && broken.error).toContain("hit.approved")
+  })
+
+  it("shows in the agent's summary only while the effect is approved", () => {
+    const bank: Bank = { palette, effects: { hit: { drafts: { a: { file: "a.js" } } } } }
+    const said = (status: "approved" | "changes") => ({ effects: { hit: { status, note: "", comments: [], approved } } })
+    const stale = reviewSummary(bank, said("approved"), { hit: "frame 2 looks different" })
+    expect(stale.effects[0]!.changedSinceApproved).toBe("frame 2 looks different")
+    expect(stale.summary).toContain("1 changed since")
+    expect(reviewSummary(bank, said("changes"), { hit: "frame 2 looks different" }).effects[0]!.changedSinceApproved).toBeUndefined()
+  })
+})
+
 describe("contact sheets", () => {
   it("lay every frame out enlarged, in rows", () => {
     const sheet = contactSheet(runEffect(shrinking, palette), palette, { scale: 2, columns: 3, backdrop: "dark" })
@@ -404,6 +452,45 @@ describe("the CLI", () => {
     expect(notes.summary).toContain("not reviewed yet")
     // The palette and ramps as they are now: the person can change them on the page.
     expect(notes.ramps).toEqual({ fire: ["white", "yellow", "orange", "red"] })
+  })
+
+  it("renders a long effect in rows of 8, with each frame's rectangle in its JSON", () => {
+    const folder = mkdtempSync(join(tmpdir(), "fx-"))
+    const bank = join(folder, "game.fx.json")
+    writeFileSync(join(folder, "long.js"), `export default { size: [10, 6], frames: 20, fps: 20, loop: true, draw(fx) { fx.px(fx.frame % 10, 3, "white") } }`)
+    writeFileSync(bank, encodeBank({ palette, effects: { long: { drafts: { a: { file: "long.js" } } } } }))
+    expect(run("render", bank, "--scale", "2", "-o", join(folder, "out")).status).toBe(0)
+    const sheet = JSON.parse(readFileSync(join(folder, "out", "long.json"), "utf8")) as {
+      animations: Record<string, Array<string>>
+      frames: Record<string, { frame: { x: number; y: number; w: number; h: number } }>
+      meta: { size: { w: number; h: number } }
+    }
+    expect(sheet.meta.size).toEqual({ w: 160, h: 36 })
+    expect(sheet.animations.long).toHaveLength(20)
+    expect(sheet.frames["long 7"]!.frame).toEqual({ x: 140, y: 0, w: 20, h: 12 })
+    expect(sheet.frames["long 8"]!.frame).toEqual({ x: 0, y: 12, w: 20, h: 12 })
+    expect(sheet.frames["long 19"]!.frame).toEqual({ x: 60, y: 24, w: 20, h: 12 })
+  })
+
+  it("says when an approved effect no longer matches what the person saw, in notes and render", () => {
+    const folder = mkdtempSync(join(tmpdir(), "fx-"))
+    const bank = join(folder, "game.fx.json")
+    const draw = (color: string) => `export default { size: [8, 8], frames: 3, fps: 12, draw(fx) { if (fx.frame < 2) fx.disc(fx.cx, fx.cy, 2, fx.frame === 1 ? "${color}" : "white") } }`
+    writeFileSync(join(folder, "hit.js"), draw("white"))
+    writeFileSync(bank, encodeBank({ palette, effects: { hit: { drafts: { a: { file: "hit.js" } } } } }))
+    const seen = runEffect(effect((fx) => { if (fx.frame < 2) fx.disc(fx.cx, fx.cy, 2, "white") }, { frames: 3 }), palette)
+    writeFileSync(reviewPath(bank), encodeReview({ effects: { hit: { status: "approved", note: "", comments: [], approved: approvalOf("a", seen, palette) } } }))
+    const clean = JSON.parse(run("notes", bank).stdout) as { effects: Array<{ changedSinceApproved?: string }> }
+    expect(clean.effects[0]!.changedSinceApproved).toBeUndefined()
+    writeFileSync(join(folder, "hit.js"), draw("red"))
+    const stale = JSON.parse(run("notes", bank).stdout) as { summary: string; effects: Array<{ changedSinceApproved?: string }> }
+    expect(stale.effects[0]!.changedSinceApproved).toBe("frame 1 looks different")
+    expect(stale.summary).toContain("ask the person to look again")
+    const render = JSON.parse(run("render", bank, "-o", join(folder, "out")).stdout) as { effects: Array<{ changedSinceApproved?: string }> }
+    expect(render.effects[0]!.changedSinceApproved).toBe("frame 1 looks different")
+    writeFileSync(join(folder, "hit.js"), "not a module")
+    const broken = JSON.parse(run("notes", bank).stdout) as { effects: Array<{ changedSinceApproved?: string }> }
+    expect(broken.effects[0]!.changedSinceApproved).toContain("no longer loads")
   })
 
   it("reads the project's pixel.config.json, and rings comments on the contact sheet", () => {

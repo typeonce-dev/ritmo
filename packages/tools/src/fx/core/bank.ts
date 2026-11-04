@@ -39,8 +39,9 @@
  * picks one, and writes their slider moves to that draft's `tune`.
  *
  * Next to it, the review (`game.fx.review.json`) keeps what the person said
- * about each effect: a status, a note, and comments pinned to one pixel of
- * one frame of a draft ("this pixel, here").
+ * about each effect: a status, a note, comments pinned to one pixel of one
+ * frame of a draft ("this pixel, here"), and, once approved, what they
+ * approved (`approval.ts`), so a later change to it shows.
  */
 import type { Decoded, Palette, Ramps } from "./effect.ts"
 
@@ -102,10 +103,19 @@ export interface Comment {
   readonly reply?: string | undefined
 }
 
+/** What the person saw when they approved an effect: the draft the game gets, how fast it plays, and each frame's pixels as a hash. */
+export interface Approved {
+  readonly draft: string
+  readonly fps: number
+  readonly frames: ReadonlyArray<string>
+}
+
 export interface EffectReview {
   readonly status: Status
   readonly note: string
   readonly comments: ReadonlyArray<Comment>
+  /** Set when the person approves; a review from before there were hashes has none, and nothing to compare. */
+  readonly approved?: Approved | undefined
 }
 
 export interface Review {
@@ -267,6 +277,12 @@ export const encodeBank = (bank: Bank): string => {
   )
 }
 
+const approvedOf = (value: unknown): Approved | undefined => {
+  if (!isRecord(value) || typeof value.draft !== "string" || typeof value.fps !== "number" || !Array.isArray(value.frames)) return undefined
+  const frames = value.frames.filter((hash): hash is string => typeof hash === "string")
+  return frames.length === value.frames.length ? { draft: value.draft, fps: value.fps, frames } : undefined
+}
+
 export const decodeReview = (text: string): Decoded<Review> => {
   const parsed = parse(text)
   if (!parsed.ok) return parsed
@@ -299,7 +315,9 @@ export const decodeReview = (text: string): Decoded<Review> => {
         ...(typeof comment.reply === "string" && comment.reply !== "" ? { reply: comment.reply } : {})
       })
     }
-    effects[name] = { status: status ?? "new", note: typeof value.note === "string" ? value.note : "", comments }
+    const approved = approvedOf(value.approved)
+    if (value.approved !== undefined && approved === undefined) errors.push(`${name}.approved must be {"draft", "fps", "frames": ["hash", ...]}`)
+    effects[name] = { status: status ?? "new", note: typeof value.note === "string" ? value.note : "", comments, ...(approved === undefined ? {} : { approved }) }
   }
   return errors.length > 0 ? { ok: false, error: errors.join("; ") } : { ok: true, value: { effects } }
 }
@@ -307,7 +325,12 @@ export const decodeReview = (text: string): Decoded<Review> => {
 export const encodeReview = (review: Review): string => {
   const effects: Record<string, unknown> = {}
   for (const [name, entry] of Object.entries(review.effects))
-    effects[name] = { status: entry.status, ...(entry.note === "" ? {} : { note: entry.note }), ...(entry.comments.length === 0 ? {} : { comments: entry.comments }) }
+    effects[name] = {
+      status: entry.status,
+      ...(entry.note === "" ? {} : { note: entry.note }),
+      ...(entry.comments.length === 0 ? {} : { comments: entry.comments }),
+      ...(entry.approved === undefined ? {} : { approved: entry.approved })
+    }
   return JSON.stringify({ version: 1, effects }, null, 2) + "\n"
 }
 
@@ -320,8 +343,12 @@ export const resolveComments = (review: Review, effect: string, numbers: Readonl
   return { ok: true, value: { effects: { ...review.effects, [effect]: { ...said, comments } } } }
 }
 
-/** What the agent needs from a review: every effect's status, note, open comments, and chosen draft, the changes first. */
-export const reviewSummary = (bank: Bank, review: Review) => {
+/**
+ * What the agent needs from a review: every effect's status, note, open
+ * comments, and chosen draft, the changes first. `changed` says, by effect,
+ * what is different from what the person approved (`approval.ts`).
+ */
+export const reviewSummary = (bank: Bank, review: Review, changed: Readonly<Record<string, string>> = {}) => {
   const effects = Object.entries(bank.effects).map(([name, entry]) => {
     const said = review.effects[name] ?? newEffect
     const use = usedDraft(entry)
@@ -337,12 +364,14 @@ export const reviewSummary = (bank: Bank, review: Review) => {
       resolved: resolved === 0 ? undefined : resolved,
       use,
       tune,
-      drafts: Object.keys(entry.drafts).length
+      drafts: Object.keys(entry.drafts).length,
+      changedSinceApproved: said.status === "approved" ? changed[name] : undefined
     }
   })
   const count = (status: Status): number => effects.filter((effect) => effect.status === status).length
+  const stale = effects.filter((effect) => effect.changedSinceApproved !== undefined).length
   return {
-    summary: `${count("approved")} approved, ${count("changes")} with changes asked, ${count("new")} not reviewed yet (of ${effects.length}).`,
+    summary: `${count("approved")} approved${stale === 0 ? "" : ` (${stale} changed since: ask the person to look again)`}, ${count("changes")} with changes asked, ${count("new")} not reviewed yet (of ${effects.length}).`,
     changes: effects.filter((effect) => effect.status === "changes"),
     effects
   }

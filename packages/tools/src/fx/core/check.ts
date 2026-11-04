@@ -121,7 +121,8 @@ const loneShare = (run: Run): number => {
   return all === 0 ? 0 : lone / all
 }
 
-const spans = (frames: ReadonlyArray<number>): string => {
+/** Frame numbers as ranges: `0-2, 5`. */
+export const spans = (frames: ReadonlyArray<number>): string => {
   const parts: Array<string> = []
   let start = frames[0]
   let last = frames[0]

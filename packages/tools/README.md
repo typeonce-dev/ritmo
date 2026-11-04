@@ -531,9 +531,9 @@ file, broken bank), or 3 (a draft has errors).
 | `ritmo-tools fx init [bank]` | Writes a starting bank (a six-color palette and a fire ramp) and one draft of a hit spark. |
 | `ritmo-tools fx check <bank> [names...] [--config file]` | Runs every draft twice and measures it (frames, length, the box it fills, its colors), and lists errors and warnings (see above), with accepted warnings apart. |
 | `ritmo-tools fx look <bank> <name> [--draft a] [--scale 6] [--columns 8] [--backdrop dark] [--marks comments] [--compare] [--alone]` | Writes a contact sheet PNG per draft: every frame side by side, enlarged, on a backdrop (`dark`, `light`, `checker`, or one of the bank's by name), with the bank's stand-in behind it (`--alone` leaves it out), for the agent to look at. `--marks` rings the person's comments (the default) or where a craft rule breaks (`jaggies`, `doubles`, `holes`, `flicker`), and the report lists them. `--compare` writes one picture instead: a row per draft, each column the same moment (`--columns` of them, first frame to last), to weigh the drafts against each other. |
-| `ritmo-tools fx render <bank> [names...] [-o dir] [--scale 1]` | Writes each effect's draft in use as a sprite sheet PNG (its frames in one row), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the draft's `anchor`, the animation and its fps, and `meta.loop`, whether it loops or plays once), and a GIF. |
+| `ritmo-tools fx render <bank> [names...] [-o dir] [--scale 1]` | Writes each effect's draft in use as a sprite sheet PNG (its frames in rows of up to 8), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the draft's `anchor`, the animation and its fps, and `meta.loop`, whether it loops or plays once), and a GIF. An effect that differs from what the person approved lists `changedSinceApproved`. |
 | `ritmo-tools fx review <bank> [--port 5192] [--host] [--config file]` | Serves the review page and prints its address; runs until stopped. |
-| `ritmo-tools fx notes <bank>` | What the person said: each effect's status, note, open comments (numbered, with draft, frame, pixel, and text), how many are resolved, draft in use, and tune, changes asked first; and the bank's palette and ramps as they are now. |
+| `ritmo-tools fx notes <bank>` | What the person said: each effect's status, note, open comments (numbered, with draft, frame, pixel, and text), how many are resolved, draft in use, tune, and `changedSinceApproved` when an approved effect no longer matches what the person saw (its frames, fps, or draft), changes asked first; and the bank's palette and ramps as they are now. |
 | `ritmo-tools fx resolve <bank> <effect> <numbers...> [--reply "what changed"]` | Marks comments as resolved: `fx notes` and `fx look` stop showing them, and the page shows them done with the reply. The person can reopen one. |
 
 ### The review page
@@ -545,7 +545,7 @@ review (status, note, and comments), the tune sliders of the draft in focus,
 and that draft's check, with the accepted warnings and their reasons. Every
 card is the size of the effect's largest draft, so nothing moves as they
 play. The playback bar pauses, steps frame by frame (the same frame on every
-draft), slows to ½ or ¼, and zooms from 2× to 8×; the Background section
+draft), slows to ½ or ¼, and zooms from 1× to 8×; the Background section
 picks what the drafts play over (the bank's `backdrops` first, then neutral
 ones) and shows or hides the stand-in. The tune section also lists the bank
 ramps the draft draws with, each drawn as itself or as another ramp: picking
@@ -556,7 +556,9 @@ steps; add a ramp; delete one no draft draws with), for every effect at once. Cl
 draft in focus pauses on that frame and pins a comment to it; a comment's number rings its pixel on its frame, and clicking the
 comment goes there. **Show** on a check pauses on its frame with its pixels
 ringed. Resolved comments show greyed, with the agent's reply, and
-**Reopen** puts one back on its list. **Use** picks the draft the game gets. Space plays, ← and → step, ↑
+**Reopen** puts one back on its list. **Use** picks the draft the game gets. **Approved** keeps what the person saw:
+when the draft in use, its frames, or its fps later differ, the page says so and
+**Approve it as it is now** takes the new version. Space plays, ← and → step, ↑
 and ↓ change effect, 1 to 9 focus a draft, and Escape clears rings. Every
 change is written to the bank and its review as it happens, and a draft the
 agent edits while the page is open plays anew.
