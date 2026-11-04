@@ -213,7 +213,8 @@ it is.
   chooses which are exported (the others keep their frames and settings);
   choose one to play it, rename it (the name a game plays it by), and set its
   speed and loop. Its frames are listed under it: **In**/**Out** leaves one
-  out without losing its box. **Split here**, on the line between two of
+  out without losing its box, and choosing one sets how many **beats** it
+  holds (a beat is one frame at the animation's speed). **Split here**, on the line between two of
   its frames, cuts the animation in two there (the frames after it become a
   new animation), and **Join with** puts it together with the next one, for
   a sheet whose rows are not its animations. **Find again** starts over
@@ -239,7 +240,8 @@ it is.
   new row, its frames in one row or in rows of **Per row** frames, with
   **Spacing** between frames and animations, at any whole scale; its
   **JSON** in the hash format Pixi (`Spritesheet`), Phaser (`atlas`), and
-  Aseprite share, with each frame's rectangle, duration, and anchor (frames
+  Aseprite share, with each frame's rectangle, `duration` in milliseconds
+  (play by it: frames can hold for different times), and anchor (frames
   are named `<animation> 0`, `<animation> 1`, ...), each animation's frame
   list under `animations`, and Aseprite's `frameTags`; a **GIF** of the
   chosen animation; **Frames .zip** (one PNG per frame, a folder per
@@ -286,11 +288,11 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 | --- | --- |
 | `check <file>` | Clean pixel art, fixable with confidence, or needs a person? Writes nothing. |
 | `fix <png>` | Fixes it, writing `.png` (1x), `@Nx.png` (`--scale N`), `.svg`, `.json` map, `.sprite.txt`, `.recipe.json`, and `.preview.png`; `--project` also writes `<name>.project.png`. |
-| `sheet <png>` | Fixes an animation sheet: `.png` (each animation's frames in a strip from a new row, or `--columns N` per row), its `.json`, a `.<animation>.gif` each, `.frames/<animation>/` (one PNG per frame), `.recipe.json`, and `.preview.png` (the boxes found over the source, and each animation's fixed frames). The report lists the animations with their frame numbers. |
+| `sheet <png>` | Fixes an animation sheet: `.png` (each animation's frames in a strip from a new row, or `--columns N` per row), its `.json`, a `.<animation>.gif` and `.<animation>.onion.png` each, `.frames/<animation>/` (one PNG per frame), `.recipe.json`, and `.preview.png` (the boxes found over the source, and each animation's fixed frames). The report lists the animations with their frame numbers and each frame's time in milliseconds. |
 | `pixelate <png> -w N` | Cuts a picture that is not pixel art into N pixels across, on the palette (or `--colors N` proposed from it). |
 | `render <sprite>` | Renders a sprite source or JSON map to PNG and SVG, and lints it. |
-| `lint <file>` | The project's rules on the pixels as they are. |
-| `preview <file>` | A picture to look at: the art enlarged, or the source and its grid beside the fix. |
+| `lint <file>` | The project's rules on the pixels as they are; with `--tile both` (or `x`, `y`), also that a tile's edges meet. |
+| `preview <file>` | A picture to look at: the art enlarged, the source and its grid beside the fix, or with `--tile both` (or `x`, `y`) the art at its own size repeated. |
 | `compare <a> <b>` | Which of two versions is better, and why. |
 | `palettes [name]` | The presets, or one palette's colors. |
 | `init` | Writes a starting `pixel.config.json`. |
@@ -301,7 +303,8 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 `--dither`, `--metric`, `--shrink-to`), over a
 `--recipe` file (or the recipe a project PNG holds), over the config. `ritmo-tools pixel <command> --help` lists them. `sheet` takes them too, plus
 `--boxes`, `--skip`, `--animations` (which frames make which animation:
-`"walk=1-4;throw=5-8;explode=9-18"`, every frame in one), `--only` (the
+`"walk=1-4;throw=5,6x3,7,8;explode=9-18"`, every frame in one, where `6x3`
+holds frame 6 for 3 beats), `--only` (the
 animations to write, by name: `"walk,explode"`), `--anchor`, `--fps`,
 `--pingpong`, `--columns`, and `--spacing`. Every command reads PNG and JPEG.
 
@@ -333,12 +336,26 @@ KYYK
 **Recipes** are every setting as JSON (`src/pixel/core/recipe.ts`): the grid (found,
 given as cells, or a size to pixelate to), the palette with its locked
 colors, cleanup, background, size, the hand edits, and for an animation its
-`sheet` (each frame's box, whether it is in, and its nudge; the anchor, frame
-rate, loop, and margin). Missing settings take
+`sheet` (each frame's box, whether it is in, its nudge, and its beats; the
+anchor, frame rate, loop, and margin). Missing settings take
 their defaults, so `{"palette": "sweetie-16"}` is a recipe.
 
 The `ritmo-pixel-art` skill, shipped with `@typeonce/ritmo`, is the guide for
 agents: which command for which case, and how to read the reports.
+
+**The onion picture** (`<name>.<animation>.onion.png`) shows an animation as a
+still, for an agent that cannot watch it: a panel per step of playback, each
+frame in its own colors over the frame before in red and the frame after in
+blue (purple where both are). A frame that jumps, drifts, or changes size shows
+as a thick band; the first panel's red is the last frame played, the loop's
+seam. Faint lines cross at the anchor, and a held frame has a tick per beat
+under it.
+
+**Tile seams.** `lint --tile` warns (`seam`) when the step from a tile's last
+line back to its first changes the color much more than the tile's other lines
+do. A line along the edge, or a shape with its other side inside the tile, is
+the pattern and passes. Measured on known tiles, it flagged none of 52 that loop
+and 11 of 20 that do not; the misses are soft, and `preview --tile` shows them.
 
 ### How the grid is found
 

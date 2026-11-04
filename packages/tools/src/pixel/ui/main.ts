@@ -61,6 +61,7 @@ import {
   anchors,
   DEFAULT_FPS,
   defaultSheet,
+  frameDuration,
   frameOf,
   insertFrame,
   isAnimationName,
@@ -69,12 +70,13 @@ import {
   removeFrame as withoutFrame,
   renameAnimation,
   setAnimation,
+  setBeats,
   splitAnimation,
   withFrames,
   type Sheet,
   type SheetAnimation
 } from "../core/sheet.ts"
-import { atlasOf, spritesheetJson, type SheetLayout } from "../core/spritesheet.ts"
+import { atlasOf, played, spritesheetJson, type SheetLayout } from "../core/spritesheet.ts"
 import { toZip } from "../core/zip.ts"
 import { formatSprite, parseJsonMap, parseSprite } from "../core/sprite.ts"
 import { reduceModes, type ReduceMode } from "../core/reduce.ts"
@@ -1791,6 +1793,13 @@ const shownFrame = (): number => {
   return order.length === 0 ? 0 : order[((frame % order.length) + order.length) % order.length]!
 }
 
+/** How long the frame at this step of playback shows, in milliseconds. */
+const durationAt = (step: number): number => {
+  const order = playing()
+  const placed = order.length === 0 ? undefined : selectedClip()?.placed[order[((step % order.length) + order.length) % order.length]!]
+  return frameDuration(Math.max(0.5, selectedSettings()?.fps ?? DEFAULT_FPS), placed === undefined ? 1 : (state.sheet.frames[placed.index]?.beats ?? 1))
+}
+
 /** The sheet's frames, changed with `change`. */
 const setFrames = (change: (frames: Array<Sheet["frames"][number]>) => void): void => {
   const frames = [...state.sheet.frames]
@@ -1867,14 +1876,18 @@ const tick = (now: number): void => {
     lastTick = undefined
     return
   }
-  const every = 1000 / Math.max(0.5, selectedSettings()?.fps ?? DEFAULT_FPS)
   if (lastTick === undefined) lastTick = now
-  else if (now - lastTick >= every) {
+  else {
+    const before = frame
     // A slow frame skips ahead instead of slowing the animation down.
-    frame += Math.floor((now - lastTick) / every)
-    lastTick = now - ((now - lastTick) % every)
-    renderPlayer()
-    renderCounter()
+    for (let every = durationAt(frame); now - lastTick >= every; every = durationAt(frame)) {
+      lastTick += every
+      frame++
+    }
+    if (frame !== before) {
+      renderPlayer()
+      renderCounter()
+    }
   }
   requestAnimationFrame(tick)
 }
@@ -2073,7 +2086,7 @@ const framesPanel = (): HTMLElement | false => {
               )
             const row = listRow({
               number: i + 1,
-              text: `${entry.box.width} × ${entry.box.height} px${nudged ? ` · moved ${entry.nudge.x}, ${entry.nudge.y}` : ""}`,
+              text: `${entry.box.width} × ${entry.box.height} px${nudged ? ` · moved ${entry.nudge.x}, ${entry.nudge.y}` : ""}${entry.beats > 1 ? ` · held ${entry.beats} beats` : ""}`,
               on: state.selectedFrame === i,
               include: entry.include,
               choose: () => {
@@ -2101,6 +2114,12 @@ const framesPanel = (): HTMLElement | false => {
               title: `Puts ${animations[state.selectedAnimation + 1]!.name}'s frames at the end of ${chosen.name}, as one animation`
             })
           )
+      ),
+    selected !== undefined &&
+      prop(
+        "Holds for",
+        numberInput(selected.beats, (value) => setSheet((sheet) => setBeats(sheet, state.selectedFrame!, value)), { min: 1, step: 1, label: "Beats this frame shows", suffix: "beats" }),
+        "A beat is one frame at the animation's speed."
       ),
     selected !== undefined &&
       h(
@@ -2298,8 +2317,8 @@ const animationExportPanel = (): HTMLElement | false => {
         "div",
         { class: "export-grid" },
         button("GIF", () => {
-          const order = playOrder(playingClip.frames.length, playingClip.loop).map((i) => playingClip.frames[i]!)
-          download(`${name}-${playingClip.name}.gif`, new Blob([toGif(order, { scale: Math.max(scale, 1), delay: 1000 / playingClip.fps })], { type: "image/gif" }))
+          const { frames, delays } = played(playingClip)
+          download(`${name}-${playingClip.name}.gif`, new Blob([toGif(frames, { scale: Math.max(scale, 1), delays })], { type: "image/gif" }))
         }, { variant: "secondary", small: true, title: `${playingClip.name}, the animation playing, at this scale, looping` }),
         button("Frames .zip", () => {
           const files = clips.flatMap((clip) => clip.frames.map((frameArt, i) => ({ name: `${clip.name}/${i}.png`, art: frameArt })))

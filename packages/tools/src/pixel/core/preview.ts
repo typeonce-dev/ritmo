@@ -4,10 +4,15 @@
  */
 import { TRANSPARENT, type PixelArt } from "./fix.ts"
 import type { Grid, RgbaImage } from "./grid.ts"
+import type { TileAxis } from "./lint.ts"
+import { playOrder } from "./sheet.ts"
+import type { AtlasClip } from "./spritesheet.ts"
 
 const GAP = 8
 const BACKDROP = [42, 45, 53] as const
 const GRID_LINE = [0, 0, 0, 56] as const
+/** The scale from which `previewArt` draws lines between pixels. */
+const LINES_FROM = 6
 
 /** A checkerboard square, light or dark, for transparent pixels. */
 const checker = (x: number, y: number): number => (((x >> 3) + (y >> 3)) % 2 === 0 ? 240 : 200)
@@ -43,10 +48,28 @@ export const previewArt = (art: PixelArt, scale: number): RgbaImage => {
         data[i + 2] = color.b
       }
       data[i + 3] = 255
-      if (factor >= 6 && (x % factor === 0 || y % factor === 0)) blend(data, i, GRID_LINE)
+      if (factor >= LINES_FROM && (x % factor === 0 || y % factor === 0)) blend(data, i, GRID_LINE)
     }
   }
   return { width, height, data }
+}
+
+/**
+ * A tile repeated three times each way it repeats, enlarged but without lines
+ * between pixels, so what shows is the repeat: seams and shapes the eye keeps
+ * finding.
+ */
+export const previewTile = (art: PixelArt, tile: TileAxis): RgbaImage => {
+  const across = tile === "y" ? 1 : 3
+  const down = tile === "x" ? 1 : 3
+  const width = art.width * across
+  const height = art.height * down
+  const indices = new Int32Array(width * height)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) indices[y * width + x] = art.indices[(y % art.height) * art.width + (x % art.width)]!
+  }
+  const repeated = { width, height, palette: art.palette, indices }
+  return previewArt(repeated, Math.min(LINES_FROM - 1, fitScale(repeated, 768)))
 }
 
 /** A whole scale that makes the art about `target` pixels on its longer side. */
@@ -218,5 +241,79 @@ export const previewSheet = (
     }
     at += row.height + GAP
   }
+  return { width, height, data }
+}
+
+const ONION_BACKDROP = [26, 28, 34] as const
+const ONION_BEFORE = [232, 72, 72] as const
+const ONION_AFTER = [72, 120, 240] as const
+const ONION_BOTH = [168, 96, 200] as const
+const ONION_GUIDE = [255, 255, 255, 40] as const
+const ONION_COLUMNS = 8
+const ONION_TICK = 4
+
+/**
+ * One animation as a still, for an agent that cannot watch it: a panel per
+ * step of playback, in rows, left to right. Each shows the frame in its own
+ * colors over what changes around it: the frame before in red, the frame
+ * after in blue, purple where both are, so a frame that jumps, drifts, or
+ * changes size shows as a thick band. The first panel's frame before is the
+ * last one played, the loop's seam. Faint lines cross at the anchor, and a
+ * frame held for several beats has that many ticks under it.
+ */
+export const previewOnion = (clip: Pick<AtlasClip, "frames" | "anchor" | "beats" | "loop">, target = 1024): RgbaImage => {
+  const order = playOrder(clip.frames.length, clip.loop)
+  const { width: artWidth, height: artHeight } = clip.frames[0]!
+  const columns = Math.min(order.length, ONION_COLUMNS)
+  const scale = Math.max(1, Math.min(Math.floor((target - GAP * (columns - 1)) / (columns * artWidth)), Math.floor(256 / Math.max(artWidth, artHeight))))
+  const panelWidth = artWidth * scale
+  const ticks = clip.beats.some((beats) => beats > 1) ? ONION_TICK + GAP / 2 : 0
+  const panelHeight = artHeight * scale + ticks
+  const rows = Math.ceil(order.length / columns)
+  const width = columns * panelWidth + GAP * (columns - 1)
+  const height = rows * panelHeight + GAP * (rows - 1)
+  const data = new Uint8ClampedArray(width * height * 4)
+  const fill = (x0: number, y0: number, w: number, h: number, color: readonly [number, number, number]): void => {
+    for (let y = y0; y < y0 + h; y++) {
+      for (let x = x0; x < x0 + w; x++) {
+        const i = (y * width + x) * 4
+        data[i] = color[0]
+        data[i + 1] = color[1]
+        data[i + 2] = color[2]
+      }
+    }
+  }
+  data.fill(255)
+  fill(0, 0, width, height, BACKDROP)
+  order.forEach((f, step) => {
+    const left = (step % columns) * (panelWidth + GAP)
+    const top = Math.floor(step / columns) * (panelHeight + GAP)
+    const art = clip.frames[f]!
+    const before = clip.frames[order[(step - 1 + order.length) % order.length]!]!
+    const after = clip.frames[order[(step + 1) % order.length]!]!
+    fill(left, top, panelWidth, artHeight * scale, ONION_BACKDROP)
+    const guideY = top + Math.max(0, Math.min(artHeight * scale - 1, (clip.anchor.y + 1) * scale - 1))
+    const guideX = left + Math.max(0, Math.min(panelWidth - 1, clip.anchor.x * scale + (scale >> 1)))
+    for (let x = left; x < left + panelWidth; x++) blend(data, (guideY * width + x) * 4, ONION_GUIDE)
+    for (let y = top; y < top + artHeight * scale; y++) blend(data, (y * width + guideX) * 4, ONION_GUIDE)
+    for (let y = 0; y < artHeight; y++) {
+      for (let x = 0; x < artWidth; x++) {
+        const cell = y * artWidth + x
+        const own = art.indices[cell]!
+        const wasThere = before.indices[cell]! !== TRANSPARENT
+        const willBe = after.indices[cell]! !== TRANSPARENT
+        if (own !== TRANSPARENT) {
+          const color = art.palette[own]!
+          fill(left + x * scale, top + y * scale, scale, scale, [color.r, color.g, color.b])
+        } else if (wasThere || willBe) {
+          fill(left + x * scale, top + y * scale, scale, scale, wasThere && willBe ? ONION_BOTH : wasThere ? ONION_BEFORE : ONION_AFTER)
+        }
+      }
+    }
+    if (ticks > 0) {
+      const shown = Math.min(clip.beats[f]!, Math.floor(panelWidth / (ONION_TICK + 2)))
+      for (let tick = 0; tick < shown; tick++) fill(left + tick * (ONION_TICK + 2), top + panelHeight - ONION_TICK, ONION_TICK, ONION_TICK, [230, 230, 230])
+    }
+  })
   return { width, height, data }
 }

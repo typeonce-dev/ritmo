@@ -16,7 +16,7 @@ import { lintArt, type Issue, type LintRules } from "./lint.ts"
 import { runRecipe, type Outcome } from "./pipeline.ts"
 import type { Recipe } from "./recipe.ts"
 import { atlasOf } from "./spritesheet.ts"
-import { defaultSheet } from "./sheet.ts"
+import { defaultSheet, frameDuration } from "./sheet.ts"
 import { artOfImage } from "./sprite.ts"
 
 export type Verdict = "clean" | "fixable" | "needs-person"
@@ -363,6 +363,8 @@ export const reportOfSheet = (image: RgbaImage, recipe: Recipe, outcome: Animati
         frames: animation.frames.map((i) => i + 1),
         include: animation.include,
         fps: animation.fps,
+        // How long each of `frames` shows, in milliseconds: the JSON's `duration`.
+        durations: animation.frames.map((i) => frameDuration(animation.fps, sheet.frames[i]?.beats ?? 1)),
         loop: animation.loop,
         width: outcome.clips[a]?.width ?? 0,
         height: outcome.clips[a]?.height ?? 0

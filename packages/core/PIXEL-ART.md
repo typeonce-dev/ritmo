@@ -120,7 +120,7 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 - Schlitter, "Pixelblog 20" ([link][slynyrd-20]): "Although part of the charming aesthetic can be attributed to repetition, you don't want the tiles to be too obvious." … "Ultimately, a grass texture made up of only one tile becomes monotonous, no matter how awesome the tile is." … "The trick is in trying to hide the patterns within consistent non-distracting textures." … "A busy texture next to another busy texture may exhaust the eyes with too much noise."
 - Schlitter, "Pixelblog 43" ([link][slynyrd-43]): "Step one with any tileset is the base repeating texture, which must loop well on all four sides."
 - Cure ([link][cure]): "Noise is any sort of information that does not contribute to the piece".
-- **Ritmo:** "clustered where wear happens" and "placed by hash" are Still Time directions (review 1: "Make cracks and moss rare (about one tile in eight) and cluster them near walls and cover, not spread evenly"; review 5: braziers "copy-pasted", "Vary it by hash"). "Rare is not none" is review 2: "The room is now a grey void … I asked for *rare*, not *none*." The skill keeps the principle and drops the one-in-eight; "by hand or by a fixed function of the tile's position" replaces "by hash", which a hand-placed tilemap never uses.
+- **Ritmo:** `pixel lint --tile` checks Schlitter's "must loop well" for hard seams only, and `pixel preview --tile` shows the repeat for the eye; Pixelorama's Tile Mode ([link][pixelorama]) is the idea. "clustered where wear happens" and "placed by hash" are Still Time directions (review 1: "Make cracks and moss rare (about one tile in eight) and cluster them near walls and cover, not spread evenly"; review 5: braziers "copy-pasted", "Vary it by hash"). "Rare is not none" is review 2: "The room is now a grey void … I asked for *rare*, not *none*." The skill keeps the principle and drops the one-in-eight; "by hand or by a fixed function of the tile's position" replaces "by hash", which a hand-placed tilemap never uses.
 
 ### Lines and shades follow the pixel craft; `pixel lint` does not check them
 
@@ -145,7 +145,7 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 - Schlitter, "Pixelblog 9: Melee Attacks", 2018 ([link][slynyrd-9]): "Anticipation and recovery frames add realism but can make sluggish gameplay." … "Most pixelart games keep it snappy and can get away with even fewer frames than my examples."
 - Cartwright (Skullgirls), GDC 2014, via 80 Level ([link][cartwright]): "Having even a frame of anticipation will make your move much better in terms of readability."
 - Medeiros, "A Basic Aseprite Animation" ([link][saint-anim]): "Keeping the volume is very important so your object doesn't look like it got smaller or bigger." The skill says "area" with the squash example, because a test agent read "volume" as forbidding squash and stretch.
-- **Ritmo:** timing and effects are the `ritmo-fx` skill's Craft (`FX.md` has its sources), so the skill points there instead of repeating it.
+- **Ritmo:** timing and effects are the `ritmo-fx` skill's Craft (`FX.md` has its sources), so the skill points there instead of repeating it. Holding a frame (`6x3`) and the onion picture are the tool section's, not a rule: they are how `pixel sheet` does timing and how an agent looks at motion it cannot watch. Both ideas are from Pixelorama, whose frames carry a duration multiplier and whose canvas tints onion skins blue and red ([link][pixelorama]).
 
 ## Judging
 
@@ -218,3 +218,4 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 [wesnoth]: https://wiki.wesnoth.org/Creating_Unit_Art
 [george]: https://www.gamedeveloper.com/design/crafting-the-perfect-game-art-brief
 [gimate]: https://www.gamedeveloper.com/blogs/from-references-to-concept-art
+[pixelorama]: https://github.com/Orama-Interactive/Pixelorama

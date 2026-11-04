@@ -296,5 +296,6 @@ export const atlasClips = (outcome: AnimationOutcome, sheet: Sheet): Array<Atlas
     frames: clip.placed.map((placed) => placed.art),
     anchor: clip.placed[0]!.anchor,
     fps: sheet.animations[clip.animation]!.fps,
+    beats: clip.placed.map((placed) => sheet.frames[placed.index]!.beats),
     loop: sheet.animations[clip.animation]!.loop
   }))

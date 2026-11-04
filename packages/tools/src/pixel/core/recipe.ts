@@ -269,6 +269,8 @@ export const decodeRecipe = (text: string): Decoded<Recipe> => {
       const nudge = isRecord(frame.nudge) ? frame.nudge : {}
       const width = at("width")
       const height = at("height")
+      const beats = number(frame.beats, `sheet.frames[${i}].beats`, 1)
+      if (!Number.isInteger(beats) || beats < 1) errors.push(`sheet.frames[${i}].beats must be a whole number of beats, 1 or more`)
       if (!(width >= 1) || !(height >= 1)) {
         errors.push(`sheet.frames[${i}] needs a box at least 1 pixel wide and tall`)
         return []
@@ -277,7 +279,8 @@ export const decodeRecipe = (text: string): Decoded<Recipe> => {
         {
           box: { x: Math.round(at("x")), y: Math.round(at("y")), width: Math.round(width), height: Math.round(height) },
           include: boolean(frame.include, `sheet.frames[${i}].include`, true),
-          nudge: { x: Math.round(number(nudge.x, `sheet.frames[${i}].nudge.x`, 0)), y: Math.round(number(nudge.y, `sheet.frames[${i}].nudge.y`, 0)) }
+          nudge: { x: Math.round(number(nudge.x, `sheet.frames[${i}].nudge.x`, 0)), y: Math.round(number(nudge.y, `sheet.frames[${i}].nudge.y`, 0)) },
+          beats
         }
       ]
     })

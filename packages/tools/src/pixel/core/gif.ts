@@ -1,7 +1,7 @@
 /**
  * Animated GIFs of pixel art, written by hand: one global palette (the
  * frames share one), one color kept for transparency, and LZW compression.
- * GIF delays are in hundredths of a second, so a frame rate rounds to the
+ * GIF delays are in hundredths of a second, so a frame's time rounds to the
  * nearest one GIF can show.
  */
 import { makeMatcher, type Rgb } from "./color.ts"
@@ -10,8 +10,8 @@ import { TRANSPARENT, type PixelArt } from "./fix.ts"
 export interface GifOptions {
   /** Each pixel repeated this many times on both axes. */
   readonly scale: number
-  /** How long each frame shows, in milliseconds. */
-  readonly delay: number
+  /** How long each frame shows, in milliseconds, in the order of the frames. */
+  readonly delays: ReadonlyArray<number>
 }
 
 /** Writes bits least significant first, in sub-blocks of at most 255 bytes, as GIF wants. */
@@ -106,8 +106,8 @@ export const toGif = (frames: ReadonlyArray<PixelArt>, options: GifOptions): Uin
   out.push(0x21, 0xff, 0x0b)
   ascii("NETSCAPE2.0")
   out.push(0x03, 0x01, 0, 0, 0)
-  const delay = Math.max(2, Math.round(options.delay / 10))
-  for (const art of frames) {
+  for (const [f, art] of frames.entries()) {
+    const delay = Math.max(2, Math.round(options.delays[f]! / 10))
     // Each frame replaces the last (disposal 2), with its transparent color see-through.
     out.push(0x21, 0xf9, 0x04, (2 << 2) | 1, ...word(delay), transparent, 0)
     out.push(0x2c, ...word(0), ...word(0), ...word(width), ...word(height), 0)
