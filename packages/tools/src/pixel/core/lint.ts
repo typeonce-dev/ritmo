@@ -48,6 +48,8 @@ export interface Issue {
 
 /** Colors closer than this (OKLab) look the same: in pixel art they are noise or anti-aliasing. */
 const NEAR_DUPLICATE = 0.03
+/** Past this many colors a picture is not pixel art, and its pairs of colors are not compared one by one. */
+const NEAR_DUPLICATE_LIMIT = 512
 const SHOWN = 20
 /** The mean color change (OKLab) across a wrap below which no line shows. */
 const SEAM_VISIBLE = 0.01
@@ -226,23 +228,36 @@ export const lintArt = (art: PixelArt, rules: LintRules = {}, partial = 0): Arra
     }
   }
 
+  if (used.length > NEAR_DUPLICATE_LIMIT) {
+    // A painting, a photo, or a smooth icon: comparing every pair of its colors would take minutes and gigabytes.
+    issues.push({
+      rule: "near-duplicate-colors",
+      severity: "warning",
+      message: `${used.length} colors, many too close to tell apart: this is not pixel art yet (\`pixel fix\` or \`pixel pixelate\` makes it so)`,
+      count: used.length,
+      at: []
+    })
+    return issues
+  }
   const labs = used.map((index) => ({ index, lab: toOklab(art.palette[index]!) }))
   const pairs: Array<string> = []
+  let count = 0
   for (let i = 0; i < labs.length; i++) {
     for (let j = i + 1; j < labs.length; j++) {
       const a = labs[i]!
       const b = labs[j]!
       if (Math.hypot(a.lab.l - b.lab.l, a.lab.a - b.lab.a, a.lab.b - b.lab.b) < NEAR_DUPLICATE) {
-        pairs.push(`${toHex(art.palette[a.index]!)}/${toHex(art.palette[b.index]!)}`)
+        count++
+        if (pairs.length < 6) pairs.push(`${toHex(art.palette[a.index]!)}/${toHex(art.palette[b.index]!)}`)
       }
     }
   }
-  if (pairs.length > 0) {
+  if (count > 0) {
     issues.push({
       rule: "near-duplicate-colors",
       severity: "warning",
-      message: `${pairs.length} pair${pairs.length === 1 ? "" : "s"} of colors too close to tell apart (${pairs.slice(0, 6).join(", ")}${pairs.length > 6 ? ", …" : ""}): merge them`,
-      count: pairs.length,
+      message: `${count} pair${count === 1 ? "" : "s"} of colors too close to tell apart (${pairs.join(", ")}${count > 6 ? ", …" : ""}): merge them`,
+      count,
       at: []
     })
   }
