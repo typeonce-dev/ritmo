@@ -1,7 +1,7 @@
 {
   "name": "@typeonce/ritmo-tools",
   "version": "0.20.0",
-  "description": "Asset tools for games made with Ritmo, for agents: fixes AI-made pixel art and animation sheets onto a true pixel grid and a palette, keeps game sounds as JSON recipes, writes game music as JSON songs built around a hum, and draws pixel art effects as code, each with a review page for a person",
+  "description": "Asset tools for games made with Ritmo, for agents: fixes AI-made pixel art and animation sheets onto a true pixel grid and a palette, keeps game sounds as JSON recipes, writes game music as JSON songs built around a hum, and draws pixel art effects as code, each with a review page for a person, pixel art included",
   "author": "Sandro Maglione",
   "license": "MIT",
   "repository": {
@@ -28,6 +28,7 @@
   "files": [
     "dist",
     "!dist/pixel/ui",
+    "!dist/pixel/review",
     "!dist/sound/ui",
     "!dist/music/ui",
     "!dist/fx/ui",
@@ -72,7 +73,7 @@
   "scripts": {
     "build": "tsc -b tsconfig.json --pretty false",
     "check": "tsc -b tsconfig.json --pretty false",
-    "build:page": "vite build src/sound/ui --outDir ../../../dist/sound/page --emptyOutDir --base ./ --logLevel warn && vite build src/music/ui --outDir ../../../dist/music/page --emptyOutDir --base ./ --logLevel warn && vite build src/fx/ui --outDir ../../../dist/fx/page --emptyOutDir --base ./ --logLevel warn",
+    "build:page": "vite build src/pixel/review --outDir ../../../dist/pixel/page --emptyOutDir --base ./ --logLevel warn && vite build src/sound/ui --outDir ../../../dist/sound/page --emptyOutDir --base ./ --logLevel warn && vite build src/music/ui --outDir ../../../dist/music/page --emptyOutDir --base ./ --logLevel warn && vite build src/fx/ui --outDir ../../../dist/fx/page --emptyOutDir --base ./ --logLevel warn",
     "prepack": "pnpm run build:page"
   },
   "dependencies": {

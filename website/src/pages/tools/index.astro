@@ -1,8 +1,9 @@
 ---
 // The front door to `@typeonce/ritmo-tools`: the command an agent runs for
-// art, effects, sound, and music, and the four pages a person reviews on. The tools'
-// own pages (/tools/pixel/, /tools/fx/, /tools/sound/, /tools/music/) own the whole
-// window; this one is a guide.
+// art, effects, sound, and music, and the four pages on this site a person
+// tries them on. The tools' own pages (/tools/pixel/, /tools/fx/, /tools/sound/,
+// /tools/music/) own the whole window; this one is a guide. The pixel art review
+// (`pixel review`) runs on localhost over the game's own files, so it has no page here.
 import Command from "../../components/Command.astro"
 import FxShowcase from "../../components/FxShowcase.astro"
 import MusicShowcase from "../../components/MusicShowcase.astro"
@@ -16,14 +17,15 @@ const tools = [
   {
     id: "pixel",
     title: "Pixel fixer",
-    body: "Image generators fake pixel art and draw uneven animation sheets. The fixer turns both into real pixel art: a true grid, one palette, frames that play smooth.",
+    body: "Image generators fake pixel art and draw uneven animation sheets. The fixer turns both into real pixel art: a true grid, one palette, frames that play smooth. Then you go through all of a game's art on one page, approve it, and circle the pixels to change.",
     href: "/tools/pixel/",
     open: "Open the pixel fixer",
     command: "npx @typeonce/ritmo-tools pixel fix art.png",
     commands: [
       { name: "check", body: "Clean, fixable, or needs a person?" },
       { name: "fix", body: "The art at its true size, and its recipe." },
-      { name: "sheet", body: "Frames on one grid, a sprite sheet, a GIF." }
+      { name: "sheet", body: "Frames on one grid, a sprite sheet, a GIF." },
+      { name: "review", body: "All the art by folder, to approve and comment on." }
     ]
   },
   {

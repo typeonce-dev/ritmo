@@ -51,7 +51,7 @@ for (const directory of packages) {
   tarballByName.set(manifest.name, path.join(tarballs, created))
   const listing = run("tar", ["-tzf", path.join(tarballs, created)], work).split("\n")
   const shipped = commandLineOnly.has(directory)
-    ? ["package/LICENSE", "package/README.md", "package/CHANGELOG.md", "package/dist/cli.js", "package/dist/sound/page/index.html", "package/dist/music/page/index.html", "package/dist/fx/page/index.html"]
+    ? ["package/LICENSE", "package/README.md", "package/CHANGELOG.md", "package/dist/cli.js", "package/dist/pixel/page/index.html", "package/dist/sound/page/index.html", "package/dist/music/page/index.html", "package/dist/fx/page/index.html"]
     : ["package/LICENSE", "package/README.md", "package/CHANGELOG.md", "package/dist/index.js", "package/dist/index.d.ts", "package/src/index.ts"]
   for (const required of shipped) {
     if (!listing.includes(required)) throw new Error(`${manifest.name} tarball is missing ${required}`)
@@ -66,7 +66,7 @@ for (const directory of packages) {
     for (const repoOnly of ["PROTOTYPE.md", "ONBOARDING.md", "POLISH.md", "FX.md", "PIXEL-ART.md"]) if (listing.includes(`package/${repoOnly}`)) throw new Error(`${manifest.name} tarball contains the repo-only ${repoOnly}`)
     if (listing.some((file) => file.startsWith("package/genres/"))) throw new Error(`${manifest.name} tarball contains the repo-only genres/`)
   }
-  if (commandLineOnly.has(directory) && listing.some((file) => file.startsWith("package/src/") || file.startsWith("package/bin/") || file.startsWith("package/dist/pixel/ui/") || file.startsWith("package/dist/sound/ui/") || file.startsWith("package/dist/music/ui/") || file.startsWith("package/dist/fx/ui/"))) {
+  if (commandLineOnly.has(directory) && listing.some((file) => file.startsWith("package/src/") || file.startsWith("package/bin/") || file.startsWith("package/dist/pixel/ui/") || file.startsWith("package/dist/pixel/review/") || file.startsWith("package/dist/sound/ui/") || file.startsWith("package/dist/music/ui/") || file.startsWith("package/dist/fx/ui/"))) {
     throw new Error(`${manifest.name} tarball contains its source, its in-repo launcher, or the website's page`)
   }
   if (directory === "pixi" && listing.some((file) => /\/(NodeRegistry|RenderSync)\.(ts|js|d\.ts)$/.test(file))) {

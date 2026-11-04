@@ -157,6 +157,7 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 - Wesnoth wiki ([link][wesnoth]): "Test your unit early in the game."
 - Yu ([link][yu]): "if you squint, a few large clusters of light and dark should still emerge."
 - **Ritmo:** every Still Time review was written from phone captures of real rooms, and after lighting shipped the reviewer wrote "Judge your art under it. Append `?nolight` to the URL to compare against the unlit scene." In the `ritmo-prototype` skill one screenshot is the whole check in a round about looks; this skill asks for the same captures before art goes in. "When the target screen is out of reach, say so" is the `ritmo-prototype` rule of reporting what the check did not run.
+- **Ritmo:** "and so does the review page" is the maintainer's direction for `pixel review` (2026-11-04): an approval on the page is the person's, but the page shows each asset alone, at whole-number zooms over a plain backdrop, so it settles the pixels and not the read; the game capture still does.
 
 ### A reference is a set of named qualities; change what was asked and nothing else; options at display size and 4× beside it
 

@@ -6,7 +6,7 @@ tool per kind of asset:
 
 | Tool | For |
 | --- | --- |
-| `ritmo-tools pixel` | Pixel art: fixes AI-made or blurry pictures and animation sheets onto a true pixel grid and a palette, renders sprites drawn as text, and checks a project's art against its rules. |
+| `ritmo-tools pixel` | Pixel art: fixes AI-made or blurry pictures and animation sheets onto a true pixel grid and a palette, renders sprites drawn as text, checks a project's art against its rules, and opens a local page with all of a game's art by folder, where a person looks at each piece at whole-number zooms, plays its animations, sees the whole set side by side, approves, and pins comments to an area of pixels. |
 | `ritmo-tools sound` | Sound effects: keeps them as JSON recipes, measures and varies them, writes WAV files, and opens a local page where a person listens, picks, tunes, and notes. |
 | `ritmo-tools fx` | Pixel art effects: keeps each effect as a few drafts written as code, checks them for pixel art craft and the project's rules, draws contact sheets an agent can look at, writes sprite sheets and GIFs, and opens a local page where a person watches the drafts side by side, picks, tunes, and pins comments to a pixel. |
 | `ritmo-tools music` | Game music: hears a person's hum for its tune, tempo, and key, keeps songs as JSON tracks of notes, checks them, writes WAV and MIDI files, and opens a local page with all of a game's music on one list, songs and plain audio files, where a person plays, edits notes, records, approves, and comments. |
@@ -38,7 +38,9 @@ sheet with its JSON, a GIF, and each frame.
 It comes in two parts that share one core: a web page for people tuning art
 by hand (it runs entirely in the browser; pictures never leave the device),
 and the `ritmo-tools pixel` command for agents that check, fix, and make art on their own.
-A recipe saved by one runs in the other.
+A recipe saved by one runs in the other. The command also opens a review
+page on localhost, where a person goes through all of a game's art and the
+agent reads back what to change (see "The review page" below).
 
 The page wears Ritmo's brand (`brand/README.md`): its colors, its mark as the
 logo, and its Tick orange only on what is active or selected. The palette
@@ -296,6 +298,12 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 | `compare <a> <b>` | Which of two versions is better, and why. |
 | `palettes [name]` | The presets, or one palette's colors. |
 | `init` | Writes a starting `pixel.config.json`. |
+| `review <paths...> [--port 5193] [--host]` | Serves the review page for the PNGs, text sprites, and folders named, and prints its address; runs until stopped. |
+| `notes <paths...>` | What the person said about the same paths: a `summary` of what is left, then `assets`, each one's status, note, open comments (numbered, with their area and frame), how many are resolved, `changedSinceApproved`, the lint, and `next`, changes asked first; `gone` lists reviews whose file is no longer found. |
+| `resolve <asset> <numbers...> [--reply "what changed"]` | Marks comments as resolved: `pixel notes` stops listing them, and the page shows them done with the reply. The person can reopen one. |
+
+`review`, `notes`, and `resolve` exit 0 or 2 only: what the lint says about
+the art is in the notes, never a failure of them.
 
 `fix`, `check`, `pixelate`, and `preview` take the page's settings as flags
 (`--palette`, `--cell 8x8 --offset 2,3`, `--follow straight` or `bend`,
@@ -380,6 +388,63 @@ of the true size, which are as clean but have half their lines mid-cell.
   browser. If it fails, download the `.hex` file from lospec.com and import it.
 - It fixes pixels and colors, not the drawing itself.
 
+### The review page
+
+`ritmo-tools pixel review public/art assets/sprites` opens a game's art on a
+local page, where a person goes through it and says what to change. Name the
+folders the art is in: a folder is searched for PNGs and text sprites, and a
+folder with none, or a path that is not there, exits 2. Left out of a folder:
+`node_modules`, hidden folders, and what the tools write beside the art
+(`.preview.png`, `.project.png`, `.onion.png`, `@Nx.png` and its JSON,
+`.frames/` folders). A fix and what it was made from (`hero.fixed.png` and
+`hero.png`; likewise `.sheet.png`, `.pixel.png`, and a sprite's
+`.render.png`) show as one row: the file the game uses, with its source
+named. A `.txt` file is art only when it reads as a sprite source (others,
+notes or prompts, are passed over); named outright, one that does not read
+exits 2. A PNG with a JSON beside it in the format `pixel sheet` writes (or
+Aseprite's) is a sheet, played by animation with each frame's duration;
+with a JSON in a format of its own, it shows as a still.
+
+The list on the left shows every asset by folder with its status, whether it
+changed since it was approved, its lint, and its open comments; the top bar
+narrows it to what is to review, has changes asked, or is approved. The art
+shows at a whole-number zoom (1× first, the size the game draws it before
+any scaling) over a backdrop: dark, light, a checkerboard, or any color.
+**Repeat** draws it three by three, to see a tile meet itself. A sheet
+plays each animation with its durations, and the playback bar pauses and
+steps through the frames. **Set** shows every asset at its own size side by
+side over one backdrop, to see whether they belong together; pick several
+and **Compare them** shows only those, or **Approve them** approves them
+at once.
+
+Dragging over the art pins a comment to that area of the frame shown (a
+click pins it to one pixel); each comment's number rings its area, at every
+zoom. On the right are the review (status and note), the comments (resolved
+ones greyed, with the agent's reply, and **Reopen**), the lint against the
+asset's nearest `pixel.config.json` (**Show** rings a rule's pixels on its
+frame), and the files the asset comes from. **Approved** keeps a hash of
+each frame's pixels as decoded and its duration: a re-export that looks the
+same is no change, and neither is a color hidden under a transparent pixel.
+When the art later looks different or plays at other timings, the page and
+`pixel notes` say which frames, and **Approve it as it is now** takes the new
+version; the status stays approved, since only the person changes it.
+
+↑ and ↓ change asset, Space plays, ← and → step frames, + and − zoom, 0 goes
+back to 1×, V switches to the whole set and back, and Ctrl/Cmd+Z undoes.
+Every change is saved as it happens. Art the agent rewrites or adds, and
+comments it resolves, show up while the page is open; what the person is
+typing is kept.
+
+The review is not kept beside the art, which usually sits in a folder that
+ships with the game: all of it lives in one `pixel.review.json`, keyed by the
+path from there, in the nearest folder above the art with a `package.json`
+(or the art's own, when there is none).
+
+Approving on the page is not judging the art in the game: the page shows it
+alone at whole-number zooms, and the game shows it among the rest, scaled,
+moving, and over its own ground. Look at it in the game at the size it is
+drawn too.
+
 ### Code
 
 - `src/pixel/core/`: the headless core, tested in `test/` with fake AI pictures made
@@ -398,7 +463,8 @@ of the true size, which are as clean but have half their lines mid-cell.
   `preview.ts` (pictures to look at), `sheet.ts` (clearing a sheet, finding
   its frames, anchors, and laying frames on one canvas), `animation.ts` (the
   whole fix for a sheet), `spritesheet.ts` (sheet layouts and their JSON),
-  `gif.ts` (animated GIFs), `zip.ts` (stored ZIP files). The outline
+  `gif.ts` (animated GIFs), `zip.ts` (stored ZIP files), `review.ts` (the
+  review file, approval hashes, and the notes). The outline
   handling, bent lines, and the outline-keeping shrink follow
   [ToPixel](https://github.com/daisuqe/ToPixel).
 - `src/pixel/ui/`: the page (plain DOM and a canvas, no framework; `player.ts` plays
@@ -408,7 +474,11 @@ of the true size, which are as clean but have half their lines mid-cell.
 - `src/pixel/cli/`: the `pixel` command (Effect), with PNG files through `pngjs` and
   JPEG through `jpeg-js`;
   `src/cli.ts` is `ritmo-tools` itself, and `bin/ritmo-tools.mjs` runs it from
-  its TypeScript source inside the repository.
+  its TypeScript source inside the repository. `library.ts` finds a game's art,
+  reads, hashes, and lints each asset, and keeps the review file; `serve.ts` is
+  the review page's server.
+- `src/pixel/review/`: the review page (`lab.ts`), which only draws what the
+  server decoded, and the store it reads and writes through (`store.ts`).
 
 ## Effects lab (`ritmo-tools fx`)
 
