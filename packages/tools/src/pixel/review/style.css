@@ -1,0 +1,327 @@
+/*
+ * The pixel review's own pieces, over the pixel fixer's, the sound lab's,
+ * and the effects lab's styles: the list of assets by folder, one asset at
+ * a whole-number zoom with its comments ringed, and the whole set side by
+ * side at its own size.
+ */
+
+.pixel-folder {
+  margin: 10px 8px 2px;
+  overflow: hidden;
+  color: var(--muted);
+  font: 500 11px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pixel-rows .pixel-folder:first-child {
+  margin-top: 2px;
+}
+
+.sound-flag.lint .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.pixel-path {
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.pixel-source {
+  color: #8a8f98;
+}
+
+/* One asset: its animations, then the canvas, which scrolls inside its own box when it is wider than the stage. */
+
+.pixel-animations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.pixel-animation {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(243, 241, 236, 0.12);
+  border-radius: 999px;
+  background: rgba(243, 241, 236, 0.04);
+  color: #bdbab3;
+  font: 500 12px var(--mono);
+  cursor: pointer;
+}
+
+.pixel-animation:hover {
+  background: rgba(243, 241, 236, 0.08);
+}
+
+.pixel-animation.on {
+  border-color: var(--accent);
+  color: #f3f1ec;
+}
+
+.pixel-animation .meta {
+  color: #80858e;
+}
+
+.pixel-screen {
+  max-width: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.pixel-frame {
+  position: relative;
+  margin: 0 auto;
+}
+
+.pixel-canvas {
+  display: block;
+  image-rendering: pixelated;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.pixel-rings {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Magenta: the debug color, in almost no game's palette, so a ring shows on any art. */
+.pixel-ring {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #ff2bd6;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+
+.pixel-ring.drawing {
+  border-style: dashed;
+}
+
+.pixel-ring.mark {
+  border-color: #fee761;
+}
+
+.pixel-ring-label {
+  position: absolute;
+  left: 100%;
+  bottom: 100%;
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ff2bd6;
+  color: #ffffff;
+  font: 600 10.5px/1 var(--sans, Inter, system-ui, sans-serif);
+  transform: translate(-6px, 6px);
+}
+
+.pixel-counter {
+  min-width: 0;
+  padding: 0 6px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.pixel-stage .playback {
+  flex-wrap: wrap;
+  justify-content: center;
+  width: max-content;
+  max-width: calc(100% - 24px);
+}
+
+.pixel-color {
+  width: 34px;
+  height: var(--control);
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.topbar-center .pixel-views {
+  margin-left: 8px;
+}
+
+/* The whole set: every asset at its own size, over one backdrop. */
+
+.pixel-set-folder + .pixel-set-folder {
+  margin-top: 14px;
+}
+
+.pixel-set-folder .pixel-folder {
+  margin: 0 0 6px;
+}
+
+/* One backdrop under the whole set, so the art reads together, as on one screen. */
+.pixel-set {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  background: var(--backdrop, #1a1c2c);
+}
+
+.pixel-set-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 3px;
+  border-radius: 4px;
+}
+
+.pixel-set-tile.on {
+  box-shadow: 0 0 0 1px rgba(243, 241, 236, 0.45);
+}
+
+.pixel-set-tile.picked {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.pixel-set-open {
+  display: grid;
+  place-items: center;
+  max-width: 100%;
+  overflow: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pixel-set-art {
+  overflow: hidden;
+}
+
+.pixel-set-art img {
+  display: block;
+  max-width: none;
+  image-rendering: pixelated;
+}
+
+.pixel-set-broken {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--bad);
+}
+
+.pixel-set-foot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 112px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(15, 16, 20, 0.6);
+  font-size: 10.5px;
+}
+
+.pixel-set-name {
+  min-width: 0;
+  overflow: hidden;
+  color: #d4d4da;
+  font-family: var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pixel-set-foot .dot {
+  width: 7px;
+  height: 7px;
+}
+
+.pixel-set-foot .sound-flag .icon {
+  width: 11px;
+  height: 11px;
+}
+
+/* Picking: a check in the tile's corner, shown on hover, when picked, and always where there is no hover. */
+.pixel-pick {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1.5px solid rgba(243, 241, 236, 0.5);
+  border-radius: 4px;
+  background: rgba(15, 16, 20, 0.85);
+  color: transparent;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.pixel-set-tile:hover .pixel-pick,
+.pixel-pick:focus-visible,
+.pixel-pick.on {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .pixel-pick {
+    opacity: 1;
+  }
+}
+
+.pixel-pick .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.pixel-pick.on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.pixel-picked {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 8px 10px;
+  border-radius: var(--radius-lg);
+  background: var(--floating);
+  box-shadow: var(--shadow-float);
+  color: #ececef;
+  font-size: 12.5px;
+}
+
+.pixel-picked > span {
+  margin-right: auto;
+}
+
+@media (max-width: 760px) {
+  .topbar-center .pixel-views {
+    margin-left: 0;
+  }
+
+  .pixel-set-foot {
+    max-width: 96px;
+  }
+}
