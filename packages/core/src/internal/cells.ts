@@ -275,6 +275,12 @@ class WriteAccessor extends ReadAccessor {
     this.writeIndex = -1
   }
 
+  // A read of another page moves `values`, which a write uses: the next write registers its page again.
+  override enter(index: number, record: EntityRecord): void {
+    super.enter(index, record)
+    this.writeIndex = -1
+  }
+
   enterWrite(index: number, record: EntityRecord): boolean {
     const page = pageOfEntity(this.pages, index, record, this.ordinal, this.stamp)
     const world = this.world
@@ -337,6 +343,12 @@ class NumberWriteAccessor extends NumberReadAccessor {
 
   override reset(): void {
     this.pageIndex = -1
+    this.writeIndex = -1
+  }
+
+  // A read of another page moves `numbers`, which a write uses: the next write registers its page again.
+  override enter(index: number, record: EntityRecord): void {
+    super.enter(index, record)
     this.writeIndex = -1
   }
 

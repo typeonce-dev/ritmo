@@ -206,6 +206,108 @@ describe("a query's data and entities", () => {
     expect(runtime.inspect(Restored)).toEqual([600, 100, { x: 599, y: 0 }])
   })
 
+  it("writes the entity it is given after reading one on another page, in every accessor class", () => {
+    const runtime = make()
+    runtime.tick(seed)
+    expect(runtime.tick(Game.Schedule(Game.System("Data/Chase", { queries: { h: Healths, p: Positions } }, ({ queries }) => {
+      const healths = queries.h.data.health
+      const places = queries.p.data.position
+      const he = queries.h.each()
+      const pe = queries.p.each()
+      // Entities 0 to 9 take from entities 300 to 309: another page, read between writes.
+      for (let i = 0; i < 10; i++) healths.set(he[i]!, healths.get(he[i + 300]!) + 10_000)
+      for (let i = 0; i < 10; i++) places.set(pe[i]!, { x: places.get(pe[i + 300]!).x + 10_000, y: 0 })
+    }))).ok).toBe(true)
+    const expected = seeded.map((i) => i < 10 ? i + 10_300 : i)
+    expect(runtime.inspect(Everyone)).toEqual(expected)
+    const Places = Game.Inspector("Data/Places", {
+      queries: { p: Game.Query({ selection: { position: Game.Query.read(Position) } }) }
+    }, ({ queries }) => queries.p.each().map((entity) => queries.p.data.position.get(entity).x))
+    expect(runtime.inspect(Places)).toEqual(expected)
+  })
+
+  it("rolls back and reports as changed only the entity written after reading across pages", () => {
+    const runtime = make()
+    runtime.tick(seed)
+    const Failing = Game.System("Data/ChaseFail", { queries: { h: Healths } }, ({ queries }) => {
+      const { health } = queries.h.data
+      const entities = queries.h.each()
+      for (let i = 0; i < 10; i++) health.set(entities[i]!, health.get(entities[i + 300]!) + 1)
+      return Result.failure("Nope" as const)
+    })
+    expect(runtime.tick(Game.Schedule(Failing)).ok).toBe(false)
+    expect(runtime.inspect(Everyone)).toEqual(seeded)
+    const counts: Array<ReadonlyArray<number>> = []
+    const Reader = Game.System("Data/ChaseChanged", {
+      queries: { changed: Game.Query({ selection: { health: Game.Query.read(Health) }, filters: [Game.Query.changed(Health)] }) }
+    }, ({ queries }) => { counts.push(queries.changed.each().map((entity) => queries.changed.data.health.get(entity))) })
+    runtime.tick(Game.Schedule(Reader))
+    counts.length = 0
+    const Chase = Game.System("Data/ChaseOk", { queries: { h: Healths } }, ({ queries }) => {
+      const { health } = queries.h.data
+      const entities = queries.h.each()
+      health.set(entities[0]!, health.get(entities[300]!) + 10_000)
+    })
+    runtime.tick(Game.Schedule(Chase, Reader))
+    expect(counts).toEqual([[10_300]])
+  })
+
+  it("keeps a slot kept from an empty run under the stale-run check", () => {
+    const runtime = make()
+    let kept: (() => void) | undefined
+    const Keep = Game.System("Data/KeepEmpty", { queries: { p: Positions } }, ({ queries }) => {
+      const { position } = queries.p.data
+      kept ??= () => {
+        for (const entity of queries.p.each()) position.set(entity, { x: -1, y: -1 })
+      }
+    })
+    runtime.tick(Game.Schedule(Keep))
+    runtime.tick(seed)
+    // Handed out again in this run: the kept slot is valid, and enters a page.
+    expect(runtime.tick(Game.Schedule(Keep, Game.System("Data/UseKept", { queries: { p: Positions } }, ({ queries }) => {
+      void queries.p.data
+      kept!()
+    }))).ok).toBe(true)
+    // Not handed out in this run: it must fail, not write through the page it remembers.
+    expect(() => runtime.tick(Game.Schedule(Game.System("Data/Late", { queries: { h: Healths } }, () => {
+      kept!()
+    })))).toThrow(/read queries\.x\.data again/)
+  })
+
+  it("restores a page with no numbers before a phase that failed", () => {
+    const Flow = Game.StateMachine("Data/Flow", { Playing: {}, Menu: {} })
+    const made = Game.Runtime.make({ services: Game.Runtime.services(), machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Playing" })) })
+    if (!made.ok) throw new Error("runtime")
+    const runtime = made.value
+    // The first entity holds a number, so the query picks number accessors; page 1 holds only objects.
+    runtime.tick(Game.Schedule(
+      Game.System("Data/SpawnMixed", { commands: Game.System.commands(Game.System.spawns(Mixed)) }, ({ commands }) => {
+        commands.spawn(Game.Command.spawn([Mixed, 5]))
+        for (let i = 0; i < 300; i++) commands.spawn(Game.Command.spawn([Mixed, { n: i }]))
+      }),
+      Game.Schedule.applyDeferred()
+    ))
+    const Reads = Game.Query({ selection: { mixed: Game.Query.read(Mixed) } })
+    const Optional = Game.Query({ selection: { mixed: Game.Query.optional(Mixed) } })
+    const Read = Game.Inspector("Data/ReadLast", { queries: { r: Reads, o: Optional } }, ({ queries }) => [
+      queries.r.data.mixed.get(queries.r.each().at(-1)!),
+      queries.o.data.mixed.get(queries.o.each().at(-1)!)
+    ])
+    const WriteObject = Game.System("Data/PhaseA", { queries: { m: Mixes } }, ({ queries }) => {
+      queries.m.data.mixed.set(queries.m.each().at(-1)!, { n: -1 })
+    })
+    const WriteNumber = Game.System("Data/PhaseB", { queries: { m: Mixes } }, ({ queries }) => {
+      queries.m.data.mixed.set(queries.m.each().at(-1)!, 99)
+    })
+    const Fail = Game.System("Data/PhaseC", {}, () => Result.failure("Nope" as const))
+    const transitions = Game.Schedule.transitions(Game.Schedule.onExit(Flow, "Playing", [WriteObject, WriteNumber, Fail]))
+    const ToMenu = Game.System("Data/ToMenu", { nextMachines: { flow: Game.System.nextState(Flow) } }, ({ nextMachines }) => {
+      nextMachines.flow.set({ _tag: "Menu" })
+    })
+    expect(runtime.tick(Game.Schedule(ToMenu, Game.Schedule.applyStateTransitions(transitions))).ok).toBe(false)
+    expect(runtime.inspect(Read)).toEqual([{ n: 299 }, { n: 299 }])
+  })
+
   it("reads and writes numbers once a query that was empty at its first use has entities", () => {
     const runtime = make()
     const values: Array<number> = []

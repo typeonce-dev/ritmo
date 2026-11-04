@@ -2,7 +2,7 @@
  * Query declarations, matching semantics, and typed slot access surfaces.
  *
  * Queries are the read-side center of ECS gameplay code. They describe which
- * entities a system is allowed to see and exactly which component cells that
+ * entities a system is allowed to see and exactly which components that
  * system may read or write once a match is found.
  *
  * In practice this module answers three different design questions at once:
@@ -123,7 +123,7 @@ export interface ReadAccess<D extends ComponentDescriptor> {
 /**
  * A write access declaration for a descriptor.
  *
- * Write accesses produce writable cells and mutable entity proofs.
+ * Write accesses produce writable slots.
  */
 export interface WriteAccess<D extends ComponentDescriptor> {
   /**
@@ -249,7 +249,7 @@ export type Writable<D> = D extends DescriptorModule.Immutable
  *
  * `optional(...)` is for reading extra data when the entity holds it, not for
  * matching: the query matches entities with or without the component. The
- * slot is the component's read cell when the entity holds it and `undefined`
+ * slot reads the component's value when the entity holds it and `undefined`
  * when it does not, so check it (`data.sprite?.get()`, or
  * `data.sprite !== undefined`) before reading. For a component whose own
  * value can be `undefined`, an `undefined` slot means absent and `get()`
@@ -382,7 +382,7 @@ export interface QuerySpec<
   Root = unknown
 > {
   /**
-   * Named access slots that become typed cells in query results.
+   * Named access slots that become the query's typed `data`.
    */
   readonly selection: Selection
   /**
@@ -532,9 +532,9 @@ export namespace Query {
  * Deep read projection used by every ECS read capability: what `get()`
  * returns.
  *
- * Helpers that take values read from cells type their parameter
+ * Helpers that take values read from slots or cells type their parameter
  * `ReadonlyValue<T>`, not `T`, so `get()` results pass in without a cast.
- * To change a value, write a new one with the cell's `update`; stored values
+ * To change a value, write a new one with the slot's or cell's `update`; stored values
  * are never mutated in place (a runtime made with `debug` freezes them).
  *
  * @example
@@ -583,7 +583,7 @@ export interface ReadCell<T> {
 export interface WriteCell<T> extends ReadCell<T> {
   /**
    * Replaces the current value. Takes the readonly shape reads return, so a
-   * value read from any cell can be written back as it is.
+   * value read from any slot or cell can be written back as it is.
    *
    * The world owns `value` from here: never mutate it afterwards, build a new
    * one. A runtime made with `debug` freezes it, so a later mutation throws

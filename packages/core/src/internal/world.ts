@@ -980,7 +980,9 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       const values = page.values
       const saved = page.phaseValues!
       for (let slot = 0; slot < PAGE_SIZE; slot++) values[slot] = saved[slot]
+      // A page without numbers before the phase goes back to holding none, or a number from the phase would read as a value.
       if (page.phaseNumbers !== undefined) page.numbers.set(page.phaseNumbers)
+      else page.numbers = emptyNumbers
       page.changed.set(page.phaseChanged!)
     }
     clearPhase()

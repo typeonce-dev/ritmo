@@ -21,7 +21,7 @@
  * spawns to render new entities in the same tick.
  *
  * `create` and `apply` receive one context: the renderable and transform
- * values, the entity id, extra read-only slots declared in `select` (as query
+ * values, the entity id, extra read-only slots declared in `select` (as read
  * cells in `data`), resources declared in `resources` (as read cells), and extra
  * services declared in `services`. Those resources and services become
  * runtime requirements like the registry itself.
@@ -264,7 +264,7 @@ export const system = <
     const cells: Record<string, unknown> = {}
     for (const [slot, optional] of selectedSlots) {
       const read = data[slot]
-      cells[slot] = optional && read.get(entity) === undefined ? undefined : { get: () => read.get(entity) }
+      cells[slot] = optional && !read.has(entity) ? undefined : { get: () => read.get(entity) }
     }
     return cells
   }

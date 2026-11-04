@@ -269,7 +269,7 @@ export type ResourceChanged<D extends Descriptor<"resource", string, any>> = {
  * A write that leaves an equal value is not a change: primitives compare
  * with `Object.is`, plain objects and arrays by their entries, other objects
  * by reference. This differs from `Game.Query.changed`, where every write
- * through a component write cell counts. The first run reports `true`; a
+ * through a component write slot counts. The first run reports `true`; a
  * failed run (rolled back) is not a change, and a failed reader sees the same
  * change again next run. Its own writes are not reported to the writer.
  *
@@ -898,7 +898,7 @@ export interface DroppedRelationReadView<
  * A runtime query handle exposed to system implementations.
  *
  * The handle is already typed from the query spec, so iterating it returns
- * strongly typed entity proofs and cells. A query with `added` / `changed`
+ * strongly typed entities and slots. A query with `added` / `changed`
  * filters only iterates (`each`, `singleOptional`): its lookups would fail
  * for every entity that did not change since this system's previous run, so
  * declare a second query without filters to resolve entities.

@@ -514,7 +514,8 @@ export const makeQueryEngine = (world: World) => {
       if (plan.mode === "read" || plan.mode === "write") accessors.push(accessor as { reset(): void })
     }
     state.data = made
-    state.handout.accessors = accessors
+    // Accessors made while the query was empty may be kept: they keep forgetting their page with the end of a run.
+    state.handout.accessors = [...(state.handout.accessors ?? []), ...accessors]
     return made
   }
 
