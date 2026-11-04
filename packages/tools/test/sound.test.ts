@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process"
-import { copyFileSync, mkdtempSync, readFileSync } from "node:fs"
+import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest"
 import { checkBank, issuesOf, measure } from "@typeonce/ritmo-tools/sound/core/measure.ts"
 import { applyTune, decodeBank, decodeRecipe, encodeBank, encodeRecipe, type Bank, type Recipe } from "@typeonce/ritmo-tools/sound/core/recipe.ts"
 import { render, renderSequence, SAMPLE_RATE } from "@typeonce/ritmo-tools/sound/core/render.ts"
-import { decodeReview, encodeReview, reviewPath, reviewSummary, type Review } from "@typeonce/ritmo-tools/sound/core/review.ts"
+import { approvalOf, changedSince, decodeReview, encodeReview, reviewPath, reviewSummary, type Review } from "@typeonce/ritmo-tools/sound/core/review.ts"
 import { makeTakes } from "@typeonce/ritmo-tools/sound/core/takes.ts"
 import { toWav } from "@typeonce/ritmo-tools/sound/core/wav.ts"
 
@@ -127,8 +127,40 @@ describe("reviews", () => {
   })
 
   it("sum up what is left to do", () => {
-    const summary = reviewSummary(["hit", "swing"], { sounds: { hit: { status: "approved", note: "", takes: [] } } })
+    const summary = reviewSummary({ sounds: { hit, swing: hit } }, { sounds: { hit: { status: "approved", note: "", takes: [] } } })
     expect(summary.summary).toBe("1 approved, 0 with changes asked, 1 not reviewed yet (of 2).")
+  })
+
+  it("keep what the person approved through a round trip", () => {
+    const review: Review = { sounds: { hit: { status: "approved", note: "", takes: [], approved: approvalOf(hit, 0.6) } } }
+    expect(decodeReview(encodeReview(review))).toEqual({ ok: true, value: review })
+    expect(decodeReview(JSON.stringify({ sounds: { hit: { approved: { recipe: 1 } } } })).ok).toBe(false)
+  })
+
+  it("see a change to what the person heard, and only that", () => {
+    const approved = approvalOf(hit, 0.6)
+    expect(changedSince(approved, hit, 0.6)).toBeUndefined()
+    // Words and the game's own audio code are not what the person heard.
+    expect(changedSince(approved, { ...hit, about: "Another line.", heavy: true, interval: 0.2 }, 0.6)).toBeUndefined()
+    expect(changedSince(approved, { ...hit, reverb: 0.3 }, 0.6)).toBe("its recipe changed")
+    expect(changedSince(approved, { ...hit, tune: { pitch: 2, length: 1, brightness: 0, echo: 0, volume: 0 } }, 0.6)).toBe("its recipe changed")
+    expect(changedSince(approved, hit, 0.8)).toBe("the bank's master volume is 0.8, it was 0.6 when approved")
+    // A bank without a master plays at 1.
+    expect(changedSince(approvalOf(hit, undefined), hit, 1)).toBeUndefined()
+  })
+
+  it("list a sound that changed since it was approved, and leave an older approval alone", () => {
+    const summary = reviewSummary(
+      { master: 0.6, sounds: { hit: { ...hit, reverb: 0.3 }, swing: hit } },
+      {
+        sounds: {
+          hit: { status: "approved", note: "", takes: [], approved: approvalOf(hit, 0.6) },
+          swing: { status: "approved", note: "", takes: [] }
+        }
+      }
+    )
+    expect(summary.summary).toBe("2 approved (1 changed since: ask the person to listen again), 0 with changes asked, 0 not reviewed yet (of 2).")
+    expect(summary.sounds.map((sound) => sound.changedSinceApproved)).toEqual(["its recipe changed", undefined])
   })
 })
 
@@ -162,6 +194,16 @@ describe("the CLI", () => {
     const notes = run("notes", bank)
     expect(notes.status).toBe(0)
     expect(notes.stdout).toContain("not reviewed yet")
+  })
+
+  it("lists a sound that changed since it was approved when it renders and reads notes", () => {
+    const folder = mkdtempSync(join(tmpdir(), "sound-"))
+    const bank = join(folder, "game.sounds.json")
+    writeFileSync(bank, encodeBank({ master: 0.6, sounds: { hit: { ...hit, reverb: 0.3 }, swing: hit } }))
+    writeFileSync(reviewPath(bank), encodeReview({ sounds: { hit: { status: "approved", note: "", takes: [], approved: approvalOf(hit, 0.6) } } }))
+    const rendered: unknown = JSON.parse(run("render", bank).stdout)
+    expect(rendered).toMatchObject({ changedSinceApproved: [{ sound: "hit", change: "its recipe changed" }] })
+    expect(run("notes", bank).stdout).toContain("changed since: ask the person to listen again")
   })
 
   it("exits 2 on a sound the bank does not have", () => {

@@ -9,7 +9,7 @@ tool per kind of asset:
 | `ritmo-tools pixel` | Pixel art: fixes AI-made or blurry pictures and animation sheets onto a true pixel grid and a palette, renders sprites drawn as text, and checks a project's art against its rules. |
 | `ritmo-tools sound` | Sound effects: keeps them as JSON recipes, measures and varies them, writes WAV files, and opens a local page where a person listens, picks, tunes, and notes. |
 | `ritmo-tools fx` | Pixel art effects: keeps each effect as a few drafts written as code, checks them for pixel art craft and the project's rules, draws contact sheets an agent can look at, writes sprite sheets and GIFs, and opens a local page where a person watches the drafts side by side, picks, tunes, and pins comments to a pixel. |
-| `ritmo-tools music` | Game music: hears a person's hum for its tune, tempo, and key, keeps songs as JSON tracks of notes, checks them, writes WAV and MIDI files, and opens a local page where a person plays, edits notes, records, and comments. |
+| `ritmo-tools music` | Game music: hears a person's hum for its tune, tempo, and key, keeps songs as JSON tracks of notes, checks them, writes WAV and MIDI files, and opens a local page with all of a game's music on one list, songs and plain audio files, where a person plays, edits notes, records, approves, and comments. |
 
 ```sh
 npx @typeonce/ritmo-tools pixel check art.png
@@ -640,7 +640,9 @@ layers so it reads at a glance.
 A bank is one file of named recipes and the game's master volume:
 `{"version": 1, "master": 0.6, "sounds": {...}}`. Its review lives next to
 it (`game.sounds.json` → `game.sounds.review.json`): each sound's status
-(`new`, `approved`, `changes`), the person's note, and the takes offered.
+(`new`, `approved`, `changes`), the person's note, the takes offered, and,
+once approved, what the person heard: a hash of the recipe (not its `about`,
+`heavy`, or `interval`) and the bank's master volume.
 `examples/spirit-call.sounds.json` in the repository is Spirit call's 46 sounds.
 
 ### The command line
@@ -653,10 +655,10 @@ file, broken bank), or 3 (a sound has errors).
 | --- | --- |
 | `ritmo-tools sound init [bank]` | Writes a starting bank of three sounds. |
 | `ritmo-tools sound check <bank> [names...]` | Measures each sound (length, peak, loudness, attack, brightness, ending) and lists what breaks the rules: clipping, silence, a late start, a click at the end, much louder or quieter than its kind. |
-| `ritmo-tools sound render <bank> [names...] [-o dir] [--sequence 0.25]` | Writes WAV files, and with `--sequence` the sounds in a row. |
+| `ritmo-tools sound render <bank> [names...] [-o dir] [--sequence 0.25]` | Writes WAV files, and with `--sequence` the sounds in a row. A sound that differs from what the person approved is listed in `changedSinceApproved`. |
 | `ritmo-tools sound vary <bank> <name> --toward heavier [--count 4] [--seed 1]` | Makes takes nudged one way (`heavier`, `lighter`, `brighter`, `darker`, `punchier`, `softer`, `shorter`, `longer`, or `wider` for anything) and offers them in the review. |
 | `ritmo-tools sound review <bank> [--port 5190] [--host]` | Serves the review page and prints its address; runs until stopped. |
-| `ritmo-tools sound notes <bank>` | What the person said: status and note for each sound, changes asked first. |
+| `ritmo-tools sound notes <bank>` | What the person said: status and note for each sound, changes asked first, and `changedSinceApproved` for an approved sound that no longer matches what the person heard. |
 
 ### The review page
 
@@ -667,7 +669,10 @@ maker, tune sliders, and the layers' numbers (takes and layers start closed).
 Space plays, the arrows move through the list, 1 to 9 play the takes, and
 Ctrl/Cmd+Z undoes. Every change is written to the bank and its review as it
 happens, and changes the agent writes while the page is open show up in it.
-`--host` serves it on the network too, to listen on a phone.
+**Approved** keeps what the person heard: when the sound later differs, by
+anyone's hand, the page says so, and **Approve it as it is now** takes the new
+version. The status stays approved: only the person changes it. `--host` serves
+it on the network too, to listen on a phone.
 
 The website hosts the same page with Spirit call's bank, kept in the tab, to
 try without the CLI: https://ritmo.typeonce.dev/tools/sound/.
@@ -752,8 +757,18 @@ A song's `reference` is what `music listen` heard: its `tempo`, `key`, the
 melody as `notes` rounded to the grid, the raw pitch line (`contour`), and the
 audio file it came from. The review lives next to the song
 (`theme.song.json` → `theme.song.review.json`): the status (`new`,
-`approved`, `changes`), a note, comments pinned to bars (and a track), and
-the person's edits since the agent last wrote the song, a line each.
+`approved`, `changes`), a note, comments pinned to bars (and a track),
+the person's edits since the agent last wrote the song, a line each, and, once
+approved, what the person heard: a hash of what the song shares and of each
+track, without the words (`about`, track names), the key's name, or the
+reference.
+
+Music that is not a song (a plain `.wav`, `.flac`, `.mp3`, `.ogg`, or `.m4a`)
+is reviewed as it is. It often sits in a folder that ships with the game
+(`public/`), so its review is not kept beside it: all of them live in one
+`music.review.json`, by path, in the nearest folder above the file with a
+`package.json` (or the file's own, when there is none): the status, a note,
+comments on a stretch of seconds, and a hash of the file once approved.
 `examples/village.song.json` in the repository is a song built around a
 hum (`examples/village.song.reference.wav`, a synthesized test hum).
 
@@ -786,13 +801,29 @@ or 3 (the song clips or is silent).
 | `ritmo-tools music instruments` | Lists the instruments (what each is for, its range), the drums, and the scales. |
 | `ritmo-tools music init [song]` | Writes a starting song: four bars of piano chords, a bass line, and a beat. |
 | `ritmo-tools music check <song>` | Measures the song (length, peak, loudness, each track's loudness and range) and lists what usually sounds wrong: clipping, silence, notes outside the key or an instrument's range, a buried track, a doubled note, and with a reference, how closely the melody follows it. |
-| `ritmo-tools music render <song> [-o file.wav] [--stems]` | Writes the song as a stereo WAV and a MIDI file, and with `--stems` each track alone. |
-| `ritmo-tools music review <song> [--port 5191] [--host]` | Serves the review page and prints its address; runs until stopped. |
-| `ritmo-tools music notes <song>` | What the person said: the status, the note, comments in song order with their bars, and their edits. |
+| `ritmo-tools music render <song> [-o file.wav] [--stems]` | Writes the song as a stereo WAV and a MIDI file, and with `--stems` each track alone. `changedSinceApproved` says when the song differs from what the person approved. |
+| `ritmo-tools music review <paths...> [--port 5191] [--host]` | Serves the review page for the songs, audio files, and folders named, and prints its address; runs until stopped. |
+| `ritmo-tools music notes <paths...>` | What the person said about the same paths: a `summary` of what is left, then `music`, each piece's status, note, comments (with their bars and tracks, or their times), edits, `changedSinceApproved`, and `next`, changes asked first. |
+
+A folder is searched for `*.song.json` and audio files. Name the folders the
+game's music is in rather than the whole game, which holds much that is not
+music. Left out of a folder: `node_modules`, hidden folders, `.stems` folders,
+`.reference.wav` files, and the render of a song beside it (`theme.song.wav`
+next to `theme.song.json`). A file named outright is always taken.
 
 ### The review page
 
-`ritmo-tools music review` opens the song on a local page: the reference and
+`ritmo-tools music review` opens the music on a local page. With more than one
+piece, the list on the left shows each with its status, by folder, and the top
+bar narrows it to what is to review, has changes asked, or is approved; the
+arrows move through it, and what the person has not saved yet is written before
+another piece opens. **Approved** keeps what the person heard: when the piece
+later differs, by anyone's hand, the page and the list say so, and **Approve it
+as it is now** takes the new version. The status stays approved: only the person
+changes it. A song the agent adds, or a song that does not read, shows up on the
+list.
+
+A song shows the reference and
 the tracks on the left (mute and solo each), the arrangement (every track
 as a lane under the bar numbers, with the hum's pitch line above them) and
 the chosen track's note grid on the stage, and on the right the review, the
@@ -813,6 +844,12 @@ and Ctrl/Cmd+Z undoes. MIDI and WAV download the song. Every change is
 written to the song and its review as it happens, and a song the agent
 rewrites while the page is open shows up in it.
 
+A plain audio file shows its wave, its length, loudness, and peak, and the
+review. Space plays and pauses, the loop button chooses whether it plays around
+or once, and **Hear the loop point** plays its end into its start, where a seam
+shows. A click on the wave puts the start marker there (while playing, jumps
+there), and dragging across it picks a stretch to comment on.
+
 The website hosts the same page with the village song and its hum, kept in
 the tab, to try without the CLI: https://ritmo.typeonce.dev/tools/music/.
 
@@ -823,9 +860,11 @@ the tab, to try without the CLI: https://ritmo.typeonce.dev/tools/music/.
   reviews and edits in words (`review.ts`), WAV (`audio.ts`) and MIDI
   (`midi.ts`) files. Plain TypeScript that runs the same in Node and the
   browser.
-- `src/music/cli/`: the `music` command (Effect), and the review page's
-  server (`serve.ts`).
-- `src/music/ui/`: the review page (`lab.ts`): the canvases (`grid.ts`),
+- `src/music/cli/`: the `music` command (Effect), what music the paths hold
+  (`library.ts`), and the review page's server (`serve.ts`).
+- `src/music/ui/`: the review page (`lab.ts`): the canvases (`grid.ts`), a plain
+  audio file (`audio.ts`), the review and comments panels (`panels.ts`), the
+  check away from the page (`check.worker.ts`),
   playing (`player.ts`), recording (`record.ts`), reading and writing
   through a store (`store.ts`): the CLI's server (`main.ts`), or the tab for
   the website's demo (`demo.ts`). The published package carries it

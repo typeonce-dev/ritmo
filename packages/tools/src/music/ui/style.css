@@ -221,6 +221,63 @@
   background: var(--good);
 }
 
+/* The music on the left */
+
+.music-rail {
+  flex: none;
+}
+
+.music-rows {
+  max-height: 38vh;
+  margin: 0 -4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* With no tracks under it, the list has the whole column. */
+.music-rail.alone {
+  flex: 1;
+  min-height: 0;
+  border-bottom: 0;
+}
+
+.music-rail.alone .music-rows {
+  flex: 1;
+  max-height: none;
+}
+
+.tracks .music-folder {
+  margin: 8px 8px 2px;
+  overflow: hidden;
+  color: var(--muted);
+  font: 500 11px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A plain audio file on the stage */
+
+.audio-view {
+  flex: 1;
+  min-height: 0;
+}
+
+.audio-box {
+  position: relative;
+}
+
+.audio-wave {
+  height: 220px;
+}
+
+.audio-marks {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  cursor: crosshair;
+  touch-action: none;
+}
+
 /* The transport */
 
 .transport {

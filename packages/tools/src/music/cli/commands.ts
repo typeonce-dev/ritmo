@@ -7,7 +7,7 @@
  * - 2: a usage problem, a missing file, a broken song
  * - 3: errors: the song clips or is silent; fix it
  */
-import { Effect, Option, Path } from "effect"
+import { Effect, FileSystem, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { Exit } from "../../sound/cli/commands.ts"
 import { CliFailure, printJson, readText, writeBytes, writeText } from "../../sound/cli/io.ts"
@@ -17,15 +17,38 @@ import { drums, instrumentIds, instruments } from "../core/instruments.ts"
 import { isSparse, listen, referenceOf } from "../core/listen.ts"
 import { toMidi } from "../core/midi.ts"
 import { renderSong } from "../core/render.ts"
-import { reviewPath, reviewSummary } from "../core/review.ts"
+import { audioReviewSummary, changedOf, musicSummary, reviewPath, reviewSummary } from "../core/review.ts"
 import { encodeSong, nameOf, scaleNames, type Song } from "../core/song.ts"
 import { readBytes, readReview, readSong } from "./io.ts"
+import { audioReviewPlace, AUDIO_FILES, findMusic, readMusic, type MusicFile } from "./library.ts"
 import { serve } from "./serve.ts"
 
 const exitWith = (code: number): Effect.Effect<void, Exit> => (code === 0 ? Effect.void : Effect.fail(new Exit({ code })))
 
 const songArgument = Argument.String("song").pipe(Argument.withDescription("A song: a JSON file of tracks and notes (`theme.song.json`)."))
 const stem = (file: string): string => file.replace(/\.json$/, "")
+
+const pathsArgument = Argument.String("paths").pipe(
+  Argument.withDescription(`Songs (\`theme.song.json\`), audio files (${AUDIO_FILES.join(", ")}), or folders to look through for \`*.song.json\` and audio files. Name the folders the game's music is in: a whole game holds much that is not music.`),
+  Argument.variadic({ min: 1 })
+)
+
+/** The music under `paths`, failing on a path that is not there, a folder with no music, and a song named outright that is broken. */
+const musicUnder = Effect.fn("musicUnder")(function* (paths: ReadonlyArray<string>) {
+  const fs = yield* FileSystem.FileSystem
+  const find = (chosen: ReadonlyArray<string>): Effect.Effect<ReadonlyArray<MusicFile>, CliFailure> =>
+    Effect.tryPromise({ try: () => findMusic(chosen), catch: (error) => new CliFailure({ message: `cannot look through ${chosen.join(", ")}: ${error instanceof Error ? error.message : String(error)}` }) })
+  for (const path of paths) {
+    const info = yield* fs.stat(path).pipe(Effect.mapError(() => new CliFailure({ message: `cannot read ${path}` })))
+    if (info.type === "Directory") {
+      if ((yield* find([path])).length === 0) return yield* new CliFailure({ message: `no songs or audio files in ${path}` })
+    } else if (!AUDIO_FILES.some((extension) => path.toLowerCase().endsWith(extension))) {
+      yield* readSong(path)
+      yield* readReview(path)
+    }
+  }
+  return yield* find(paths)
+})
 
 const check = Command.make(
   "check",
@@ -62,11 +85,11 @@ const renderCommand = Command.make(
         files.push(yield* writeBytes(path.join(folder, name), stereoWav(renderSong({ ...song, compressor: false }, { tracks: [index] }))))
       }
     }
-    yield* printJson({ file: flags.song, loop: song.loop, seconds: Math.round(song.bars * song.beatsPerBar * (60 / song.tempo) * 100) / 100, files })
+    yield* printJson({ file: flags.song, loop: song.loop, seconds: Math.round(song.bars * song.beatsPerBar * (60 / song.tempo) * 100) / 100, files, changedSinceApproved: changedOf(yield* readReview(flags.song), song) })
   })
 ).pipe(
   Command.withDescription(
-    "Writes the song as a stereo WAV file (a looping song is one pass long and loops without a seam) and a MIDI file of its notes; with --stems, each track alone too."
+    "Writes the song as a stereo WAV file (a looping song is one pass long and loops without a seam) and a MIDI file of its notes; with --stems, each track alone too. Lists `changedSinceApproved` when the song differs from what the person approved."
   )
 )
 
@@ -143,37 +166,49 @@ const instrumentsCommand = Command.make(
 const review = Command.make(
   "review",
   {
-    song: songArgument,
+    paths: pathsArgument,
     port: Flag.Int("port").pipe(Flag.withDescription("The port to serve the page on."), Flag.withDefault(5191)),
     host: Flag.Boolean("host").pipe(Flag.withDefault(false), Flag.withDescription("Serve on the network too, to listen on a phone (recording needs localhost or HTTPS)."))
   },
   Effect.fn("review")(function* (flags) {
-    const path = yield* Path.Path
-    const song = path.resolve(flags.song)
-    yield* readSong(song)
-    yield* readReview(song)
+    const found = yield* musicUnder(flags.paths)
     const address = yield* Effect.tryPromise({
-      try: () => serve({ song, port: flags.port, host: flags.host }),
+      try: () => serve({ paths: flags.paths, port: flags.port, host: flags.host }),
       catch: (error) => new CliFailure({ message: `cannot serve the page: ${error instanceof Error ? error.message : String(error)}` })
     })
-    yield* printJson({ ...address, song, review: reviewPath(song), next: "Send the person the url. What they edit, record, and comment is saved to the song and its review as they go; read it back with `ritmo-tools music notes`." })
+    yield* printJson({
+      ...address,
+      music: found.map((music) => music.id),
+      next: "Send the person the url. What they edit, record, approve, and comment is saved as they go; read it back with `ritmo-tools music notes`, with the same paths."
+    })
     return yield* Effect.never
   })
 ).pipe(
   Command.withDescription(
-    "Opens the review page for a song: the person plays it, edits notes on a grid, swaps instruments, records a hum as the reference, and comments on bars. Runs until stopped; changes are saved to the song and its review as they happen."
+    "Opens the review page for all the music under the paths: the person goes through it on a list, approves each piece or asks for changes, and comments on bars or a stretch of time. On a song they also edit notes on a grid, swap instruments, and record a hum as the reference; a plain audio file is played and judged as it is. Runs until stopped; changes are saved as they happen."
   )
 )
 
 const notes = Command.make(
   "notes",
-  { song: songArgument },
+  { paths: pathsArgument },
   Effect.fn("notes")(function* (flags) {
-    const song = yield* readSong(flags.song)
-    const review = yield* readReview(flags.song)
-    yield* printJson({ file: flags.song, review: reviewPath(flags.song), ...reviewSummary(song, review) })
+    const path = yield* Path.Path
+    const found = yield* musicUnder(flags.paths)
+    const entries = []
+    for (const music of found) {
+      const read = yield* Effect.promise(() => readMusic(music))
+      if (read.kind === "broken") entries.push({ file: music.id, kind: music.kind, status: "new" as const, problem: read.problem, next: "Fix it: the person cannot open it." })
+      else if (read.kind === "song") entries.push({ file: music.id, kind: music.kind, review: reviewPath(music.id), ...reviewSummary(read.song, read.review) })
+      else entries.push({ file: music.id, kind: music.kind, review: path.relative(process.cwd(), audioReviewPlace(music.file).reviews), ...audioReviewSummary(read.review, read.hash) })
+    }
+    yield* printJson(musicSummary(entries))
   })
-).pipe(Command.withDescription("What the person said in the review: the song's status and note, comments on bars and tracks in song order, and the edits they made by hand."))
+).pipe(
+  Command.withDescription(
+    "What the person said in the review of the music under the paths: a summary of what is left, then each piece's status, note, comments (on bars and tracks of a song, on times of an audio file), the edits they made by hand on a song, and, for an approved piece that no longer matches what the person heard, `changedSinceApproved`. Changes asked come first."
+  )
+)
 
 /** A first song to build from: four bars of chords, a bass line, and a beat. */
 const STARTER: Song = {
@@ -232,7 +267,7 @@ const init = Command.make(
 
 export const music = Command.make("music").pipe(
   Command.withDescription(
-    "Ritmo's music lab: game music as JSON songs (tracks of notes), built around a hum or a reference, measured, and reviewed by a person on a local page with a note grid. Prints JSON; exit 0 clean, 2 usage error, 3 errors in the song."
+    "Ritmo's music lab: game music as JSON songs (tracks of notes), built around a hum or a reference, measured, and reviewed by a person on a local page, all of a game's music on one list, songs with a note grid and plain audio files as they are. Prints JSON; exit 0 clean, 2 usage error, 3 errors in the song."
   ),
   Command.withSubcommands([listenCommand, instrumentsCommand, check, renderCommand, review, notes, init])
 )

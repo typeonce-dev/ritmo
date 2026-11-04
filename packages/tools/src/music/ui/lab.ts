@@ -1,11 +1,11 @@
 /**
- * The music lab's review page, served by `ritmo-tools music review <song>` (`main.ts`)
+ * The music lab's review page, served by `ritmo-tools music review <paths>` (`main.ts`)
  * and shown on the website with an example song kept in the tab (`demo.ts`):
- * the person plays the song, records a hum as its reference, edits notes on
- * a grid, swaps instruments, and comments on bars. Every change is saved to
- * the song and its review as it happens, for the agent to read back
- * (`ritmo-tools music notes`); a song the agent rewrites while the page is
- * open shows up in it.
+ * the person goes through the music on a list. On a song they play it, record
+ * a hum as its reference, edit notes on a grid, swap instruments, and comment
+ * on bars; a plain audio file has its own view (`audio.ts`). Every change is
+ * saved as it happens, for the agent to read back (`ritmo-tools music notes`);
+ * a song the agent rewrites while the page is open shows up in it.
  *
  * Built from the pixel fixer's kit, so the tools look and work alike.
  */
@@ -18,16 +18,18 @@ import { instrumentIds, instruments, type InstrumentId } from "../core/instrumen
 import { isSparse, listen, referenceOf } from "../core/listen.ts"
 import { toMidi } from "../core/midi.ts"
 import { noteSamples, renderSong, SAMPLE_RATE, type NoteCache, type Stereo } from "../core/render.ts"
-import { decodeReview, describeEdits, emptyReview, encodeReview, type Comment, type Status } from "../core/review.ts"
+import { approvalOf, changedOf, decodeReview, describeEdits, emptyReview, encodeReview, type Comment, type Status } from "../core/review.ts"
 import { barsOf, decodeSong, encodeSong, lengthInBeats, lengthInSeconds, parseKey, scaleNames, secondsPerBeat, type Note, type Scale, type Song, type Track } from "../core/song.ts"
+import { makeAudioView } from "./audio.ts"
 import { arrangementHeight, attachArrangement, attachGrid, drawArrangement, drawGrid, GUTTER, type View } from "./grid.ts"
+import { commentsSection, reviewSection, statusLabel } from "./panels.ts"
 import { makePlayer } from "./player.ts"
 import { canRecord, monoOf, startRecording, type Recording } from "./record.ts"
-import { SERVER_GONE, type Session, type Store } from "./store.ts"
+import { SERVER_GONE, type Entry, type SongSession, type Store } from "./store.ts"
 
 const RITMO_URL = "https://ritmo.typeonce.dev/"
 
-/** Where the song, its review, and its audio are read and written: set once by `start`. */
+/** Where the music, its reviews, and its audio are read and written: set once by `start`. */
 let store!: Store
 
 // ---------------------------------------------------------------------------
@@ -35,7 +37,17 @@ let store!: Store
 
 const emptySong: Song = { tempo: 100, key: "C major", beatsPerBar: 4, bars: 4, loop: true, master: 0.8, compressor: false, tracks: [] }
 
+type Show = "all" | Status
+
 const state = {
+  /** Everything there is to review, as the store last listed it. */
+  library: [] as ReadonlyArray<Entry>,
+  /** The entry open now. */
+  current: "",
+  kind: "song" as Entry["kind"],
+  /** Why the song open now cannot be read, when it cannot. */
+  problem: undefined as string | undefined,
+  show: "all" as Show,
   songFile: "",
   name: "",
   song: emptySong,
@@ -78,22 +90,46 @@ let reviewDirty = false
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 
 const put = async (file: "song" | "review", text: string): Promise<void> => {
-  state.version = await store.save(file, text)
+  state.version = await store.save(state.current, file, text)
 }
 
-const flush = async (): Promise<void> => {
+/** The write under way: writes go one at a time, and opening other music waits for them. */
+let flushing: Promise<void> = Promise.resolve()
+
+const flush = (): Promise<void> => {
+  flushing = flushing.then(write)
+  return flushing
+}
+
+/** Writes what is pending now, what failed before too, and waits for it. */
+const settle = async (): Promise<void> => {
+  if (saveTimer !== undefined) clearTimeout(saveTimer)
+  if (saveTimer !== undefined || songDirty || reviewDirty) void flush()
+  await flushing
+}
+
+const write = async (): Promise<void> => {
   saveTimer = undefined
+  // What is on its way stays owed until it lands: a change made meanwhile sets the flag again, and a failure puts it back.
+  let owedSong = false
+  let owedReview = false
   try {
     if (songDirty) {
       songDirty = false
+      owedSong = true
       await put("song", encodeSong(state.song))
+      owedSong = false
     }
     if (reviewDirty) {
       reviewDirty = false
-      await put("review", encodeReview(state.review))
+      owedReview = true
+      await put("review", state.kind === "audio" ? audio.reviewText() : encodeReview(state.review))
+      owedReview = false
     }
     state.saving = songDirty || reviewDirty ? "saving" : "saved"
   } catch (error) {
+    songDirty ||= owedSong
+    reviewDirty ||= owedReview
     state.saving = "failed"
     say(`Not saved: ${error instanceof Error ? error.message : String(error)}`)
   }
@@ -114,8 +150,14 @@ const save = (what: { readonly song?: boolean; readonly review?: boolean }): voi
 }
 
 const history = makeHistory(
-  () => `${encodeSong(state.song)}\u0000${encodeReview(state.review)}`,
+  () => (state.kind === "audio" ? audio.reviewText() : `${encodeSong(state.song)}\u0000${encodeReview(state.review)}`),
   (snapshot) => {
+    if (state.kind === "audio") {
+      audio.restore(snapshot)
+      save({ review: true })
+      update()
+      return
+    }
     const [songText = "", reviewText = ""] = snapshot.split("\u0000")
     const song = decodeSong(songText)
     const review = decodeReview(reviewText)
@@ -152,12 +194,10 @@ const setTrack = (index: number, next: Track): void => {
 // ---------------------------------------------------------------------------
 // Loading, and following changes the agent makes while the page is open
 
-const adopt = (answer: Session, fresh: boolean): boolean => {
+const adopt = (answer: SongSession, fresh: boolean): boolean => {
   const song = decodeSong(answer.songText)
-  if (!song.ok) {
-    say(`The song has problems: ${song.error}`)
-    return false
-  }
+  state.problem = song.ok ? undefined : song.error
+  if (!song.ok) return false
   const review = answer.reviewText === null ? undefined : decodeReview(answer.reviewText)
   const agentWrote = fresh || encodeSong(song.value) !== encodeSong(state.song)
   state.song = song.value
@@ -177,24 +217,97 @@ const adopt = (answer: Session, fresh: boolean): boolean => {
   return agentWrote
 }
 
-const load = async (): Promise<void> => {
-  const answer = await store.session()
-  if (answer === undefined) return say("The server sent no song.")
-  if (!adopt(answer, true)) return
+/** What belongs to the song open, not the person's way of working. */
+const leaveSong = (): void => {
+  player.stop()
+  audio.close()
+  state.track = 0
+  state.chosen = undefined
+  state.selection = undefined
+  state.cue = undefined
+  state.solo.clear()
+  state.draft = ""
+  state.draftTrack = "all"
+  hum = undefined
+  report = undefined
+  mix = undefined
+  if (checkTimer !== undefined) clearTimeout(checkTimer)
+}
+
+let opening = 0
+
+/** Opens an entry, once what is pending for the one open is written; stays when it cannot be. */
+const open = async (id: string): Promise<void> => {
+  if (id === state.current) return
+  // A hum belongs to the song it was recorded for.
+  if (state.recording !== undefined || state.listening) return say("Finish with the hum first: it goes with this song.")
+  const ticket = ++opening
+  await settle()
+  if (ticket !== opening) return
+  if (state.saving === "failed") return say("The last change is not saved, so the page stays here. Start the review server again, then pick another.")
+  const answer = await store.session(id)
+  if (ticket !== opening) return
+  if (answer === undefined) return say("That music is gone.")
+  leaveSong()
+  state.current = id
+  state.kind = answer.kind
+  state.problem = undefined
+  state.name = answer.name
+  state.version = answer.version
+  if (store.follows) window.history.replaceState(null, "", `#${encodeURIComponent(id)}`)
   history.reset()
-  history.schedule()
   state.loaded = true
-  void loadHum()
+  if (answer.kind === "audio") {
+    state.songFile = answer.file
+    audio.open(answer)
+    history.schedule()
+    update()
+    return
+  }
+  state.songFile = answer.song
+  state.song = emptySong
+  if (adopt(answer, true)) {
+    history.schedule()
+    void loadHum()
+  }
   songChanged()
 }
 
+const load = async (): Promise<void> => {
+  const entries = await store.library()
+  const first = entries?.[0]
+  if (entries === undefined || first === undefined) return say("The server sent no music.")
+  state.library = entries
+  const wanted = location.hash.slice(1)
+  await open(entries.find((entry) => encodeURIComponent(entry.id) === wanted)?.id ?? first.id)
+}
+
+/** Something here is not in the files yet: what they hold now is not to be taken over it. */
+const busy = (): boolean => saveTimer !== undefined || state.saving === "saving" || songDirty || reviewDirty || state.recording !== undefined
+
 const follow = async (): Promise<void> => {
-  if (saveTimer !== undefined || state.saving === "saving" || state.recording !== undefined) return
   try {
-    const version = await store.version()
+    const entries = await store.library()
+    if (entries === undefined) return
+    const listed = JSON.stringify(entries) !== JSON.stringify(state.library)
+    state.library = entries
+    if (listed) {
+      renderList()
+      renderTopbar()
+    }
+    if (busy()) return
+    const id = state.current
+    const version = entries.find((entry) => entry.id === id)?.version
     if (version === undefined || version === state.version) return
-    const session = await store.session()
-    if (session === undefined) return
+    const session = await store.session(id)
+    // The person may have moved on, or changed something, while it came.
+    if (session === undefined || id !== state.current || busy()) return
+    if (session.kind === "audio") {
+      audio.follow(session)
+      state.version = session.version
+      update()
+      return
+    }
     const before = state.song.reference?.audio
     if (adopt(session, false)) {
       say("The agent changed the song.")
@@ -207,7 +320,6 @@ const follow = async (): Promise<void> => {
   }
 }
 
-
 // ---------------------------------------------------------------------------
 // Playing
 
@@ -216,6 +328,20 @@ let mixKey = ""
 let hum: AudioBuffer | undefined
 
 const player = makePlayer(() => drawPlayhead())
+
+const audio = makeAudioView({
+  store: () => store,
+  player,
+  onReview: () => {
+    save({ review: true })
+    history.schedule()
+    renderTopbar()
+    renderList()
+    renderHead()
+    audio.draw()
+  },
+  onChange: () => update()
+})
 
 const currentMix = (): Stereo => {
   const key = JSON.stringify([encodeSong(state.song), heard()])
@@ -238,6 +364,7 @@ const startOf = (): number => (state.selection === undefined ? 0 : state.selecti
 
 /** Play from the cue, or Pause where the song is (which leaves the cue there). */
 const toggle = (): void => {
+  if (state.kind === "audio") return audio.toggle()
   const position = player.position()
   if (position !== undefined) {
     state.cue = position
@@ -252,6 +379,7 @@ const toggle = (): void => {
 
 /** Stop: back to the start (of the picked bars, when bars are picked). */
 const stop = (): void => {
+  if (state.kind === "audio") return audio.stop()
   state.cue = undefined
   player.stop()
   draw()
@@ -277,11 +405,16 @@ const audition = (instrument: InstrumentId, pitch: string, velocity: number): vo
 
 const loadHum = async (): Promise<void> => {
   hum = undefined
-  const audio = state.song.reference?.audio
-  if (audio === undefined) return
+  const id = state.current
+  const file = state.song.reference?.audio
+  if (file === undefined) return
   try {
-    const bytes = await store.readAudio(audio)
-    if (bytes !== undefined) hum = await player.decode(bytes)
+    const bytes = await store.readAudio(id, file)
+    if (bytes !== undefined) {
+      const decoded = await player.decode(bytes)
+      if (id !== state.current) return
+      hum = decoded
+    }
   } catch {
     hum = undefined
   }
@@ -311,13 +444,52 @@ const baseName = (): string => state.name.replace(/\.json$/, "").replace(/\.song
 
 let report: SongReport | undefined
 let checkTimer: ReturnType<typeof setTimeout> | undefined
+
+/** The reports already made, by the song they are of: going back to a song is instant. */
+const reports = new Map<string, SongReport>()
+/** The song each check under way is of. */
+const checking = new Map<number, string>()
+let checker: Worker | undefined
+let checks = 0
+
+/** Shows a report by redrawing what shows it alone: the person may be clicking or typing in the other panels. */
+const showReport = (next: SongReport): void => {
+  report = next
+  panels.querySelector('[data-section="music-check"]')?.replaceWith(checkPanel())
+  renderHead()
+}
+
+const startChecker = (): Worker => {
+  const worker = new Worker(new URL("./check.worker.ts", import.meta.url), { type: "module" })
+  worker.onmessage = (event: MessageEvent<{ readonly ticket: number; readonly report: SongReport }>) => {
+    if (reports.size > 100) reports.clear()
+    reports.set(checking.get(event.data.ticket) ?? "", event.data.report)
+    checking.delete(event.data.ticket)
+    if (event.data.ticket === checks) showReport(event.data.report)
+  }
+  // No worker to be had: the check still runs, here, and holds the page while it does.
+  worker.onerror = () => {
+    if (onSong()) showReport(checkSong(state.song, cache))
+  }
+  return worker
+}
+
+const checkNow = (songText: string): void => {
+  const known = reports.get(songText)
+  if (known !== undefined) return showReport(known)
+  const ticket = ++checks
+  checking.set(ticket, songText)
+  checker ??= startChecker()
+  checker.postMessage({ ticket, songText })
+}
+
 const recheck = (): void => {
   if (checkTimer !== undefined) clearTimeout(checkTimer)
+  // A check of the song before this one no longer counts, when it ends.
+  checks += 1
   checkTimer = setTimeout(() => {
     checkTimer = undefined
-    report = checkSong(state.song, cache)
-    renderPanels()
-    renderHead()
+    if (onSong()) checkNow(encodeSong(state.song))
   }, 500)
 }
 
@@ -332,14 +504,14 @@ const hear = async (bytes: ArrayBuffer, label: string): Promise<void> => {
     const samples = monoOf(buffer)
     // Let the page draw "Listening…" before the work.
     await new Promise((done) => setTimeout(done, 30))
-    const audio = `${baseName()}.song.reference.wav`
-    const heardNow = listen(samples, buffer.sampleRate, { audio })
+    const file = `${baseName()}.song.reference.wav`
+    const heardNow = listen(samples, buffer.sampleRate, { audio: file })
     const reference = referenceOf(heardNow)
     // Nothing heard at all (no tune, no beat): the reference the song had stays.
     if (heardNow.notes.length === 0 && heardNow.found.tempoConfidence === 0) {
       say(`Heard no clear notes or beat in the ${label}. Try humming louder and closer, one note at a time.`)
     } else {
-      await store.writeAudio(audio, monoWav(samples, buffer.sampleRate))
+      await store.writeAudio(state.current, file, monoWav(samples, buffer.sampleRate))
       hum = buffer
       const empty = state.song.tracks.every((entry) => entry.notes.length === 0)
       // A song with nothing in it yet takes the hum's tempo, key, and length.
@@ -430,7 +602,8 @@ const arrangement = h("canvas", { class: "arrangement" })
 const gridHead = h("div", { class: "grid-head" })
 const grid = h("canvas", { class: "note-grid" })
 const scroller = h("div", { class: "song-scroll" }, h("div", { class: "song-card" }, arrangement), gridHead, h("div", { class: "song-card grid-card" }, grid))
-content.append(head, scroller)
+const problemCard = h("div", {})
+content.append(head, scroller, problemCard, audio.element)
 
 const clock = (seconds: number): string => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`
 
@@ -454,6 +627,8 @@ const view = (): View => {
 }
 
 const draw = (): void => {
+  if (state.kind === "audio") return audio.draw()
+  if (state.problem !== undefined) return
   const now = view()
   drawArrangement(arrangement, now)
   if (track() !== undefined) drawGrid(grid, now)
@@ -472,7 +647,29 @@ const songChanged = (): void => {
   update()
 }
 
-const statusLabel: Record<Status, string> = { new: "To review", approved: "Approved", changes: "Changes asked" }
+/** What the list shows for each entry: for the one open, as it is on the page right now. */
+const entriesNow = (): ReadonlyArray<Entry> =>
+  state.library.map((entry) => {
+    if (entry.id !== state.current || state.problem !== undefined) return entry
+    return state.kind === "audio" ? { ...entry, status: audio.status(), changed: audio.changed() } : { ...entry, status: state.review.status, changed: changedOf(state.review, state.song) }
+  })
+
+/** More than one entry, or one with no song to show: the list has something to say. */
+const showsList = (): boolean => state.library.length > 1 || state.kind === "audio" || state.problem !== undefined
+
+const visible = (): ReadonlyArray<Entry> => entriesNow().filter((entry) => state.show === "all" || entry.status === state.show)
+
+const step = (by: number): void => {
+  const shown = visible()
+  if (shown.length === 0) return
+  const at = shown.findIndex((entry) => entry.id === state.current)
+  void open(shown[(at + by + shown.length) % shown.length]!.id)
+}
+
+/** Whether a song is open and can be read: what its notes, its tracks, and its downloads need. */
+const onSong = (): boolean => state.kind === "song" && state.problem === undefined
+
+const counted = (status: Status): number => entriesNow().filter((entry) => entry.status === status).length
 
 const renderTopbar = (): void => {
   const song = state.song
@@ -494,10 +691,28 @@ const renderTopbar = (): void => {
           "div",
           { class: "file", title: state.songFile },
           h("span", { class: "file-name" }, state.name),
-          h("span", { class: "file-meta" }, `${song.tempo} BPM · ${song.key} · ${song.bars} bars`)
+          h("span", { class: "file-meta" }, onSong() ? `${song.tempo} BPM · ${song.key} · ${song.bars} bars` : state.kind === "audio" ? "Audio file" : "Cannot be read")
         )
     ),
-    h("div", { class: "topbar-center" }),
+    h(
+      "div",
+      { class: "topbar-center" },
+      state.library.length > 1 &&
+        segmented(
+          state.show,
+          [
+            { id: "all", label: `All ${state.library.length}` },
+            { id: "new", label: `To review ${counted("new")}` },
+            { id: "changes", label: `Changes ${counted("changes")}` },
+            { id: "approved", label: `Approved ${counted("approved")}` }
+          ],
+          (show) => {
+            state.show = show
+            update()
+          },
+          { label: "Show" }
+        )
+    ),
     h(
       "div",
       { class: "topbar-end" },
@@ -510,17 +725,55 @@ const renderTopbar = (): void => {
       h("span", { class: "divider" }),
       h(
         "span",
-        { class: `save-state ${state.saving}`, title: store.demo ? "A demo: changes stay in this tab" : "Changes are written to the song and its review as you make them" },
+        { class: `save-state ${state.saving}`, title: store.demo ? "A demo: changes stay in this tab" : "Changes are written to the files as you make them" },
         state.saving === "saved" ? icon("check") : state.saving === "failed" ? icon("alert") : null,
         state.saving === "saved" ? (store.demo ? "Kept in this tab" : "Saved") : state.saving === "saving" ? "Saving…" : "Not saved"
       ),
-      button("MIDI", () => download(new Uint8Array(toMidi(song)), `${baseName()}.mid`, "audio/midi"), { variant: "secondary", icon: "music", disabled: !state.loaded, title: "Download the notes as a MIDI file, for any music program" }),
-      button("WAV", () => download(stereoWav(renderSong(song, { cache })), `${baseName()}.wav`, "audio/wav"), { variant: "primary", icon: "download", disabled: !state.loaded, title: "Download the song as a WAV file" })
+      onSong() && button("MIDI", () => download(new Uint8Array(toMidi(song)), `${baseName()}.mid`, "audio/midi"), { variant: "secondary", icon: "music", disabled: !state.loaded, title: "Download the notes as a MIDI file, for any music program" }),
+      onSong() && button("WAV", () => download(stereoWav(renderSong(song, { cache })), `${baseName()}.wav`, "audio/wav"), { variant: "primary", icon: "download", disabled: !state.loaded, title: "Download the song as a WAV file" })
     )
   )
 }
 
+const rail = h("div", { class: "music-rows", attrs: { role: "listbox", "aria-label": "Music" } })
+
+const renderRail = (): void => {
+  const scroll = rail.scrollTop
+  const shown = visible()
+  const folders = new Set(state.library.map((entry) => entry.folder))
+  let folder: string | undefined
+  replace(
+    rail,
+    shown.length === 0 && h("p", { class: "hint empty-list" }, "Nothing here."),
+    shown.flatMap((entry) => {
+      const heading = folders.size > 1 && entry.folder !== folder ? h("h3", { class: "music-folder", title: entry.folder }, entry.folder) : false
+      folder = entry.folder
+      const on = entry.id === state.current
+      return [
+        heading,
+        h(
+          "div",
+          {
+            class: `sound-row track-row${on ? " on" : ""}`,
+            title: entry.id,
+            attrs: { role: "option", "aria-selected": String(on), "data-music": entry.id, tabindex: 0 },
+            on: { click: () => void open(entry.id) }
+          },
+          h("span", { class: `dot ${entry.status}`, title: statusLabel[entry.status] }),
+          h("span", { class: "track-text" }, h("span", { class: "sound-name" }, entry.name), h("span", { class: "track-meta" }, entry.meta)),
+          entry.problem !== undefined && h("span", { class: "sound-flag bad", title: entry.problem }, icon("alert")),
+          entry.changed !== undefined && h("span", { class: "sound-flag warn", title: `Changed since you approved it: ${entry.changed}.` }, icon("sparkle"))
+        )
+      ]
+    })
+  )
+  rail.scrollTop = scroll
+}
+
 const renderList = (): void => {
+  renderRail()
+  const railHead = showsList() && h("div", { class: `sounds-head tracks-head music-rail${onSong() ? "" : " alone"}` }, h("h2", {}, "Music"), rail)
+  if (!onSong()) return replace(list, railHead)
   const song = state.song
   const reference = song.reference
   const row = (options: { readonly on: boolean; readonly color: string; readonly name: string; readonly meta: string; readonly click: () => void; readonly extra?: ReadonlyArray<HTMLElement | false> }): HTMLElement =>
@@ -549,6 +802,7 @@ const renderList = (): void => {
     )
   replace(
     list,
+    railHead,
     h(
       "div",
       { class: "sounds-head tracks-head" },
@@ -628,7 +882,10 @@ const pickTrack = (index: number): void => {
 const pill = (text: string, tone = ""): HTMLElement => h("span", { class: `stage-pill ${tone}` }, text)
 
 const renderHead = (): void => {
+  if (state.kind === "audio") return replace(head, audio.head())
+  if (state.problem !== undefined) return replace(head, h("div", { class: "sound-title" }, h("h1", {}, baseName())))
   const song = state.song
+  const changed = changedOf(state.review, song)
   const follows = report?.follows
   replace(
     head,
@@ -637,6 +894,7 @@ const renderHead = (): void => {
       { class: "sound-title" },
       h("h1", {}, baseName()),
       pill(statusLabel[state.review.status], state.review.status),
+      changed !== undefined && h("span", { class: "stage-pill changes", title: changed }, "Changed since"),
       pill(`${song.tempo} BPM`),
       pill(song.key),
       pill(`${song.bars} bars · ${clock(lengthInSeconds(song))}`),
@@ -687,6 +945,14 @@ const renderGridHead = (): void => {
 const song = (): Song => state.song
 
 const renderTransport = (): void => {
+  transport.hidden = state.problem !== undefined
+  if (state.kind === "audio") {
+    const key = audio.transportKey()
+    if (transport.dataset.label === key) return
+    transport.dataset.label = key
+    replace(transport, audio.transport())
+    return
+  }
   const position = player.position()
   const playing = position !== undefined
   const beats = (position ?? state.cue ?? startOf()) / secondsPerBeat(state.song)
@@ -727,57 +993,48 @@ const renderStage = (): void => {
     replace(head, h("div", { class: "empty-card lab-empty" }, h("div", { class: "empty-icon" }, mark()), h("h2", {}, "Opening the song…")))
     return
   }
+  scroller.hidden = !onSong()
+  audio.element.hidden = state.kind !== "audio"
+  replace(problemCard, state.problem !== undefined && h("div", { class: "empty-card lab-empty" }, h("div", { class: "empty-icon" }, icon("alert")), h("h2", {}, "This song cannot be read"), h("p", { class: "hint" }, state.problem)))
   renderHead()
-  renderGridHead()
-  arrangement.style.height = `${arrangementHeight(state.song)}px`
+  if (onSong()) {
+    renderGridHead()
+    arrangement.style.height = `${arrangementHeight(state.song)}px`
+  }
   draw()
 }
 
 // ---------------------------------------------------------------------------
 // The inspector
 
-const statusOptions: ReadonlyArray<{ readonly id: Status; readonly label: string; readonly icon: "sparkle" | "check" | "alert"; readonly title: string }> = [
-  { id: "new", label: "To review", icon: "sparkle", title: "Not reviewed yet" },
-  { id: "approved", label: "Approved", icon: "check", title: "It sounds right" },
-  { id: "changes", label: "Changes", icon: "alert", title: "Ask the agent for changes: say what in the note and the comments" }
-]
-
 const reviewPanel = (): HTMLElement =>
-  section(
-    {
-      id: "music-review",
-      title: "Review",
-      help: "Approve the song, or ask for changes in your own words (\"calmer\", \"more like the hum at the end\"). Comments on bars say where. The agent reads it all with `ritmo-tools music notes`, with a list of what you edited by hand.",
-      onToggle: update
-    },
-    segmented(state.review.status, statusOptions, (status) => {
-      state.review = { ...state.review, status }
+  reviewSection({
+    help: "Approve the song, or ask for changes in your own words (\"calmer\", \"more like the hum at the end\"). Comments on bars say where. The agent reads it all with `ritmo-tools music notes`, with a list of what you edited by hand.",
+    status: state.review.status,
+    note: state.review.note,
+    placeholder: "A note on the whole song (optional)",
+    changed: changedOf(state.review, state.song),
+    onStatus: (status) => {
+      const { approved: _approved, ...rest } = state.review
+      state.review = { ...rest, status, ...(status === "approved" ? { approved: approvalOf(state.song) } : {}) }
       reviewChanged()
-    }, { label: "Status", class: "fill" }),
-    h(
-      "label",
-      { class: "input note" },
-      h("textarea", {
-        props: { value: state.review.note, rows: 3 },
-        attrs: { placeholder: "A note on the whole song (optional)", "aria-label": "Note" },
-        on: {
-          input: (event) => {
-            const target = event.currentTarget
-            if (!(target instanceof HTMLTextAreaElement)) return
-            state.review = { ...state.review, note: target.value }
-            save({ review: true })
-            history.schedule()
-            renderTopbar()
-          }
-        }
-      })
-    ),
-    state.review.edits.length > 0 && group("Your edits", h("ul", { class: "edits" }, state.review.edits.map((line) => h("li", {}, line))))
-  )
+    },
+    onNote: (note) => {
+      state.review = { ...state.review, note }
+      save({ review: true })
+      history.schedule()
+      renderTopbar()
+    },
+    onApproveAgain: () => {
+      state.review = { ...state.review, approved: approvalOf(state.song) }
+      reviewChanged()
+    },
+    onToggle: update,
+    children: state.review.edits.length > 0 && group("Your edits", h("ul", { class: "edits" }, state.review.edits.map((line) => h("li", {}, line))))
+  })
 
 const commentsPanel = (): HTMLElement => {
   const selection = state.selection
-  const where = selection === undefined ? undefined : barsOf(state.song, selection.from, selection.to)
   const add = (): void => {
     if (selection === undefined || state.draft.trim() === "") return
     const comment: Comment = { id: `c${Date.now().toString(36)}`, from: selection.from, to: selection.to, track: state.draftTrack === "all" ? undefined : state.draftTrack, text: state.draft.trim() }
@@ -785,80 +1042,44 @@ const commentsPanel = (): HTMLElement => {
     state.draft = ""
     reviewChanged()
   }
-  return section(
-    {
-      id: "music-comments",
-      title: "Comments",
-      help: "Drag across the bar numbers to pick bars, then say what should change there. Comments are pinned to those bars (and a track, if you choose one).",
-      onToggle: update,
-      action: h("span", { class: "meta" }, String(state.review.comments.length))
+  return commentsSection({
+    help: "Drag across the bar numbers to pick bars, then say what should change there. Comments are pinned to those bars (and a track, if you choose one).",
+    where: selection === undefined ? undefined : barsOf(state.song, selection.from, selection.to),
+    pick: "Drag across the bar numbers above the tracks to pick bars to comment on.",
+    clear: "Clear bars",
+    extra: prop(
+      "Track",
+      selectInput(state.draftTrack, [{ id: "all", label: "Every track" }, ...state.song.tracks.map((entry) => ({ id: entry.name, label: entry.name }))], (value) => {
+        state.draftTrack = value
+      }, "Track")
+    ),
+    draft: state.draft,
+    onDraft: (text) => {
+      state.draft = text
     },
-    selection === undefined
-      ? hint("Drag across the bar numbers above the tracks to pick bars to comment on.")
-      : group(
-          `On ${where}`,
-          prop(
-            "Track",
-            selectInput(state.draftTrack, [{ id: "all", label: "Every track" }, ...state.song.tracks.map((entry) => ({ id: entry.name, label: entry.name }))], (value) => {
-              state.draftTrack = value
-            }, "Track")
-          ),
-          h(
-            "label",
-            { class: "input note" },
-            h("textarea", {
-              props: { value: state.draft, rows: 2 },
-              attrs: { placeholder: "What should change here?", "aria-label": "Comment" },
-              on: {
-                input: (event) => {
-                  const target = event.currentTarget
-                  if (target instanceof HTMLTextAreaElement) state.draft = target.value
-                },
-                keydown: (event) => {
-                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) add()
-                }
-              }
-            })
-          ),
-          h(
-            "div",
-            { class: "button-row" },
-            button("Add comment", add, { small: true, variant: "primary", icon: "comment" }),
-            button("Clear bars", () => {
-              state.selection = undefined
-              state.cue = undefined
-              update()
-            }, { small: true, variant: "ghost" })
-          )
-        ),
-    state.review.comments.length > 0 &&
-      h(
-        "ul",
-        { class: "comments" },
-        [...state.review.comments]
-          .sort((a, b) => a.from - b.from)
-          .map((comment) =>
-            h(
-              "li",
-              {
-                on: {
-                  click: () => {
-                    state.selection = { from: comment.from, to: comment.to }
-                    state.cue = undefined
-                    update()
-                  }
-                }
-              },
-              h("span", { class: "comment-where" }, `${barsOf(state.song, comment.from, comment.to)}${comment.track === undefined ? "" : ` · ${comment.track}`}`),
-              h("span", { class: "comment-text" }, comment.text),
-              button("Remove", () => {
-                state.review = { ...state.review, comments: state.review.comments.filter((entry) => entry.id !== comment.id) }
-                reviewChanged()
-              }, { variant: "ghost", icon: "trash", iconOnly: true, small: true })
-            )
-          )
-      )
-  )
+    onAdd: add,
+    onClear: () => {
+      state.selection = undefined
+      state.cue = undefined
+      update()
+    },
+    rows: [...state.review.comments]
+      .sort((a, b) => a.from - b.from)
+      .map((comment) => ({
+        where: `${barsOf(state.song, comment.from, comment.to)}${comment.track === undefined ? "" : ` · ${comment.track}`}`,
+        text: comment.text,
+        onPick: () => {
+          state.selection = { from: comment.from, to: comment.to }
+          state.cue = undefined
+          update()
+        },
+        onRemove: () => {
+          state.review = { ...state.review, comments: state.review.comments.filter((entry) => entry.id !== comment.id) }
+          reviewChanged()
+        }
+      })),
+    onToggle: update
+  })
 }
 
 const songPanel = (): HTMLElement => {
@@ -1029,17 +1250,26 @@ const aboutPanel = (): HTMLElement =>
       h("code", {}, "ritmo-tools music check"),
       ", ",
       h("code", {}, "ritmo-tools music notes"),
-      ". What you edit, record, and say here is saved to ",
-      h("code", {}, state.name),
-      " and its review.",
+      state.kind === "audio" ? [". What you say here is saved to ", h("code", {}, "music.review.json"), " at the game's root."] : [". What you edit, record, and say here is saved to ", h("code", {}, state.name), " and its review."],
       store.demo && [" This demo keeps it in the tab. To open your own song: ", h("code", {}, "npx @typeonce/ritmo-tools music review theme.song.json"), "."]
     )
   )
 
 const renderPanels = (): void => {
   const scroll = panels.scrollTop
-  replace(panels, state.loaded && [reviewPanel(), commentsPanel(), trackPanel(), songPanel(), referencePanel(), checkPanel()], aboutPanel())
+  // The note being typed stays in focus through a redraw.
+  const typing = document.activeElement instanceof HTMLTextAreaElement && panels.contains(document.activeElement) ? document.activeElement : undefined
+  const label = typing?.getAttribute("aria-label")
+  const caret = typing?.selectionStart ?? 0
+  replace(panels, state.loaded && (state.kind === "audio" ? audio.panels() : onSong() && [reviewPanel(), commentsPanel(), trackPanel(), songPanel(), referencePanel(), checkPanel()]), aboutPanel())
   panels.scrollTop = scroll
+  if (label != null) {
+    const again = panels.querySelector(`textarea[aria-label="${label}"]`)
+    if (again instanceof HTMLTextAreaElement) {
+      again.focus()
+      again.setSelectionRange(caret, caret)
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1132,7 +1362,7 @@ function update(): void {
   renderPanels()
 }
 
-// Space plays; Delete removes the chosen note; Ctrl/Cmd+Z undoes.
+// Space plays; the arrows move through the music; Delete removes the chosen note; Ctrl/Cmd+Z undoes.
 window.addEventListener("keydown", (event) => {
   const target = event.target
   if (target instanceof HTMLInputElement && target.type !== "range" && target.type !== "checkbox") return
@@ -1148,10 +1378,14 @@ window.addEventListener("keydown", (event) => {
   } else if (event.key === " ") {
     event.preventDefault()
     toggle()
+  } else if ((event.key === "ArrowDown" || event.key === "ArrowUp") && state.library.length > 1 && !(target instanceof HTMLInputElement)) {
+    event.preventDefault()
+    step(event.key === "ArrowDown" ? 1 : -1)
   } else if ((event.key === "Delete" || event.key === "Backspace") && state.chosen !== undefined) {
     event.preventDefault()
     handlers.remove(state.chosen)
   } else if (event.key === "Escape") {
+    if (state.kind === "audio") return audio.clear()
     state.chosen = undefined
     state.selection = undefined
     state.cue = undefined
@@ -1171,10 +1405,10 @@ stage.addEventListener("drop", (event) => {
   event.preventDefault()
   stage.classList.remove("dropping")
   const file = event.dataTransfer?.files[0]
-  if (file !== undefined) void file.arrayBuffer().then((bytes) => hear(bytes, file.name))
+  if (file !== undefined && onSong()) void file.arrayBuffer().then((bytes) => hear(bytes, file.name))
 })
 
-/** Draws the page and loads the song from where `chosen` keeps it; follows the agent's changes when it can make them. */
+/** Draws the page and opens the music from where `chosen` keeps it; follows the agent's changes when it can make them. */
 export const start = (chosen: Store): void => {
   store = chosen
   update()
