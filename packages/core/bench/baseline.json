@@ -3,235 +3,235 @@
     "tolerance": 0.25,
     "allocationTolerance": 0.1,
     "allocationSlackBytes": 1024,
-    "calibrationMs": 2.9608,
+    "calibrationMs": 2.9767,
     "environment": "Apple M1 / node v24.16.0 / darwin",
     "cases": {
       "top-down/frame-x60": {
-        "minMs": 0.3917,
-        "medianMs": 0.4428,
-        "score": 0.1313,
+        "minMs": 0.3902,
+        "medianMs": 0.4093,
+        "score": 0.1309,
         "bytesPerRun": 776438
       },
       "random/next-100k": {
-        "minMs": 0.7812,
-        "medianMs": 0.807,
-        "score": 0.2638,
+        "minMs": 0.794,
+        "medianMs": 0.8075,
+        "score": 0.2673,
         "bytesPerRun": 800335
       },
       "random/draw-resource-100k": {
-        "minMs": 3.7907,
-        "medianMs": 3.8676,
-        "score": 1.2711,
+        "minMs": 3.8188,
+        "medianMs": 3.8968,
+        "score": 1.2845,
         "bytesPerRun": 3060374
       },
       "ops/steer-10k": {
-        "minMs": 0.877,
-        "medianMs": 0.8962,
-        "score": 0.2941,
-        "bytesPerRun": 1760392
+        "minMs": 0.8763,
+        "medianMs": 0.9033,
+        "score": 0.2953,
+        "bytesPerRun": 1760399
       },
       "clock/advance-1000": {
-        "minMs": 0.1604,
-        "medianMs": 0.1809,
-        "score": 0.054,
+        "minMs": 0.1612,
+        "medianMs": 0.1802,
+        "score": 0.0542,
         "bytesPerRun": 424313
       },
       "spawn/10k-3c": {
-        "minMs": 6.5754,
-        "medianMs": 6.771,
-        "score": 2.2208,
-        "bytesPerRun": 20430321
+        "minMs": 6.5824,
+        "medianMs": 6.8288,
+        "score": 2.2082,
+        "bytesPerRun": 20430374
       },
       "despawn/10k": {
-        "minMs": 9.0245,
-        "medianMs": 10.3523,
-        "score": 3.048,
-        "bytesPerRun": 9099721
+        "minMs": 9.6665,
+        "medianMs": 10.7796,
+        "score": 3.2549,
+        "bytesPerRun": 9099694
       },
       "query/iterate-read-10k-of-20k": {
-        "minMs": 0.0788,
-        "medianMs": 0.0793,
-        "score": 0.0266,
+        "minMs": 0.0791,
+        "medianMs": 0.0797,
+        "score": 0.0267,
         "bytesPerRun": 1647
       },
       "query/optional-read-20k": {
-        "minMs": 0.2111,
-        "medianMs": 0.2157,
-        "score": 0.0708,
+        "minMs": 0.2137,
+        "medianMs": 0.2165,
+        "score": 0.0719,
         "bytesPerRun": 1628
       },
       "query/iterate-write-10k": {
-        "minMs": 0.1757,
-        "medianMs": 0.1943,
-        "score": 0.0592,
-        "bytesPerRun": 401491
+        "minMs": 0.1777,
+        "medianMs": 0.1815,
+        "score": 0.0596,
+        "bytesPerRun": 401111
       },
       "query/number-write-10k": {
-        "minMs": 0.0782,
-        "medianMs": 0.0788,
-        "score": 0.0262,
+        "minMs": 0.0978,
+        "medianMs": 0.0985,
+        "score": 0.0327,
         "bytesPerRun": 1472
       },
       "query/set-raw-10k": {
-        "minMs": 0.6586,
-        "medianMs": 0.6927,
-        "score": 0.2218,
+        "minMs": 0.6748,
+        "medianMs": 0.7365,
+        "score": 0.2266,
         "bytesPerRun": 1281581
       },
       "entity-state/update-transition-10k": {
-        "minMs": 1.5636,
-        "medianMs": 1.8856,
-        "score": 0.5243,
+        "minMs": 1.5665,
+        "medianMs": 1.8946,
+        "score": 0.5269,
         "bytesPerRun": 3583358
       },
       "machine/update-10k": {
-        "minMs": 2.4424,
-        "medianMs": 2.6981,
-        "score": 0.819,
+        "minMs": 2.6774,
+        "medianMs": 2.7,
+        "score": 0.8994,
         "bytesPerRun": 5522969
       },
       "query/single-in-20k-x1000": {
-        "minMs": 0.1628,
-        "medianMs": 0.1663,
-        "score": 0.0546,
+        "minMs": 0.1667,
+        "medianMs": 0.1725,
+        "score": 0.0561,
         "bytesPerRun": 288321
       },
       "query/changed-100-of-10k-x20": {
-        "minMs": 0.2018,
-        "medianMs": 0.208,
-        "score": 0.0679,
+        "minMs": 0.2012,
+        "medianMs": 0.2076,
+        "score": 0.0677,
         "bytesPerRun": 340953
       },
       "structural/insert-remove-1k": {
-        "minMs": 0.1806,
-        "medianMs": 0.1906,
-        "score": 0.0606,
+        "minMs": 0.1819,
+        "medianMs": 0.1917,
+        "score": 0.061,
         "bytesPerRun": 665492
       },
       "schedule/100-systems-x10": {
-        "minMs": 0.0418,
-        "medianMs": 0.0424,
-        "score": 0.0141,
+        "minMs": 0.0424,
+        "medianMs": 0.043,
+        "score": 0.0143,
         "bytesPerRun": 9634
       },
       "schedule/150-systems-thistick-x10": {
-        "minMs": 0.0855,
-        "medianMs": 0.0878,
-        "score": 0.0287,
+        "minMs": 0.0859,
+        "medianMs": 0.0887,
+        "score": 0.0289,
         "bytesPerRun": 18369
       },
       "lookup/get-10k": {
-        "minMs": 0.6431,
-        "medianMs": 0.6639,
-        "score": 0.2156,
+        "minMs": 0.6433,
+        "medianMs": 0.6653,
+        "score": 0.2163,
         "bytesPerRun": 1619
       },
       "events/emit-read-10k": {
-        "minMs": 0.0955,
-        "medianMs": 0.0988,
+        "minMs": 0.0959,
+        "medianMs": 0.099,
         "score": 0.0323,
         "bytesPerRun": 248139
       },
       "relations/descendants-100x100": {
-        "minMs": 0.2975,
-        "medianMs": 0.305,
+        "minMs": 0.296,
+        "medianMs": 0.3074,
         "score": 0.0998,
         "bytesPerRun": 329778
       },
       "snapshot/json-roundtrip-10k": {
-        "minMs": 21.8012,
-        "medianMs": 22.4114,
-        "score": 7.3104,
-        "bytesPerRun": 33457098
+        "minMs": 22.2506,
+        "medianMs": 23.3039,
+        "score": 7.4842,
+        "bytesPerRun": 32395541
       },
       "frame/50-systems-5k": {
-        "minMs": 1.7708,
-        "medianMs": 1.8306,
+        "minMs": 1.7661,
+        "medianMs": 1.8278,
         "score": 0.5938,
-        "bytesPerRun": 3035484
+        "bytesPerRun": 3035463
       },
       "checkpoint/take-tick-10k": {
-        "minMs": 0.2683,
-        "medianMs": 0.2841,
-        "score": 0.0903,
-        "bytesPerRun": 514889
+        "minMs": 0.2877,
+        "medianMs": 0.3192,
+        "score": 0.0966,
+        "bytesPerRun": 514923
       },
       "checkpoint/rollback-8-of-5k": {
-        "minMs": 2.6647,
-        "medianMs": 2.8585,
-        "score": 0.8935,
-        "bytesPerRun": 4516523
+        "minMs": 2.7109,
+        "medianMs": 2.9551,
+        "score": 0.9077,
+        "bytesPerRun": 4516468
       },
       "math/vec2-steer-10k": {
-        "minMs": 1.2025,
-        "medianMs": 1.2321,
-        "score": 0.4032,
+        "minMs": 1.2129,
+        "medianMs": 1.2378,
+        "score": 0.4075,
         "bytesPerRun": 3567291
       },
       "math/scalar-spring-10k": {
         "minMs": 0.5454,
-        "medianMs": 0.5591,
-        "score": 0.1829,
-        "bytesPerRun": 1655525
+        "medianMs": 0.5605,
+        "score": 0.1835,
+        "bytesPerRun": 1655520
       },
       "math/flow-field-search": {
-        "minMs": 0.1533,
-        "medianMs": 0.1885,
-        "score": 0.0514,
+        "minMs": 0.1542,
+        "medianMs": 0.1866,
+        "score": 0.0519,
         "bytesPerRun": 463
       },
       "math/flow-field-way-1k": {
-        "minMs": 0.0672,
-        "medianMs": 0.0695,
-        "score": 0.0225,
+        "minMs": 0.0674,
+        "medianMs": 0.0692,
+        "score": 0.0227,
         "bytesPerRun": 109984
       },
       "math/collide-move-circle-1k": {
-        "minMs": 0.6221,
-        "medianMs": 0.6338,
-        "score": 0.2086,
+        "minMs": 0.6222,
+        "medianMs": 0.6271,
+        "score": 0.2095,
         "bytesPerRun": 274464
       },
       "math/collide-move-circle-segments-1k": {
-        "minMs": 5.4954,
-        "medianMs": 5.6366,
-        "score": 1.8427,
-        "bytesPerRun": 272569
+        "minMs": 5.4756,
+        "medianMs": 5.5646,
+        "score": 1.8412,
+        "bytesPerRun": 272563
       },
       "netcode/rollback-frame-2-peers": {
-        "minMs": 0.0587,
-        "medianMs": 0.0691,
-        "score": 0.0198,
-        "bytesPerRun": 185303
+        "minMs": 0.0579,
+        "medianMs": 0.0688,
+        "score": 0.0195,
+        "bytesPerRun": 185523
       },
       "netcode/lockstep-frame-2-peers": {
-        "minMs": 0.0079,
-        "medianMs": 0.0086,
+        "minMs": 0.008,
+        "medianMs": 0.0088,
         "score": 0.0027,
-        "bytesPerRun": 24235
+        "bytesPerRun": 24233
       },
       "render/sync-1k-changed-of-10k": {
-        "minMs": 0.2393,
-        "medianMs": 0.2542,
-        "score": 0.0808,
-        "bytesPerRun": 382141
+        "minMs": 0.2495,
+        "medianMs": 0.2858,
+        "score": 0.0838,
+        "bytesPerRun": 382148
       },
       "render/sync-hierarchy-1k-changed-of-10k": {
-        "minMs": 0.4396,
-        "medianMs": 0.4973,
-        "score": 0.1474,
-        "bytesPerRun": 422059
+        "minMs": 0.4487,
+        "medianMs": 0.4977,
+        "score": 0.1511,
+        "bytesPerRun": 421775
       },
       "render/sync-spawn-despawn-500": {
-        "minMs": 1.369,
-        "medianMs": 1.4644,
-        "score": 0.4591,
-        "bytesPerRun": 1869979
+        "minMs": 1.3602,
+        "medianMs": 1.517,
+        "score": 0.4574,
+        "bytesPerRun": 1869930
       },
       "render/interpolate-10k": {
-        "minMs": 0.2911,
-        "medianMs": 0.2982,
-        "score": 0.098,
+        "minMs": 0.294,
+        "medianMs": 0.2997,
+        "score": 0.0989,
         "bytesPerRun": 1488
       }
     }
@@ -240,8 +240,8 @@
     "tolerance": 0.05,
     "typescript": "Version 7.0.2",
     "metrics": {
-      "types": 128875,
-      "instantiations": 1467323
+      "types": 128938,
+      "instantiations": 1467383
     }
   }
 }

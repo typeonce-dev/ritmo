@@ -260,8 +260,9 @@ class NumberReadAccessor {
 
 class WriteAccessor extends ReadAccessor {
   readonly world: World
-  // The page the running transaction has registered, with the arrays a first write saves into.
+  // The page the running transaction has registered, with the arrays a write uses: reads move their own.
   writeIndex = -1
+  writeValues: Array<unknown> = noValues
   saved: Uint32Array = noSaved
   before: Array<unknown> = noValues
 
@@ -275,12 +276,6 @@ class WriteAccessor extends ReadAccessor {
     this.writeIndex = -1
   }
 
-  // A read of another page moves `values`, which a write uses: the next write registers its page again.
-  override enter(index: number, record: EntityRecord): void {
-    super.enter(index, record)
-    this.writeIndex = -1
-  }
-
   enterWrite(index: number, record: EntityRecord): boolean {
     const page = pageOfEntity(this.pages, index, record, this.ordinal, this.stamp)
     const world = this.world
@@ -290,8 +285,7 @@ class WriteAccessor extends ReadAccessor {
     // Commit checks `before` per slot on this page from now on.
     page.savedObjects = true
     this.writeIndex = index
-    this.pageIndex = index
-    this.values = page.values
+    this.writeValues = page.values
     this.saved = page.saved
     this.before = page.before!
     return true
@@ -302,7 +296,7 @@ class WriteAccessor extends ReadAccessor {
     const index = id >>> PAGE_BITS
     if (index !== this.writeIndex && !this.enterWrite(index, record)) return this.slowSet(record, value)
     const slot = id & PAGE_MASK
-    const values = this.values
+    const values = this.writeValues
     const old = values[slot]
     // A marker (absent, or a number kept unboxed) or a number written: the general path.
     if (typeof old === "symbol" || typeof value === "number") return this.slowSet(record, value)
@@ -331,8 +325,9 @@ class WriteAccessor extends ReadAccessor {
 
 class NumberWriteAccessor extends NumberReadAccessor {
   readonly world: World
-  // The page the running transaction has registered, with the arrays a first write saves into.
+  // The page the running transaction has registered, with the arrays a write uses: reads move their own.
   writeIndex = -1
+  writeNumbers: Float64Array = noNumbers
   saved: Uint32Array = noSaved
   beforeNumbers: Float64Array = noNumbers
 
@@ -346,12 +341,6 @@ class NumberWriteAccessor extends NumberReadAccessor {
     this.writeIndex = -1
   }
 
-  // A read of another page moves `numbers`, which a write uses: the next write registers its page again.
-  override enter(index: number, record: EntityRecord): void {
-    super.enter(index, record)
-    this.writeIndex = -1
-  }
-
   /** Registers the page with the running transaction; false when none runs or the page holds no numbers yet. */
   enterWrite(index: number, record: EntityRecord): boolean {
     const page = pageOfEntity(this.pages, index, record, this.ordinal, this.stamp)
@@ -361,8 +350,7 @@ class NumberWriteAccessor extends NumberReadAccessor {
     if (page.savedIn !== transaction.id) world.touchPage(page)
     if (page.beforeNumbers === undefined) return false
     this.writeIndex = index
-    this.pageIndex = index
-    this.numbers = page.numbers
+    this.writeNumbers = page.numbers
     this.saved = page.saved
     this.beforeNumbers = page.beforeNumbers
     return true
@@ -373,7 +361,7 @@ class NumberWriteAccessor extends NumberReadAccessor {
     const index = id >>> PAGE_BITS
     if (index !== this.writeIndex && !this.enterWrite(index, record)) return this.slowSet(record, value)
     const slot = id & PAGE_MASK
-    const numbers = this.numbers
+    const numbers = this.writeNumbers
     const old = numbers[slot]!
     if (old !== old || typeof value !== "number") return this.slowSet(record, value)
     const saved = this.saved
