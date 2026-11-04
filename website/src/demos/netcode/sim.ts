@@ -24,7 +24,7 @@ const stepMS = step.dt * 1000
 
 const ReadPlayers = Game.Inspector("Netcode/ReadPlayers", {
   queries: { players: Game.Query({ selection: { position: Game.Query.read(Position), player: Game.Query.read(Player) } }) }
-}, ({ queries }) => queries.players.each().map(({ data }) => ({ seat: data.player.get().seat, ...data.position.get() })))
+}, ({ queries }) => queries.players.each().map((entity) => ({ seat: queries.players.data.player.get(entity).seat, ...queries.players.data.position.get(entity) })))
 
 /** What one peer did to one tick: when a rollback last ran it again (frame), and how often. */
 export interface TickLog {

@@ -33,12 +33,13 @@ const spawning = (body: Body) => Game.System("Ownership/Spawn", {
 const setting = (body: Body) => Game.System("Ownership/Set", {
   queries: { bodies: Game.Query({ selection: { body: Game.Query.write(BodyC) } }) }
 }, ({ queries }) => {
-  for (const { data } of queries.bodies.each()) data.body.set(body)
+  const { data } = queries.bodies
+  for (const entity of queries.bodies.each()) data.body.set(entity, body)
 })
 
 const ReadX = Game.Inspector("Ownership/ReadX", {
   queries: { bodies: Game.Query({ selection: { body: Game.Query.read(BodyC) } }) }
-}, ({ queries }) => queries.bodies.each().map(({ data }) => data.body.get().x))
+}, ({ queries }) => queries.bodies.each().map((entity) => queries.bodies.data.body.get(entity).x))
 
 describe("values handed to the world", () => {
   it("are frozen in a debug runtime, so mutating a spawned value throws where it mutates", () => {
@@ -87,7 +88,8 @@ describe("values handed to the world", () => {
     const Move = Game.System("Ownership/Move", {
       queries: { bodies: Game.Query({ selection: { body: Game.Query.write(BodyC) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.bodies.each()) data.body.update((body) => ({ ...body, x: body.x + 1 }))
+      const { data } = queries.bodies
+      for (const entity of queries.bodies.each()) data.body.update(entity, (body) => ({ ...body, x: body.x + 1 }))
     })
     runtime.tick(Game.Schedule(spawning({ x: 1, trail: [{ x: 0 }] }), Game.Schedule.applyDeferred(), Move))
     runtime.tick(Game.Schedule(Move))

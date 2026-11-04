@@ -176,7 +176,7 @@ describe("Runtime query and lookup", () => {
         {
           const result = queries.positions.singleOptional()
           resources.lastError.set(result.ok ? "" : result.error._tag)
-          resources.lastX.set(result.ok && result.value ? result.value.data.position.get().x : -1)
+          resources.lastX.set(result.ok && result.value ? queries.positions.data.position.get(result.value).x : -1)
         }
     )
 
@@ -225,11 +225,11 @@ describe("Runtime query and lookup", () => {
             return
           }
 
-          result.value.data.position.update((position) => ({
+          queries.positions.data.position.update(result.value, (position) => ({
             ...position,
             x: position.x + 1
           }))
-          resources.lastX.set(result.value.data.position.get().x)
+          resources.lastX.set(queries.positions.data.position.get(result.value).x)
         }
     )
 
@@ -436,8 +436,9 @@ describe("Runtime query and lookup", () => {
       ({ queries, resources }) =>
         {
           let totalX = 0
-          for (const match of queries.moving.each()) {
-            totalX += match.data.velocity?.get().x ?? 0
+          const { data } = queries.moving
+          for (const entity of queries.moving.each()) {
+            totalX += data.velocity.get(entity)?.x ?? 0
           }
 
           resources.count.set(queries.moving.each().length)
@@ -503,8 +504,8 @@ describe("Runtime query and lookup", () => {
             return
           }
 
-          resources.lastError.set(result.value.data.velocity !== undefined ? "Present" : "Missing")
-          resources.lastX.set(result.value.data.position.get().x)
+          resources.lastError.set(queries.positioned.data.velocity.get(result.value) !== undefined ? "Present" : "Missing")
+          resources.lastX.set(queries.positioned.data.position.get(result.value).x)
         }
     )
 
@@ -549,7 +550,7 @@ describe("Runtime query and lookup", () => {
         {
           const result = queries.positions.single()
           if (result.ok) {
-            result.value.data.position.update((position) => ({
+            queries.positions.data.position.update(result.value, (position) => ({
               ...position,
               x: 9
             }))
@@ -575,7 +576,7 @@ describe("Runtime query and lookup", () => {
       ({ queries, resources }) =>
         {
           const result = queries.positions.single()
-          resources.lastX.set(result.ok ? result.value.data.position.get().x : -1)
+          resources.lastX.set(result.ok ? queries.positions.data.position.get(result.value).x : -1)
         }
     )
 
@@ -631,7 +632,7 @@ describe("Runtime query and lookup", () => {
             return
           }
 
-          resources.lastX.set(result.value.data.position.get().x)
+          resources.lastX.set(queries.positions.data.position.get(result.value).x)
           resources.lastError.set("")
         }
     )
@@ -655,7 +656,7 @@ describe("Runtime query and lookup", () => {
           }
           const result = queries.positions.getHandle(currentHandle)
           if (result.ok) {
-            commands.despawn(result.value.entity)
+            commands.despawn(result.value)
           }
         }
     )
@@ -747,7 +748,7 @@ describe("Runtime query and lookup", () => {
             return
           }
 
-          resources.lastX.set(resourceResult.value.data.position.get().x + eventResult.value.data.position.get().x)
+          resources.lastX.set(queries.positions.data.position.get(resourceResult.value).x + queries.positions.data.position.get(eventResult.value).x)
           resources.lastError.set("")
         }
     )
@@ -769,7 +770,7 @@ describe("Runtime query and lookup", () => {
           if (spawnedTarget) {
             const target = queries.positions.get(spawnedTarget)
             if (target.ok) {
-              commands.despawn(target.value.entity)
+              commands.despawn(target.value)
             }
           }
         }
@@ -831,7 +832,7 @@ describe("optional slots", () => {
     })
     const Read = Local.Inspector("Optional/Read", {
       queries: { named: Local.Query({ selection: { name: Local.Query.read(Name), hp: Local.Query.optional(Hp) } }) }
-    }, ({ queries }) => queries.named.each().map(({ data }) => [data.name.get(), data.hp?.get()] as const).sort())
+    }, ({ queries }) => queries.named.each().map((entity) => [queries.named.data.name.get(entity), queries.named.data.hp.get(entity)] as const).sort())
     const runtime = Local.Runtime.make({ services: Local.Runtime.services() }).value
     runtime.tick(Local.Schedule(spawn, Local.Schedule.applyDeferred()))
     expect(runtime.inspect(Read)).toEqual([["empty", undefined], ["full", 3]])
@@ -847,7 +848,7 @@ describe("optional slots", () => {
     })
     const Read = Local.Inspector("Optional/Read", {
       queries: { named: Local.Query({ selection: { name: Local.Query.read(Name), note: Local.Query.optional(Note) } }) }
-    }, ({ queries }) => queries.named.each().map(({ data }) => [data.name.get(), data.note !== undefined, data.note?.get()] as const).sort())
+    }, ({ queries }) => queries.named.each().map((entity) => [queries.named.data.name.get(entity), queries.named.data.note.has(entity), queries.named.data.note.get(entity)] as const).sort())
     const runtime = Local.Runtime.make({ services: Local.Runtime.services() }).value
     runtime.tick(Local.Schedule(spawn, Local.Schedule.applyDeferred()))
     expect(runtime.inspect(Read)).toEqual([["blank", true, undefined], ["none", false, undefined]])
@@ -865,12 +866,13 @@ describe("optional slots", () => {
       queries: { named: Named },
       commands: Local.System.commands(Local.System.inserts(Hp), Local.System.removes(Hp))
     }, ({ queries, commands }) => {
-      for (const { entity, data } of queries.named.each()) {
-        if (data.hp === undefined) commands.insert(entity, Local.Command.entry(Hp, 5))
+      const { data } = queries.named
+      for (const entity of queries.named.each()) {
+        if (data.hp.get(entity) === undefined) commands.insert(entity, Local.Command.entry(Hp, 5))
         else commands.remove(entity, Hp)
       }
     })
-    const Read = Local.Inspector("Optional/Read", { queries: { named: Named } }, ({ queries }) => queries.named.each().map(({ data }) => data.hp?.get()))
+    const Read = Local.Inspector("Optional/Read", { queries: { named: Named } }, ({ queries }) => queries.named.each().map((entity) => queries.named.data.hp.get(entity)))
     const runtime = Local.Runtime.make({ services: Local.Runtime.services() }).value
     runtime.tick(Local.Schedule(spawn, Local.Schedule.applyDeferred()))
     const step = Local.Schedule(toggle, Local.Schedule.applyDeferred())
@@ -881,23 +883,23 @@ describe("optional slots", () => {
     expect(runtime.inspect(Read)).toEqual([undefined])
   })
 
-  it("fail when read through a match kept from an earlier run, held or not", () => {
+  it("fail when read after the run that handed them out, held or not", () => {
     const Hp = Descriptor.Component<number>()("Optional/Hp")
     const Name = Descriptor.Component<string>()("Optional/Name")
     const Local = Schema.bind(Schema.fragment({ components: { Hp, Name } }))
     const spawn = Local.System("Optional/Spawn", { commands: Local.System.commands(Local.System.spawns(Hp, Name)) }, ({ commands }) => {
       commands.spawn(Local.Command.spawn([Name, "none"]))
     })
-    const kept: Array<{ readonly hp: unknown }> = []
     const Keep = Local.Inspector("Optional/Keep", {
       queries: { named: Local.Query({ selection: { name: Local.Query.read(Name), hp: Local.Query.optional(Hp) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.named.each()) kept.push(data)
+      const { hp } = queries.named.data
+      return queries.named.each().map((entity) => () => hp.get(entity))
     })
     const runtime = Local.Runtime.make({ services: Local.Runtime.services() }).value
     runtime.tick(Local.Schedule(spawn, Local.Schedule.applyDeferred()))
-    runtime.inspect(Keep)
-    expect(() => kept[0]!.hp).toThrow("Optional/Hp was used through a query match from an earlier run")
+    const reads = runtime.inspect(Keep)
+    expect(() => reads[0]!()).toThrow("The data of Optional/Hp was used after the run")
   })
 })
 

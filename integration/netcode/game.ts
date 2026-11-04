@@ -97,9 +97,10 @@ const Move = Game.System("Netcode/Move", {
   queries: { players: Game.Query({ selection: { position: Game.Query.write(Position), player: Game.Query.read(Player) } }) }
 }, ({ resources, queries }) => {
   const inputs = resources.inputs.get()
-  for (const { data } of queries.players.each()) {
-    const input = inputs[data.player.get().seat]!
-    data.position.update((at) => ({ x: clamp(at.x + input.dx * 2, 0, arena.width), y: clamp(at.y + input.dy * 2, 0, arena.height) }))
+  const { data } = queries.players
+  for (const entity of queries.players.each()) {
+    const input = inputs[data.player.get(entity).seat]!
+    data.position.update(entity, (at) => ({ x: clamp(at.x + input.dx * 2, 0, arena.width), y: clamp(at.y + input.dy * 2, 0, arena.height) }))
   }
 })
 
@@ -117,12 +118,14 @@ const Fire = Game.System("Netcode/Fire", {
   const inputs = resources.inputs.get()
   const random = Random.draw(resources.rng)
   const players = queries.players.each()
-  for (const { entity, data } of players) {
-    const player = data.player.get()
+  const { data } = queries.players
+  for (const entity of players) {
+    const player = data.player.get(entity)
     if (player.ready !== null && !Clock.reached(time, player.ready)) continue
     if (!inputs[player.seat]!.fire) continue
-    const at = data.position.get()
-    const target = players.find((other) => other.data.player.get().seat !== player.seat)?.data.position.get()
+    const at = data.position.get(entity)
+    const other = players.find((candidate) => data.player.get(candidate).seat !== player.seat)
+    const target = other === undefined ? undefined : data.position.get(other)
     // Aim at the other player, a little off: the spread is the game's randomness.
     const aim = target === undefined ? (player.seat === 0 ? 0 : Math.PI) : Ops.atan2(target.y - at.y, target.x - at.x)
     const heading = aim + random.integer(-2, 3) * 0.05
@@ -130,7 +133,7 @@ const Fire = Game.System("Netcode/Fire", {
       [Position, { x: at.x, y: at.y }],
       [Shot, { owner: Game.Entity.handle(entity.id, Player), vx: Ops.cos(heading) * muzzleSpeed, vy: Ops.sin(heading) * muzzleSpeed, life: 0 }]
     ))
-    data.player.set({ ...player, ready: Clock.deadline(time, reload) })
+    data.player.set(entity, { ...player, ready: Clock.deadline(time, reload) })
   }
 })
 
@@ -138,7 +141,8 @@ const Fire = Game.System("Netcode/Fire", {
 const Arm = Game.System("Netcode/Arm", {
   queries: { fresh: Game.Query({ selection: { shot: Game.Query.write(Shot) }, filters: [Game.Query.added(Shot)] }) }
 }, ({ queries }) => {
-  for (const { data } of queries.fresh.each()) data.shot.update((shot) => ({ ...shot, life: 50 }))
+  const { data } = queries.fresh
+  for (const entity of queries.fresh.each()) data.shot.update(entity, (shot) => ({ ...shot, life: 50 }))
 })
 
 const Fly = Game.System("Netcode/Fly", {
@@ -152,21 +156,23 @@ const Fly = Game.System("Netcode/Fly", {
 }, ({ queries, resources, events, commands }) => {
   // The same share of speed lost every tick, frame-rate independent.
   const slow = Ops.exp(-drag * step.dt)
-  for (const { entity, data } of queries.shots.each()) {
-    const shot = data.shot.get()
-    const at = data.position.get()
+  const { data } = queries.shots
+  for (const entity of queries.shots.each()) {
+    const shot = data.shot.get(entity)
+    const at = data.position.get(entity)
     const next = { x: at.x + shot.vx, y: at.y + shot.vy }
     if (shot.life <= 1 || next.x < 0 || next.x > arena.width || next.y < 0 || next.y > arena.height) {
       commands.despawn(entity)
       continue
     }
-    data.position.set(next)
-    data.shot.set({ ...shot, vx: shot.vx * slow, vy: shot.vy * slow, life: shot.life - 1 })
+    data.position.set(entity, next)
+    data.shot.set(entity, { ...shot, vx: shot.vx * slow, vy: shot.vy * slow, life: shot.life - 1 })
     const owner = queries.players.getHandle(shot.owner)
-    const seat = owner.ok ? owner.value.data.player.get().seat : -1
+    const seat = owner.ok ? queries.players.data.player.get(owner.value).seat : -1
+    const playersData = queries.players.data
     for (const target of queries.players.each()) {
-      const other = target.data.player.get().seat
-      const where = target.data.position.get()
+      const other = playersData.player.get(target).seat
+      const where = playersData.position.get(target)
       if (other === seat || Math.abs(where.x - next.x) > 3 || Math.abs(where.y - next.y) > 3) continue
       resources.score.update(([left, right]) => seat === 0 ? [left + 1, right] : [left, right + 1])
       events.hit.emit({ seat, shot: entity.id })
@@ -257,9 +263,10 @@ const Draw = Game.System("Netcode/Draw", {
   for (const entity of [...removed.shots.all(), ...removed.positions.all()]) {
     if (sprites.delete(entity)) drawn.destroyed.push(entity)
   }
-  for (const { entity, data } of queries.sync.each()) {
+  const { data } = queries.sync
+  for (const entity of queries.sync.each()) {
     if (!sprites.has(entity.id)) drawn.created.push(entity.id)
-    sprites.set(entity.id, { ...data.position.get() })
+    sprites.set(entity.id, { ...data.position.get(entity) })
   }
 })
 

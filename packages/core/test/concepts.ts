@@ -6,7 +6,7 @@
  */
 import { Descriptor, Result, Schema } from "@typeonce/ritmo"
 import * as Codecs from "./codecs.ts"
-import type { Query } from "@typeonce/ritmo/Query"
+import type { QueryData, QueryEntity } from "@typeonce/ritmo/Query"
 import { worldOf } from "./saved.ts"
 
 // 1. Descriptors name the data a world can hold. Constructed descriptors carry
@@ -40,17 +40,18 @@ const Moving = Game.Query({
   selection: { position: Game.Query.write(Position), velocity: Game.Query.read(Velocity) }
 })
 
-const positionOf = (data: Query.Cells<typeof Moving>) => data.position.get()
+const positionOf = (data: QueryData<typeof Moving>, entity: QueryEntity<typeof Game.schema, typeof Moving>) => data.position.get(entity)
 
 const Move = Game.System("Concepts/Move", {
   queries: { moving: Moving },
   resources: { dt: Game.System.readResource(DeltaTime) }
 }, ({ queries, resources }) => {
   const dt = resources.dt.get()
-  for (const { data } of queries.moving.each()) {
-    const velocity = data.velocity.get()
-    const position = positionOf(data)
-    data.position.set({ x: position.x + velocity.x * dt, y: position.y + velocity.y * dt })
+  const { data } = queries.moving
+  for (const entity of queries.moving.each()) {
+    const velocity = data.velocity.get(entity)
+    const position = positionOf(data, entity)
+    data.position.set(entity, { x: position.x + velocity.x * dt, y: position.y + velocity.y * dt })
   }
 })
 
@@ -75,8 +76,9 @@ const Attack = Game.System("Concepts/Attack", {
   },
   events: { hit: Game.System.writeEvent(Hit) }
 }, ({ queries, events }) => {
-  for (const { data } of queries.attackers.each()) {
-    const enemy = queries.enemies.getHandle(data.target.get().enemy)
+  const { data } = queries.attackers
+  for (const entity of queries.attackers.each()) {
+    const enemy = queries.enemies.getHandle(data.target.get(entity).enemy)
     if (enemy.ok) {
       events.hit.emit({ amount: 1 })
     }
@@ -126,7 +128,7 @@ const InspectPosition = Game.Inspector("Concepts/InspectPosition", {
   ...movementAccess,
   machines: { flow: Game.System.machine(Flow) }
 }, ({ queries, machines }) => ({
-  position: queries.moving.each().map(({ data }) => data.position.get()),
+  position: queries.moving.each().map((entity) => queries.moving.data.position.get(entity)),
   flow: machines.flow.get()._tag
 }))
 
@@ -141,7 +143,7 @@ export const runLookups = () => {
   const Lookup = Game.System("Concepts/Lookup", movementAccess, ({ queries }) => {
     const [first] = queries.moving.each()
     if (first === undefined) return
-    found = queries.moving.get(first.entity.id).ok
+    found = queries.moving.get(first.id).ok
     const result = queries.moving.singleOptional()
     only = result.ok && result.value !== undefined
   })

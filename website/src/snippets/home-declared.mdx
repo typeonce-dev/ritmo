@@ -12,10 +12,11 @@ const Move = Game.System(
   "Arena/Move",
   { queries: { moving: Moving } },
   ({ queries }) => {
-    for (const { data } of queries.moving.each()) {
+    const { data } = queries.moving
+    for (const entity of queries.moving.each()) {
       // ...so a read cell has no set()
 // @errors: 2339
-      data.position.set({ x: 1, y: 1 })
+      data.position.set(entity, { x: 1, y: 1 })
     }
   }
 )

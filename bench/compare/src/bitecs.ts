@@ -81,5 +81,28 @@ export const bitecs: Library = {
         for (const eid of [...query(world, [B])]) removeComponent(world, eid, B)
       }
     }
+  },
+  move: () => {
+    const world = createWorld()
+    const size = 100_001
+    const Position = { x: new Float64Array(size), y: new Float64Array(size) }
+    const Velocity = { x: new Float64Array(size), y: new Float64Array(size) }
+    for (let index = 0; index < 100_000; index++) {
+      const eid = addEntity(world)
+      addComponent(world, eid, Position)
+      addComponent(world, eid, Velocity)
+      Velocity.x[eid] = 1
+      Velocity.y[eid] = 2
+    }
+    return {
+      run: () => {
+        const entities = query(world, [Position, Velocity])
+        for (let index = 0; index < entities.length; index++) {
+          const eid = entities[index]!
+          Position.x[eid]! += Velocity.x[eid]!
+          Position.y[eid]! += Velocity.y[eid]!
+        }
+      }
+    }
   }
 }

@@ -40,7 +40,10 @@ const Tags = {
   TagZ: Descriptor.Component<{}>()("Bench/TagZ"),
 }
 
-const Game = Schema.bind(Schema.fragment({ components: { A, B, C, D, E, Data, ...Tags } }))
+const Position = Descriptor.Component<{ readonly x: number; readonly y: number }>()("Bench/Position")
+const Velocity = Descriptor.Component<{ readonly x: number; readonly y: number }>()("Bench/Velocity")
+
+const Game = Schema.bind(Schema.fragment({ components: { A, B, C, D, E, Data, Position, Velocity, ...Tags } }))
 
 const runtime = () => {
   const made = Game.Runtime.make({ services: Game.Runtime.services() })
@@ -55,59 +58,68 @@ const ok = (ticked: { readonly ok: boolean }) => {
 const DoubleA = Game.System("Bench/DoubleA", {
   queries: { all: Game.Query({ selection: { value: Game.Query.write(A) } }) }
 }, ({ queries }) => {
-  for (const { data } of queries.all.each()) data.value.set(data.value.get() * 2)
+  const { data } = queries.all
+  for (const entity of queries.all.each()) data.value.set(entity, data.value.get(entity) * 2)
 })
 const DoubleB = Game.System("Bench/DoubleB", {
   queries: { all: Game.Query({ selection: { value: Game.Query.write(B) } }) }
 }, ({ queries }) => {
-  for (const { data } of queries.all.each()) data.value.set(data.value.get() * 2)
+  const { data } = queries.all
+  for (const entity of queries.all.each()) data.value.set(entity, data.value.get(entity) * 2)
 })
 const DoubleC = Game.System("Bench/DoubleC", {
   queries: { all: Game.Query({ selection: { value: Game.Query.write(C) } }) }
 }, ({ queries }) => {
-  for (const { data } of queries.all.each()) data.value.set(data.value.get() * 2)
+  const { data } = queries.all
+  for (const entity of queries.all.each()) data.value.set(entity, data.value.get(entity) * 2)
 })
 const DoubleD = Game.System("Bench/DoubleD", {
   queries: { all: Game.Query({ selection: { value: Game.Query.write(D) } }) }
 }, ({ queries }) => {
-  for (const { data } of queries.all.each()) data.value.set(data.value.get() * 2)
+  const { data } = queries.all
+  for (const entity of queries.all.each()) data.value.set(entity, data.value.get(entity) * 2)
 })
 const DoubleE = Game.System("Bench/DoubleE", {
   queries: { all: Game.Query({ selection: { value: Game.Query.write(E) } }) }
 }, ({ queries }) => {
-  for (const { data } of queries.all.each()) data.value.set(data.value.get() * 2)
+  const { data } = queries.all
+  for (const entity of queries.all.each()) data.value.set(entity, data.value.get(entity) * 2)
 })
 const DoubleData = Game.System("Bench/DoubleData", {
   queries: { all: Game.Query({ selection: { value: Game.Query.write(Data) } }) }
 }, ({ queries }) => {
-  for (const { data } of queries.all.each()) data.value.set(data.value.get() * 2)
+  const { data } = queries.all
+  for (const entity of queries.all.each()) data.value.set(entity, data.value.get(entity) * 2)
 })
 
 const SwapAB = Game.System("Bench/SwapAB", {
   queries: { all: Game.Query({ selection: { left: Game.Query.write(A), right: Game.Query.write(B) } }) }
 }, ({ queries }) => {
-  for (const { data } of queries.all.each()) {
-    const value = data.left.get()
-    data.left.set(data.right.get())
-    data.right.set(value)
+  const { data } = queries.all
+  for (const entity of queries.all.each()) {
+    const value = data.left.get(entity)
+    data.left.set(entity, data.right.get(entity))
+    data.right.set(entity, value)
   }
 })
 const SwapCD = Game.System("Bench/SwapCD", {
   queries: { all: Game.Query({ selection: { left: Game.Query.write(C), right: Game.Query.write(D) } }) }
 }, ({ queries }) => {
-  for (const { data } of queries.all.each()) {
-    const value = data.left.get()
-    data.left.set(data.right.get())
-    data.right.set(value)
+  const { data } = queries.all
+  for (const entity of queries.all.each()) {
+    const value = data.left.get(entity)
+    data.left.set(entity, data.right.get(entity))
+    data.right.set(entity, value)
   }
 })
 const SwapCE = Game.System("Bench/SwapCE", {
   queries: { all: Game.Query({ selection: { left: Game.Query.write(C), right: Game.Query.write(E) } }) }
 }, ({ queries }) => {
-  for (const { data } of queries.all.each()) {
-    const value = data.left.get()
-    data.left.set(data.right.get())
-    data.right.set(value)
+  const { data } = queries.all
+  for (const entity of queries.all.each()) {
+    const value = data.left.get(entity)
+    data.left.set(entity, data.right.get(entity))
+    data.right.set(entity, value)
   }
 })
 
@@ -188,7 +200,7 @@ export const ritmo: Library = {
       queries: { spawned: Game.Query({ selection: { b: Game.Query.read(B) } }) },
       commands: Game.System.commands(Game.System.despawns(B))
     }, ({ queries, commands }) => {
-      for (const match of queries.spawned.each()) commands.despawn(match.entity)
+      for (const entity of queries.spawned.each()) commands.despawn(entity)
     })
     const schedule = Game.Schedule(Spawn, Game.Schedule.applyDeferred(), Despawn, Game.Schedule.applyDeferred())
     return { run: () => ok(world.tick(schedule)) }
@@ -200,15 +212,34 @@ export const ritmo: Library = {
       queries: { sources: Game.Query({ selection: { a: Game.Query.read(A) } }) },
       commands: Game.System.commands(Game.System.inserts(B))
     }, ({ queries, commands }) => {
-      for (const match of queries.sources.each()) commands.insert(match.entity, [B, 1])
+      for (const entity of queries.sources.each()) commands.insert(entity, [B, 1])
     })
     const Remove = Game.System("Bench/RemoveB", {
       queries: { withB: Game.Query({ selection: { b: Game.Query.read(B) } }) },
       commands: Game.System.commands(Game.System.removes(B))
     }, ({ queries, commands }) => {
-      for (const match of queries.withB.each()) commands.remove(match.entity, B)
+      for (const entity of queries.withB.each()) commands.remove(entity, B)
     })
     const schedule = Game.Schedule(Add, Game.Schedule.applyDeferred(), Remove, Game.Schedule.applyDeferred())
+    return { run: () => ok(world.tick(schedule)) }
+  },
+  move: () => {
+    const world = runtime()
+    const Seed = Game.System("Bench/Seed", { commands: Game.System.commands(Game.System.spawns(Position, Velocity)) }, ({ commands }) => {
+      for (let index = 0; index < 100_000; index++) commands.spawn(Game.Command.spawn([Position, { x: 0, y: 0 }], [Velocity, { x: 1, y: 2 }]))
+    })
+    ok(world.tick(Game.Schedule(Seed, Game.Schedule.applyDeferred())))
+    const Move = Game.System("Bench/Move", {
+      queries: { all: Game.Query({ selection: { position: Game.Query.write(Position), velocity: Game.Query.read(Velocity) } }) }
+    }, ({ queries }) => {
+      const { data } = queries.all
+      for (const entity of queries.all.each()) {
+        const position = data.position.get(entity)
+        const velocity = data.velocity.get(entity)
+        data.position.set(entity, { x: position.x + velocity.x, y: position.y + velocity.y })
+      }
+    })
+    const schedule = Game.Schedule(Move)
     return { run: () => ok(world.tick(schedule)) }
   }
 }

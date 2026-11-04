@@ -134,7 +134,7 @@ export const beforeNumbersOf = (page: Page): Float64Array =>
   page.beforeNumbers ??= new Float64Array(PAGE_SIZE)
 
 export interface EntityRecord {
-  /** What a row is typed as for `commands`. */
+  /** What an entity from a query is typed as for `commands`. */
   readonly kind: "EntityRef"
   readonly id: number
   /**
@@ -151,10 +151,6 @@ export interface EntityRecord {
    * as `undefined`, which `&` turns into 0.
    */
   readonly heldBits: Array<number>
-  /**
-   * Cached query matches by query ordinal, reused while the entity matches.
-   */
-  readonly matches: Array<unknown>
   /** The name of the component at an ordinal, for error messages (shared by the world's records). */
   readonly nameAt: (ordinal: number) => string
   alive: boolean
@@ -509,11 +505,11 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   /**
    * Whether a run is going on (a system body, an inspector read, or a
    * condition check), and the hand-outs of the queries it used: their
-   * matches are valid until it ends.
+   * data is valid until it ends.
    */
   let inRun = false
   // Reused, with an explicit count: resetting an array's `length` is a runtime call.
-  const handedOut: Array<{ live: boolean; columns?: ReadonlyArray<{ reset(): void }> }> = []
+  const handedOut: Array<{ live: boolean; accessors?: ReadonlyArray<{ reset(): void }> }> = []
   let handedOutCount = 0
   /** The running transaction, shared with write cells so their hot path stays inline. */
   const transactionState: TransactionState = { id: 0, active: false }
@@ -713,7 +709,6 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
         entityId,
         held: [],
         heldBits: [],
-        matches: [],
         nameAt,
         alive: true
       }
@@ -1680,32 +1675,30 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     nameAt,
     has,
     valueAt,
-    /** The page holding `id`'s slot of a component, for cells that read it directly. */
-    pageFor,
-    /** A component's pages by page index, for column accessors. */
+    /** A component's pages by page index, for slot accessors. */
     pagesOf: (ordinal: number): Array<Page | undefined> => stores[ordinal]!.pages,
     entityIdOf,
     allocateEntity,
     spawnEntity,
     transactionState: transactionState as Readonly<TransactionState>,
     freezesValues,
-    /** Starts a run: matches handed out from now on are valid until `endRun`. */
+    /** Starts a run: query data handed out from now on is valid until `endRun`. */
     beginRun: (): void => {
       inRun = true
     },
-    /** Ends the run: every match handed out in it stops being usable. */
+    /** Ends the run: all query data handed out in it stops being usable. */
     endRun: (): void => {
       inRun = false
       for (let index = 0; index < handedOutCount; index++) {
         const stamp = handedOut[index]!
         stamp.live = false
-        const columns = stamp.columns
-        if (columns !== undefined) for (let column = 0; column < columns.length; column++) columns[column]!.reset()
+        const accessors = stamp.accessors
+        if (accessors !== undefined) for (let at = 0; at < accessors.length; at++) accessors[at]!.reset()
       }
       handedOutCount = 0
     },
-    /** Makes a query's matches usable until the running run ends. */
-    handOut: (stamp: { live: boolean; columns?: ReadonlyArray<{ reset(): void }> }): void => {
+    /** Makes a query's data usable until the running run ends. */
+    handOut: (stamp: { live: boolean; accessors?: ReadonlyArray<{ reset(): void }> }): void => {
       if (inRun && !stamp.live) {
         stamp.live = true
         handedOut[handedOutCount++] = stamp

@@ -116,8 +116,8 @@ const despawn: BenchCase = {
       commands: Game.System.commands(Game.System.despawns(Position))
     }, ({ queries, commands }) =>
       {
-        for (const match of queries.movers.each()) {
-          commands.despawn(match.entity)
+        for (const entity of queries.movers.each()) {
+          commands.despawn(entity)
         }
       })
     const schedule = Game.Schedule(DespawnAll, Game.Schedule.applyDeferred())
@@ -144,8 +144,9 @@ const iterateRead: BenchCase = {
       resources: { sum: Game.System.writeResource(Sum) }
     }, ({ queries, resources }) => {
       let total = 0
-      for (const { data } of queries.movers.each()) {
-        total += data.position.get().x + data.velocity.get().x
+      const { data } = queries.movers
+      for (const entity of queries.movers.each()) {
+        total += data.position.get(entity).x + data.velocity.get(entity).x
       }
       resources.sum.set(total)
     })
@@ -165,8 +166,9 @@ const iterateOptional: BenchCase = {
       resources: { sum: Game.System.writeResource(Sum) }
     }, ({ queries, resources }) => {
       let total = 0
-      for (const { data } of queries.all.each()) {
-        total += data.position.get().x + (data.velocity?.get().x ?? 0)
+      const { data } = queries.all
+      for (const entity of queries.all.each()) {
+        total += data.position.get(entity).x + (data.velocity.get(entity)?.x ?? 0)
       }
       resources.sum.set(total)
     })
@@ -183,9 +185,10 @@ const iterateWrite: BenchCase = {
     const runtime = makeRuntime()
     populate(runtime, N, 0)
     const Move = Game.System("Bench/Move", { queries: { movers: Movers } }, ({ queries }) => {
-      for (const { data } of queries.movers.each()) {
-        const velocity = data.velocity.get()
-        data.position.update((position) => ({ x: position.x + velocity.x, y: position.y + velocity.y }))
+      const { data } = queries.movers
+      for (const entity of queries.movers.each()) {
+        const velocity = data.velocity.get(entity)
+        data.position.update(entity, (position) => ({ x: position.x + velocity.x, y: position.y + velocity.y }))
       }
     })
     const schedule = Game.Schedule(Move)
@@ -202,65 +205,10 @@ const numberWrite: BenchCase = {
     const Decay = Game.System("Bench/Decay", {
       queries: { healths: Game.Query({ selection: { health: Game.Query.write(Health) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.healths.each()) data.health.set(data.health.get() - 0.5)
+      const { data } = queries.healths
+      for (const entity of queries.healths.each()) data.health.set(entity, data.health.get(entity) - 0.5)
     })
     const schedule = Game.Schedule(Decay)
-    return { run: () => runtime.tick(schedule) }
-  }
-}
-
-const rowsNumberWrite: BenchCase = {
-  name: "query/rows-number-write-10k",
-  description: "Write a number component (Health) on 10k entities through rows and columns",
-  setup: () => {
-    const runtime = makeRuntime()
-    populate(runtime, N, 0)
-    const Decay = Game.System("Bench/RowsDecay", {
-      queries: { healths: Game.Query({ selection: { health: Game.Query.write(Health) } }) }
-    }, ({ queries }) => {
-      const { health } = queries.healths.columns()
-      for (const row of queries.healths.rows()) health.set(row, health.get(row) - 0.5)
-    })
-    const schedule = Game.Schedule(Decay)
-    return { run: () => runtime.tick(schedule) }
-  }
-}
-
-const rowsWrite: BenchCase = {
-  name: "query/rows-write-10k",
-  description: "Integrate velocity into position on 10k entities through rows and columns",
-  setup: () => {
-    const runtime = makeRuntime()
-    populate(runtime, N, 0)
-    const Move = Game.System("Bench/RowsMove", { queries: { movers: Movers } }, ({ queries }) => {
-      const { position, velocity } = queries.movers.columns()
-      for (const row of queries.movers.rows()) {
-        const p = position.get(row)
-        const v = velocity.get(row)
-        position.set(row, { x: p.x + v.x, y: p.y + v.y })
-      }
-    })
-    const schedule = Game.Schedule(Move)
-    return { run: () => runtime.tick(schedule) }
-  }
-}
-
-const rowsRead: BenchCase = {
-  name: "query/rows-read-10k-of-20k",
-  description: "Read 2 components on 10k matching entities in a 20k-entity world through rows and columns",
-  setup: () => {
-    const runtime = makeRuntime()
-    populate(runtime, N, N)
-    const SumPositions = Game.System("Bench/RowsSum", {
-      queries: { movers: ReadMovers },
-      resources: { sum: Game.System.writeResource(Sum) }
-    }, ({ queries, resources }) => {
-      const { position, velocity } = queries.movers.columns()
-      let total = 0
-      for (const row of queries.movers.rows()) total += position.get(row).x + velocity.get(row).x
-      resources.sum.set(total)
-    })
-    const schedule = Game.Schedule(SumPositions)
     return { run: () => runtime.tick(schedule) }
   }
 }
@@ -272,10 +220,11 @@ const setRaw: BenchCase = {
     const runtime = makeRuntime()
     populate(runtime, N, 0)
     const Move = Game.System("Bench/MoveRaw", { queries: { movers: Movers } }, ({ queries }) => {
-      for (const { data } of queries.movers.each()) {
-        const position = data.position.get()
-        const velocity = data.velocity.get()
-        data.position.setRaw({ x: position.x + velocity.x, y: position.y + velocity.y })
+      const { data } = queries.movers
+      for (const entity of queries.movers.each()) {
+        const position = data.position.get(entity)
+        const velocity = data.velocity.get(entity)
+        data.position.setRaw(entity, { x: position.x + velocity.x, y: position.y + velocity.y })
       }
     })
     const schedule = Game.Schedule(Move)
@@ -303,7 +252,7 @@ const sparseSingle: BenchCase = {
       {
         const player = queries.player.single()
         if (player.ok) {
-          player.value.data.position.update((position) => ({ x: position.x + 1, y: position.y }))
+          queries.player.data.position.update(player.value, (position) => ({ x: position.x + 1, y: position.y }))
         }
       })
     const schedule = Game.Schedule(MovePlayer)
@@ -329,17 +278,18 @@ const changedFilter: BenchCase = {
     }, ({ queries, commands }) =>
       {
         let tagged = 0
-        for (const match of queries.movers.each()) {
+        for (const entity of queries.movers.each()) {
           if (tagged++ >= 100) break
-          commands.insert(match.entity.id, [Hot, {}])
+          commands.insert(entity.id, [Hot, {}])
         }
       })
     runtime.tick(Game.Schedule(TagHot, Game.Schedule.applyDeferred()))
     const Writer = Game.System("Bench/WriteHot", {
       queries: { hot: Game.Query({ selection: { position: Game.Query.write(Position) }, with: [Hot] }) }
     }, ({ queries }) => {
-      for (const { data } of queries.hot.each()) {
-        data.position.update((position) => ({ x: position.x + 1, y: position.y }))
+      const { data } = queries.hot
+      for (const entity of queries.hot.each()) {
+        data.position.update(entity, (position) => ({ x: position.x + 1, y: position.y }))
       }
     })
     const Reader = Game.System("Bench/ReadChanged", {
@@ -352,8 +302,9 @@ const changedFilter: BenchCase = {
       resources: { sum: Game.System.writeResource(Sum) }
     }, ({ queries, resources }) => {
       let total = 0
-      for (const { data } of queries.changed.each()) {
-        total += data.position.get().x
+      const { data } = queries.changed
+      for (const entity of queries.changed.each()) {
+        total += data.position.get(entity).x
       }
       resources.sum.set(total)
     })
@@ -378,9 +329,9 @@ const churn: BenchCase = {
     }, ({ queries, commands }) =>
       {
         let tagged = 0
-        for (const match of queries.movers.each()) {
+        for (const entity of queries.movers.each()) {
           if (tagged++ >= 1_000) break
-          commands.insert(match.entity.id, [Hot, {}])
+          commands.insert(entity.id, [Hot, {}])
         }
       })
     runtime.tick(Game.Schedule(TagHot, Game.Schedule.applyDeferred()))
@@ -391,11 +342,11 @@ const churn: BenchCase = {
       },
       commands: Game.System.commands(Game.System.inserts(Marker), Game.System.removes(Marker))
     }, ({ queries, commands }) => {
-      for (const match of queries.unmarked.each()) {
-        commands.insert(match.entity.id, [Marker, {}])
+      for (const entity of queries.unmarked.each()) {
+        commands.insert(entity.id, [Marker, {}])
       }
-      for (const match of queries.marked.each()) {
-        commands.remove(match.entity, Marker)
+      for (const entity of queries.marked.each()) {
+        commands.remove(entity, Marker)
       }
     })
     const schedule = Game.Schedule(Toggle, Game.Schedule.applyDeferred())
@@ -486,7 +437,7 @@ const lookupGet: BenchCase = {
         let total = 0
         for (const id of ids) {
           const match = queries.movers.get(id)
-          if (match.ok) total += match.value.data.position.get().x
+          if (match.ok) total += queries.movers.data.position.get(match.value).x
         }
         resources.sum.set(total)
       })
@@ -592,9 +543,10 @@ const frame: BenchCase = {
     const Movers2 = Movers
     const movement = Array.from({ length: 15 }, (_, index) =>
       Game.System(`Frame/Move${index}`, { queries: { movers: Movers2 } }, ({ queries }) => {
-        for (const { data } of queries.movers.each()) {
-          if ((data.position.get().x + index) % 15 === 0) {
-            data.position.update((position) => ({ x: position.x + 1, y: position.y }))
+        const { data } = queries.movers
+        for (const entity of queries.movers.each()) {
+          if ((data.position.get(entity).x + index) % 15 === 0) {
+            data.position.update(entity, (position) => ({ x: position.x + 1, y: position.y }))
           }
         }
       }))
@@ -608,7 +560,8 @@ const frame: BenchCase = {
       }, ({ queries, resources }) => {
         let total = queries.changed.each().length
         if (index % 5 === 0) {
-          for (const { data } of queries.statics.each()) total += data.position.get().x
+          const { data } = queries.statics
+          for (const entity of queries.statics.each()) total += data.position.get(entity).x
         }
         resources.sum.set(total)
       }))
@@ -637,7 +590,7 @@ const frame: BenchCase = {
       queries: { bullets: Bullets },
       commands: Game.System.commands(Game.System.despawns(Health))
     }, ({ queries, commands }) => {
-      for (const match of queries.bullets.each()) commands.despawn(match.entity)
+      for (const entity of queries.bullets.each()) commands.despawn(entity)
     })
     const Cleanup = Game.System("Frame/Cleanup", {
       despawned: { entities: Game.System.readDespawned() },
@@ -700,11 +653,12 @@ const entityStates: BenchCase = {
     const Fall = StateGame.System("Bench/Fall", {
       queries: { motions: StateGame.Query({ selection: { motion: StateGame.Query.write(Motion) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.motions.each()) {
-        const motion = data.motion.get()
-        if (motion._tag === "ground") data.motion.transition({ from: "ground", to: "air", data: { vy: 9 } })
-        else if (motion.vy <= 0) data.motion.transition({ from: "air", to: "ground" })
-        else data.motion.update({ state: "air", data: (air) => ({ vy: air.vy - 1 }) })
+      const { data } = queries.motions
+      for (const entity of queries.motions.each()) {
+        const motion = data.motion.get(entity)
+        if (motion._tag === "ground") data.motion.transition(entity, { from: "ground", to: "air", data: { vy: 9 } })
+        else if (motion.vy <= 0) data.motion.transition(entity, { from: "air", to: "ground" })
+        else data.motion.update(entity, { state: "air", data: (air) => ({ vy: air.vy - 1 }) })
       }
     })
     const schedule = StateGame.Schedule(Fall)
@@ -738,9 +692,10 @@ const machineUpdates: BenchCase = {
 }
 
 const moveAll = Game.System("Bench/MoveAll", { queries: { movers: Movers } }, ({ queries }) => {
-  for (const { data } of queries.movers.each()) {
-    const velocity = data.velocity.get()
-    data.position.update((position) => ({ x: position.x + velocity.x, y: position.y + velocity.y }))
+  const { data } = queries.movers
+  for (const entity of queries.movers.each()) {
+    const velocity = data.velocity.get(entity)
+    data.position.update(entity, (position) => ({ x: position.x + velocity.x, y: position.y + velocity.y }))
   }
 })
 
@@ -794,9 +749,6 @@ export const cases: ReadonlyArray<BenchCase> = [
   iterateOptional,
   iterateWrite,
   numberWrite,
-  rowsNumberWrite,
-  rowsWrite,
-  rowsRead,
   setRaw,
   entityStates,
   machineUpdates,

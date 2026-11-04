@@ -34,7 +34,8 @@ describe("RenderSync after its removal stream dropped entries", () => {
       queries: { sprites: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Sprite] }) },
       commands: Game.System.commands(Game.System.despawns(Sprite))
     }, ({ queries, commands }) => {
-      for (const match of queries.sprites.each()) if (match.data.position.get().x < count) commands.despawn(match.entity)
+      const { data } = queries.sprites
+      for (const entity of queries.sprites.each()) if (data.position.get(entity).x < count) commands.despawn(entity)
     })
     runtime.tick(Game.Schedule(Clear, Game.Schedule.applyDeferred()))
     runtime.tick(Game.Schedule())

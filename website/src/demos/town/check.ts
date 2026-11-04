@@ -61,12 +61,12 @@ const ReadWalker = Game.Inspector("Town/ReadWalker", {
   queries: { walker: Game.Query({ selection: { tile: Game.Query.read(Tile), facing: Game.Query.read(Facing), stride: Game.Query.read(Stride) }, with: [Patrol] }) }
 }, ({ queries }) => {
   const match = queries.walker.single()
-  return match.ok ? { tile: match.value.data.tile.get(), facing: match.value.data.facing.get(), stride: match.value.data.stride.get().kind } : undefined
+  return match.ok ? { tile: queries.walker.data.tile.get(match.value), facing: queries.walker.data.facing.get(match.value), stride: queries.walker.data.stride.get(match.value).kind } : undefined
 })
 
 const ReadVillagerFacing = Game.Inspector("Town/ReadVillagerFacing", {
   queries: { villagers: Game.Query({ selection: { look: Game.Query.read(Look), facing: Game.Query.read(Facing) }, with: [Villager] }) }
-}, ({ queries }) => Object.fromEntries(queries.villagers.each().map(({ data }) => [data.look.get().character, data.facing.get()])))
+}, ({ queries }) => Object.fromEntries(queries.villagers.each().map((entity) => [queries.villagers.data.look.get(entity).character, queries.villagers.data.facing.get(entity)])))
 
 // Kit paces on its own clock. The run is deterministic (fixed steps, a
 // seeded Rng), so a first run with the same keys finds when Kit next rests
@@ -95,10 +95,11 @@ const NobodyOverlaps = Invariant.fromInspector(Game.Inspector("solid tiles are n
   queries: { solids: Game.Query({ selection: { tile: Game.Query.read(Tile), stride: Game.Query.optional(Stride), talkable: Game.Query.optional(Talkable) }, with: [Solid] }) }
 }, ({ queries }) => {
   const claimed: Array<Cell> = []
-  for (const { data } of queries.solids.each()) {
-    const tile = data.tile.get()
+  const { data } = queries.solids
+  for (const entity of queries.solids.each()) {
+    const tile = data.tile.get(entity)
     if (!isOpenGround(tile)) return `something solid inside the map's walls at (${tile.col}, ${tile.row})`
-    const stride = data.stride?.get()
+    const stride = data.stride.get(entity)
     const cells = stride?.kind === "walk" ? [tile, stride.from] : [tile]
     for (const cell of cells) {
       if (claimed.some((other) => sameCell(other, cell))) return `two solid things on (${cell.col}, ${cell.row})`
@@ -220,7 +221,7 @@ if (!duo.ok) throw new Error("The two-player town could not start.")
 const together = Invariant.fromInspector(Game.Inspector("both players fit on one screen", {
   queries: { tiles: Game.Query({ selection: { tile: Game.Query.read(Tile) }, with: [Player] }) }
 }, ({ queries }) => {
-  const [first, second] = queries.tiles.each().map(({ data }) => data.tile.get())
+  const [first, second] = queries.tiles.each().map((entity) => queries.tiles.data.tile.get(entity))
   if (first === undefined || second === undefined) return undefined
   return Math.abs(first.col - second.col) > 13 || Math.abs(first.row - second.row) > 8
     ? `players ${JSON.stringify(first)} and ${JSON.stringify(second)} do not fit on one screen`

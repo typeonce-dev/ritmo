@@ -73,10 +73,11 @@ const Move = Game.System(
   },
   ({ queries, resources }) => {
     const { dt } = resources.time.get()
-    for (const match of queries.moving.each()) {
-      const position = match.data.position.get()
-      const velocity = match.data.velocity.get()
-      match.data.position.set({
+    const { data } = queries.moving
+    for (const entity of queries.moving.each()) {
+      const position = data.position.get(entity)
+      const velocity = data.velocity.get(entity)
+      data.position.set(entity, {
         x: position.x + velocity.x * dt,
         y: position.y + velocity.y * dt
       })
@@ -172,6 +173,6 @@ effects on or off, and it never claims a touch feels good: you play, it listens.
   once.
 - A failing system rolls back its writes, and the tick returns the failure.
 - Queries visit only entities with their rarest required component and cache
-  their matches. CI fails on runtime regressions over 25%.
+  their entities. CI fails on runtime regressions over 25%.
 
 <sub>[Brand assets and palette](./brand/README.md)</sub>

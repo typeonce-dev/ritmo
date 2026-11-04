@@ -89,12 +89,12 @@ const setup = () => {
       bare: () => commands.spawn(Game.Command.spawn([Position, { x: 0 }])),
       removeBody: (entity) => {
         const match = queries.bodies.get(entity)
-        if (match.ok) commands.remove(match.value.entity, Body)
+        if (match.ok) commands.remove(match.value, Body)
       },
       insertBody: (entity, label) => commands.insert(entity, [Body, { label }]),
       despawn: (entity) => {
         const match = queries.bodies.get(entity)
-        if (match.ok) commands.despawn(match.value.entity)
+        if (match.ok) commands.despawn(match.value)
       }
     })
     queued = () => {}

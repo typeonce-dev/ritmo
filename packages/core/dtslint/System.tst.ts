@@ -1,9 +1,8 @@
 import { Descriptor, Result, Schema } from "@typeonce/ritmo"
 import * as Codecs from "../test/codecs.ts"
-import type { EntityMut } from "@typeonce/ritmo/Entity"
 import * as Query from "@typeonce/ritmo/Query"
 import * as System from "@typeonce/ritmo/System"
-import type { Query as QueryTypes } from "@typeonce/ritmo/Query"
+import type { QueryData, QueryEntity } from "@typeonce/ritmo/Query"
 import { describe, expect, it } from "tstyche"
 
 const Position = Descriptor.Component<{ x: number; y: number }>()("Position")
@@ -65,15 +64,8 @@ describe("System", () => {
       },
       ({ queries, resources, events, services }) =>
         {
-          expect(queries.moving.each()).type.toBe<ReadonlyArray<{
-            readonly entity: EntityMut<typeof schema, {
-              readonly position: Query.ReadonlyValue<Codecs.SafeVector>
-              readonly velocity: Query.ReadonlyValue<{ x: number; y: number }>
-            }, {
-              readonly position: Query.ReadonlyValue<Codecs.SafeVector>
-            }, unknown, typeof SafePosition | typeof Velocity>
-            readonly data: QueryTypes.Cells<typeof query>
-          }>>()
+          expect(queries.moving.each()).type.toBe<ReadonlyArray<QueryEntity<typeof schema, typeof query>>>()
+          expect(queries.moving.data).type.toBe<QueryData<typeof query>>()
 
           expect(resources.time.get()).type.toBe<number>()
           expect(resources.phase.get()).type.toBe<"Running" | "Paused">()
@@ -140,15 +132,8 @@ describe("System", () => {
       },
       ({ queries, resources, services }) =>
         {
-          expect(queries.moving.each()).type.toBe<ReadonlyArray<{
-            readonly entity: EntityMut<typeof schema, {
-              readonly position: Query.ReadonlyValue<Codecs.SafeVector>
-              readonly velocity: Query.ReadonlyValue<{ x: number; y: number }>
-            }, {
-              readonly position: Query.ReadonlyValue<Codecs.SafeVector>
-            }, unknown, typeof SafePosition | typeof Velocity>
-            readonly data: QueryTypes.Cells<typeof query>
-          }>>()
+          expect(queries.moving.each()).type.toBe<ReadonlyArray<QueryEntity<typeof schema, typeof query>>>()
+          expect(queries.moving.data).type.toBe<QueryData<typeof query>>()
 
           expect(resources.time.get()).type.toBe<number>()
           expect(resources.viewport.setRaw({ width: 320, height: 180 })).type.toBe<Result.Result<void, Descriptor.SchemaIssues>>()

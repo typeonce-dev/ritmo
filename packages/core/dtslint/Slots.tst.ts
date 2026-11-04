@@ -2,7 +2,7 @@ import { Descriptor, Result, Schema } from "@typeonce/ritmo"
 import * as Codecs from "../test/codecs.ts"
 import type { SpawnedId } from "@typeonce/ritmo/Command"
 import type { EntityId } from "@typeonce/ritmo/Entity"
-import type { Query, ReadCell } from "@typeonce/ritmo/Query"
+import type { OptionalSlot, Query } from "@typeonce/ritmo/Query"
 import { describe, expect, it } from "tstyche"
 
 const Position = Descriptor.Component<{ x: number; y: number }>()("Cells/Position")
@@ -15,75 +15,79 @@ const Frozen = Descriptor.Tag("Cells/Frozen")
 const Game = Schema.bind(Schema.fragment({ components: { Position, Tags, Health, Safe, Label, Frozen } }))
 const Other = Schema.bind(Schema.fragment({ components: { Health } }))
 
-describe("query cells", () => {
-  it("read cells return deeply readonly values and cannot write", () => {
+describe("query slots", () => {
+  it("read slots return deeply readonly values and cannot write", () => {
     Game.System("Cells/Read", {
       queries: { items: Game.Query({ selection: { position: Game.Query.read(Position), tags: Game.Query.read(Tags) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.items.each()) {
-        expect(data.position.get()).type.toBe<{ readonly x: number; readonly y: number }>()
-        expect(data.tags.get()).type.toBe<{ readonly names: ReadonlyArray<string> }>()
+      const { data } = queries.items
+      for (const entity of queries.items.each()) {
+        expect(data.position.get(entity)).type.toBe<{ readonly x: number; readonly y: number }>()
+        expect(data.tags.get(entity)).type.toBe<{ readonly names: ReadonlyArray<string> }>()
         expect(data.position).type.not.toHaveProperty("set")
         // @ts-expect-error Cannot assign to 'x' because it is a read-only property
-        data.position.get().x = 1
+        data.position.get(entity).x = 1
         // @ts-expect-error Property 'push' does not exist on type 'readonly string[]'
-        data.tags.get().names.push("a")
+        data.tags.get(entity).names.push("a")
       }
     })
   })
 
-  it("write cells take the component's value; constructed ones also validate raw input", () => {
+  it("write slots take the component's value; constructed ones also validate raw input", () => {
     Game.System("Cells/Write", {
       queries: {
         items: Game.Query({ selection: { health: Game.Query.write(Health), safe: Game.Query.write(Safe), label: Game.Query.write(Label) } })
       }
     }, ({ queries }) => {
-      for (const { data } of queries.items.each()) {
-        expect(data.health.set).type.toBeCallableWith(3)
-        expect(data.health.set).type.not.toBeCallableWith("3")
-        expect(data.health.update).type.toBeCallableWith((health: number) => health + 1)
+      const { data } = queries.items
+      for (const entity of queries.items.each()) {
+        expect(data.health.set).type.toBeCallableWith(entity, 3)
+        expect(data.health.set).type.not.toBeCallableWith(entity, "3")
+        expect(data.health.update).type.toBeCallableWith(entity, (health: number) => health + 1)
         expect(data.health).type.not.toHaveProperty("setRaw")
-        expect(data.safe.setRaw({ x: 1, y: 2 })).type.toBe<Result.Result<void, Descriptor.SchemaIssues>>()
+        expect(data.safe.setRaw(entity, { x: 1, y: 2 })).type.toBe<Result.Result<void, Descriptor.SchemaIssues>>()
         // A plain object is not a validated (branded) vector: go through setRaw.
-        expect(data.safe.set).type.not.toBeCallableWith({ x: 1, y: 2 })
-        expect(data.label.setRaw).type.toBeCallableWith("name")
-        expect(data.label.setRaw).type.not.toBeCallableWith(1)
+        expect(data.safe.set).type.not.toBeCallableWith(entity, { x: 1, y: 2 })
+        expect(data.label.setRaw).type.toBeCallableWith(entity, "name")
+        expect(data.label.setRaw).type.not.toBeCallableWith(entity, 1)
       }
     })
   })
 
-  it("optional slots are a read cell or undefined, and must be narrowed before reading", () => {
+  it("optional slots read a value or undefined, which must be narrowed", () => {
     Game.System("Cells/Optional", {
       queries: { items: Game.Query({ selection: { health: Game.Query.optional(Health) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.items.each()) {
-        expect(data.health).type.toBe<ReadCell<number> | undefined>()
-        // @ts-expect-error 'data.health' is possibly 'undefined'
-        data.health.get()
-        expect(data.health?.get()).type.toBe<number | undefined>()
-        if (data.health !== undefined) expect(data.health.get()).type.toBe<number>()
-        if (data.health !== undefined) {
-          expect(data.health).type.not.toHaveProperty("present")
-          expect(data.health).type.not.toHaveProperty("value")
-        }
+      const { data } = queries.items
+      for (const entity of queries.items.each()) {
+        expect(data.health).type.toBe<OptionalSlot<number>>()
+        expect(data.health.get(entity)).type.toBe<number | undefined>()
+        // @ts-expect-error Object is possibly 'undefined'
+        data.health.get(entity).toFixed()
+        expect(data.health).type.not.toHaveProperty("set")
       }
     })
   })
 
-  it("optional relation slots are a read cell or undefined, and must be narrowed before reading", () => {
+  it("relation slots read ids; optional ones read undefined while the entity lacks the relation", () => {
     const { relation: ChildOf } = Descriptor.Hierarchy("Cells/ChildOf", "Cells/Children")
     const Linked = Schema.bind(Schema.fragment({ components: { Health }, relations: { ChildOf } }))
     Linked.System("Cells/OptionalRelation", {
-      queries: { items: Linked.Query({ selection: { parent: Linked.Query.optionalRelation(ChildOf), children: Linked.Query.optionalRelated(ChildOf) } }) }
+      queries: {
+        items: Linked.Query({ selection: { parent: Linked.Query.optionalRelation(ChildOf), children: Linked.Query.optionalRelated(ChildOf) } }),
+        parented: Linked.Query({ selection: { parent: Linked.Query.readRelation(ChildOf), health: Linked.Query.read(Health) } })
+      }
     }, ({ queries }) => {
-      for (const { data } of queries.items.each()) {
-        expect(data.parent).type.toBe<ReadCell<EntityId<typeof Linked.schema, typeof Linked.schema>> | undefined>()
-        expect(data.children).type.toBe<ReadCell<ReadonlyArray<EntityId<typeof Linked.schema, typeof Linked.schema>>> | undefined>()
-        // @ts-expect-error 'data.parent' is possibly 'undefined'
-        data.parent.get()
-        // @ts-expect-error 'data.children' is possibly 'undefined'
-        data.children.get()
-        expect(data.parent?.get()).type.toBe<EntityId<typeof Linked.schema, typeof Linked.schema> | undefined>()
+      const { data } = queries.items
+      for (const entity of queries.items.each()) {
+        expect(data.parent).type.toBe<OptionalSlot<EntityId<typeof Linked.schema, typeof Linked.schema>>>()
+        expect(data.children).type.toBe<OptionalSlot<ReadonlyArray<EntityId<typeof Linked.schema, typeof Linked.schema>>>>()
+        expect(data.parent.get(entity)).type.toBe<EntityId<typeof Linked.schema, typeof Linked.schema> | undefined>()
+        // A required relation slot needs an entity whose query proves the relation.
+        expect(queries.parented.data.parent.get).type.not.toBeCallableWith(entity)
+      }
+      for (const entity of queries.parented.each()) {
+        expect(queries.parented.data.parent.get(entity)).type.toBe<EntityId<typeof Linked.schema, typeof Linked.schema>>()
       }
     })
   })
@@ -94,7 +98,8 @@ describe("query cells", () => {
         items: Game.Query({ selection: { health: Game.Query.read(Health) }, with: [Frozen], without: [Position] })
       }
     }, ({ queries }) => {
-      for (const { data, entity } of queries.items.each()) {
+      const { data } = queries.items
+      for (const entity of queries.items.each()) {
         expect(data).type.not.toHaveProperty("frozen")
         expect(data).type.not.toHaveProperty("position")
         expect(entity.id).type.toBe<EntityId<typeof Game.schema, typeof Game.schema>>()
@@ -144,15 +149,16 @@ describe("writes take what reads return", () => {
     }, ({ queries, events, commands }) => {
       const [first, second] = queries.bags.each()
       if (first === undefined || second === undefined) return
-      const read = first.data.bag.get()
+      const { data } = queries.bags
+      const read = data.bag.get(first)
       expect(read).type.toBe<{ readonly items: ReadonlyArray<number> }>()
-      second.data.bag.set(read)
-      second.data.bag.update((current) => current)
+      data.bag.set(second, read)
+      data.bag.update(second, (current) => current)
       commands.spawn(Game.Command.spawn([Bag, read]))
       commands.spawn(Game.Command.spawn(Game.Command.entry(Bag, read)))
       for (const hit of events.read.all()) events.write.emit(hit)
       // @ts-expect-error Type 'string' is not assignable to type 'number'
-      second.data.bag.set({ items: ["a"] })
+      data.bag.set(second, { items: ["a"] })
     })
   })
 })

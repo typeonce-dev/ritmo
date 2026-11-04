@@ -20,13 +20,13 @@ const makeRuntime = () => Game.Runtime.make({
 
 const Names = Game.Inspector("ScopeTriggers/Names", {
   queries: { named: Game.Query({ selection: { name: Game.Query.read(Name) } }) }
-}, ({ queries }) => queries.named.each().map((match) => match.data.name.get()).sort())
+}, ({ queries }) => queries.named.each().map((entity) => queries.named.data.name.get(entity)).sort())
 
 const seenOnExit: Array<Array<string>> = []
 const ObserveOnExit = Game.System("ScopeTriggers/ObserveOnExit", {
   queries: { named: Game.Query({ selection: { name: Game.Query.read(Name) } }) }
 }, ({ queries }) => {
-  seenOnExit.push(queries.named.each().map((match) => match.data.name.get()).sort())
+  seenOnExit.push(queries.named.each().map((entity) => queries.named.data.name.get(entity)).sort())
 })
 
 const SpawnRun = Game.System("ScopeTriggers/SpawnRun", { commands: Game.System.commands(Game.System.spawns(Player)) }, ({ commands }) => {

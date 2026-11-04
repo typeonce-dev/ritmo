@@ -81,8 +81,9 @@ const S00 = Game.System("Stress/S00", {
   when: [Game.Condition.inState(Flow, "Playing")],
   nextMachines: { flow: Game.System.nextState(Flow) },
 }, ({ queries, resources, events, services, nextMachines }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v7: data.a.get().v0 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v7: data.a.get(entity).v0 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
@@ -99,8 +100,9 @@ const S01 = Game.System("Stress/S01", {
   resources: { value: Game.System.writeResource(R01) },
   events: { out: Game.System.writeEvent(E01), in: Game.System.readEvent(E04) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v8: data.a.get().v1 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v8: data.a.get(entity).v1 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e1: resources.value.get() })
@@ -115,8 +117,9 @@ const S02 = Game.System("Stress/S02", {
   resources: { value: Game.System.writeResource(R02) },
   events: { out: Game.System.writeEvent(E02), in: Game.System.readEvent(E05) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v9: data.a.get().v2 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v9: data.a.get(entity).v2 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e2: resources.value.get() })
@@ -131,8 +134,9 @@ const S03 = Game.System("Stress/S03", {
   resources: { value: Game.System.writeResource(R03) },
   events: { out: Game.System.writeEvent(E03), in: Game.System.readEvent(E06) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v10: data.a.get().v3 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v10: data.a.get(entity).v3 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e3: resources.value.get() })
@@ -148,8 +152,9 @@ const S04 = Game.System("Stress/S04", {
   events: { out: Game.System.writeEvent(E04), in: Game.System.readEvent(E07) },
   services: { clock: Game.System.service(Clock) },
 }, ({ queries, resources, events, services }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v11: data.a.get().v4 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v11: data.a.get(entity).v4 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e4: resources.value.get() })
@@ -166,8 +171,9 @@ const S05 = Game.System("Stress/S05", {
   events: { out: Game.System.writeEvent(E05), in: Game.System.readEvent(E00) },
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v12: data.a.get().v5 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v12: data.a.get(entity).v5 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e5: resources.value.get() })
@@ -182,8 +188,9 @@ const S06 = Game.System("Stress/S06", {
   resources: { value: Game.System.writeResource(R06) },
   events: { out: Game.System.writeEvent(E06), in: Game.System.readEvent(E01) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v13: data.a.get().v6 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v13: data.a.get(entity).v6 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e6: resources.value.get() })
@@ -198,8 +205,9 @@ const S07 = Game.System("Stress/S07", {
   resources: { value: Game.System.writeResource(R07) },
   events: { out: Game.System.writeEvent(E07), in: Game.System.readEvent(E02) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v14: data.a.get().v7 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v14: data.a.get(entity).v7 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e7: resources.value.get() })
@@ -216,8 +224,9 @@ const S08 = Game.System("Stress/S08", {
   services: { clock: Game.System.service(Clock) },
   nextMachines: { flow: Game.System.nextState(Flow) },
 }, ({ queries, resources, events, services, nextMachines }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v15: data.a.get().v8 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v15: data.a.get(entity).v8 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
@@ -234,8 +243,9 @@ const S09 = Game.System("Stress/S09", {
   resources: { value: Game.System.writeResource(R09) },
   events: { out: Game.System.writeEvent(E01), in: Game.System.readEvent(E04) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v16: data.a.get().v9 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v16: data.a.get(entity).v9 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e1: resources.value.get() })
@@ -251,8 +261,9 @@ const S10 = Game.System("Stress/S10", {
   events: { out: Game.System.writeEvent(E02), in: Game.System.readEvent(E05) },
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v17: data.a.get().v10 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v17: data.a.get(entity).v10 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e2: resources.value.get() })
@@ -267,8 +278,9 @@ const S11 = Game.System("Stress/S11", {
   resources: { value: Game.System.writeResource(R11) },
   events: { out: Game.System.writeEvent(E03), in: Game.System.readEvent(E06) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v18: data.a.get().v11 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v18: data.a.get(entity).v11 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e3: resources.value.get() })
@@ -284,8 +296,9 @@ const S12 = Game.System("Stress/S12", {
   events: { out: Game.System.writeEvent(E04), in: Game.System.readEvent(E07) },
   services: { clock: Game.System.service(Clock) },
 }, ({ queries, resources, events, services }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v19: data.a.get().v12 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v19: data.a.get(entity).v12 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e4: resources.value.get() })
@@ -301,8 +314,9 @@ const S13 = Game.System("Stress/S13", {
   resources: { value: Game.System.writeResource(R13) },
   events: { out: Game.System.writeEvent(E05), in: Game.System.readEvent(E00) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v20: data.a.get().v13 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v20: data.a.get(entity).v13 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e5: resources.value.get() })
@@ -317,8 +331,9 @@ const S14 = Game.System("Stress/S14", {
   resources: { value: Game.System.writeResource(R14) },
   events: { out: Game.System.writeEvent(E06), in: Game.System.readEvent(E01) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v21: data.a.get().v14 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v21: data.a.get(entity).v14 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e6: resources.value.get() })
@@ -334,8 +349,9 @@ const S15 = Game.System("Stress/S15", {
   events: { out: Game.System.writeEvent(E07), in: Game.System.readEvent(E02) },
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v22: data.a.get().v15 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v22: data.a.get(entity).v15 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e7: resources.value.get() })
@@ -352,8 +368,9 @@ const S16 = Game.System("Stress/S16", {
   services: { clock: Game.System.service(Clock) },
   nextMachines: { flow: Game.System.nextState(Flow) },
 }, ({ queries, resources, events, services, nextMachines }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v23: data.a.get().v16 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v23: data.a.get(entity).v16 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
@@ -370,8 +387,9 @@ const S17 = Game.System("Stress/S17", {
   resources: { value: Game.System.writeResource(R01) },
   events: { out: Game.System.writeEvent(E01), in: Game.System.readEvent(E04) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v24: data.a.get().v17 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v24: data.a.get(entity).v17 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e1: resources.value.get() })
@@ -386,8 +404,9 @@ const S18 = Game.System("Stress/S18", {
   resources: { value: Game.System.writeResource(R02) },
   events: { out: Game.System.writeEvent(E02), in: Game.System.readEvent(E05) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v25: data.a.get().v18 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v25: data.a.get(entity).v18 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e2: resources.value.get() })
@@ -402,8 +421,9 @@ const S19 = Game.System("Stress/S19", {
   resources: { value: Game.System.writeResource(R03) },
   events: { out: Game.System.writeEvent(E03), in: Game.System.readEvent(E06) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v26: data.a.get().v19 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v26: data.a.get(entity).v19 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e3: resources.value.get() })
@@ -420,8 +440,9 @@ const S20 = Game.System("Stress/S20", {
   services: { clock: Game.System.service(Clock) },
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events, services }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v27: data.a.get().v20 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v27: data.a.get(entity).v20 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e4: resources.value.get() })
@@ -437,8 +458,9 @@ const S21 = Game.System("Stress/S21", {
   resources: { value: Game.System.writeResource(R05) },
   events: { out: Game.System.writeEvent(E05), in: Game.System.readEvent(E00) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v28: data.a.get().v21 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v28: data.a.get(entity).v21 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e5: resources.value.get() })
@@ -453,8 +475,9 @@ const S22 = Game.System("Stress/S22", {
   resources: { value: Game.System.writeResource(R06) },
   events: { out: Game.System.writeEvent(E06), in: Game.System.readEvent(E01) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v29: data.a.get().v22 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v29: data.a.get(entity).v22 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e6: resources.value.get() })
@@ -469,8 +492,9 @@ const S23 = Game.System("Stress/S23", {
   resources: { value: Game.System.writeResource(R07) },
   events: { out: Game.System.writeEvent(E07), in: Game.System.readEvent(E02) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v30: data.a.get().v23 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v30: data.a.get(entity).v23 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e7: resources.value.get() })
@@ -487,8 +511,9 @@ const S24 = Game.System("Stress/S24", {
   services: { clock: Game.System.service(Clock) },
   nextMachines: { flow: Game.System.nextState(Flow) },
 }, ({ queries, resources, events, services, nextMachines }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v31: data.a.get().v24 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v31: data.a.get(entity).v24 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
@@ -506,8 +531,9 @@ const S25 = Game.System("Stress/S25", {
   events: { out: Game.System.writeEvent(E01), in: Game.System.readEvent(E04) },
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v0: data.a.get().v25 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v0: data.a.get(entity).v25 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e1: resources.value.get() })
@@ -522,8 +548,9 @@ const S26 = Game.System("Stress/S26", {
   resources: { value: Game.System.writeResource(R10) },
   events: { out: Game.System.writeEvent(E02), in: Game.System.readEvent(E05) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v1: data.a.get().v26 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v1: data.a.get(entity).v26 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e2: resources.value.get() })
@@ -538,8 +565,9 @@ const S27 = Game.System("Stress/S27", {
   resources: { value: Game.System.writeResource(R11) },
   events: { out: Game.System.writeEvent(E03), in: Game.System.readEvent(E06) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v2: data.a.get().v27 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v2: data.a.get(entity).v27 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e3: resources.value.get() })
@@ -555,8 +583,9 @@ const S28 = Game.System("Stress/S28", {
   events: { out: Game.System.writeEvent(E04), in: Game.System.readEvent(E07) },
   services: { clock: Game.System.service(Clock) },
 }, ({ queries, resources, events, services }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v3: data.a.get().v28 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v3: data.a.get(entity).v28 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e4: resources.value.get() })
@@ -572,8 +601,9 @@ const S29 = Game.System("Stress/S29", {
   resources: { value: Game.System.writeResource(R13) },
   events: { out: Game.System.writeEvent(E05), in: Game.System.readEvent(E00) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v4: data.a.get().v29 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v4: data.a.get(entity).v29 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e5: resources.value.get() })
@@ -589,8 +619,9 @@ const S30 = Game.System("Stress/S30", {
   events: { out: Game.System.writeEvent(E06), in: Game.System.readEvent(E01) },
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v5: data.a.get().v30 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v5: data.a.get(entity).v30 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e6: resources.value.get() })
@@ -605,8 +636,9 @@ const S31 = Game.System("Stress/S31", {
   resources: { value: Game.System.writeResource(R15) },
   events: { out: Game.System.writeEvent(E07), in: Game.System.readEvent(E02) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v6: data.a.get().v31 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v6: data.a.get(entity).v31 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e7: resources.value.get() })
@@ -623,8 +655,9 @@ const S32 = Game.System("Stress/S32", {
   services: { clock: Game.System.service(Clock) },
   nextMachines: { flow: Game.System.nextState(Flow) },
 }, ({ queries, resources, events, services, nextMachines }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v7: data.a.get().v0 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v7: data.a.get(entity).v0 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
@@ -641,8 +674,9 @@ const S33 = Game.System("Stress/S33", {
   resources: { value: Game.System.writeResource(R01) },
   events: { out: Game.System.writeEvent(E01), in: Game.System.readEvent(E04) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v8: data.a.get().v1 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v8: data.a.get(entity).v1 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e1: resources.value.get() })
@@ -657,8 +691,9 @@ const S34 = Game.System("Stress/S34", {
   resources: { value: Game.System.writeResource(R02) },
   events: { out: Game.System.writeEvent(E02), in: Game.System.readEvent(E05) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v9: data.a.get().v2 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v9: data.a.get(entity).v2 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e2: resources.value.get() })
@@ -674,8 +709,9 @@ const S35 = Game.System("Stress/S35", {
   events: { out: Game.System.writeEvent(E03), in: Game.System.readEvent(E06) },
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v10: data.a.get().v3 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v10: data.a.get(entity).v3 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e3: resources.value.get() })
@@ -691,8 +727,9 @@ const S36 = Game.System("Stress/S36", {
   events: { out: Game.System.writeEvent(E04), in: Game.System.readEvent(E07) },
   services: { clock: Game.System.service(Clock) },
 }, ({ queries, resources, events, services }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v11: data.a.get().v4 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v11: data.a.get(entity).v4 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e4: resources.value.get() })
@@ -708,8 +745,9 @@ const S37 = Game.System("Stress/S37", {
   resources: { value: Game.System.writeResource(R05) },
   events: { out: Game.System.writeEvent(E05), in: Game.System.readEvent(E00) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v12: data.a.get().v5 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v12: data.a.get(entity).v5 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e5: resources.value.get() })
@@ -724,8 +762,9 @@ const S38 = Game.System("Stress/S38", {
   resources: { value: Game.System.writeResource(R06) },
   events: { out: Game.System.writeEvent(E06), in: Game.System.readEvent(E01) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v13: data.a.get().v6 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v13: data.a.get(entity).v6 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e6: resources.value.get() })
@@ -740,8 +779,9 @@ const S39 = Game.System("Stress/S39", {
   resources: { value: Game.System.writeResource(R07) },
   events: { out: Game.System.writeEvent(E07), in: Game.System.readEvent(E02) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v14: data.a.get().v7 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v14: data.a.get(entity).v7 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e7: resources.value.get() })
@@ -759,8 +799,9 @@ const S40 = Game.System("Stress/S40", {
   when: [Game.Condition.inState(Flow, "Playing")],
   nextMachines: { flow: Game.System.nextState(Flow) },
 }, ({ queries, resources, events, services, nextMachines }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v15: data.a.get().v8 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v15: data.a.get(entity).v8 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
@@ -777,8 +818,9 @@ const S41 = Game.System("Stress/S41", {
   resources: { value: Game.System.writeResource(R09) },
   events: { out: Game.System.writeEvent(E01), in: Game.System.readEvent(E04) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v16: data.a.get().v9 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v16: data.a.get(entity).v9 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e1: resources.value.get() })
@@ -793,8 +835,9 @@ const S42 = Game.System("Stress/S42", {
   resources: { value: Game.System.writeResource(R10) },
   events: { out: Game.System.writeEvent(E02), in: Game.System.readEvent(E05) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v17: data.a.get().v10 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v17: data.a.get(entity).v10 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e2: resources.value.get() })
@@ -809,8 +852,9 @@ const S43 = Game.System("Stress/S43", {
   resources: { value: Game.System.writeResource(R11) },
   events: { out: Game.System.writeEvent(E03), in: Game.System.readEvent(E06) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v18: data.a.get().v11 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v18: data.a.get(entity).v11 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e3: resources.value.get() })
@@ -826,8 +870,9 @@ const S44 = Game.System("Stress/S44", {
   events: { out: Game.System.writeEvent(E04), in: Game.System.readEvent(E07) },
   services: { clock: Game.System.service(Clock) },
 }, ({ queries, resources, events, services }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v19: data.a.get().v12 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v19: data.a.get(entity).v12 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e4: resources.value.get() })
@@ -844,8 +889,9 @@ const S45 = Game.System("Stress/S45", {
   events: { out: Game.System.writeEvent(E05), in: Game.System.readEvent(E00) },
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v20: data.a.get().v13 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v20: data.a.get(entity).v13 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e5: resources.value.get() })
@@ -860,8 +906,9 @@ const S46 = Game.System("Stress/S46", {
   resources: { value: Game.System.writeResource(R14) },
   events: { out: Game.System.writeEvent(E06), in: Game.System.readEvent(E01) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v21: data.a.get().v14 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v21: data.a.get(entity).v14 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e6: resources.value.get() })
@@ -876,8 +923,9 @@ const S47 = Game.System("Stress/S47", {
   resources: { value: Game.System.writeResource(R15) },
   events: { out: Game.System.writeEvent(E07), in: Game.System.readEvent(E02) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v22: data.a.get().v15 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v22: data.a.get(entity).v15 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e7: resources.value.get() })
@@ -894,8 +942,9 @@ const S48 = Game.System("Stress/S48", {
   services: { clock: Game.System.service(Clock) },
   nextMachines: { flow: Game.System.nextState(Flow) },
 }, ({ queries, resources, events, services, nextMachines }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v23: data.a.get().v16 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v23: data.a.get(entity).v16 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
@@ -912,8 +961,9 @@ const S49 = Game.System("Stress/S49", {
   resources: { value: Game.System.writeResource(R01) },
   events: { out: Game.System.writeEvent(E01), in: Game.System.readEvent(E04) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v24: data.a.get().v17 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v24: data.a.get(entity).v17 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e1: resources.value.get() })
@@ -929,8 +979,9 @@ const S50 = Game.System("Stress/S50", {
   events: { out: Game.System.writeEvent(E02), in: Game.System.readEvent(E05) },
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v25: data.a.get().v18 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v25: data.a.get(entity).v18 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e2: resources.value.get() })
@@ -945,8 +996,9 @@ const S51 = Game.System("Stress/S51", {
   resources: { value: Game.System.writeResource(R03) },
   events: { out: Game.System.writeEvent(E03), in: Game.System.readEvent(E06) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v26: data.a.get().v19 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v26: data.a.get(entity).v19 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e3: resources.value.get() })
@@ -962,8 +1014,9 @@ const S52 = Game.System("Stress/S52", {
   events: { out: Game.System.writeEvent(E04), in: Game.System.readEvent(E07) },
   services: { clock: Game.System.service(Clock) },
 }, ({ queries, resources, events, services }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v27: data.a.get().v20 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v27: data.a.get(entity).v20 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e4: resources.value.get() })
@@ -979,8 +1032,9 @@ const S53 = Game.System("Stress/S53", {
   resources: { value: Game.System.writeResource(R05) },
   events: { out: Game.System.writeEvent(E05), in: Game.System.readEvent(E00) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v28: data.a.get().v21 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v28: data.a.get(entity).v21 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e5: resources.value.get() })
@@ -995,8 +1049,9 @@ const S54 = Game.System("Stress/S54", {
   resources: { value: Game.System.writeResource(R06) },
   events: { out: Game.System.writeEvent(E06), in: Game.System.readEvent(E01) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v29: data.a.get().v22 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v29: data.a.get(entity).v22 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e6: resources.value.get() })
@@ -1012,8 +1067,9 @@ const S55 = Game.System("Stress/S55", {
   events: { out: Game.System.writeEvent(E07), in: Game.System.readEvent(E02) },
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v30: data.a.get().v23 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v30: data.a.get(entity).v23 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e7: resources.value.get() })
@@ -1030,8 +1086,9 @@ const S56 = Game.System("Stress/S56", {
   services: { clock: Game.System.service(Clock) },
   nextMachines: { flow: Game.System.nextState(Flow) },
 }, ({ queries, resources, events, services, nextMachines }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v31: data.a.get().v24 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v31: data.a.get(entity).v24 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e0: resources.value.get() })
@@ -1048,8 +1105,9 @@ const S57 = Game.System("Stress/S57", {
   resources: { value: Game.System.writeResource(R09) },
   events: { out: Game.System.writeEvent(E01), in: Game.System.readEvent(E04) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v0: data.a.get().v25 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v0: data.a.get(entity).v25 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e1: resources.value.get() })
@@ -1064,8 +1122,9 @@ const S58 = Game.System("Stress/S58", {
   resources: { value: Game.System.writeResource(R10) },
   events: { out: Game.System.writeEvent(E02), in: Game.System.readEvent(E05) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v1: data.a.get().v26 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v1: data.a.get(entity).v26 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e2: resources.value.get() })
@@ -1080,8 +1139,9 @@ const S59 = Game.System("Stress/S59", {
   resources: { value: Game.System.writeResource(R11) },
   events: { out: Game.System.writeEvent(E03), in: Game.System.readEvent(E06) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v2: data.a.get().v27 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v2: data.a.get(entity).v27 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e3: resources.value.get() })
@@ -1098,8 +1158,9 @@ const S60 = Game.System("Stress/S60", {
   services: { clock: Game.System.service(Clock) },
   when: [Game.Condition.inState(Flow, "Playing")],
 }, ({ queries, resources, events, services }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v3: data.a.get().v28 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v3: data.a.get(entity).v28 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e4: resources.value.get() })
@@ -1115,8 +1176,9 @@ const S61 = Game.System("Stress/S61", {
   resources: { value: Game.System.writeResource(R13) },
   events: { out: Game.System.writeEvent(E05), in: Game.System.readEvent(E00) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v4: data.a.get().v29 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v4: data.a.get(entity).v29 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e5: resources.value.get() })
@@ -1131,8 +1193,9 @@ const S62 = Game.System("Stress/S62", {
   resources: { value: Game.System.writeResource(R14) },
   events: { out: Game.System.writeEvent(E06), in: Game.System.readEvent(E01) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v5: data.a.get().v30 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v5: data.a.get(entity).v30 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e6: resources.value.get() })
@@ -1147,8 +1210,9 @@ const S63 = Game.System("Stress/S63", {
   resources: { value: Game.System.writeResource(R15) },
   events: { out: Game.System.writeEvent(E07), in: Game.System.readEvent(E02) },
 }, ({ queries, resources, events }) => {
-  for (const { data } of queries.main.each()) {
-    data.b.set({ v6: data.a.get().v31 + (data.c !== undefined ? 1 : 0) })
+  const { data } = queries.main
+  for (const entity of queries.main.each()) {
+    data.b.set(entity, { v6: data.a.get(entity).v31 + (data.c.get(entity) !== undefined ? 1 : 0) })
   }
   resources.value.update((value) => value + events.in.all().length)
   events.out.emit({ e7: resources.value.get() })
@@ -1806,8 +1870,8 @@ const Rq00 = Game.System("Stress/Rq00", {
 }, ({ queries, commands }) => {
   const spawned = commands.spawn(Game.Command.spawn([C28, { v28: 0 }], [C29, { v29: 0 }], [C30, { v30: 0 }], [C31, { v31: 0 }]))
   commands.remove(spawned, C28)
-  for (const match of queries.held.each()) commands.insert(match.entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
-  for (const match of queries.whole.each()) commands.remove(match.entity, C28, C29, C30)
+  for (const entity of queries.held.each()) commands.insert(entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
+  for (const entity of queries.whole.each()) commands.remove(entity, C28, C29, C30)
 })
 const Rq01 = Game.System("Stress/Rq01", {
   queries: {
@@ -1818,8 +1882,8 @@ const Rq01 = Game.System("Stress/Rq01", {
 }, ({ queries, commands }) => {
   const spawned = commands.spawn(Game.Command.spawn([C28, { v28: 1 }], [C29, { v29: 0 }], [C30, { v30: 0 }], [C31, { v31: 0 }]))
   commands.remove(spawned, C28)
-  for (const match of queries.held.each()) commands.insert(match.entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
-  for (const match of queries.whole.each()) commands.remove(match.entity, C28, C29, C30)
+  for (const entity of queries.held.each()) commands.insert(entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
+  for (const entity of queries.whole.each()) commands.remove(entity, C28, C29, C30)
 })
 const Rq02 = Game.System("Stress/Rq02", {
   queries: {
@@ -1830,8 +1894,8 @@ const Rq02 = Game.System("Stress/Rq02", {
 }, ({ queries, commands }) => {
   const spawned = commands.spawn(Game.Command.spawn([C28, { v28: 2 }], [C29, { v29: 0 }], [C30, { v30: 0 }], [C31, { v31: 0 }]))
   commands.remove(spawned, C28)
-  for (const match of queries.held.each()) commands.insert(match.entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
-  for (const match of queries.whole.each()) commands.remove(match.entity, C28, C29, C30)
+  for (const entity of queries.held.each()) commands.insert(entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
+  for (const entity of queries.whole.each()) commands.remove(entity, C28, C29, C30)
 })
 const Rq03 = Game.System("Stress/Rq03", {
   queries: {
@@ -1842,8 +1906,8 @@ const Rq03 = Game.System("Stress/Rq03", {
 }, ({ queries, commands }) => {
   const spawned = commands.spawn(Game.Command.spawn([C28, { v28: 3 }], [C29, { v29: 0 }], [C30, { v30: 0 }], [C31, { v31: 0 }]))
   commands.remove(spawned, C28)
-  for (const match of queries.held.each()) commands.insert(match.entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
-  for (const match of queries.whole.each()) commands.remove(match.entity, C28, C29, C30)
+  for (const entity of queries.held.each()) commands.insert(entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
+  for (const entity of queries.whole.each()) commands.remove(entity, C28, C29, C30)
 })
 const Rq04 = Game.System("Stress/Rq04", {
   queries: {
@@ -1854,8 +1918,8 @@ const Rq04 = Game.System("Stress/Rq04", {
 }, ({ queries, commands }) => {
   const spawned = commands.spawn(Game.Command.spawn([C28, { v28: 4 }], [C29, { v29: 0 }], [C30, { v30: 0 }], [C31, { v31: 0 }]))
   commands.remove(spawned, C28)
-  for (const match of queries.held.each()) commands.insert(match.entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
-  for (const match of queries.whole.each()) commands.remove(match.entity, C28, C29, C30)
+  for (const entity of queries.held.each()) commands.insert(entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
+  for (const entity of queries.whole.each()) commands.remove(entity, C28, C29, C30)
 })
 const Rq05 = Game.System("Stress/Rq05", {
   queries: {
@@ -1866,8 +1930,8 @@ const Rq05 = Game.System("Stress/Rq05", {
 }, ({ queries, commands }) => {
   const spawned = commands.spawn(Game.Command.spawn([C28, { v28: 5 }], [C29, { v29: 0 }], [C30, { v30: 0 }], [C31, { v31: 0 }]))
   commands.remove(spawned, C28)
-  for (const match of queries.held.each()) commands.insert(match.entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
-  for (const match of queries.whole.each()) commands.remove(match.entity, C28, C29, C30)
+  for (const entity of queries.held.each()) commands.insert(entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
+  for (const entity of queries.whole.each()) commands.remove(entity, C28, C29, C30)
 })
 const Rq06 = Game.System("Stress/Rq06", {
   queries: {
@@ -1878,8 +1942,8 @@ const Rq06 = Game.System("Stress/Rq06", {
 }, ({ queries, commands }) => {
   const spawned = commands.spawn(Game.Command.spawn([C28, { v28: 6 }], [C29, { v29: 0 }], [C30, { v30: 0 }], [C31, { v31: 0 }]))
   commands.remove(spawned, C28)
-  for (const match of queries.held.each()) commands.insert(match.entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
-  for (const match of queries.whole.each()) commands.remove(match.entity, C28, C29, C30)
+  for (const entity of queries.held.each()) commands.insert(entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
+  for (const entity of queries.whole.each()) commands.remove(entity, C28, C29, C30)
 })
 const Rq07 = Game.System("Stress/Rq07", {
   queries: {
@@ -1890,8 +1954,8 @@ const Rq07 = Game.System("Stress/Rq07", {
 }, ({ queries, commands }) => {
   const spawned = commands.spawn(Game.Command.spawn([C28, { v28: 7 }], [C29, { v29: 0 }], [C30, { v30: 0 }], [C31, { v31: 0 }]))
   commands.remove(spawned, C28)
-  for (const match of queries.held.each()) commands.insert(match.entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
-  for (const match of queries.whole.each()) commands.remove(match.entity, C28, C29, C30)
+  for (const entity of queries.held.each()) commands.insert(entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
+  for (const entity of queries.whole.each()) commands.remove(entity, C28, C29, C30)
 })
 const Rq08 = Game.System("Stress/Rq08", {
   queries: {
@@ -1902,8 +1966,8 @@ const Rq08 = Game.System("Stress/Rq08", {
 }, ({ queries, commands }) => {
   const spawned = commands.spawn(Game.Command.spawn([C28, { v28: 8 }], [C29, { v29: 0 }], [C30, { v30: 0 }], [C31, { v31: 0 }]))
   commands.remove(spawned, C28)
-  for (const match of queries.held.each()) commands.insert(match.entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
-  for (const match of queries.whole.each()) commands.remove(match.entity, C28, C29, C30)
+  for (const entity of queries.held.each()) commands.insert(entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
+  for (const entity of queries.whole.each()) commands.remove(entity, C28, C29, C30)
 })
 const Rq09 = Game.System("Stress/Rq09", {
   queries: {
@@ -1914,8 +1978,8 @@ const Rq09 = Game.System("Stress/Rq09", {
 }, ({ queries, commands }) => {
   const spawned = commands.spawn(Game.Command.spawn([C28, { v28: 9 }], [C29, { v29: 0 }], [C30, { v30: 0 }], [C31, { v31: 0 }]))
   commands.remove(spawned, C28)
-  for (const match of queries.held.each()) commands.insert(match.entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
-  for (const match of queries.whole.each()) commands.remove(match.entity, C28, C29, C30)
+  for (const entity of queries.held.each()) commands.insert(entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
+  for (const entity of queries.whole.each()) commands.remove(entity, C28, C29, C30)
 })
 const Rq10 = Game.System("Stress/Rq10", {
   queries: {
@@ -1926,8 +1990,8 @@ const Rq10 = Game.System("Stress/Rq10", {
 }, ({ queries, commands }) => {
   const spawned = commands.spawn(Game.Command.spawn([C28, { v28: 10 }], [C29, { v29: 0 }], [C30, { v30: 0 }], [C31, { v31: 0 }]))
   commands.remove(spawned, C28)
-  for (const match of queries.held.each()) commands.insert(match.entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
-  for (const match of queries.whole.each()) commands.remove(match.entity, C28, C29, C30)
+  for (const entity of queries.held.each()) commands.insert(entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
+  for (const entity of queries.whole.each()) commands.remove(entity, C28, C29, C30)
 })
 const Rq11 = Game.System("Stress/Rq11", {
   queries: {
@@ -1938,8 +2002,8 @@ const Rq11 = Game.System("Stress/Rq11", {
 }, ({ queries, commands }) => {
   const spawned = commands.spawn(Game.Command.spawn([C28, { v28: 11 }], [C29, { v29: 0 }], [C30, { v30: 0 }], [C31, { v31: 0 }]))
   commands.remove(spawned, C28)
-  for (const match of queries.held.each()) commands.insert(match.entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
-  for (const match of queries.whole.each()) commands.remove(match.entity, C28, C29, C30)
+  for (const entity of queries.held.each()) commands.insert(entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
+  for (const entity of queries.whole.each()) commands.remove(entity, C28, C29, C30)
 })
 const Rq12 = Game.System("Stress/Rq12", {
   queries: {
@@ -1950,8 +2014,8 @@ const Rq12 = Game.System("Stress/Rq12", {
 }, ({ queries, commands }) => {
   const spawned = commands.spawn(Game.Command.spawn([C28, { v28: 12 }], [C29, { v29: 0 }], [C30, { v30: 0 }], [C31, { v31: 0 }]))
   commands.remove(spawned, C28)
-  for (const match of queries.held.each()) commands.insert(match.entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
-  for (const match of queries.whole.each()) commands.remove(match.entity, C28, C29, C30)
+  for (const entity of queries.held.each()) commands.insert(entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
+  for (const entity of queries.whole.each()) commands.remove(entity, C28, C29, C30)
 })
 const Rq13 = Game.System("Stress/Rq13", {
   queries: {
@@ -1962,8 +2026,8 @@ const Rq13 = Game.System("Stress/Rq13", {
 }, ({ queries, commands }) => {
   const spawned = commands.spawn(Game.Command.spawn([C28, { v28: 13 }], [C29, { v29: 0 }], [C30, { v30: 0 }], [C31, { v31: 0 }]))
   commands.remove(spawned, C28)
-  for (const match of queries.held.each()) commands.insert(match.entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
-  for (const match of queries.whole.each()) commands.remove(match.entity, C28, C29, C30)
+  for (const entity of queries.held.each()) commands.insert(entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
+  for (const entity of queries.whole.each()) commands.remove(entity, C28, C29, C30)
 })
 const Rq14 = Game.System("Stress/Rq14", {
   queries: {
@@ -1974,8 +2038,8 @@ const Rq14 = Game.System("Stress/Rq14", {
 }, ({ queries, commands }) => {
   const spawned = commands.spawn(Game.Command.spawn([C28, { v28: 14 }], [C29, { v29: 0 }], [C30, { v30: 0 }], [C31, { v31: 0 }]))
   commands.remove(spawned, C28)
-  for (const match of queries.held.each()) commands.insert(match.entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
-  for (const match of queries.whole.each()) commands.remove(match.entity, C28, C29, C30)
+  for (const entity of queries.held.each()) commands.insert(entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
+  for (const entity of queries.whole.each()) commands.remove(entity, C28, C29, C30)
 })
 const Rq15 = Game.System("Stress/Rq15", {
   queries: {
@@ -1986,8 +2050,8 @@ const Rq15 = Game.System("Stress/Rq15", {
 }, ({ queries, commands }) => {
   const spawned = commands.spawn(Game.Command.spawn([C28, { v28: 15 }], [C29, { v29: 0 }], [C30, { v30: 0 }], [C31, { v31: 0 }]))
   commands.remove(spawned, C28)
-  for (const match of queries.held.each()) commands.insert(match.entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
-  for (const match of queries.whole.each()) commands.remove(match.entity, C28, C29, C30)
+  for (const entity of queries.held.each()) commands.insert(entity, [C28, { v28: 1 }], [C31, { v31: 1 }])
+  for (const entity of queries.whole.each()) commands.remove(entity, C28, C29, C30)
 })
 runtime.tick(Game.Schedule(Rq00, Rq01, Rq02, Rq03, Rq04, Rq05, Rq06, Rq07, Rq08, Rq09, Rq10, Rq11, Rq12, Rq13, Rq14, Rq15, Game.Schedule.applyDeferred()))
 

@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url"
 import { measure, type MeasureOptions } from "../../../packages/core/bench/harness.ts"
 import { caseNames, type CaseName, type Library } from "./cases.ts"
 
-const libraries = ["ritmo", "ritmoRows", "bitecs", "koota", "miniplex"] as const
+const libraries = ["ritmo", "bitecs", "koota", "miniplex"] as const
 type LibraryName = (typeof libraries)[number]
 
 const load = async (name: LibraryName): Promise<Library> =>
@@ -93,7 +93,6 @@ if (json !== undefined) {
     machine: `${os.cpus()[0]?.model ?? "unknown cpu"} / node ${process.version} / ${os.platform()}`,
     versions: {
       ritmo: versionOf("@typeonce/ritmo"),
-      ritmoRows: versionOf("@typeonce/ritmo"),
       bitecs: versionOf("bitecs"),
       koota: versionOf("koota"),
       miniplex: versionOf("miniplex")

@@ -33,9 +33,10 @@
  * }, ({ queries, resources }) => {
  *   const dt = resources.dt.get()
  *
- *   for (const { data } of queries.moving.each()) {
- *     const velocity = data.velocity.get()
- *     data.position.update((position) => ({
+ *   const { data } = queries.moving
+ *   for (const entity of queries.moving.each()) {
+ *     const velocity = data.velocity.get(entity)
+ *     data.position.update(entity, (position) => ({
  *       x: position.x + velocity.x * dt,
  *       y: position.y + velocity.y * dt
  *     }))
@@ -59,7 +60,7 @@ import type { Descriptor } from "./Descriptor.ts"
 import type * as Entity from "./Entity.ts"
 import * as Machine from "./Machine.ts"
 import type * as Relation from "./Relation.ts"
-import type { Query, QueryColumns, QueryMatch, QueryRowOf } from "./Query.ts"
+import type { Query, QueryData, QueryEntity } from "./Query.ts"
 import type { ConstructedWriteCell, ReadCell, ReadonlyValue, StateExactFields, StateUpdateResult, WriteCell } from "./Query.ts"
 import * as Requirement from "./Requirement.ts"
 import type * as Result from "./Result.ts"
@@ -103,9 +104,10 @@ import type { CommandAccess, CommandsApi, NotDeclared } from "./Command.ts"
  *   }
  * }, ({ queries, resources }) => {
  *   const dt = resources.dt.get()
- *   for (const { data } of queries.moving.each()) {
- *     const velocity = data.velocity.get()
- *     data.position.update((position) => ({
+ *   const { data } = queries.moving
+ *   for (const entity of queries.moving.each()) {
+ *     const velocity = data.velocity.get(entity)
+ *     data.position.update(entity, (position) => ({
  *       x: position.x + velocity.x * dt,
  *       y: position.y + velocity.y * dt
  *     }))
@@ -905,48 +907,41 @@ export type QueryHandle<S extends Schema.Any, Q extends Query.Any> =
   & QueryIteration<S, Q>
   & (Q["filters"] extends readonly [] ? QueryLookups<S, Q> : FilteredQueryLookups)
 
-/** What every query handle has: iteration over its current matches. */
+/** What every query handle has: iteration over its current entities, and their data. */
 export interface QueryIteration<S extends Schema.Any, Q extends Query.Any> {
   /**
-   * Returns every current match, in spawn order (ascending entity id), so
-   * iteration is the same on every run and platform. The matches are valid
-   * during this run only (see {@link QueryMatch}, which also types a helper
-   * that takes them).
-   */
-  each(): ReadonlyArray<QueryMatch<S, Q>>
-  /**
-   * Returns the query's rows, in spawn order (ascending entity id), with its
-   * `added` / `changed` filters applied. Read and write them through
-   * {@link columns}. Use this over `each()` for a loop over many entities: a
-   * query keeps no object per entity for its rows, and the loop does not build
-   * any.
+   * Returns the query's entities, in spawn order (ascending entity id), so
+   * iteration is the same on every run and platform, with its `added` /
+   * `changed` filters applied. Read and write them through {@link data}; pass
+   * one to `commands` to act on it.
    *
    * @example
    * ```ts
    * const Movers = Game.Query({ selection: { position: Game.Query.write(Position), velocity: Game.Query.read(Velocity) } })
    *
    * Game.System("Game/Move", { queries: { movers: Movers } }, ({ queries }) => {
-   *   const { position, velocity } = queries.movers.columns()
-   *   for (const row of queries.movers.rows()) {
-   *     const p = position.get(row)
-   *     const v = velocity.get(row)
-   *     position.set(row, { x: p.x + v.x, y: p.y + v.y })
+   *   const { data } = queries.movers
+   *   for (const entity of queries.movers.each()) {
+   *     const position = data.position.get(entity)
+   *     const velocity = data.velocity.get(entity)
+   *     data.position.set(entity, { x: position.x + velocity.x, y: position.y + velocity.y })
    *   }
    * })
    * ```
    */
-  rows(): ReadonlyArray<QueryRowOf<S, Q>>
+  each(): ReadonlyArray<QueryEntity<S, Q>>
   /**
-   * Returns one accessor per read and write slot, valid during this run: each
-   * takes a row of {@link rows}. A read slot has no `set`.
+   * The query's slots, one per entry of its `selection`, each taking an entity:
+   * `data.position.get(entity)`. A read slot has no `set`. Valid during this
+   * run (see {@link QueryData}).
    */
-  columns(): QueryColumns<Q>
+  readonly data: QueryData<Q>
   /**
-   * Returns a single match when zero or one entity satisfies the query.
+   * Returns the one entity when zero or one satisfies the query.
    *
    * Use this when absence is acceptable but multiplicity is still a bug. Zero
-   * matches return `ok: true` with `value: undefined`; multiple matches remain
-   * an explicit `MultipleEntities` failure.
+   * entities return `ok: true` with `value: undefined`; several remain an
+   * explicit `MultipleEntities` failure.
    *
    * @example
    * ```ts
@@ -958,11 +953,11 @@ export interface QueryIteration<S extends Schema.Any, Q extends Query.Any> {
    *     return
    *   }
    *
-   *   player.value.data.position.set({ x: 0, y: 0 })
+   *   queries.player.data.position.set(player.value, { x: 0, y: 0 })
    * })
    * ```
    */
-  singleOptional(): Result.Result<QueryMatch<S, Q> | undefined, Query.MultipleEntitiesError>
+  singleOptional(): Result.Result<QueryEntity<S, Q> | undefined, Query.MultipleEntitiesError>
 }
 
 type FilteredLookupMessage = "lookups need a query without added/changed filters: declare a second query for resolving entities"
@@ -975,13 +970,13 @@ export type FilteredQueryLookups = {
 /** Lookups of one entity or one hierarchy through a query without `added` / `changed` filters. */
 export interface QueryLookups<S extends Schema.Any, Q extends Query.Any> {
   /**
-   * Retrieves the match for one specific entity id when it satisfies the query.
+   * Retrieves one specific entity by id when it satisfies the query.
    *
    * Every read and write of an entity goes through a query the system
    * declares, so its access is visible in the spec: there is no lookup that
    * takes a query at call time.
    */
-  get(entityId: import("./Entity.ts").EntityId<S, Query.Root<Q>>): Result.Result<QueryMatch<S, Q>, Query.LookupError>
+  get(entityId: import("./Entity.ts").EntityId<S, Query.Root<Q>>): Result.Result<QueryEntity<S, Q>, Query.LookupError>
   /**
    * Resolves a stored durable handle back into this query's access.
    *
@@ -996,7 +991,7 @@ export interface QueryLookups<S extends Schema.Any, Q extends Query.Any> {
       : Query.ProvesComponent<Q, Entity.Handle.Intent<H> & Descriptor<"component", string, any>> extends true
         ? H
         : "this query does not prove the handle's intent component: select it, or add it to with"
-  ): Result.Result<QueryMatch<S, Q>, Query.LookupError>
+  ): Result.Result<QueryEntity<S, Q>, Query.LookupError>
   /**
    * The direct children of one hierarchy parent that match this query, in the
    * stored child order. Children that do not match are skipped; a missing
@@ -1005,7 +1000,7 @@ export interface QueryLookups<S extends Schema.Any, Q extends Query.Any> {
   children<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Hierarchy>>(
     entityId: Entity.EntityId<S, Query.Root<Q>>,
     relation: R
-  ): Result.Result<ReadonlyArray<QueryMatch<S, Q>>, Relation.Relation.MissingEntityError>
+  ): Result.Result<ReadonlyArray<QueryEntity<S, Q>>, Relation.Relation.MissingEntityError>
   /**
    * The hierarchy descendants of one entity that match this query, in
    * `options.order` (depth-first by default). Descendants that do not match
@@ -1015,11 +1010,11 @@ export interface QueryLookups<S extends Schema.Any, Q extends Query.Any> {
     entityId: Entity.EntityId<S, Query.Root<Q>>,
     relation: R,
     options?: { readonly order?: "breadth" | "depth" }
-  ): Result.Result<ReadonlyArray<QueryMatch<S, Q>>, Relation.Relation.MissingEntityError>
+  ): Result.Result<ReadonlyArray<QueryEntity<S, Q>>, Relation.Relation.MissingEntityError>
   /**
-   * Returns a single match when exactly one entity satisfies the query.
+   * Returns the one entity when exactly one satisfies the query.
    */
-  single(): Result.Result<QueryMatch<S, Q>, Query.SingleError>
+  single(): Result.Result<QueryEntity<S, Q>, Query.SingleError>
 }
 
 /**

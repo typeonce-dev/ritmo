@@ -15,7 +15,7 @@ const Game = Schema.bind(Schema.fragment({ components: { Contact, Mode } }))
 const Contacts = Game.Query({ selection: { contact: Game.Query.write(Contact) } })
 const ReadContacts = Game.Inspector("State/ReadContacts", {
   queries: { contacts: Game.Query({ selection: { contact: Game.Query.read(Contact) } }) }
-}, ({ queries }) => queries.contacts.each().map((match) => match.data.contact.get()))
+}, ({ queries }) => queries.contacts.each().map((entity) => queries.contacts.data.contact.get(entity)))
 
 const makeRuntime = () => {
   const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
@@ -33,10 +33,11 @@ describe("Descriptor.EntityState", () => {
     const runtime = makeRuntime()
     const results: Array<unknown> = []
     const Jump = Game.System("State/Jump", { queries: { contacts: Contacts } }, ({ queries }) => {
-      for (const { data } of queries.contacts.each()) {
-        results.push(data.contact.transition({ from: "ground", to: "air", data: { vy: 2, coyote: 0 } }))
+      const { data } = queries.contacts
+      for (const entity of queries.contacts.each()) {
+        results.push(data.contact.transition(entity, { from: "ground", to: "air", data: { vy: 2, coyote: 0 } }))
         // Stale: the contact is no longer "ground", so nothing is written.
-        results.push(data.contact.transition({ from: "ground", to: "air", data: { vy: 9, coyote: 9 } }))
+        results.push(data.contact.transition(entity, { from: "ground", to: "air", data: { vy: 9, coyote: 9 } }))
       }
     })
     runtime.tick(Game.Schedule(Jump))
@@ -52,11 +53,12 @@ describe("Descriptor.EntityState", () => {
     const runtime = makeRuntime()
     const results: Array<unknown> = []
     const Fall = Game.System("State/Fall", { queries: { contacts: Contacts } }, ({ queries }) => {
-      for (const { data } of queries.contacts.each()) {
-        results.push(data.contact.update({ state: "air", data: (air) => ({ ...air, vy: air.vy - 1 }) }))
-        data.contact.transition({ from: "ground", to: "air", data: { vy: 2, coyote: 0 } })
-        results.push(data.contact.update({ state: "air", data: (air) => ({ ...air, vy: air.vy - 1 }) }))
-        results.push(data.contact.update({ state: "air", data: (air) => ({ vy: air.vy - 1, coyote: 4 }) }))
+      const { data } = queries.contacts
+      for (const entity of queries.contacts.each()) {
+        results.push(data.contact.update(entity, { state: "air", data: (air) => ({ ...air, vy: air.vy - 1 }) }))
+        data.contact.transition(entity, { from: "ground", to: "air", data: { vy: 2, coyote: 0 } })
+        results.push(data.contact.update(entity, { state: "air", data: (air) => ({ ...air, vy: air.vy - 1 }) }))
+        results.push(data.contact.update(entity, { state: "air", data: (air) => ({ vy: air.vy - 1, coyote: 4 }) }))
       }
     })
     runtime.tick(Game.Schedule(Fall))
@@ -75,12 +77,13 @@ describe("Descriptor.EntityState", () => {
     const runtime = makeRuntime()
     const seen: Array<unknown> = []
     const Crouch = Game.System("State/Crouch", { queries: { contacts: Contacts } }, ({ queries }) => {
-      for (const { data } of queries.contacts.each()) {
-        data.contact.transition({ from: "ground", to: "crouch" })
-        seen.push(data.contact.get())
-        data.contact.transition({ from: "crouch", to: "ground", data: { platform: null } })
-        data.contact.transition({ from: "ground", to: "crouch" })
-        seen.push(data.contact.get())
+      const { data } = queries.contacts
+      for (const entity of queries.contacts.each()) {
+        data.contact.transition(entity, { from: "ground", to: "crouch" })
+        seen.push(data.contact.get(entity))
+        data.contact.transition(entity, { from: "crouch", to: "ground", data: { platform: null } })
+        data.contact.transition(entity, { from: "ground", to: "crouch" })
+        seen.push(data.contact.get(entity))
       }
     })
     runtime.tick(Game.Schedule(Crouch))
@@ -94,14 +97,15 @@ describe("Descriptor.EntityState", () => {
     const Jump = Game.System("State/Wander", {
       queries: { modes: Game.Query({ selection: { mode: Game.Query.write(Mode) } }) }
     }, ({ queries }) => {
-      for (const { data } of queries.modes.each()) {
-        data.mode.transition({ from: "a", to: "c" })
-        data.mode.transition({ from: "c", to: "b", data: { n: 1 } })
+      const { data } = queries.modes
+      for (const entity of queries.modes.each()) {
+        data.mode.transition(entity, { from: "a", to: "c" })
+        data.mode.transition(entity, { from: "c", to: "b", data: { n: 1 } })
       }
     })
     const ReadModes = Game.Inspector("State/ReadModes", {
       queries: { modes: Game.Query({ selection: { mode: Game.Query.read(Mode) } }) }
-    }, ({ queries }) => queries.modes.each().map((match) => match.data.mode.get()))
+    }, ({ queries }) => queries.modes.each().map((entity) => queries.modes.data.mode.get(entity)))
     runtime.tick(Game.Schedule(Jump))
     expect(runtime.inspect(ReadModes)).toEqual([{ _tag: "b", n: 1 }])
   })
@@ -109,7 +113,8 @@ describe("Descriptor.EntityState", () => {
   it("is an ordinary write: change detection sees it and a failed system rolls it back", () => {
     const runtime = makeRuntime()
     const Fail = Game.System("State/Fail", { queries: { contacts: Contacts } }, ({ queries }) => {
-      for (const { data } of queries.contacts.each()) data.contact.transition({ from: "ground", to: "crouch" })
+      const { data } = queries.contacts
+      for (const entity of queries.contacts.each()) data.contact.transition(entity, { from: "ground", to: "crouch" })
       return Result.failure("Rejected" as const)
     })
     expect(runtime.tick(Game.Schedule(Fail)).ok).toBe(false)
@@ -117,7 +122,8 @@ describe("Descriptor.EntityState", () => {
 
     const changed: Array<number> = []
     const Crouch = Game.System("State/CrouchOnce", { queries: { contacts: Contacts } }, ({ queries }) => {
-      for (const { data } of queries.contacts.each()) data.contact.transition({ from: "ground", to: "crouch" })
+      const { data } = queries.contacts
+      for (const entity of queries.contacts.each()) data.contact.transition(entity, { from: "ground", to: "crouch" })
     })
     const Watch = Game.System("State/Watch", {
       queries: {
@@ -136,11 +142,12 @@ describe("Descriptor.EntityState", () => {
     const runtime = makeRuntime()
     const results: Array<unknown> = []
     const Raw = Game.System("State/Raw", { queries: { contacts: Contacts } }, ({ queries }) => {
-      for (const { data } of queries.contacts.each()) {
+      const { data } = queries.contacts
+      for (const entity of queries.contacts.each()) {
         results.push(
-          data.contact.setRaw({ _tag: "air", vy: 1, coyote: 2 }).ok,
-          data.contact.setRaw({ _tag: "swim" } as never),
-          data.contact.setRaw({ _tag: "air", vy: "fast" } as never)
+          data.contact.setRaw(entity, { _tag: "air", vy: 1, coyote: 2 }).ok,
+          data.contact.setRaw(entity, { _tag: "swim" } as never),
+          data.contact.setRaw(entity, { _tag: "air", vy: "fast" } as never)
         )
       }
     })

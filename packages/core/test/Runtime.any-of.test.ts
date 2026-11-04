@@ -17,7 +17,7 @@ const Redraw = Game.Query({
 const observer = () => {
   const runs: Array<Array<number>> = []
   const system = Game.System("AnyOf/Observer", { queries: { redraw: Redraw } }, ({ queries }) => {
-    runs.push(queries.redraw.each().map((match) => match.data.position.get().x))
+    runs.push(queries.redraw.each().map((entity) => queries.redraw.data.position.get(entity).x))
   })
   return { system, runs }
 }
@@ -36,10 +36,11 @@ const touch = (name: string, pick: (x: number) => boolean, slot: "position" | "s
       all: Game.Query({ selection: { position: Game.Query.write(Position), sprite: Game.Query.write(Sprite) } })
     }
   }, ({ queries }) => {
-    for (const { data } of queries.all.each()) {
-      if (!pick(data.position.get().x)) continue
-      if (slot === "position") data.position.update((position) => ({ x: position.x }))
-      else data.sprite.set("hit")
+    const { data } = queries.all
+    for (const entity of queries.all.each()) {
+      if (!pick(data.position.get(entity).x)) continue
+      if (slot === "position") data.position.update(entity, (position) => ({ x: position.x }))
+      else data.sprite.set(entity, "hit")
     }
   })
 
@@ -79,14 +80,15 @@ describe("Game.Query.anyOf", () => {
         })
       }
     }, ({ queries }) => {
-      seen.push(queries.tiles.each().map((match) => match.data.position.get().x))
+      seen.push(queries.tiles.each().map((entity) => queries.tiles.data.position.get(entity).x))
     })
     const Pave = Game.System("AnyOf/Pave", {
       queries: { all: Game.Query({ selection: { position: Game.Query.read(Position) } }) },
       commands: Game.System.commands(Game.System.inserts(Paved))
     }, ({ queries, commands }) => {
-      for (const match of queries.all.each()) {
-        if (match.data.position.get().x === 1) commands.insert(match.entity.id, [Paved, {}])
+      const { data } = queries.all
+      for (const entity of queries.all.each()) {
+        if (data.position.get(entity).x === 1) commands.insert(entity.id, [Paved, {}])
       }
     })
     const runtime = makeRuntime()

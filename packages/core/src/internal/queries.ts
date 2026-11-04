@@ -1,24 +1,22 @@
 /**
- * Query execution: match caching, match objects, and entity lookup.
+ * Query execution: entity caching, slot accessors, and entity lookup.
  *
  * Each query spec gets one compiled state per world. The state caches the
- * ordered list of matches and is recomputed only when a component or relation
- * it depends on changed membership. Match objects (entity view + cells) are
- * created once per entity and query and then reused, so steady-state iteration
- * allocates nothing.
+ * ordered list of its entities' records and is recomputed only when a component
+ * or relation it depends on changed membership. A query keeps one accessor per
+ * slot and no object per entity, so iteration allocates nothing.
  *
  * Lifecycle filters (`added`, `changed`) are evaluated per call against the
  * reading system's previous-run tick (`since`), starting from the smaller of
- * the world's change log and the cached base match set.
+ * the world's change log and the cached base entity set.
  *
- * Matches are always returned in ascending entity id order, which is spawn
+ * Entities are always returned in ascending entity id order, which is spawn
  * order, so iteration is deterministic.
  */
 import type { Descriptor } from "../Descriptor.ts"
 import * as DescriptorModule from "../Descriptor.ts"
 import type * as Entity from "../Entity.ts"
 import * as Query from "../Query.ts"
-import type { QueryMatch } from "../Query.ts"
 import type * as Relation from "../Relation.ts"
 import * as Result from "../Result.ts"
 import * as Cells from "./cells.ts"
@@ -27,7 +25,6 @@ import { constructionOf } from "./schema.ts"
 import type { EntityRecord, World } from "./world.ts"
 
 type AnyQuery = Query.Query.Any<any>
-type AnyMatch = QueryMatch<any, any>
 
 /**
  * What a rewind changed for one reader that did not rewind, per component
@@ -40,15 +37,9 @@ export interface Reverts {
   readonly changed: Map<number, Set<number>>
 }
 
-/** How an optional slot is read: its hidden key on a match's `data`, and the getter every match shares. */
-interface OptionalSlot {
-  readonly key: symbol
-  readonly getter: (this: object) => unknown
-}
-
 type SlotPlan =
   | { readonly slot: string; readonly mode: "read"; readonly ordinal: number }
-  | { readonly slot: string; readonly mode: "optional"; readonly ordinal: number; readonly optional: OptionalSlot }
+  | { readonly slot: string; readonly mode: "optional"; readonly ordinal: number }
   | {
       readonly slot: string
       readonly mode: "write"
@@ -58,14 +49,8 @@ type SlotPlan =
     }
   | {
       readonly slot: string
-      readonly mode: "readRelation" | "readRelated"
+      readonly mode: "readRelation" | "readRelated" | "optionalRelation" | "optionalRelated"
       readonly relation: Relation.Relation.Any
-    }
-  | {
-      readonly slot: string
-      readonly mode: "optionalRelation" | "optionalRelated"
-      readonly relation: Relation.Relation.Any
-      readonly optional: OptionalSlot
     }
 
 interface LifecycleFilterPlan {
@@ -86,79 +71,23 @@ interface QueryState {
   readonly withoutRelated: ReadonlyArray<Relation.Relation.Any>
   readonly filters: ReadonlyArray<FilterPlan>
   readonly slots: ReadonlyArray<SlotPlan>
-  readonly proofSlots: ReadonlyArray<readonly [string, number]>
-  readonly writeSlots: ReadonlyArray<readonly [string, number]>
   readonly componentDeps: ReadonlyArray<number>
   readonly relationDeps: ReadonlyArray<symbol>
   readonly componentSeen: Array<number>
   readonly relationSeen: Array<number>
   entitiesSeen: number
-  /**
-   * The run the query last handed matches out in, shared by every cell of
-   * its matches: a match kept from an earlier run fails its check, unless
-   * the query was handed out again in this run (its cells then read the
-   * entity's current values, as resolving it again would).
-   */
+  /** The run the query last handed its `data` out in, shared by every accessor it made. */
   readonly handout: Cells.Stamp
-  matches: ReadonlyArray<AnyMatch> | undefined
-  /** Whether `matches` is built for the current `records`: rows never build them. */
-  matchesCurrent: boolean
   records: ReadonlyArray<EntityRecord>
+  /** Whether `records` was ever computed. */
   built: boolean
-  columns: Record<string, unknown> | undefined
-  columnsChosen: boolean
+  data: Record<string, unknown> | undefined
+  /** Whether `data` was made with entities to choose its accessors' classes from. */
+  dataChosen: boolean
 }
 
 const unique = <T>(values: ReadonlyArray<T>): ReadonlyArray<T> => [...new Set(values)]
 
-
-/**
- * A live view over the proven component values of one record.
- */
-const makeProof = (world: World, record: EntityRecord, slots: ReadonlyArray<readonly [string, number]>): object => {
-  const proof = {}
-  for (const [slot, ordinal] of slots) {
-    Object.defineProperty(proof, slot, {
-      enumerable: true,
-      get: () => world.valueAt(record, ordinal)
-    })
-  }
-  return proof
-}
-
-/**
- * The `entity` part of a query match: an `EntityRef` for read-only queries and
- * an `EntityMut` for queries with write slots. Proofs are built on first access.
- */
-class EntityView {
-  readonly kind: "EntityRef" | "EntityMut"
-  readonly id: Entity.EntityId<any, any>
-  readonly __schemaRoot: undefined
-  readonly #world: World
-  readonly #state: QueryState
-  readonly #record: EntityRecord
-  #proof: object | undefined
-  #writable: object | undefined
-
-  constructor(world: World, state: QueryState, record: EntityRecord) {
-    this.#world = world
-    this.kind = state.writeSlots.length > 0 ? "EntityMut" : "EntityRef"
-    this.id = record.entityId
-    this.__schemaRoot = undefined
-    this.#state = state
-    this.#record = record
-    this.#proof = undefined
-    this.#writable = undefined
-  }
-
-  get proof(): object {
-    return this.#proof ??= makeProof(this.#world, this.#record, this.#state.proofSlots)
-  }
-
-  get writable(): object {
-    return this.#writable ??= makeProof(this.#world, this.#record, this.#state.writeSlots)
-  }
-}
 
 export type QueryEngine = ReturnType<typeof makeQueryEngine>
 
@@ -196,8 +125,6 @@ export const makeQueryEngine = (world: World) => {
     const withRelations: Array<Relation.Relation.Any> = [...query.withRelations]
     const withRelated: Array<Relation.Relation.Any> = [...query.withRelated]
     const slots: Array<SlotPlan> = []
-    const proofSlots: Array<readonly [string, number]> = []
-    const writeSlots: Array<readonly [string, number]> = []
     const handout: Cells.Stamp = { live: false }
 
     for (const [slot, access] of Object.entries(query.selection)) {
@@ -206,9 +133,7 @@ export const makeQueryEngine = (world: World) => {
         case "write": {
           const ordinal = registeredOrdinal(access.descriptor)
           required.push(ordinal)
-          proofSlots.push([slot, ordinal])
           if (access.mode === "write") {
-            writeSlots.push([slot, ordinal])
             slots.push({
               slot,
               mode: "write",
@@ -221,11 +146,9 @@ export const makeQueryEngine = (world: World) => {
           }
           break
         }
-        case "optional": {
-          const key = Symbol(slot)
-          slots.push({ slot, mode: "optional", ordinal: registeredOrdinal(access.descriptor), optional: { key, getter: Cells.optionalComponentGetter(handout, key) } })
+        case "optional":
+          slots.push({ slot, mode: "optional", ordinal: registeredOrdinal(access.descriptor) })
           break
-        }
         case "readRelation":
           withRelations.push(access.descriptor)
           slots.push({ slot, mode: access.mode, relation: access.descriptor })
@@ -235,12 +158,9 @@ export const makeQueryEngine = (world: World) => {
           slots.push({ slot, mode: access.mode, relation: access.descriptor })
           break
         case "optionalRelation":
-        case "optionalRelated": {
-          const key = Symbol(slot)
-          const name = access.mode === "optionalRelation" ? access.descriptor.name : access.descriptor.relatedName
-          slots.push({ slot, mode: access.mode, relation: access.descriptor, optional: { key, getter: Cells.optionalHeldGetter(handout, key, name) } })
+        case "optionalRelated":
+          slots.push({ slot, mode: access.mode, relation: access.descriptor })
           break
-        }
       }
     }
 
@@ -269,20 +189,16 @@ export const makeQueryEngine = (world: World) => {
         })
       ),
       slots,
-      proofSlots,
-      writeSlots,
       componentDeps,
       relationDeps,
       componentSeen: componentDeps.map(() => -1),
       relationSeen: relationDeps.map(() => -1),
       entitiesSeen: -1,
       handout,
-      matches: undefined,
-      matchesCurrent: false,
       records: [],
       built: false,
-      columns: undefined,
-      columnsChosen: false
+      data: undefined,
+      dataChosen: false
     }
   }
 
@@ -357,52 +273,33 @@ export const makeQueryEngine = (world: World) => {
   const relatedIds = (relation: Relation.Relation.Any, id: number): ReadonlyArray<Entity.EntityId<any, any>> =>
     world.relatedSourceIds(relation, id).map(world.entityIdOf)
 
-  /** The cell of a slot: for an optional slot, the one it holds while filled. */
-  const makeCell = (plan: SlotPlan, record: EntityRecord, stamp: Cells.Stamp): unknown => {
+  /** The ids related to `id` through a relation, or `undefined` when there are none. */
+  const relatedOrNone = (relation: Relation.Relation.Any, id: number): ReadonlyArray<Entity.EntityId<any, any>> | undefined => {
+    const ids = relatedIds(relation, id)
+    return ids.length === 0 ? undefined : ids
+  }
+
+  /** The accessor of a slot. `numeric` picks the class that sees numbers. */
+  const makeAccessor = (plan: SlotPlan, stamp: Cells.Stamp, numeric: boolean): unknown => {
     switch (plan.mode) {
       case "read":
-      case "optional":
-        return Cells.componentRead(world, record, plan.ordinal, stamp)
+        return Cells.readAccessor(world, plan.ordinal, stamp, numeric)
       case "write":
-        return Cells.componentWrite(world, record, plan.ordinal, stamp, plan.constructor, plan.entityState)
+        return Cells.writeAccessor(world, plan.ordinal, stamp, numeric, plan.constructor, plan.entityState)
+      case "optional":
+        return Cells.optionalAccessor(world, plan.ordinal, stamp)
       case "readRelation":
-      case "optionalRelation":
-        return Cells.derivedRead(world, stamp, plan.relation.name, () => world.entityIdOf(world.relationTarget(plan.relation, record.id)!))
+      case "optionalRelation": {
+        const target = (id: number) => {
+          const found = world.relationTarget(plan.relation, id)
+          return found === undefined ? undefined : world.entityIdOf(found)
+        }
+        return Cells.relationAccessor(stamp, plan.relation.name, plan.mode === "readRelation", target)
+      }
       case "readRelated":
       case "optionalRelated":
-        return Cells.derivedRead(world, stamp, plan.relation.relatedName, () => relatedIds(plan.relation, record.id))
+        return Cells.relationAccessor(stamp, plan.relation.relatedName, plan.mode === "readRelated", (id) => relatedOrNone(plan.relation, id))
     }
-  }
-
-  /** Puts a slot's cell on a match's `data`; an optional slot holds it only while filled. */
-  const defineSlot = (data: Record<string, unknown>, plan: SlotPlan, record: EntityRecord, stamp: Cells.Stamp): void => {
-    const cell = makeCell(plan, record, stamp)
-    switch (plan.mode) {
-      case "optional":
-        return Cells.defineOptional(data, plan.slot, plan.optional.key, cell, plan.optional.getter)
-      case "optionalRelation":
-        return Cells.defineOptional(data, plan.slot, plan.optional.key, { cell, held: () => world.relationTarget(plan.relation, record.id) !== undefined }, plan.optional.getter)
-      case "optionalRelated":
-        return Cells.defineOptional(data, plan.slot, plan.optional.key, { cell, held: () => world.relatedSourceIds(plan.relation, record.id).length > 0 }, plan.optional.getter)
-      default:
-        data[plan.slot] = cell
-    }
-  }
-
-  const makeEntityView = (state: QueryState, record: EntityRecord): object => new EntityView(world, state, record)
-
-  const matchFor = (state: QueryState, record: EntityRecord): AnyMatch => {
-    const cached = record.matches[state.ordinal]
-    if (cached !== undefined) {
-      return cached as AnyMatch
-    }
-    const data: Record<string, unknown> = {}
-    for (const plan of state.slots) {
-      defineSlot(data, plan, record, state.handout)
-    }
-    const match = { entity: makeEntityView(state, record), data } as unknown as AnyMatch
-    record.matches[state.ordinal] = match
-    return match
   }
 
   const isStale = (state: QueryState): boolean => {
@@ -464,8 +361,8 @@ export const makeQueryEngine = (world: World) => {
   }
 
   /**
-   * Applies membership changes to the cached, id-ordered match set. New
-   * arrays are built so arrays handed out earlier never change.
+   * Applies membership changes to the cached, id-ordered entity set. A new
+   * array is built so arrays handed out earlier never change.
    */
   const refreshIncrementally = (state: QueryState, affected: ReadonlyArray<EntityRecord>): void => {
     const records = state.records.slice()
@@ -483,16 +380,6 @@ export const makeQueryEngine = (world: World) => {
       }
     }
     state.records = records
-    state.matchesCurrent = false
-  }
-
-  /** The matches of the current rows, built on the first `each()` after they changed. */
-  const currentMatches = (state: QueryState): ReadonlyArray<AnyMatch> => {
-    if (!state.matchesCurrent) {
-      state.matches = state.records.map((record) => matchFor(state, record))
-      state.matchesCurrent = true
-    }
-    return state.matches!
   }
 
   const refresh = (state: QueryState): void => {
@@ -527,7 +414,6 @@ export const makeQueryEngine = (world: World) => {
     if (!sorted) records.sort(byId)
 
     state.records = records
-    state.matchesCurrent = false
     state.built = true
     markSeen(state)
   }
@@ -580,19 +466,12 @@ export const makeQueryEngine = (world: World) => {
     return records
   }
 
-  /** Current matches of a query. */
-  const matchesOf = (state: QueryState, since: number, reverts: Reverts | undefined): ReadonlyArray<AnyMatch> => {
-    refresh(state)
-    if (state.filters.length === 0) return currentMatches(state)
-    return filteredRecords(state, since, reverts).map((record) => matchFor(state, record))
-  }
-
-  const matchOf = (
+  const entityOf = (
     id: number,
     state: QueryState,
     since: number,
     reverts: Reverts | undefined
-  ): Result.Result<AnyMatch, Query.Query.LookupError> => {
+  ): Result.Result<EntityRecord, Query.Query.LookupError> => {
     const record = world.records.get(id)
     if (!record) {
       return Result.failure(Query.missingEntityError(id))
@@ -600,55 +479,44 @@ export const makeQueryEngine = (world: World) => {
     if (!matchesStructure(state, record) || !matchesFilters(state, record, since, reverts)) {
       return Result.failure(Query.queryMismatchError(id))
     }
-    return Result.success(matchFor(state, record))
+    return Result.success(record)
   }
 
-  /**
-   * Hands matches out for the running run: the cells of the query's matches
-   * refuse to read or write once it ends.
-   */
-  const each = (query: AnyQuery, since: number, reverts: Reverts | undefined): ReadonlyArray<AnyMatch> => {
+  /** The entities of a query: their records, in id order. */
+  const each = (query: AnyQuery, since: number, reverts: Reverts | undefined): ReadonlyArray<EntityRecord> => {
     const state = stateOf(query)
-    world.handOut(state.handout)
-    return matchesOf(state, since, reverts)
-  }
-
-  const get = (id: number, query: AnyQuery, since: number, reverts: Reverts | undefined): Result.Result<AnyMatch, Query.Query.LookupError> => {
-    const state = stateOf(query)
-    world.handOut(state.handout)
-    return matchOf(id, state, since, reverts)
-  }
-
-  /** The rows of a query: the records of its entities, in id order. */
-  const rows = (query: AnyQuery, since: number, reverts: Reverts | undefined): ReadonlyArray<EntityRecord> => {
-    const state = stateOf(query)
-    world.handOut(state.handout)
     refresh(state)
     return state.filters.length === 0 ? state.records : filteredRecords(state, since, reverts)
   }
 
-  /** The query's column accessors, one per read or write slot, made once. */
-  const columns = (query: AnyQuery): Record<string, unknown> => {
+  const get = (id: number, query: AnyQuery, since: number, reverts: Reverts | undefined): Result.Result<EntityRecord, Query.Query.LookupError> =>
+    entityOf(id, stateOf(query), since, reverts)
+
+  /**
+   * The query's `data` for the running run: one accessor per slot, made once.
+   * An empty query cannot tell which class its slots want, so it chooses again
+   * once it has entities.
+   */
+  const data = (query: AnyQuery): Record<string, unknown> => {
     const state = stateOf(query)
     world.handOut(state.handout)
+    if (state.data !== undefined && state.dataChosen) return state.data
     refresh(state)
-    // An empty query cannot tell which class its slots want: choose again once it has rows.
-    if (state.columns === undefined || (!state.columnsChosen && state.records.length > 0)) {
-      const first = state.records[0]
-      state.columnsChosen = first !== undefined
-      const built: Record<string, unknown> = {}
-      for (const plan of state.slots) {
-        if (plan.mode !== "read" && plan.mode !== "write") continue
-        const numeric = first !== undefined && typeof world.valueAt(first, plan.ordinal) === "number"
-        built[plan.slot] = plan.mode === "read"
-          ? Cells.columnRead(world, plan.ordinal, state.handout, numeric)
-          : Cells.columnWrite(world, plan.ordinal, state.handout, numeric)
-      }
-      state.columns = built
-      state.handout.columns = Object.values(built) as ReadonlyArray<{ reset(): void }>
+    const first = state.records[0]
+    if (state.data !== undefined && first === undefined) return state.data
+    state.dataChosen = first !== undefined
+    const made: Record<string, unknown> = {}
+    const accessors: Array<{ reset(): void }> = []
+    for (const plan of state.slots) {
+      const numeric = (plan.mode === "read" || plan.mode === "write") && first !== undefined && typeof world.valueAt(first, plan.ordinal) === "number"
+      const accessor = makeAccessor(plan, state.handout, numeric)
+      made[plan.slot] = accessor
+      if (plan.mode === "read" || plan.mode === "write") accessors.push(accessor as { reset(): void })
     }
-    return state.columns
+    state.data = made
+    state.handout.accessors = accessors
+    return made
   }
 
-  return { each, get, rows, columns }
+  return { each, get, data }
 }

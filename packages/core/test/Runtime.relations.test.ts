@@ -100,8 +100,8 @@ describe("Runtime relationships", () => {
           const ancestors = lookup.ancestors(childId, ChildOf)
 
           resources.summary.set([
-            rootChildren.ok ? rootChildren.value.data.children.get().length : -1,
-            childParent.ok ? childParent.value.data.parent.get() : -1,
+            rootChildren.ok ? queries.hasChildren.data.children.get(rootChildren.value).length : -1,
+            childParent.ok ? queries.parents.data.parent.get(childParent.value) : -1,
             descendants.ok ? descendants.value.length : -1,
             target.ok ? target.value : -1,
             ancestors.ok ? ancestors.value.length : -1
@@ -163,7 +163,7 @@ describe("Runtime relationships", () => {
           if (rootId) {
             const root = queries.named.get(rootId)
             if (root.ok) {
-              commands.despawn(root.value.entity)
+              commands.despawn(root.value)
             }
           }
         }
@@ -254,10 +254,11 @@ describe("Runtime relationships", () => {
           const alphaSources = lookup.relatedSources(alphaId, Targeting)
 
           const optionalSummary = queries.optionalTargets.each()
-            .map((match) => {
-              const target = match.data.target?.get().toString() ?? "none"
-              const sources = match.data.sources?.get().length.toString() ?? "none"
-              return `${match.data.name.get().value}:${target}:${sources}`
+            .map((entity) => {
+              const { data } = queries.optionalTargets
+              const target = data.target.get(entity)?.toString() ?? "none"
+              const sources = data.sources.get(entity)?.length.toString() ?? "none"
+              return `${data.name.get(entity).value}:${target}:${sources}`
             })
             .sort()
             .join("|")
@@ -423,7 +424,7 @@ describe("Runtime relationships", () => {
             [
               children.ok ? children.value.map((child) => String(child)).join(",") : children.error._tag,
               descendants.ok ? descendants.value.map((child) => String(child)).join(",") : descendants.error._tag,
-              fromQuery.ok ? fromQuery.value.data.children.get().map((child) => String(child)).join(",") : fromQuery.error._tag
+              fromQuery.ok ? queries.hasChildren.data.children.get(fromQuery.value).map((child) => String(child)).join(",") : fromQuery.error._tag
             ].join("/")
           )
         }
@@ -504,10 +505,10 @@ describe("Runtime relationships", () => {
 
           resources.summary.set([
             children.ok
-              ? children.value.map((match) => match.data.name.get().value).join(",")
+              ? children.value.map((entity) => queries.named.data.name.get(entity).value).join(",")
               : children.error._tag,
             descendants.ok
-              ? descendants.value.map((match) => match.data.name.get().value).join(",")
+              ? descendants.value.map((entity) => queries.named.data.name.get(entity).value).join(",")
               : descendants.error._tag,
             missing.ok ? "ok" : missing.error._tag
           ].join("/"))

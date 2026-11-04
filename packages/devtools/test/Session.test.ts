@@ -24,7 +24,8 @@ const Spawn = Game.System("Dev/Spawn", { commands: Game.System.commands(Game.Sys
   commands.spawn(Game.Command.spawn([Position, { x: 0 }], [Health, 3]))
 })
 const Move = Game.System("Dev/Move", { queries: { movers: Movers } }, ({ queries }) => {
-  for (const match of queries.movers.each()) match.data.position.update((position) => ({ x: position.x + 1 }))
+  const { data } = queries.movers
+  for (const entity of queries.movers.each()) data.position.update(entity, (position) => ({ x: position.x + 1 }))
 })
 const Idle = Game.System("Dev/Idle", { resources: { score: Game.System.writeResource(Score) } }, ({ resources }) => {
   resources.score.set(resources.score.get())
@@ -33,8 +34,9 @@ const Damage = Game.System("Dev/Damage", {
   queries: { healthy: Healthy },
   events: { hit: Game.System.writeEvent(Hit) }
 }, ({ queries, events }) => {
-  for (const match of queries.healthy.each()) {
-    match.data.health.update((health) => health - 1)
+  const { data } = queries.healthy
+  for (const entity of queries.healthy.each()) {
+    data.health.update(entity, (health) => health - 1)
     events.hit.emit(1)
   }
 })
@@ -50,7 +52,7 @@ const Play = Game.System("Dev/Play", { nextMachines: { flow: Game.System.nextSta
 const NearOrigin = Invariant.fromInspector(Game.Inspector("near origin", {
   queries: { movers: Game.Query({ selection: { position: Game.Query.read(Position) } }) }
 }, ({ queries }) => {
-  const far = queries.movers.each().map((match) => match.data.position.get().x).find((x) => x > 2)
+  const far = queries.movers.each().map((entity) => queries.movers.data.position.get(entity).x).find((x) => x > 2)
   return far === undefined ? undefined : `x=${far}`
 }))
 
@@ -432,7 +434,8 @@ describe("Session risk checks", () => {
       resources: { total: RiskGame.System.writeResource(Total) },
       events: { blast: RiskGame.System.writeEvent(Blast) }
     }, ({ queries, resources, events }) => {
-      for (const { data } of queries.movers.each()) data.velocity.set({ x: 0 / 0 })
+      const { data } = queries.movers
+      for (const entity of queries.movers.each()) data.velocity.set(entity, { x: 0 / 0 })
       resources.total.set({ sum: 1 / 0 })
       events.blast.emit({ force: Number.NaN })
     })
@@ -462,9 +465,10 @@ describe("Session risk checks", () => {
       queries: { healthy: RangeGame.Query({ selection: { health: RangeGame.Query.write(Health) } }) },
       resources: { tuning: RangeGame.System.writeResource(Tuning) }
     }, ({ queries, resources }) => {
-      for (const { data } of queries.healthy.each()) {
-        const health = data.health.get()
-        if (health.name === "hero") data.health.set({ ...health, hp: health.hp + heal })
+      const { data } = queries.healthy
+      for (const entity of queries.healthy.each()) {
+        const health = data.health.get(entity)
+        if (health.name === "hero") data.health.set(entity, { ...health, hp: health.hp + heal })
       }
       resources.tuning.set({ speed: 200 + heal })
     })
@@ -506,10 +510,11 @@ describe("Session risk checks", () => {
       queries: { shots: RiskGame.Query({ selection: { shot: RiskGame.Query.write(Shot) } }) },
       commands: RiskGame.System.commands(RiskGame.System.despawns(Shot))
     }, ({ queries, commands }) => {
-      for (const { entity, data } of queries.shots.each()) {
-        const speed = data.shot.get().speed + 1
+      const { data } = queries.shots
+      for (const entity of queries.shots.each()) {
+        const speed = data.shot.get(entity).speed + 1
         if (speed > 20) commands.despawn(entity)
-        else data.shot.set({ speed })
+        else data.shot.set(entity, { speed })
       }
     })
     const bounded = makeRiskSession(RiskGame.Schedule(Fire, Expire, RiskGame.Schedule.applyDeferred()))

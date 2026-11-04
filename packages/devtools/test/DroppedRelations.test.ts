@@ -20,7 +20,8 @@ const Kill = Game.System("Game/Kill", {
   queries: { named: Named },
   commands: Game.System.commands(Game.System.despawns(Name))
 }, ({ queries, commands }) => {
-  for (const match of queries.named.each()) if (match.data.name.get() === "target") commands.despawn(match.entity)
+  const { data } = queries.named
+  for (const entity of queries.named.each()) if (data.name.get(entity) === "target") commands.despawn(entity)
 })
 const DropTargets = Game.System("Game/DropTargets", {
   droppedRelations: { lost: Game.System.readDroppedRelations(Targeting) }

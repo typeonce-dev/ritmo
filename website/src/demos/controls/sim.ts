@@ -145,10 +145,11 @@ const MoveBall = Game.System(
     const input = resources.input.get()
     // Keys, d-pad, stick, or touch stick: length at most 1, whichever is used.
     const move = input.vectors.move
-    for (const { data } of queries.ball.each()) {
-      const state = data.ball.get()
-      const position = data.position.get()
-      let { x: vx, y: vy } = data.velocity.get()
+    const { data } = queries.ball
+    for (const entity of queries.ball.each()) {
+      const state = data.ball.get(entity)
+      const position = data.position.get(entity)
+      let { x: vx, y: vy } = data.velocity.get(entity)
       vx += (move.x * SPEED - vx) * GRIP * dt
       vy += (move.y * SPEED - vy) * GRIP * dt
       const moving = move.x !== 0 || move.y !== 0
@@ -170,9 +171,9 @@ const MoveBall = Game.System(
         y = Math.min(Math.max(y, RADIUS), ARENA.height - RADIUS)
         vy = -vy
       }
-      data.position.set({ x, y })
-      data.velocity.set({ x: vx, y: vy })
-      data.ball.set({ heading, cooldown })
+      data.position.set(entity, { x, y })
+      data.velocity.set(entity, { x: vx, y: vy })
+      data.ball.set(entity, { heading, cooldown })
     }
   }
 )
@@ -204,12 +205,13 @@ export const ReadLab = Game.Inspector("Controls/ReadLab", {
   resources: { input: Game.System.readResource(Input), dashes: Game.System.readResource(Dashes) },
   machines: { mode: Game.System.machine(Mode) }
 }, ({ queries, resources, machines }): Lab => {
+  const { data } = queries.ball
   const found = queries.ball.each()[0]
   return {
-    ball: found?.entity.id ?? null,
-    position: found?.data.position.get() ?? { x: 0, y: 0 },
-    heading: found?.data.ball.get().heading ?? 0,
-    ready: (found?.data.ball.get().cooldown ?? 0) === 0,
+    ball: found?.id ?? null,
+    position: found === undefined ? { x: 0, y: 0 } : data.position.get(found),
+    heading: found === undefined ? 0 : data.ball.get(found).heading,
+    ready: found === undefined || data.ball.get(found).cooldown === 0,
     dashes: resources.dashes.get(),
     paused: machines.mode.is("Paused"),
     input: resources.input.get()

@@ -1,5 +1,5 @@
 /**
- * Query declarations, matching semantics, and typed cell access surfaces.
+ * Query declarations, matching semantics, and typed slot access surfaces.
  *
  * Queries are the read-side center of ECS gameplay code. They describe which
  * entities a system is allowed to see and exactly which component cells that
@@ -38,15 +38,16 @@
  * }, ({ queries, resources }) => {
  *   const dt = resources.dt.get()
  *
- *   for (const { data } of queries.moving.each()) {
- *     const velocity = data.velocity.get()
- *     data.position.update((position) => ({
+ *   const { data } = queries.moving
+ *   for (const entity of queries.moving.each()) {
+ *     const velocity = data.velocity.get(entity)
+ *     data.position.update(entity, (position) => ({
  *       x: position.x + velocity.x * dt,
  *       y: position.y + velocity.y * dt
  *     }))
  *
- *     // An optional slot is the read cell, or `undefined` when the entity lacks the component.
- *     void data.sprite?.get()
+ *     // An optional slot reads `undefined` when the entity lacks the component.
+ *     void data.sprite.get(entity)
  *   }
  * })
  * ```
@@ -68,7 +69,7 @@
  */
 import * as DescriptorModule from "./Descriptor.ts"
 import type { Descriptor, StateDefinitions, EntityStateDescriptor, SchemaIssues, StateEncodedOf, StateName, StateValueOf } from "./Descriptor.ts"
-import type { EntityId, EntityMut, EntityRef } from "./Entity.ts"
+import type { EntityId, EntityRef } from "./Entity.ts"
 import type * as Result from "./Result.ts"
 import type * as Relation from "./Relation.ts"
 import type { Schema } from "./Schema.ts"
@@ -76,7 +77,7 @@ import type { Schema } from "./Schema.ts"
 type ComponentDescriptor = Descriptor<"component", string, any>
 
 /**
- * Query declarations and typed query result cells.
+ * Query declarations and typed query slots.
  *
  * Queries are the main way systems gain typed entity access. A query spec is
  * fully explicit:
@@ -86,7 +87,7 @@ type ComponentDescriptor = Descriptor<"component", string, any>
  * - `added` / `changed` refine matching to changes since the system's previous run
  * - relation filters refine matching using explicit relation state
  *
- * The key mental model is that query matching is separate from the cell API:
+ * The key mental model is that query matching is separate from the slot API:
  * required slots affect matching, while `optional(...)` does not.
  *
  * @example
@@ -269,8 +270,9 @@ export type Writable<D> = D extends DescriptorModule.Immutable
  * })
  *
  * const DrawMovers = Game.System("Game/DrawMovers", { queries: { movers: query } }, ({ queries }) => {
- *   for (const { data } of queries.movers.each()) {
- *     const frame = data.sprite?.get().frame ?? 0
+ *   const { data } = queries.movers
+ *   for (const entity of queries.movers.each()) {
+ *     const frame = data.sprite.get(entity)?.frame ?? 0
  *     void frame
  *   }
  * })
@@ -469,47 +471,20 @@ export namespace Query {
   /**
    * The component descriptors a query proves its matches have: required
    * selection slots, `with`, and the component of each `added` / `changed`
-   * filter (a match has it). A `Query.anyOf` member proves nothing alone.
+   * filter (a matching entity has it). A `Query.anyOf` member proves nothing alone.
    */
   export type Proven<T extends Any> = RequiredSelectionDescriptors<T> | T["with"][number] | FilteredDescriptors<T["filters"][number]>
 
   /** The component descriptors a query proves its matches lack: its `without`. */
   export type Excluded<T extends Any> = T["without"][number]
 
-  /**
-   * The readable proof produced by a query.
-   */
-  export type ReadProof<T extends Any> = {
-    readonly [K in keyof T["selection"] as
-      T["selection"][K] extends OptionalReadAccess<any> | Relation.SelectionAccess<any, any> ? never
-      : T["selection"][K] extends Access<any> ? K
-      : never]:
-      T["selection"][K] extends Access<infer D> ? ReadonlyValue<Descriptor.Value<D>> : never
-  }
-
-  /**
-   * The writable proof produced by a query.
-   */
-  export type WriteProof<T extends Any> = {
-    readonly [K in keyof T["selection"] as
-      T["selection"][K] extends WriteAccess<any> ? K : never]:
-      T["selection"][K] extends WriteAccess<infer D> ? ReadonlyValue<Descriptor.Value<D>> : never
-  }
-
-  /**
-   * The per-slot cell API derived from a query.
-   */
-  export type Cells<T extends Any> = {
+  type RelationDescriptors<T extends Any> = {
     readonly [K in keyof T["selection"]]:
-      T["selection"][K] extends ReadAccess<infer D> ? ReadCell<Descriptor.Value<D>>
-      : T["selection"][K] extends OptionalReadAccess<infer D> ? ReadCell<Descriptor.Value<D>> | undefined
-      : T["selection"][K] extends WriteAccess<infer D> ? WriteCellForDescriptor<D>
-      : T["selection"][K] extends Relation.RelationReadAccess<any, infer S extends Schema.Any, infer Root> ? ReadCell<EntityId<S, Root>>
-      : T["selection"][K] extends Relation.OptionalRelationReadAccess<any, infer S extends Schema.Any, infer Root> ? ReadCell<EntityId<S, Root>> | undefined
-      : T["selection"][K] extends Relation.RelatedReadAccess<any, infer S extends Schema.Any, infer Root> ? ReadCell<ReadonlyArray<EntityId<S, Root>>>
-      : T["selection"][K] extends Relation.OptionalRelatedReadAccess<any, infer S extends Schema.Any, infer Root> ? ReadCell<ReadonlyArray<EntityId<S, Root>>> | undefined
-      : never
-  }
+      T["selection"][K] extends Relation.RelationReadAccess<infer R, any, any> | Relation.RelatedReadAccess<infer R, any, any> ? R : never
+  }[keyof T["selection"]] | T["withRelations"][number] | T["withRelated"][number]
+
+  /** The relations a query proves its entities have: its required relation slots, `withRelations`, and `withRelated`. */
+  export type ProvenRelations<T extends Any> = RelationDescriptors<T>
 
   /**
    * Entity lookup failed because the entity id is not currently alive.
@@ -584,7 +559,7 @@ export type ReadonlyValue<T> =
   : T
 
 /**
- * A read-only cell returned from query or resource access.
+ * A read-only cell of a resource or machine. Entities have {@link ReadSlot}.
  *
  * Object and collection values are deeply readonly so in-place mutation cannot
  * bypass lifecycle tracking, validation, or a system transaction.
@@ -597,7 +572,7 @@ export interface ReadCell<T> {
 }
 
 /**
- * A mutable cell returned from query or resource access.
+ * A mutable cell of a resource. Entities have {@link WriteSlot}.
  *
  * This gives a narrow mutation surface instead of exposing raw storage objects.
  * Values written here are already valid. Data that still needs validation
@@ -624,7 +599,7 @@ export interface WriteCell<T> extends ReadCell<T> {
 }
 
 /**
- * Writable cell for data backed by a constructed descriptor.
+ * Writable cell for a resource backed by a constructed descriptor.
  *
  * This extends the normal write-cell surface with explicit raw-validation
  * helpers. It never appears for plain descriptors.
@@ -635,9 +610,9 @@ export interface ConstructedWriteCell<T, Raw, Error> extends WriteCell<T> {
    *
    * @example
    * ```ts
-   * declare const data: { readonly position: Query.WriteCellForDescriptor<typeof Position> }
+   * declare const position: Query.ConstructedWriteCell<{ x: number; y: number }, { x: number; y: number }, unknown>
    * // ---cut---
-   * const written = data.position.setRaw({ x: 16, y: 24 })
+   * const written = position.setRaw({ x: 16, y: 24 })
    * if (!written.ok) console.error(written.error)
    * ```
    */
@@ -648,11 +623,11 @@ export interface ConstructedWriteCell<T, Raw, Error> extends WriteCell<T> {
    *
    * @example
    * ```ts
-   * declare const data: { readonly position: Query.WriteCellForDescriptor<typeof Position> }
+   * declare const position: Query.ConstructedWriteCell<{ x: number; y: number }, { x: number; y: number }, unknown>
    * // ---cut---
-   * data.position.updateRaw((position) => ({
-   *   x: position.x + 1,
-   *   y: position.y
+   * position.updateRaw((current) => ({
+   *   x: current.x + 1,
+   *   y: current.y
    * }))
    * ```
    */
@@ -709,8 +684,104 @@ export type StateExactFields<States extends StateDefinitions, State extends Stat
   [Exclude<keyof Next, keyof StateValueOf<States, State>>] extends [never] ? unknown
     : { readonly data: `${State} has no field ${Exclude<keyof Next, keyof StateValueOf<States, State>> & string}: write only this state's fields, or move with ${Move}` }
 
+/** What a slot of a query's `data` asks of an entity: that its query proves `D`. */
+export interface EntityProving<in D> {
+  readonly __entity: (_: D) => void
+}
+
 /**
- * Writable cell for an entity state component (`Descriptor.EntityState`).
+ * A read slot of a query's `data`: reads the value of any entity whose query
+ * proves `D`. Valid during the run that handed it out; it throws when used
+ * later, so read `queries.x.data` again in each run.
+ *
+ * Object and collection values are deeply readonly, so in-place mutation cannot
+ * bypass lifecycle tracking, validation, or a system transaction.
+ */
+export interface ReadSlot<T, D> {
+  /** Reads the entity's current value. */
+  get(entity: EntityProving<D>): ReadonlyValue<T>
+}
+
+/**
+ * An optional slot of a query's `data`: the entity's value, or `undefined` when
+ * it lacks the component. An optional slot does not affect which entities match.
+ */
+export interface OptionalSlot<T> {
+  /** Reads the entity's current value, or `undefined` when it lacks the component. */
+  get(entity: EntityProving<never>): ReadonlyValue<T> | undefined
+  /** Whether the entity holds the component: use it where the value itself may be `undefined`. */
+  has(entity: EntityProving<never>): boolean
+}
+
+/**
+ * A write slot of a query's `data`: {@link ReadSlot}, and writes the value of
+ * any entity whose query proves `D`. Writes join the system's transaction: a
+ * failed system rolls them back, and `changed` sees a value that differs when
+ * the system commits. Values written here are already valid; data that still
+ * needs validation goes through its descriptor's schema, with
+ * `Descriptor.ConstructedComponent` and {@link ConstructedWriteSlot}.
+ */
+export interface WriteSlot<T, D> extends ReadSlot<T, D> {
+  /**
+   * Replaces the entity's value. Takes the readonly shape reads return, so a
+   * value read from any slot can be written back as it is.
+   *
+   * The world owns `value` from here: never mutate it afterwards, build a new
+   * one. A runtime made with `debug` freezes it, so a later mutation throws
+   * where it happens.
+   */
+  set(entity: EntityProving<D>, value: ReadonlyValue<T>): void
+  /**
+   * Updates the entity's value from its current one. Return a new value
+   * (`(body) => ({ ...body, x: body.x + 1 })`); the world owns it, as with
+   * `set`.
+   */
+  update(entity: EntityProving<D>, f: (current: ReadonlyValue<T>) => ReadonlyValue<T>): void
+}
+
+/**
+ * Write slot of a component with a constructed descriptor: {@link WriteSlot},
+ * and explicit raw validation. It never appears for plain descriptors.
+ */
+export interface ConstructedWriteSlot<T, Raw, Error, D> extends WriteSlot<T, D> {
+  /**
+   * Validates one raw candidate and writes it only on success.
+   *
+   * @example
+   * ```ts
+   * const Moves = Game.Query({ selection: { position: Game.Query.write(Position) } })
+   *
+   * Game.System("Game/Teleport", { queries: { moves: Moves } }, ({ queries }) => {
+   *   const { data } = queries.moves
+   *   for (const entity of queries.moves.each()) {
+   *     const written = data.position.setRaw(entity, { x: 16, y: 24 })
+   *     if (!written.ok) console.error(written.error)
+   *   }
+   * })
+   * ```
+   */
+  setRaw(entity: EntityProving<D>, raw: Raw): Result.Result<void, Error>
+  /**
+   * Derives one raw candidate from the current value, validates it, and writes
+   * it only on success.
+   *
+   * @example
+   * ```ts
+   * const Moves = Game.Query({ selection: { position: Game.Query.write(Position) } })
+   *
+   * Game.System("Game/Nudge", { queries: { moves: Moves } }, ({ queries }) => {
+   *   const { data } = queries.moves
+   *   for (const entity of queries.moves.each()) {
+   *     data.position.updateRaw(entity, (position) => ({ x: position.x + 1, y: position.y }))
+   *   }
+   * })
+   * ```
+   */
+  updateRaw(entity: EntityProving<D>, f: (current: ReadonlyValue<T>) => Raw): Result.Result<void, Error>
+}
+
+/**
+ * Write slot of an entity state component (`Descriptor.EntityState`).
  *
  * `transition` enters a state with all of its fields, and `update` changes the
  * current state's fields. Both are a compare-and-set: they write only while
@@ -719,8 +790,8 @@ export type StateExactFields<States extends StateDefinitions, State extends Stat
  * one of the moves the graph allows from `from`; without one, any pair of
  * states is accepted.
  */
-export interface EntityStateWriteCell<States extends StateDefinitions, Transitions>
-  extends ReadCell<StateValueOf<States, StateName<States>>>
+export interface EntityStateWriteSlot<States extends StateDefinitions, Transitions, D>
+  extends ReadSlot<StateValueOf<States, StateName<States>>, D>
 {
   /**
    * Moves from `from` to `to` if the component is still in `from`, writing
@@ -731,19 +802,17 @@ export interface EntityStateWriteCell<States extends StateDefinitions, Transitio
    * @example
    * ```ts
    * const Phase = Descriptor.EntityState("Game/Phase", { windup: {}, active: {} }, { transitions: { windup: ["active"], active: [] } })
-   * declare const data: {
-   *   readonly contact: Query.WriteCellForDescriptor<typeof Contact>
-   *   readonly phase: Query.WriteCellForDescriptor<typeof Phase>
-   * }
+   * declare const data: { readonly phase: Query.WriteSlotOf<typeof Phase> }
+   * declare const entity: Entity.EntityRef<typeof Game.schema, typeof Game.schema, typeof Phase>
    * // ---cut---
-   * const jumped = data.contact.transition({ from: "ground", to: "air", data: { vy: 12, coyote: 0 } })
-   * if (!jumped.ok) {
-   *   // jumped.error.actual is the state some earlier write left
+   * const started = data.phase.transition(entity, { from: "windup", to: "active" })
+   * if (!started.ok) {
+   *   // started.error.actual is the state some earlier write left
    * }
-   * data.phase.transition({ from: "windup", to: "active" })
    * ```
    */
   transition<const From extends keyof States & keyof Transitions & string, const To extends EntityStateTargets<Transitions, From> & keyof States & string>(
+    entity: EntityProving<D>,
     move: { readonly from: From; readonly to: To } & EntityStateMoveData<States, To>
   ): Result.Result<void, EntityStateMismatchError<StateName<States>>>
   /**
@@ -752,13 +821,15 @@ export interface EntityStateWriteCell<States extends StateDefinitions, Transitio
    *
    * @example
    * ```ts
-   * declare const data: { readonly contact: Query.WriteCellForDescriptor<typeof Contact> }
+   * declare const data: { readonly contact: Query.WriteSlotOf<typeof Contact> }
+   * declare const entity: Entity.EntityRef<typeof Game.schema, typeof Game.schema, typeof Contact>
    * declare const gravity: number
    * // ---cut---
-   * data.contact.update({ state: "air", data: (air) => ({ ...air, vy: air.vy - gravity }) })
+   * data.contact.update(entity, { state: "air", data: (air) => ({ ...air, vy: air.vy - gravity }) })
    * ```
    */
   update<const State extends keyof States & string, Next extends StateUpdateResult<States, State>>(
+    entity: EntityProving<D>,
     change: {
       readonly state: State
       readonly data: (current: ReadonlyValue<StateValueOf<States, State>>) => Next
@@ -770,126 +841,68 @@ export interface EntityStateWriteCell<States extends StateDefinitions, Transitio
    * one. Use `transition` and `update` for the moves a system makes itself,
    * so the graph and the current state are checked.
    */
-  set(value: ReadonlyValue<StateValueOf<States, StateName<States>>>): void
+  set(entity: EntityProving<D>, value: ReadonlyValue<StateValueOf<States, StateName<States>>>): void
   /** Decodes an untrusted value (in its saved form) and writes it only on success, like `set`. */
-  setRaw(raw: StateEncodedOf<States>): Result.Result<void, SchemaIssues>
+  setRaw(entity: EntityProving<D>, raw: StateEncodedOf<States>): Result.Result<void, SchemaIssues>
 }
 
 /**
- * Write-cell surface produced for one queried component descriptor.
+ * The write slot of one queried component descriptor: a plain, constructed, or
+ * entity state write slot, by what the descriptor is.
  */
-export type WriteCellForDescriptor<D extends ComponentDescriptor> =
+export type WriteSlotOf<D extends ComponentDescriptor> =
   D extends EntityStateDescriptor<string, infer States, infer Transitions>
-    ? EntityStateWriteCell<States, Transitions extends undefined ? { readonly [State in StateName<States>]: ReadonlyArray<StateName<States>> } : Transitions>
+    ? EntityStateWriteSlot<States, Transitions extends undefined ? { readonly [State in StateName<States>]: ReadonlyArray<StateName<States>> } : Transitions, D>
     : D extends import("./Descriptor.ts").ConstructedDescriptor<"component", string, infer Value, infer Raw, infer Error>
-    ? ConstructedWriteCell<Value, Raw, Error>
-    : WriteCell<Descriptor.Value<D>>
+    ? ConstructedWriteSlot<Value, Raw, Error, D>
+    : WriteSlot<Descriptor.Value<D>, D>
 
 /**
- * The typed item returned by iterating a query handle.
+ * `queries.x.data`: one slot per entry of the query's `selection`, with exactly
+ * the access it declared. A read slot has no `set`. Each slot takes an entity
+ * from the query, so no object per entity exists.
  *
- * If the query contains at least one write access, the entity proof is mutable.
- * Otherwise it remains read-only.
+ * Valid during the run that handed it out: a slot kept in `local` state, a
+ * closure, or an inspector's result throws when used later. Read
+ * `queries.x.data` again in each run.
+ */
+export type QueryData<T extends Query.Any> = {
+  readonly [K in keyof T["selection"]]:
+    T["selection"][K] extends ReadAccess<infer D> ? ReadSlot<Descriptor.Value<D>, D>
+    : T["selection"][K] extends OptionalReadAccess<infer D> ? OptionalSlot<Descriptor.Value<D>>
+    : T["selection"][K] extends WriteAccess<infer D> ? WriteSlotOf<D>
+    : T["selection"][K] extends Relation.RelationReadAccess<infer R, infer S extends Schema.Any, infer Root> ? ReadSlot<EntityId<S, Root>, R>
+    : T["selection"][K] extends Relation.OptionalRelationReadAccess<any, infer S extends Schema.Any, infer Root> ? OptionalSlot<EntityId<S, Root>>
+    : T["selection"][K] extends Relation.RelatedReadAccess<infer R, infer S extends Schema.Any, infer Root> ? ReadSlot<ReadonlyArray<EntityId<S, Root>>, R>
+    : T["selection"][K] extends Relation.OptionalRelatedReadAccess<any, infer S extends Schema.Any, infer Root> ? OptionalSlot<ReadonlyArray<EntityId<S, Root>>>
+    : never
+}
+
+/**
+ * The entity type of a query: what `queries.x.each()` holds. It goes to the
+ * query's `data` and to `commands`.
  *
- * A match is valid during the run that produced it (the system run, or the
- * inspector read): its cells throw when used after it, so a match kept in
- * `local` state, a closure, or an inspector's result fails loudly instead of
- * reading an entity that may have changed or left the query. To follow an
- * entity across runs, keep `match.entity.id` or a handle and resolve it again
- * with `queries.x.get(id)` / `queries.x.getHandle(handle)`, which is fallible.
- *
- * Type a game helper that takes matches with this type, from the bound game's
- * `schema` and the query constant, instead of a hand-written structural type.
+ * Type a game helper that takes entities with this type, from the bound game's
+ * `schema` and the query constant, and pass it the slot it reads.
  *
  * @example
  * ```ts
- * import type { QueryMatch } from "@typeonce/ritmo/Query"
+ * import type { QueryData, QueryEntity } from "@typeonce/ritmo/Query"
  *
  * const PlayerRead = Game.Query({ selection: { position: Game.Query.read(Position) } })
  *
- * const leftmost = (players: ReadonlyArray<QueryMatch<typeof Game.schema, typeof PlayerRead>>) =>
- *   players.reduce((min, player) => Math.min(min, player.data.position.get().x), Infinity)
+ * const leftmost = (
+ *   players: ReadonlyArray<QueryEntity<typeof Game.schema, typeof PlayerRead>>,
+ *   data: QueryData<typeof PlayerRead>
+ * ) => players.reduce((min, player) => Math.min(min, data.position.get(player).x), Infinity)
  *
  * Game.System("Game/Leftmost", { queries: { players: PlayerRead } }, ({ queries }) => {
- *   console.log(leftmost(queries.players.each()))
+ *   console.log(leftmost(queries.players.each(), queries.players.data))
  * })
  * ```
  */
-export type QueryMatch<S extends Schema.Any, Q extends Query.Any> =
-  keyof Query.WriteProof<Q> extends never
-    ? {
-        readonly entity: EntityRef<S, Query.ReadProof<Q>, Query.Root<Q>, Query.Proven<Q>, Query.Excluded<Q>>
-        readonly data: Query.Cells<Q>
-      }
-    : {
-        readonly entity: EntityMut<S, Query.ReadProof<Q>, Query.WriteProof<Q>, Query.Root<Q>, Query.Proven<Q>, Query.Excluded<Q>>
-        readonly data: Query.Cells<Q>
-      }
-
-/**
- * One entity of a query's rows: its `id`, and what the query proves about it.
- * Pass it to the query's columns (`column.get(row)`), or to `commands` where a
- * match's `entity` goes. Rows come from `queries.x.rows()`.
- *
- * A row keeps naming its entity in later runs, since ids are never reused: a
- * column reads that entity's current value, or throws once the entity no
- * longer holds the component, so a kept row never reads another entity. It
- * does not re-check the query: an entity that left through `without` is still
- * readable. To follow an entity across runs and re-check the query, keep the
- * `id` and resolve it with `queries.x.get(id)`.
- */
-export interface QueryRow<S extends Schema.Any, Root, in Proves, in Lacks> {
-  readonly kind: "EntityRef"
-  readonly id: EntityId<S, Root>
-  readonly __proves?: (_: Proves) => void
-  readonly __lacks?: (_: Lacks) => void
-  readonly __schemaRoot?: Root | undefined
-  /** Type-level only: what makes a row a row, so an id or a hand-written object is not one. */
-  readonly __row: (_: Proves) => void
-}
-
-/** What a column asks of a row: that its query proves the column's component. */
-export interface RowProving<in D> {
-  readonly __row: (_: D) => void
-}
-
-/** The row type of a query: what `queries.x.rows()` holds. */
-export type QueryRowOf<S extends Schema.Any, Q extends Query.Any> =
-  QueryRow<S, Query.Root<Q>, Query.Proven<Q>, Query.Excluded<Q>>
-
-/**
- * A read slot of a query, from `queries.x.columns()`: reads the value of any
- * row that proves `D`. Valid during the run that handed it out; it throws when
- * used later. It costs nothing per entity, unlike a match's {@link ReadCell}.
- */
-export interface ReadColumn<D extends ComponentDescriptor> {
-  get(row: RowProving<D>): ReadonlyValue<Descriptor.Value<D>>
-}
-
-/**
- * A write slot of a query: {@link ReadColumn}, and writes the value of any row
- * that proves `D`. Writes join the system's transaction like a
- * {@link WriteCell}'s: a failed system rolls them back, and `changed` sees a
- * value that differs when the system commits.
- */
-export interface WriteColumn<D extends ComponentDescriptor> extends ReadColumn<D> {
-  /** Replaces the value of one row. The world owns `value` from here, as with {@link WriteCell.set}. */
-  set(row: RowProving<D>, value: ReadonlyValue<Descriptor.Value<D>>): void
-  /** Updates the value of one row from its current one. */
-  update(row: RowProving<D>, f: (current: ReadonlyValue<Descriptor.Value<D>>) => ReadonlyValue<Descriptor.Value<D>>): void
-}
-
-/**
- * The column accessors of a query's read and write slots. Optional, relation,
- * constructed, and entity state slots have none yet: reach them through
- * `each()`.
- */
-export type QueryColumns<Q extends Query.Any> = {
-  readonly [K in keyof Q["selection"] as Q["selection"][K] extends ReadAccess<any> | WriteAccess<any> ? K : never]:
-    Q["selection"][K] extends WriteAccess<infer D> ? WriteColumn<D>
-    : Q["selection"][K] extends ReadAccess<infer D> ? ReadColumn<D>
-    : never
-}
+export type QueryEntity<S extends Schema.Any, Q extends Query.Any> =
+  EntityRef<S, Query.Root<Q>, Query.Proven<Q>, Query.Excluded<Q>, Query.ProvenRelations<Q>>
 
 /**
  * Creates a typed missing-entity error.

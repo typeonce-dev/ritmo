@@ -14,9 +14,9 @@ describe("Game.Entity.id", () => {
       }),
       Game.Schedule.applyDeferred(),
       Game.System("EntityId/Check", { queries: { healths: Game.Query({ selection: { health: Game.Query.read(Health) } }) } }, ({ queries }) => {
-        for (const match of queries.healths.each()) {
-          const handle = Game.Entity.handle(match.entity, Health)
-          seen.push(Game.Entity.id(handle) === match.entity.id, handle === Game.Entity.handle(match.entity.id, Health))
+        for (const entity of queries.healths.each()) {
+          const handle = Game.Entity.handle(entity, Health)
+          seen.push(Game.Entity.id(handle) === entity.id, handle === Game.Entity.handle(entity.id, Health))
           seen.push(queries.healths.get(Game.Entity.id(handle)).ok)
         }
       })

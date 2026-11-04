@@ -27,25 +27,26 @@ export const UpdateFocusedCollectableSystem = Game.System(
         return
       }
 
-      const playerPosition = player.value.data.position.get()
+      const playerPosition = queries.player.data.position.get(player.value)
       let current: import("../schema.ts").FocusedCollectableValue["current"] = null
       let label: string | null = null
       let bestDistanceSquared = Number.POSITIVE_INFINITY
 
+      const { data } = queries.collectables
       for (const collectable of queries.collectables.each()) {
-        const position = collectable.data.position.get()
-        const data = collectable.data.collectable.get()
+        const position = data.position.get(collectable)
+        const details = data.collectable.get(collectable)
         const dx = position.x - playerPosition.x
         const dy = position.y - playerPosition.y
         const distanceSquared = dx * dx + dy * dy
 
-        if (distanceSquared > data.radius * data.radius || distanceSquared >= bestDistanceSquared) {
+        if (distanceSquared > details.radius * details.radius || distanceSquared >= bestDistanceSquared) {
           continue
         }
 
         bestDistanceSquared = distanceSquared
-        current = Game.Entity.handle(collectable.entity.id, Collectable)
-        label = data.label
+        current = Game.Entity.handle(collectable.id, Collectable)
+        label = details.label
       }
 
       resources.focused.set({
@@ -86,7 +87,7 @@ export const CollectFocusedCollectableSystem = Game.System(
         return
       }
 
-      commands.despawn(result.value.entity)
+      commands.despawn(result.value)
       resources.collectedCount.update((value) => value + 1)
       resources.focused.set(makeEmptyFocusedCollectable())
     }

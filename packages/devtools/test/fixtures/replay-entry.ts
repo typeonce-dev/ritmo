@@ -23,7 +23,8 @@ export const makeGame = (input: Schedule.Source<{ readonly dx: number }>, extra:
     services: { input: Game.System.service(Input) }
   }, ({ queries, services }) => {
     const dx = services.input.snapshot().dx + extra()
-    for (const { data } of queries.movers.each()) data.position.setRaw({ x: data.position.get().x + dx })
+    const { data } = queries.movers
+    for (const entity of queries.movers.each()) data.position.setRaw(entity, { x: data.position.get(entity).x + dx })
   })
   return { runtime: made.value, schedules: { update: Game.Schedule(Move) }, hostClock }
 }

@@ -142,20 +142,20 @@ describe("commands.insert with requirements", () => {
       queries: { bodies: Bodies, maybe: MaybeBody },
       commands: Game.System.commands(Game.System.inserts(Player, Velocity, Noise))
     }, ({ queries, commands }) => {
-      for (const match of queries.bodies.each()) {
-        expect(commands.insert(match.entity, [Player, {}], [Velocity, { x: 0 }])).type.toBe<typeof match.entity.id>()
-        // @ts-expect-error Req/Player requires Req/Velocity: insert it in the same call, or pass match.entity from a query that proves it
-        commands.insert(match.entity, [Player, {}])
+      for (const entity of queries.bodies.each()) {
+        expect(commands.insert(entity, [Player, {}], [Velocity, { x: 0 }])).type.toBe<typeof entity.id>()
+        // @ts-expect-error Req/Player requires Req/Velocity: insert it in the same call, or pass an entity from a query that proves it
+        commands.insert(entity, [Player, {}])
         // a raw id proves nothing
         // @ts-expect-error Req/Player requires Req/Body
-        commands.insert(match.entity.id, [Player, {}], [Velocity, { x: 0 }])
+        commands.insert(entity.id, [Player, {}], [Velocity, { x: 0 }])
         // components without requirements still take raw ids
-        commands.insert(match.entity.id, [Noise, 1])
+        commands.insert(entity.id, [Noise, 1])
       }
-      for (const match of queries.maybe.each()) {
+      for (const entity of queries.maybe.each()) {
         // optional(Body) does not prove Body
         // @ts-expect-error Req/Player requires Req/Body
-        commands.insert(match.entity, [Player, {}], [Velocity, { x: 0 }])
+        commands.insert(entity, [Player, {}], [Velocity, { x: 0 }])
       }
     })
   })
@@ -167,12 +167,12 @@ describe("commands.insert with requirements", () => {
     }, ({ queries, commands }) => {
       const parts: Array<readonly [typeof Player, {}] | readonly [typeof Velocity, { readonly x: number }]> = [[Player, {}]]
       const noises: Array<readonly [typeof Noise, number]> = [[Noise, 1]]
-      for (const match of queries.bodies.each()) {
+      for (const entity of queries.bodies.each()) {
         // Velocity may be among the parts, or not.
         // @ts-expect-error Req/Player requires Req/Velocity
-        commands.insert(match.entity, ...parts)
-        commands.insert(match.entity, [Velocity, { x: 0 }], ...parts)
-        commands.insert(match.entity.id, ...noises)
+        commands.insert(entity, ...parts)
+        commands.insert(entity, [Velocity, { x: 0 }], ...parts)
+        commands.insert(entity.id, ...noises)
       }
     })
   })
@@ -199,19 +199,19 @@ describe("commands.remove with requirements", () => {
     }, ({ queries, commands }) => {
       for (const match of queries.players.each()) {
         // @ts-expect-error Req/Velocity is required by Req/Player: remove Req/Player in the same call, or match the entity with a query that has without: [Req/Player]
-        commands.remove(match.entity, Velocity)
-        commands.remove(match.entity, Noise)
-        commands.remove(match.entity, Player)
-        expect(commands.remove(match.entity, Player, Velocity)).type.toBe<typeof match.entity.id>()
+        commands.remove(match, Velocity)
+        commands.remove(match, Noise)
+        commands.remove(match, Player)
+        expect(commands.remove(match, Player, Velocity)).type.toBe<typeof match.id>()
       }
       // The query proves Velocity but not Player: the entity may still hold Player.
-      for (const match of queries.moving.each()) {
+      for (const entity of queries.moving.each()) {
         // @ts-expect-error Req/Velocity is required by Req/Player
-        commands.remove(match.entity, Velocity)
+        commands.remove(entity, Velocity)
       }
       // without: [Player] proves Player is absent.
-      for (const match of queries.notPlayers.each()) {
-        commands.remove(match.entity, Velocity)
+      for (const entity of queries.notPlayers.each()) {
+        commands.remove(entity, Velocity)
       }
     })
   })
@@ -254,26 +254,26 @@ describe("command targets chosen from several queries", () => {
       const alsoNoisy = queries.alsoNoisy.each()[0]!
 
       // insert: only what every target proves counts.
-      commands.insert(either ? body.entity : player.entity, [Player, {}], [Velocity, { x: 0 }])
+      commands.insert(either ? body : player, [Player, {}], [Velocity, { x: 0 }])
       // @ts-expect-error Req/Player requires Req/Body
-      commands.insert(either ? body.entity : moving.entity, [Player, {}], [Velocity, { x: 0 }])
+      commands.insert(either ? body : moving, [Player, {}], [Velocity, { x: 0 }])
       // players proves Velocity, bodies does not: a weaker proof is not absorbed by a stronger one.
       // @ts-expect-error Req/Player requires Req/Velocity
-      commands.insert(either ? body.entity : player.entity, [Player, {}])
+      commands.insert(either ? body : player, [Player, {}])
 
       // despawn: every target must prove a despawns component, and none may be a raw id.
-      commands.despawn(either ? noisy.entity : alsoNoisy.entity)
+      commands.despawn(either ? noisy : alsoNoisy)
       // @ts-expect-error despawn needs an entity from a query proving Req/Noise (declared in despawns)
-      commands.despawn(either ? noisy.entity : moving.entity)
-      // @ts-expect-error not a raw id: pass match.entity
-      commands.despawn(either ? noisy.entity : noisy.entity.id)
+      commands.despawn(either ? noisy : moving)
+      // @ts-expect-error not a raw id: pass the entity from each()
+      commands.despawn(either ? noisy : noisy.id)
 
       // remove: only what every target's query excludes counts as absent, and none may be a raw id.
-      commands.remove(either ? notPlayer.entity : alsoNotPlayer.entity, Velocity)
+      commands.remove(either ? notPlayer : alsoNotPlayer, Velocity)
       // @ts-expect-error Req/Velocity is required by Req/Player
-      commands.remove(either ? notPlayer.entity : moving.entity, Velocity)
-      // @ts-expect-error remove needs an entity from a query (pass match.entity) or the id spawn returned in this run, not a raw id
-      commands.remove(either ? notPlayer.entity : notPlayer.entity.id, Velocity)
+      commands.remove(either ? notPlayer : moving, Velocity)
+      // @ts-expect-error remove needs an entity from a query (pass the entity from each()) or the id spawn returned in this run, not a raw id
+      commands.remove(either ? notPlayer : notPlayer.id, Velocity)
     })
   })
 })

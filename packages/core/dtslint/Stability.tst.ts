@@ -117,7 +117,7 @@ describe("stability types", () => {
         const first = queries.positions.each()[0]
         if (first) {
           // @ts-expect-error Cannot assign to 'x' because it is a read-only property.
-          first.data.position.get().x = 1
+          queries.positions.data.position.get(first).x = 1
         }
         return { value: resources.value.get() }
       }

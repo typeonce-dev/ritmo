@@ -37,7 +37,7 @@
  * declare const make: (playback: Replay.Playback) => Replay.Target<typeof Game.schema, typeof Root, { readonly setup: typeof setup; readonly update: typeof update }>
  * const InsideArena = Invariant.fromInspector(Game.Inspector("inside arena", {
  *   queries: { bodies: Game.Query({ selection: { position: Game.Query.read(Position) } }) }
- * }, ({ queries }) => queries.bodies.each().some(({ data }) => data.position.get().x < 0) ? "left the arena" : undefined))
+ * }, ({ queries }) => queries.bodies.each().some((entity) => queries.bodies.data.position.get(entity).x < 0) ? "left the arena" : undefined))
  * declare const sink: Replay.Sink
  * // ---cut---
  * const Move = Fuzz.input(Input, {

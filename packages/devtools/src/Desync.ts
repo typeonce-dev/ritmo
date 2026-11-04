@@ -20,7 +20,7 @@
  * declare const input: { dx: number }
  * const Labels = Game.Inspector("labels", {
  *   queries: { players: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] }) }
- * }, ({ queries }) => new Map(queries.players.each().map((match) => [match.entity.id, "player"] as const)))
+ * }, ({ queries }) => new Map(queries.players.each().map((entity) => [entity.id, "player"] as const)))
  * // ---cut---
  * const left = sessions[0].advance(input)
  * const right = sessions[1].advance(input)

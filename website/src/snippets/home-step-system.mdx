@@ -24,11 +24,12 @@ export const Move = Game.System(
   ({ queries, resources }) => {
     const { dt } = resources.time.get()
 
-    for (const { data } of queries.moving.each()) {
-      const p = data.position.get()
-      const v = data.velocity.get()
+    const { data } = queries.moving
+    for (const entity of queries.moving.each()) {
+      const p = data.position.get(entity)
+      const v = data.velocity.get(entity)
 
-      data.position.set({ x: p.x + v.x * dt, y: p.y + v.y * dt })
+      data.position.set(entity, { x: p.x + v.x * dt, y: p.y + v.y * dt })
     }
   }
 )

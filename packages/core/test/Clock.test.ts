@@ -156,11 +156,12 @@ describe("Clock.deadline", () => {
     queries: { weapons: Armed.Query({ selection: { weapon: Armed.Query.write(Weapon) } }) }
   }, ({ resources, queries }) => {
     const time = resources.time.get()
-    for (const { data } of queries.weapons.each()) {
-      const { ready } = data.weapon.get()
+    const { data } = queries.weapons
+    for (const entity of queries.weapons.each()) {
+      const { ready } = data.weapon.get(entity)
       if (ready !== null && !Clock.reached(time, ready)) continue
       fired.push(time.step)
-      data.weapon.set({ ready: Clock.deadline(time, cooldown) })
+      data.weapon.set(entity, { ready: Clock.deadline(time, cooldown) })
     }
   })
   const Arm = Armed.System("ClockDeadline/Arm", { commands: Armed.System.commands(Armed.System.spawns(Weapon)) }, ({ commands }) => {

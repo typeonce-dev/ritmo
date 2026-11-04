@@ -64,5 +64,19 @@ export const miniplex: Library = {
         for (const entity of withB) world.removeComponent(entity, "B")
       }
     }
+  },
+  move: () => {
+    type Mover = { readonly position: { x: number; y: number }; readonly velocity: { readonly x: number; readonly y: number } }
+    const world = new World<Mover>()
+    for (let index = 0; index < 100_000; index++) world.add({ position: { x: 0, y: 0 }, velocity: { x: 1, y: 2 } })
+    const movers = world.with("position", "velocity")
+    return {
+      run: () => {
+        for (const entity of movers) {
+          entity.position.x += entity.velocity.x
+          entity.position.y += entity.velocity.y
+        }
+      }
+    }
   }
 }

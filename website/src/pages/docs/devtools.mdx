@@ -68,8 +68,9 @@ const StaysInRoom = Invariant.fromInspector(
     "player stays in the first room",
     { queries: { player: PlayerPositionQuery } },
     ({ queries }) => {
-      for (const match of queries.player.each()) {
-        const { x } = match.data.position.get()
+      const { data } = queries.player
+      for (const entity of queries.player.each()) {
+        const { x } = data.position.get(entity)
         if (x < 150) return `player at x ${x}`
       }
       return undefined

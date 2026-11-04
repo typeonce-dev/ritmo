@@ -42,10 +42,10 @@
  * ```ts
  * const PlayerInsideWorld = Invariant.fromInspector(Game.Inspector("player inside world", {
  *   queries: { players: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] }) }
- * }, ({ queries }) => queries.players.each().some(({ data }) => data.position.get().x < 0) ? "left the world" : undefined))
+ * }, ({ queries }) => queries.players.each().some((entity) => queries.players.data.position.get(entity).x < 0) ? "left the world" : undefined))
  * const Labels = Game.Inspector("labels", {
  *   queries: { players: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] }) }
- * }, ({ queries }) => new Map(queries.players.each().map((match) => [match.entity.id, "player"] as const)))
+ * }, ({ queries }) => new Map(queries.players.each().map((entity) => [entity.id, "player"] as const)))
  * // ---cut---
  * const session = Session.make(runtime, {
  *   hostClock: HostClock.test(),
@@ -129,7 +129,7 @@ export type ValidateInvariants<
  * ```ts
  * const Labels = Game.Inspector("labels", {
  *   queries: { players: Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Player] }) }
- * }, ({ queries }) => new Map(queries.players.each().map((match) => [match.entity.id, "player"] as const)))
+ * }, ({ queries }) => new Map(queries.players.each().map((entity) => [entity.id, "player"] as const)))
  * Session.make(runtime, { hostClock: HostClock.test(), schedules: { update }, labels: Labels })
  * ```
  */

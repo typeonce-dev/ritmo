@@ -26,7 +26,7 @@ describe("Game.Condition.check", () => {
     }, (context) => {
       expect(context.resources.freeze.get().remaining).type.toBe<number>()
       expect(context.machines.flow.get()).type.toBe<{ readonly _tag: "Playing" } | { readonly _tag: "Over" }>()
-      expect(context.queries.enemies.each()[0]?.data.health.get()).type.toBe<number | undefined>()
+      expect(context.queries.enemies.data.health.get(context.queries.enemies.each()[0]!)).type.toBe<number>()
       // @ts-expect-error Property 'set' does not exist on type 'ResourceReadView<{ readonly remaining: number; }>'.
       context.resources.freeze.set({ remaining: 0 })
       // @ts-expect-error Property 'events' does not exist on type 'CheckContext<SystemSpec<SchemaDefinition<{ readonly Enemy

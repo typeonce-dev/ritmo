@@ -22,8 +22,8 @@ const observer = (name: string) => {
   const runs: Array<{ added: Array<number>; changed: Array<number> }> = []
   const system = Game.System(name, { queries: { added: Added, changed: Changed } }, ({ queries }) => {
     runs.push({
-      added: queries.added.each().map((match) => match.data.position.get().x),
-      changed: queries.changed.each().map((match) => match.data.position.get().x)
+      added: queries.added.each().map((entity) => queries.added.data.position.get(entity).x),
+      changed: queries.changed.each().map((entity) => queries.changed.data.position.get(entity).x)
     })
   })
   return { system, runs }
@@ -56,8 +56,9 @@ describe("Runtime change detection", () => {
     const first = observer("Lifecycle/First")
     const second = observer("Lifecycle/Second")
     const Move = Game.System("Lifecycle/Move", { queries: { positions: Positions } }, ({ queries }) => {
-      for (const { data } of queries.positions.each()) {
-        data.position.update((position) => ({ x: position.x + 10 }))
+      const { data } = queries.positions
+      for (const entity of queries.positions.each()) {
+        data.position.update(entity, (position) => ({ x: position.x + 10 }))
       }
     })
     const runtime = makeRuntime()
@@ -91,8 +92,9 @@ describe("Runtime change detection", () => {
   it("does not report writes from a system whose run failed", () => {
     const reader = observer("Lifecycle/FailureReader")
     const Failing = Game.System("Lifecycle/Failing", { queries: { positions: Positions } }, ({ queries }) => {
-      for (const { data } of queries.positions.each()) {
-        data.position.set({ x: 100 })
+      const { data } = queries.positions
+      for (const entity of queries.positions.each()) {
+        data.position.set(entity, { x: 100 })
       }
       return Result.failure("Rejected" as const)
     })
@@ -109,10 +111,11 @@ describe("Runtime change detection", () => {
   it("does not show a system its own writes as changes, during that run or after it", () => {
     const seen: Array<Array<number>> = []
     const Mover = Game.System("Lifecycle/Mover", { queries: { positions: Positions, changed: Changed } }, ({ queries }) => {
-      for (const { data } of queries.positions.each()) {
-        data.position.set({ x: data.position.get().x + 1 })
+      const { data } = queries.positions
+      for (const entity of queries.positions.each()) {
+        data.position.set(entity, { x: data.position.get(entity).x + 1 })
       }
-      seen.push(queries.changed.each().map((match) => match.data.position.get().x))
+      seen.push(queries.changed.each().map((entity) => queries.changed.data.position.get(entity).x))
     })
     const reader = observer("Lifecycle/MoverReader")
     const runtime = makeRuntime()
@@ -141,9 +144,9 @@ describe("Runtime change detection", () => {
       commands: Game.System.commands(Game.System.removes(Position), Game.System.despawns(Position))
     }, ({ queries, commands }) => {
       const first = queries.positions.get(ids[0]!)
-      if (first.ok) commands.remove(first.value.entity, Position)
+      if (first.ok) commands.remove(first.value, Position)
       const second = queries.positions.get(ids[1]!)
-      if (second.ok) commands.despawn(second.value.entity)
+      if (second.ok) commands.despawn(second.value)
     })
     const runtime = makeRuntime()
     runtime.tick(Game.Schedule(spawner([1, 2], ids), Game.Schedule.applyDeferred(), Reader))
@@ -179,7 +182,7 @@ describe("Runtime change detection", () => {
       commands: Game.System.commands(Game.System.despawns(Position))
     }, ({ queries, commands }) => {
       const match = queries.positions.get(ids[next++]!)
-      if (match.ok) commands.despawn(match.value.entity)
+      if (match.ok) commands.despawn(match.value)
     })
     const runtime = makeRuntime()
     runtime.tick(Game.Schedule(spawner([1, 2, 3, 4], ids), Game.Schedule.applyDeferred(), Reader))
@@ -217,7 +220,7 @@ describe("Runtime change detection", () => {
     }, ({ queries, commands }) => {
       for (const id of ids) {
         const match = queries.positions.get(id)
-        if (match.ok) commands.despawn(match.value.entity)
+        if (match.ok) commands.despawn(match.value)
       }
     })
     const runtime = Game.Runtime.make({
@@ -253,13 +256,13 @@ describe("Runtime change detection", () => {
       queries: { tagged: Game.Query({ selection: { tag: Game.Query.read(Tag) } }) },
       commands: Game.System.commands(Game.System.removes(Tag))
     }, ({ queries, commands }) => {
-      for (const match of queries.tagged.each()) commands.remove(match.entity, Tag)
+      for (const entity of queries.tagged.each()) commands.remove(entity, Tag)
     })
     const DespawnAll = Game.System("Lifecycle/DespawnAll", {
       queries: { all: Game.Query({ selection: {}, with: [Position] }) },
       commands: Game.System.commands(Game.System.despawns(Position))
     }, ({ queries, commands }) => {
-      for (const match of queries.all.each()) commands.despawn(match.entity)
+      for (const entity of queries.all.each()) commands.despawn(entity)
     })
     const read = Game.Schedule(Reader)
     const churn = Game.Schedule(

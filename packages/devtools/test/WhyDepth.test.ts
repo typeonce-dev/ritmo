@@ -37,7 +37,8 @@ const ApplyDamage = Game.System("Why/ApplyDamage", {
   queries: { hurt: Game.Query({ selection: { health: Game.Query.write(Health), armor: Game.Query.read(Armor) } }) }
 }, ({ events, queries }) => {
   const total = events.damage.all().reduce((sum, damage) => sum + damage.amount, 0)
-  for (const match of queries.hurt.each()) match.data.health.update((health) => health - total)
+  const { data } = queries.hurt
+  for (const entity of queries.hurt.each()) data.health.update(entity, (health) => health - total)
 })
 
 const setup = Game.Schedule(Spawn, Game.Schedule.applyDeferred())
@@ -160,7 +161,7 @@ describe("why with depth", () => {
   it("names entities in read lines with the session's labels", () => {
     const Labels = Game.Inspector("labels", {
       queries: { armored: Game.Query({ selection: { armor: Game.Query.read(Armor) } }) }
-    }, ({ queries }) => new Map(queries.armored.each().map((match) => [match.entity.id, "hero"] as const)))
+    }, ({ queries }) => new Map(queries.armored.each().map((entity) => [entity.id, "hero"] as const)))
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(),
       resources: { Aim: { target: 0 }, Heat: 0, Cool: 0 },

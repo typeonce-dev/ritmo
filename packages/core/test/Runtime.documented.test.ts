@@ -32,7 +32,8 @@ describe("documented semantics", () => {
       events: { read: Game.System.readEvent(Ping), write: Game.System.writeEvent(Ping) }
     }, ({ queries, events }) => {
       seen.push(`changed=${queries.changed.each().length} pings=${events.read.all().length}`)
-      for (const match of queries.all.each()) match.data.count.update((count) => count + 1)
+      const { data } = queries.all
+      for (const entity of queries.all.each()) data.count.update(entity, (count) => count + 1)
       events.write.emit(1)
     })
     const Spawn = Game.System("Documented/Spawn", { commands: Game.System.commands(Game.System.spawns(Count)) }, ({ commands }) => {

@@ -701,9 +701,10 @@ type StateRejection<Definition> = Definition extends StandardSchema<infer _Encod
  * const Jump = Game.System("Game/Jump", {
  *   queries: { bodies: Game.Query({ selection: { contact: Game.Query.write(Contact) } }) }
  * }, ({ queries }) => {
- *   for (const { data } of queries.bodies.each()) {
- *     data.contact.transition({ from: "ground", to: "air", data: { vy: 12, coyote: 0 } })
- *     data.contact.update({ state: "air", data: (air) => ({ ...air, vy: air.vy - gravity }) })
+ *   const { data } = queries.bodies
+ *   for (const entity of queries.bodies.each()) {
+ *     data.contact.transition(entity, { from: "ground", to: "air", data: { vy: 12, coyote: 0 } })
+ *     data.contact.update(entity, { state: "air", data: (air) => ({ ...air, vy: air.vy - gravity }) })
  *   }
  * })
  * ```

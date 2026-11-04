@@ -84,8 +84,7 @@ import { makeWorld } from "./internal/world.ts"
 import type { WorldHooks, WorldMark, WorldRewind } from "./internal/world.ts"
 import type * as Machine from "./Machine.ts"
 import * as Query from "./Query.ts"
-import type { QueryColumns, QueryRowOf } from "./Query.ts"
-import type { QueryMatch, ReadonlyValue } from "./Query.ts"
+import type { QueryData, QueryEntity, ReadonlyValue } from "./Query.ts"
 import * as Relation from "./Relation.ts"
 import * as RelationErrors from "./internal/relations.ts"
 import type * as Requirement from "./Requirement.ts"
@@ -1253,7 +1252,7 @@ const makeValidatedRuntime = <
   }
 
   const resolve = <Q extends Query.Query.Any<Root>>(id: number, query: Q, reader: ReaderState) =>
-    queries.get(id, query, reader.since, reader.reverts) as Result.Result<QueryMatch<S, Q>, Query.Query.LookupError>
+    queries.get(id, query, reader.since, reader.reverts) as unknown as Result.Result<QueryEntity<S, Q>, Query.Query.LookupError>
 
   const relatedTarget = (
     target: Entity.EntityId<S, Root>,
@@ -1333,19 +1332,20 @@ const makeValidatedRuntime = <
   }
 
   const makeQueryHandle = <Q extends Query.Query.Any<Root>>(query: Q, reader: ReaderState, lookup: LookupApi<S, Root>): QueryIteration<S, Q> & QueryLookups<S, Q> => {
-    const each = () => queries.each(query, reader.since, reader.reverts) as ReadonlyArray<QueryMatch<S, Q>>
-    const matching = (ids: ReadonlyArray<Entity.EntityId<S, Root>>): Array<QueryMatch<S, Q>> => {
-      const matches: Array<QueryMatch<S, Q>> = []
+    const each = () => queries.each(query, reader.since, reader.reverts) as unknown as ReadonlyArray<QueryEntity<S, Q>>
+    const matching = (ids: ReadonlyArray<Entity.EntityId<S, Root>>): Array<QueryEntity<S, Q>> => {
+      const entities: Array<QueryEntity<S, Q>> = []
       for (const id of ids) {
         const resolved = resolve(id, query, reader)
-        if (resolved.ok) matches.push(resolved.value)
+        if (resolved.ok) entities.push(resolved.value)
       }
-      return matches
+      return entities
     }
     return {
       each,
-      rows: () => queries.rows(query, reader.since, reader.reverts) as unknown as ReadonlyArray<QueryRowOf<S, Q>>,
-      columns: () => queries.columns(query) as QueryColumns<Q>,
+      get data() {
+        return queries.data(query) as QueryData<Q>
+      },
       get(target) {
         return resolve(target, query, reader)
       },
@@ -1361,21 +1361,21 @@ const makeValidatedRuntime = <
         return ids.ok ? Result.success(matching(ids.value)) : ids
       },
       single() {
-        const matches = each()
-        if (matches.length === 0) {
+        const entities = each()
+        if (entities.length === 0) {
           return Result.failure(Query.noEntitiesError())
         }
-        if (matches.length > 1) {
-          return Result.failure(Query.multipleEntitiesError(matches.length))
+        if (entities.length > 1) {
+          return Result.failure(Query.multipleEntitiesError(entities.length))
         }
-        return Result.success(matches[0]!)
+        return Result.success(entities[0]!)
       },
       singleOptional() {
-        const matches = each()
-        if (matches.length > 1) {
-          return Result.failure(Query.multipleEntitiesError(matches.length))
+        const entities = each()
+        if (entities.length > 1) {
+          return Result.failure(Query.multipleEntitiesError(entities.length))
         }
-        return Result.success(matches[0])
+        return Result.success(entities[0])
       }
     }
   }

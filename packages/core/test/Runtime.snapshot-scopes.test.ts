@@ -14,7 +14,7 @@ type Runtime = ReturnType<typeof makeRuntime>
 
 const Names = Game.Inspector("SnapshotScopes/Names", {
   queries: { named: Game.Query({ selection: { name: Game.Query.read(Name) } }) }
-}, ({ queries }) => queries.named.each().map((match) => match.data.name.get()).sort())
+}, ({ queries }) => queries.named.each().map((entity) => queries.named.data.name.get(entity)).sort())
 
 const despawn = (runtime: Runtime, scope: typeof Level | typeof Menu) =>
   runtime.tick(Game.Schedule(Game.System("SnapshotScopes/Despawn", { commands: Game.System.commands(Game.System.despawnsScope(Level), Game.System.despawnsScope(Menu)) }, ({ commands }) => {

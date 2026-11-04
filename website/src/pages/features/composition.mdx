@@ -47,18 +47,18 @@ const Ignite = Game.System(
 
   ({ queries, events, commands }) => {
     if (events.sparks.all().length === 0) return
-    for (const match of queries.dry.each()) {
-      commands.insert(match.entity, [Burning, {}])
+    for (const entity of queries.dry.each()) {
+      commands.insert(entity, [Burning, {}])
 
       // Not declared, so it does not compile
-      commands.insert(match.entity, [Wet, {}])
+      commands.insert(entity, [Wet, {}])
     }
   }
 )
 ```
 
 Removing works the same way: `Game.System.removes(Burning)` in the spec,
-`commands.remove(match.entity, Burning)` in the body. That is all `Douse`
+`commands.remove(entity, Burning)` in the body. That is all `Douse`
 does.
 
 </Claim>
@@ -99,10 +99,11 @@ const Wander = Game.System(
     }
   },
   ({ queries }) => {
-    for (const { data } of queries.strolling.each()) {
-      const { x, y } = data.position.get()
-      const velocity = data.velocity.get()
-      data.position.set({ x: x + velocity.x, y: y + velocity.y })
+    const { data } = queries.strolling
+    for (const entity of queries.strolling.each()) {
+      const { x, y } = data.position.get(entity)
+      const velocity = data.velocity.get(entity)
+      data.position.set(entity, { x: x + velocity.x, y: y + velocity.y })
     }
   }
 )
@@ -149,8 +150,8 @@ const Hiss = Game.System(
     removed: { doused: Game.System.readRemoved(Burning) } // [!code highlight]
   },
   ({ queries, removed }) => {
-    for (const match of queries.lit.each()) {
-      // play the whoosh at match.entity
+    for (const entity of queries.lit.each()) {
+      // play the whoosh at entity
     }
     for (const entityId of removed.doused.all()) {
       // play the hiss
@@ -237,7 +238,7 @@ const Follow = Game.System(
   },
   ({ queries, lookup, relationFailures }) => {
     for (const item of queries.held.each()) {
-      const hand = lookup.parent(item.entity.id, ChildOf)
+      const hand = lookup.parent(item.id, ChildOf)
       if (!hand.ok) {
         const missing = hand.error._tag
         //    ^?
