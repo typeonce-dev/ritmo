@@ -9,8 +9,9 @@
  * around), so it is left out of a folder.
  */
 import { existsSync, statSync } from "node:fs"
-import { readdir, readFile, writeFile } from "node:fs/promises"
-import { basename, dirname, extname, join, relative, resolve, sep } from "node:path"
+import { readFile, writeFile } from "node:fs/promises"
+import { basename, dirname, extname, join, relative, resolve } from "node:path"
+import { idOf, posix, rootOf, walk } from "../../internal/files.ts"
 import { hashBytes } from "../../internal/hash.ts"
 import { mtime } from "../../internal/serve.ts"
 import { audioChangedOf, AUDIO_REVIEWS, changedOf, decodeAudioReviews, decodeReview, emptyAudioReview, emptyReview, encodeAudioReviews, reviewPath, type AudioReview, type Review, type Status } from "../core/review.ts"
@@ -27,21 +28,10 @@ export interface MusicFile {
   readonly file: string
 }
 
-const posix = (path: string): string => path.split(sep).join("/")
+const fileOf = (file: string): MusicFile => ({ id: idOf(file), kind: AUDIO_FILES.includes(extname(file).toLowerCase()) ? "audio" : "song", file })
 
-const fileOf = (file: string): MusicFile => ({ id: posix(relative(process.cwd(), file)) || basename(file), kind: AUDIO_FILES.includes(extname(file).toLowerCase()) ? "audio" : "song", file })
-
-const skipFolder = (name: string): boolean => name.startsWith(".") || name === "node_modules" || name.endsWith(".stems")
-
-const walk = async (folder: string): Promise<Array<string>> => {
-  const found: Array<string> = []
-  for (const entry of await readdir(folder, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      if (!skipFolder(entry.name)) found.push(...(await walk(join(folder, entry.name))))
-    } else if (entry.isFile()) found.push(join(folder, entry.name))
-  }
-  return found
-}
+/** A song's stems are the song again. */
+const isStems = (name: string): boolean => name.endsWith(".stems")
 
 /** Whether a file found in a folder is music to review, among the folder's other files. */
 const isMusic = (file: string, all: ReadonlySet<string>): boolean => {
@@ -58,7 +48,7 @@ export const findMusic = async (paths: ReadonlyArray<string>): Promise<ReadonlyA
     const absolute = resolve(path)
     if (!existsSync(absolute)) continue
     if (statSync(absolute).isDirectory()) {
-      const all = await walk(absolute)
+      const all = await walk(absolute, isStems)
       const names = new Set(all)
       for (const file of all) if (isMusic(file, names)) files.set(file, fileOf(file))
     } else files.set(absolute, fileOf(absolute))
@@ -68,27 +58,6 @@ export const findMusic = async (paths: ReadonlyArray<string>): Promise<ReadonlyA
 
 // ---------------------------------------------------------------------------
 // Where a plain audio file's review lives
-
-const roots = new Map<string, string>()
-
-/** The game's root for a file: the nearest folder at or above it with a `package.json`, else the file's own folder. */
-const rootOf = (file: string): string => {
-  const start = dirname(file)
-  const known = roots.get(start)
-  if (known !== undefined) return known
-  let folder = start
-  for (;;) {
-    if (existsSync(join(folder, "package.json"))) break
-    const parent = dirname(folder)
-    if (parent === folder) {
-      folder = start
-      break
-    }
-    folder = parent
-  }
-  roots.set(start, folder)
-  return folder
-}
 
 /** Where a plain audio file's review is kept: the shared file, and the file's key in it. */
 export const audioReviewPlace = (file: string): { readonly reviews: string; readonly key: string } => {
