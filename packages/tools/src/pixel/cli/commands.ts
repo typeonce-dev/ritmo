@@ -19,9 +19,9 @@ import { presets, proposePalette, type ProposeMethod } from "../core/palette.ts"
 import { runRecipe, type Outcome } from "../core/pipeline.ts"
 import { atlasClips, detectFrames, proposeForSheet, runSheet, type AnimationCache } from "../core/animation.ts"
 import { toGif } from "../core/gif.ts"
-import { fitScale, previewArt, previewFix, previewSheet } from "../core/preview.ts"
-import { animationOf, defaultSheet, isAnimationName, playOrder, withFrames, type Sheet, type SheetAnimation } from "../core/sheet.ts"
-import { atlasOf, spritesheetJson } from "../core/spritesheet.ts"
+import { fitScale, previewArt, previewFix, previewOnion, previewSheet, previewTile } from "../core/preview.ts"
+import { animationOf, defaultSheet, frameOf, isAnimationName, withFrames, type Sheet, type SheetAnimation } from "../core/sheet.ts"
+import { atlasOf, played, spritesheetJson } from "../core/spritesheet.ts"
 import { encodeRecipe, type GridChoice, type Outlines, type Recipe } from "../core/recipe.ts"
 import { checkImage, compareReports, reportOfArt, reportOfFix, reportOfSheet, type Report, type Verdict } from "../core/report.ts"
 import { artOfImage, formatSprite } from "../core/sprite.ts"
@@ -293,38 +293,45 @@ const render = Command.make(
   })
 ).pipe(Command.withDescription("Renders a sprite source to PNG and SVG, and lints it against the project's rules."))
 
+const tileFlag = Flag.Literals("tile", ["both", "x", "y"]).pipe(
+  Flag.withDescription('The art is a tile that repeats this way: "x" side by side, "y" one over another, "both" to fill an area.'),
+  Flag.optional
+)
+
 const lint = Command.make(
   "lint",
   {
     input: Argument.String("input").pipe(Argument.withDescription("A PNG taken as pixel art at its own size, a sprite source, or a JSON map.")),
     config,
-    palette
+    palette,
+    tile: tileFlag
   },
   Effect.fn("lint")(function* (flags) {
     const project = yield* loadConfig(flags.config)
     const rules: LintRules = Option.isSome(flags.palette) ? { ...project.rules, palette: (yield* loadPalette(flags.palette.value, ".")).colors } : project.rules
     const source = yield* readSource(flags.input)
     const { art, partial } = source.kind === "art" ? { art: source.art, partial: 0 } : artOfImage(source.image)
-    const report = reportOfArt(art, rules, partial)
+    const report = reportOfArt(art, { ...rules, tile: Option.getOrUndefined(flags.tile) }, partial)
     yield* printJson({ file: flags.input, verdict: report.verdict, summary: report.summary, issues: report.issues })
     yield* exitWith(exitCode[report.verdict])
   })
-).pipe(Command.withDescription("Checks pixel art against the project's rules (size, palette, colors, transparency, stray pixels), as it is."))
+).pipe(Command.withDescription("Checks pixel art against the project's rules (size, palette, colors, transparency, stray pixels), as it is; with --tile, also that its edges meet."))
 
 const previewCommand = Command.make(
   "preview",
-  { input: Argument.String("input").pipe(Argument.withDescription("A PNG or JPEG, a sprite source, or a JSON map.")), config, recipe: recipeFlag, ...overrides, out },
+  { input: Argument.String("input").pipe(Argument.withDescription("A PNG or JPEG, a sprite source, or a JSON map.")), config, recipe: recipeFlag, ...overrides, tile: tileFlag, out },
   Effect.fn("preview")(function* (flags) {
     const project = yield* loadConfig(flags.config)
     const { recipe } = yield* recipeOf(project, flags.recipe, flags, flags.input)
     const source = yield* readSource(flags.input)
     const base = yield* outputBase(flags.input, Option.getOrUndefined(flags.out), "preview")
-    const picture =
-      source.kind === "art" ? previewArt(source.art, fitScale(source.art)) : preview(source.image, fixImage(source.image, recipe, rulesOf(project, recipe), Option.none(), "dominant"))
+    const picture = Option.isSome(flags.tile)
+      ? previewTile(source.kind === "art" ? source.art : artOfImage(source.image).art, flags.tile.value)
+      : source.kind === "art" ? previewArt(source.art, fitScale(source.art)) : preview(source.image, fixImage(source.image, recipe, rulesOf(project, recipe), Option.none(), "dominant"))
     if (picture === undefined) return yield* new CliFailure({ message: "no grid found to preview: give one with `ritmo-tools pixel fix --cell`" })
     yield* printJson({ file: flags.input, preview: yield* writePng(`${base}.png`, picture) })
   })
-).pipe(Command.withDescription("Writes a picture to look at: the art enlarged, or the source with its grid beside the fix."))
+).pipe(Command.withDescription("Writes a picture to look at: the art enlarged, the source with its grid beside the fix, or with --tile the art at its own size repeated."))
 
 const compare = Command.make(
   "compare",
@@ -348,14 +355,15 @@ const parseBoxes = (text: string): Effect.Effect<Sheet["frames"], CliFailure> =>
   if (boxes.length === 0 || boxes.some((box) => box.length !== 4 || box.some((value) => !Number.isFinite(value)) || box[2]! < 1 || box[3]! < 1)) {
     return Effect.fail(new CliFailure({ message: 'frame boxes are "x,y,w,h" in source pixels, separated by ";"' }))
   }
-  return Effect.succeed(boxes.map(([x, y, width, height]) => ({ box: { x: x!, y: y!, width: width!, height: height! }, include: true, nudge: { x: 0, y: 0 } })))
+  return Effect.succeed(boxes.map(([x, y, width, height]) => frameOf({ x: x!, y: y!, width: width!, height: height! })))
 }
 
-/** Reads "walk=1-4;throw=5,6,7;9-12" as animations: every frame (numbered from 1) in exactly one. */
-const parseAnimations = (text: string, count: number): Effect.Effect<Array<SheetAnimation>, CliFailure> => {
+/** Reads "walk=1-4;throw=5,6x3,7;9-12" as animations, every frame (numbered from 1) in exactly one, and the beats of each held frame ("6x3" holds frame 6 for 3). */
+const parseAnimations = (text: string, count: number): Effect.Effect<{ readonly animations: Array<SheetAnimation>; readonly holds: ReadonlyMap<number, number> }, CliFailure> => {
   const fail = (message: string) => Effect.fail(new CliFailure({ message }))
   const parts = text.split(";").map((part) => part.trim()).filter((part) => part !== "")
   const seen = new Set<number>()
+  const holds = new Map<number, number>()
   const animations: Array<SheetAnimation> = []
   for (const [a, part] of parts.entries()) {
     const named = /^([^=]+)=(.+)$/.exec(part)
@@ -364,14 +372,17 @@ const parseAnimations = (text: string, count: number): Effect.Effect<Array<Sheet
     if (animations.some((animation) => animation.name === name)) return fail(`two animations are named "${name}"`)
     const frames: Array<number> = []
     for (const range of (named === null ? part : named[2]!).split(",")) {
-      const bounds = /^\s*(\d+)\s*(?:-\s*(\d+)\s*)?$/.exec(range)
-      if (bounds === null) return fail(`"${range.trim()}" is not a frame number or a range like "1-4"`)
+      const bounds = /^\s*(\d+)\s*(?:-\s*(\d+)\s*)?(?:x\s*(\d+)\s*)?$/.exec(range)
+      if (bounds === null) return fail(`"${range.trim()}" is not a frame number, a range like "1-4", or a held frame like "6x3" (whole beats)`)
       const from = Number(bounds[1])
       const to = bounds[2] === undefined ? from : Number(bounds[2])
+      const beats = bounds[3] === undefined ? 1 : Number(bounds[3])
+      if (beats < 1) return fail(`"${range.trim()}" holds for no beats: "6x3" shows frame 6 for 3 beats, and a frame shows for 1 without "x"`)
       for (let n = from; from <= to ? n <= to : n >= to; n += from <= to ? 1 : -1) {
         if (n < 1 || n > count) return fail(`frame ${n} is not on the sheet: its frames are 1 to ${count}`)
         if (seen.has(n)) return fail(`frame ${n} is in more than one animation`)
         seen.add(n)
+        holds.set(n - 1, beats)
         frames.push(n - 1)
       }
     }
@@ -379,7 +390,7 @@ const parseAnimations = (text: string, count: number): Effect.Effect<Array<Sheet
   }
   const missing = Array.from({ length: count }, (_, i) => i + 1).filter((n) => !seen.has(n))
   if (missing.length > 0) return fail(`frames ${missing.join(", ")} are in no animation: every frame must be in one`)
-  return Effect.succeed(animations)
+  return Effect.succeed({ animations, holds })
 }
 
 const sheetCommand = Command.make(
@@ -395,14 +406,14 @@ const sheetCommand = Command.make(
     skip: Flag.String("skip").pipe(Flag.withDescription('Frames to leave out of their animation, by number from 1: "1,6".'), Flag.optional),
     animations: Flag.String("animations").pipe(
       Flag.withDescription(
-        'How the frames make animations, by frame number from 1: "walk=1-4;throw=5-8;explode=9-18" (a name is optional: "1-4;5-8"). Every frame must be in one. Default: one per row of frames, as the report lists them.'
+        'How the frames make animations, by frame number from 1: "walk=1-4;throw=5,6x3,7,8;explode=9-18" (a name is optional: "1-4;5-8"; "6x3" holds frame 6 for 3 beats). Every frame must be in one. Default: one per row of frames, as the report lists them.'
       ),
       Flag.optional
     ),
     only: Flag.String("only").pipe(Flag.withDescription('The animations to write, by name: "walk,explode" (the others stay in the recipe, left out).'), Flag.optional),
     keepBackground: Flag.Boolean("keep-background").pipe(Flag.withDefault(false), Flag.withDescription("Keep the sheet's background (by default it is cleared, with any painted grid and labels).")),
     anchor: Flag.Literals("anchor", ["ground", "feet", "center", "box"]).pipe(Flag.withDescription("What lines frames up: the ground (default: each frame at its height as drawn, hops kept, sideways drift removed), the feet (pinned to one row), the body's center, or nothing (frames as in their boxes)."), Flag.optional),
-    fps: Flag.Finite("fps").pipe(Flag.withDescription("Frames per second, for every animation (default 8)."), Flag.optional),
+    fps: Flag.Finite("fps").pipe(Flag.withDescription("Beats per second, for every animation (default 8): a frame shows for one beat, or as many as --animations holds it for."), Flag.optional),
     pingpong: Flag.Boolean("pingpong").pipe(Flag.withDefault(false), Flag.withDescription("Every animation plays there and back instead of looping from the start.")),
     columns: Flag.Int("columns").pipe(Flag.withDescription("Frames per row on the sheet written; each animation starts a new row (default: one row per animation)."), Flag.optional),
     spacing: Flag.Int("spacing").pipe(Flag.withDescription("Empty pixels between frames, and between animations, on the sheet written."), Flag.withDefault(0)),
@@ -429,7 +440,10 @@ const sheetCommand = Command.make(
       const skipped = new Set(flags.skip.value.split(",").map((part) => Number(part.trim()) - 1))
       sheet = { ...sheet, frames: sheet.frames.map((frame, i) => ({ ...frame, include: !skipped.has(i) })) }
     }
-    if (Option.isSome(flags.animations)) sheet = { ...sheet, animations: yield* parseAnimations(flags.animations.value, sheet.frames.length) }
+    if (Option.isSome(flags.animations)) {
+      const { animations, holds } = yield* parseAnimations(flags.animations.value, sheet.frames.length)
+      sheet = { ...sheet, animations, frames: sheet.frames.map((frame, i) => ({ ...frame, beats: holds.get(i) ?? 1 })) }
+    }
     if (Option.isSome(flags.only)) {
       const wanted = flags.only.value.split(",").map((part) => part.trim()).filter((part) => part !== "")
       const unknown = wanted.filter((name) => !sheet.animations.some((animation) => animation.name === name))
@@ -471,13 +485,16 @@ const sheetCommand = Command.make(
       }
       // One GIF and one folder of frames per animation.
       const gifs: Array<string> = []
+      const onions: Array<string> = []
       const written: Array<string> = []
       for (const clip of clips) {
-        const order = playOrder(clip.frames.length, clip.loop).map((i) => clip.frames[i]!)
-        gifs.push(yield* writeBytes(`${base}.${clip.name}.gif`, toGif(order, { scale: Math.max(flags.scale, fitScale(clip.frames[0]!, 256)), delay: 1000 / clip.fps })))
+        const { frames, delays } = played(clip)
+        gifs.push(yield* writeBytes(`${base}.${clip.name}.gif`, toGif(frames, { scale: Math.max(flags.scale, fitScale(clip.frames[0]!, 256)), delays })))
+        if (clip.frames.length > 1) onions.push(yield* writePng(`${base}.${clip.name}.onion.png`, previewOnion(clip)))
         for (const [i, frame] of clip.frames.entries()) written.push(yield* writePng(path.join(`${base}.frames`, clip.name, `${i}.png`), toRgba(frame, flags.scale)))
       }
       files.gifs = gifs
+      files.onions = onions
       files.frames = written
     }
     files.recipe = yield* writeText(`${base}.recipe.json`, encodeRecipe(recipe))

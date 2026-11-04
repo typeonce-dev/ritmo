@@ -8,14 +8,14 @@ import { describe, expect, it } from "vitest"
 import { demoImage, demoSprite } from "@typeonce/ritmo-tools/pixel/core/demo.ts"
 import { toJson, toRgba } from "@typeonce/ritmo-tools/pixel/core/export.ts"
 import { TRANSPARENT } from "@typeonce/ritmo-tools/pixel/core/fix.ts"
-import { lintArt } from "@typeonce/ritmo-tools/pixel/core/lint.ts"
+import { lintArt, type TileAxis } from "@typeonce/ritmo-tools/pixel/core/lint.ts"
 import { readProjectRecipe } from "@typeonce/ritmo-tools/pixel/core/project.ts"
 import { presets } from "@typeonce/ritmo-tools/pixel/core/palette.ts"
 import { runRecipe } from "@typeonce/ritmo-tools/pixel/core/pipeline.ts"
 import { decodeRecipe, defaultRecipe, encodeRecipe, presetPalette, type Recipe } from "@typeonce/ritmo-tools/pixel/core/recipe.ts"
 import { checkImage, compareReports, isNative, reportOfArt } from "@typeonce/ritmo-tools/pixel/core/report.ts"
 import { artOfImage, formatSprite, parseJsonMap, parseSprite } from "@typeonce/ritmo-tools/pixel/core/sprite.ts"
-import { encodePng } from "@typeonce/ritmo-tools/pixel/cli/png.ts"
+import { decodePicture as decodePng, encodePng } from "@typeonce/ritmo-tools/pixel/cli/png.ts"
 import { fakeSheet, makeSprite, place, upscale } from "./synthetic.ts"
 
 const sweetie = presetPalette("sweetie-16")!
@@ -141,6 +141,70 @@ describe("lint", () => {
   it("lets a sprite touch its edges without calling it a background", () => {
     const parsed = parseSprite(coin)
     expect(parsed.ok && lintArt(parsed.art, { transparentBackground: true })).toEqual([])
+  })
+})
+
+describe("tile seams", () => {
+  const palette = [{ r: 34, g: 32, b: 52 }, { r: 143, g: 86, b: 59 }, { r: 223, g: 113, b: 38 }, { r: 217, g: 160, b: 102 }, { r: 106, g: 190, b: 48 }]
+  const tile = (size: number, color: (x: number, y: number) => number) => {
+    const indices = new Int32Array(size * size)
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) indices[y * size + x] = color(x, y)
+    return { width: size, height: size, palette, indices }
+  }
+  const seams = (art: ReturnType<typeof tile>, axis: TileAxis = "both") => lintArt(art, { tile: axis }).filter((issue) => issue.rule === "seam")
+  const bricks = (x: number, y: number) => (y % 4 === 0 || (x + (Math.floor(y / 4) % 2 === 1 ? 4 : 0)) % 8 === 0 ? 0 : 1)
+
+  it("is only looked for on a tile", () => {
+    expect(lintArt(tile(16, (x) => Math.floor(x / 4)), {}).some((issue) => issue.rule === "seam")).toBe(false)
+  })
+
+  it("passes tiles that loop, a line along the edge included", () => {
+    expect(seams(tile(16, () => 1))).toEqual([])
+    expect(seams(tile(16, bricks))).toEqual([])
+    expect(seams(tile(16, (x) => (x === 0 ? 0 : 1)))).toEqual([])
+    expect(seams(tile(16, (x) => (x < 2 ? 0 : 1)))).toEqual([])
+    expect(seams(tile(16, (x, y) => ((x + y) % 8 < 4 ? 1 : 3)))).toEqual([])
+  })
+
+  it("passes shapes that touch the edge: their other side is inside", () => {
+    expect(seams(tile(16, (x) => (x >= 10 ? 0 : 1)))).toEqual([])
+    expect(seams(tile(16, (x, y) => (y >= 3 && y < 8 && x < 8 ? 3 : 1)))).toEqual([])
+    // Specks over a stripe spoil some rows of the match, not the stripe.
+    expect(seams(tile(16, (x, y) => ((x * 7 + y * 13) % 11 === 0 ? 4 : x > 10 ? 1 : 3)), "x")).toEqual([])
+  })
+
+  it("finds edges that do not meet, and says where", () => {
+    const ramp = seams(tile(16, (x) => Math.floor(x / 4)))
+    expect(ramp).toHaveLength(1)
+    expect(ramp[0]!.severity).toBe("warning")
+    expect(ramp[0]!.message).toContain("left and right edges")
+    expect(ramp[0]!.count).toBe(16)
+    expect(ramp[0]!.at[0]).toEqual([15, 0])
+    const down = seams(tile(16, (_, y) => Math.floor(y / 4)))
+    expect(down[0]!.message).toContain("top and bottom edges")
+    expect(down[0]!.at[3]).toEqual([3, 15])
+    // Bricks whose right half sits two rows lower: only the rows its lines cross change at the wrap.
+    const broken = seams(tile(16, (x, y) => bricks(x, x < 8 ? y : (y + 2) % 16)), "x")
+    expect(broken).toHaveLength(1)
+    expect(broken[0]!.count).toBeLessThan(16)
+  })
+
+  it("only looks the way the tile repeats", () => {
+    const across = tile(16, (x) => Math.floor(x / 4))
+    expect(seams(across, "x")).toHaveLength(1)
+    expect(seams(across, "y")).toEqual([])
+    const down = tile(16, (_, y) => Math.floor(y / 4))
+    expect(seams(down, "y")).toHaveLength(1)
+    expect(seams(down, "x")).toEqual([])
+  })
+
+  it("counts art that stops at an edge", () => {
+    const art = tile(16, () => 1)
+    const gap = { ...art, indices: art.indices.map((_, i) => (i % 16 >= 12 ? TRANSPARENT : 1)) }
+    expect(lintArt(gap, { tile: "x" }).some((issue) => issue.rule === "seam")).toBe(false)
+    // A slope cut off by the edge: drawn to the right edge at each height, gone at the left.
+    const slope = { ...art, indices: art.indices.map((_, i) => (i % 16 >= 15 - (Math.floor(i / 16) >> 1) ? 1 : TRANSPARENT)) }
+    expect(lintArt(slope, { tile: "x" }).some((issue) => issue.rule === "seam")).toBe(true)
   })
 })
 
@@ -273,6 +337,46 @@ describe("the pixel CLI", () => {
     const missing = run("sheet", "two.png", "--animations", "1-4;6-10")
     expect(missing.code).toBe(2)
     expect(missing.stderr + JSON.stringify(missing.json ?? {})).toContain("frames 5 are in no animation")
+  })
+
+  it("holds frames, and reports and writes how long each one shows", { timeout: 60_000 }, () => {
+    const sheet = fakeSheet(Array.from({ length: 4 }, (_, f) => place(makeSprite(10, 12, sweetie.colors.slice(2, 6), 3, true), 12, 16, 1, 2 + (f % 2))), 6)
+    writeFileSync(join(dir, "held.png"), encodePng(sheet.image))
+    const held = run("sheet", "held.png", "--colors", "6", "--fps", "10", "--animations", "swing=1,2x3,3-4")
+    expect(held.code).toBe(0)
+    expect(held.json.animation.animations[0].durations).toEqual([100, 300, 100, 100])
+    const json = JSON.parse(readFileSync(join(dir, "held.sheet.json"), "utf8"))
+    expect(json.frames["swing 1"].duration).toBe(300)
+    expect(json.meta.fps).toBeUndefined()
+    expect(held.json.files.onions).toEqual(["held.sheet.swing.onion.png"])
+    const recipe = decodeRecipe(readFileSync(join(dir, "held.sheet.recipe.json"), "utf8"))
+    expect(recipe.ok && recipe.value.sheet?.frames.map((frame) => frame.beats)).toEqual([1, 3, 1, 1])
+    // The recipe keeps the holds; new animations say their own.
+    const again = run("sheet", "held.png", "--recipe", "held.sheet.recipe.json", "--fps", "20")
+    expect(again.json.animation.animations[0].durations).toEqual([50, 150, 50, 50])
+    const reset = run("sheet", "held.png", "--recipe", "held.sheet.recipe.json", "--animations", "swing=1-4", "--fps", "10")
+    expect(reset.json.animation.animations[0].durations).toEqual([100, 100, 100, 100])
+
+    for (const [bad, says] of [["swing=1,2x0,3-4", "holds for no beats"], ["swing=1,2x1.5,3-4", "whole beats"]] as const) {
+      const failed = run("sheet", "held.png", "--animations", bad)
+      expect(failed.code).toBe(2)
+      expect(failed.stderr + JSON.stringify(failed.json ?? {})).toContain(says)
+    }
+  })
+
+  it("checks a tile's edges and shows it repeated", { timeout: 60_000 }, () => {
+    writeFileSync(
+      join(dir, "ramp.txt"),
+      `palette\nK #1a1c2c\nO #ef7d57\nY #ffcd75\n\npixels\n${Array.from({ length: 16 }, () => "KKKKKOOOOOOYYYYY").join("\n")}\n`
+    )
+    expect(run("lint", "ramp.txt").json.issues.map((issue: { rule: string }) => issue.rule)).not.toContain("seam")
+    const linted = run("lint", "ramp.txt", "--tile", "x")
+    expect(linted.json.issues.map((issue: { rule: string }) => issue.rule)).toContain("seam")
+    expect(run("lint", "ramp.txt", "--tile", "y").json.issues.map((issue: { rule: string }) => issue.rule)).not.toContain("seam")
+    const shown = run("preview", "ramp.txt", "--tile", "x", "-o", "ramp-tiled")
+    expect(shown.code).toBe(0)
+    const picture = decodePng(readFileSync(join(dir, shown.json.preview)))
+    expect(picture.width / picture.height).toBe(3)
   })
 
   it("reads the project's rules from pixel.config.json", { timeout: 60_000 }, () => {

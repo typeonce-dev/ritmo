@@ -6,11 +6,13 @@ import { demoImage } from "@typeonce/ritmo-tools/pixel/core/demo.ts"
 import { TRANSPARENT, type PixelArt } from "@typeonce/ritmo-tools/pixel/core/fix.ts"
 import { toGif } from "@typeonce/ritmo-tools/pixel/core/gif.ts"
 import { presets } from "@typeonce/ritmo-tools/pixel/core/palette.ts"
+import { previewOnion } from "@typeonce/ritmo-tools/pixel/core/preview.ts"
 import { decodeRecipe, defaultRecipe, encodeRecipe, type Recipe } from "@typeonce/ritmo-tools/pixel/core/recipe.ts"
 import {
   clearSheet,
   defaultSheet,
   findFrames,
+  frameDuration,
   frameOf,
   groupFrames,
   insertFrame,
@@ -21,12 +23,13 @@ import {
   removeFrame,
   removeGridLines,
   renameAnimation,
+  setBeats,
   sheetBackground,
   splitAnimation,
   withFrames,
   type Sheet
 } from "@typeonce/ritmo-tools/pixel/core/sheet.ts"
-import { atlasOf, spritesheetJson } from "@typeonce/ritmo-tools/pixel/core/spritesheet.ts"
+import { atlasOf, played, spritesheetJson } from "@typeonce/ritmo-tools/pixel/core/spritesheet.ts"
 import { crc32, toZip } from "@typeonce/ritmo-tools/pixel/core/zip.ts"
 import { fakeSheet, makeSprite, place } from "./synthetic.ts"
 
@@ -263,10 +266,10 @@ describe("laying frames out", () => {
   })
 
   it("lays each animation out from a new row and names its frames", () => {
-    const fire = { name: "fire", frames: [0, 1, 2, 3, 4].map(() => dot(1, 1)), anchor: { x: 1, y: 3 }, fps: 10, loop: "pingpong" as const }
+    const fire = { name: "fire", frames: [0, 1, 2, 3, 4].map(() => dot(1, 1)), anchor: { x: 1, y: 3 }, fps: 10, beats: [1, 3, 1, 1, 1], loop: "pingpong" as const }
     // A second animation of another size: it starts its own row, under the first.
     const big = (): PixelArt => ({ width: 6, height: 2, palette: fire.frames[0]!.palette, indices: new Int32Array(12).fill(0) })
-    const smoke = { name: "smoke", frames: [big(), big()], anchor: { x: 3, y: 1 }, fps: 5, loop: "forward" as const }
+    const smoke = { name: "smoke", frames: [big(), big()], anchor: { x: 3, y: 1 }, fps: 5, beats: [1, 1], loop: "forward" as const }
     const layout = { columns: 2, spacing: 1 }
     const atlas = atlasOf([fire, smoke], layout)
     // Fire: 3 rows of 4 high with 1 between (14), then 1, then smoke: 1 row of 2 (17).
@@ -275,6 +278,8 @@ describe("laying frames out", () => {
     const json = JSON.parse(spritesheetJson({ image: "fx.png", clips: [fire, smoke], atlas, scale: 2 }))
     expect(json.frames["fire 3"].frame).toEqual({ x: 10, y: 10, w: 8, h: 8 })
     expect(json.frames["fire 0"].duration).toBe(100)
+    expect(json.frames["fire 1"].duration).toBe(300)
+    expect(json.meta.fps).toBeUndefined()
     expect(json.frames["fire 0"].anchor).toEqual({ x: 0.375, y: 1 })
     expect(json.frames["smoke 1"].frame).toEqual({ x: 14, y: 30, w: 12, h: 4 })
     expect(json.frames["smoke 0"].duration).toBe(200)
@@ -345,10 +350,10 @@ const readGif = (bytes: Uint8Array): { width: number; height: number; delays: Ar
 describe("GIF", () => {
   it("writes frames that read back pixel for pixel, with the delay and transparency", () => {
     const frames = bobbing(3).map((art) => ({ ...art, palette: fire }))
-    const gif = readGif(toGif(frames, { scale: 2, delay: 125 }))
+    const gif = readGif(toGif(frames, { scale: 2, delays: [125, 125, 300] }))
     expect(gif.width).toBe(24)
     expect(gif.height).toBe(32)
-    expect(gif.delays).toEqual([13, 13, 13])
+    expect(gif.delays).toEqual([13, 13, 30])
     gif.frames.forEach((pixels, f) => {
       const art = frames[f]!
       expect(pixels).toHaveLength(24 * 32)
@@ -363,7 +368,7 @@ describe("GIF", () => {
 
   it("survives a picture big enough to fill the LZW table", () => {
     const sprite = makeSprite(64, 64, sweetie, 9)
-    const gif = readGif(toGif([sprite], { scale: 3, delay: 100 }))
+    const gif = readGif(toGif([sprite], { scale: 3, delays: [100] }))
     expect(gif.frames[0]![1000]).toBe(sprite.indices[Math.floor(1000 / 192 / 3) * 64 + Math.floor((1000 % 192) / 3)])
     expect(gif.frames[0]).toHaveLength(192 * 192)
   })
@@ -395,7 +400,7 @@ describe("an animation recipe", () => {
       ...defaultRecipe,
       removeBackground: true,
       sheet: {
-        frames: [frameOf({ x: 1, y: 2, width: 30, height: 40 }), { box: { x: 40, y: 2, width: 30, height: 40 }, include: false, nudge: { x: 1, y: -2 } }, frameOf({ x: 80, y: 2, width: 30, height: 40 })],
+        frames: [frameOf({ x: 1, y: 2, width: 30, height: 40 }), { box: { x: 40, y: 2, width: 30, height: 40 }, include: false, nudge: { x: 1, y: -2 }, beats: 3 }, frameOf({ x: 80, y: 2, width: 30, height: 40 })],
         animations: [
           { name: "walk", frames: [1, 0], include: true, fps: 12, loop: "pingpong" },
           { name: "idle", frames: [2], include: false, fps: 4, loop: "forward" }
@@ -429,3 +434,95 @@ describe("an animation recipe", () => {
     expect(decoded.ok && decoded.value.sheet?.animations).toEqual([{ name: "animation-1", frames: [0, 1], include: true, fps: 12, loop: "pingpong" }])
   })
 })
+
+describe("holding a frame", () => {
+  const boxes = [0, 1, 2].map((i) => frameOf({ x: i * 10, y: 0, width: 8, height: 8 }))
+
+  it("is whole beats, from 1", () => {
+    const sheet = withFrames(defaultSheet, boxes)
+    expect(setBeats(sheet, 1, 3).frames.map((frame) => frame.beats)).toEqual([1, 3, 1])
+    expect(setBeats(sheet, 1, 0).frames[1]!.beats).toBe(1)
+    expect(setBeats(sheet, 1, 2.4).frames[1]!.beats).toBe(2)
+    expect(setBeats(sheet, 9, 3)).toBe(sheet)
+  })
+
+  it("stays with its frame when frames and animations change", () => {
+    const held = setBeats(withFrames(defaultSheet, boxes), 1, 3)
+    const added = insertFrame(held, 0, frameOf({ x: 50, y: 0, width: 8, height: 8 }))
+    expect(added.frames.map((frame) => frame.beats)).toEqual([1, 1, 3, 1])
+    expect(removeFrame(held, 0).frames.map((frame) => frame.beats)).toEqual([3, 1])
+    expect(splitAnimation(held, 0, 1).frames[1]!.beats).toBe(3)
+  })
+
+  it("lasts its beats at the animation's speed, each time it plays", () => {
+    expect(frameDuration(12, 1)).toBe(83)
+    expect(frameDuration(12, 3)).toBe(250)
+    const frames = [0, 1, 2, 3].map(() => makeSprite(2, 2, fire, 1, true))
+    const clip = { name: "swing", frames, anchor: { x: 0, y: 0 }, fps: 10, beats: [1, 4, 1, 2], loop: "pingpong" as const }
+    // There and back: 0 1 2 3 2 1, so the held frame 1 shows twice.
+    expect(played(clip).delays).toEqual([100, 400, 100, 200, 100, 400])
+    expect(played(clip).frames).toEqual([frames[0], frames[1], frames[2], frames[3], frames[2], frames[1]])
+  })
+
+  it("must be whole beats in a recipe, and defaults to 1", () => {
+    const box = '{"box": {"x": 0, "y": 0, "width": 4, "height": 4}}'
+    const held = (beats: string) => decodeRecipe(`{"sheet": {"frames": [{"box": {"x": 0, "y": 0, "width": 4, "height": 4}, "beats": ${beats}}, ${box}]}}`)
+    const fine = held("3")
+    expect(fine.ok && fine.value.sheet?.frames.map((frame) => frame.beats)).toEqual([3, 1])
+    for (const bad of ["0", "1.5", "-2"]) {
+      const decoded = held(bad)
+      expect(decoded.ok).toBe(false)
+      if (!decoded.ok) expect(decoded.error).toContain("sheet.frames[0].beats")
+    }
+  })
+})
+
+describe("the onion picture", () => {
+  const palette = [{ r: 10, g: 200, b: 10 }]
+  const dotAt = (x: number): PixelArt => {
+    const indices = new Int32Array(16).fill(TRANSPARENT)
+    indices[4 + x] = 0
+    return { width: 4, height: 4, palette, indices }
+  }
+  const pixel = (image: { width: number; data: Uint8ClampedArray }, x: number, y: number): Array<number> => {
+    const i = (y * image.width + x) * 4
+    return [image.data[i]!, image.data[i + 1]!, image.data[i + 2]!]
+  }
+
+  it("shows each frame over the one before in red and the one after in blue", () => {
+    const clip = { frames: [dotAt(0), dotAt(1), dotAt(2)], anchor: { x: 0, y: 3 }, beats: [1, 1, 1], loop: "forward" as const }
+    const image = previewOnion(clip, 256)
+    // Three panels of 4 cells each, with gaps of 8.
+    const scale = (image.width - 16) / 12
+    const cell = (panel: number, x: number): Array<number> => pixel(image, panel * (4 * scale + 8) + x * scale + 1, scale + 1)
+    // The middle panel: frame 1 itself, frame 0 before it, frame 2 after it.
+    expect(cell(1, 1)).toEqual([10, 200, 10])
+    expect(cell(1, 0)).toEqual([232, 72, 72])
+    expect(cell(1, 2)).toEqual([72, 120, 240])
+    // The first panel's frame before is the last one: the loop's seam.
+    expect(cell(0, 2)).toEqual([232, 72, 72])
+    expect(cell(0, 1)).toEqual([72, 120, 240])
+  })
+
+  it("is purple where the frames before and after are the same, and plays there and back", () => {
+    const two = previewOnion({ frames: [dotAt(0), dotAt(1)], anchor: { x: 0, y: 3 }, beats: [1, 1], loop: "forward" }, 256)
+    const scale = (two.width - 8) / 8
+    expect(pixel(two, scale + 1, scale + 1)).toEqual([168, 96, 200])
+    // Four panels: 0 1 2 1, the last with frame 2 before it and frame 0 after it.
+    const there = previewOnion({ frames: [dotAt(0), dotAt(1), dotAt(2)], anchor: { x: 0, y: 3 }, beats: [1, 1, 1], loop: "pingpong" }, 256)
+    const size = (there.width - 24) / 16
+    expect(pixel(there, 3 * (4 * size + 8) + 2 * size + 1, size + 1)).toEqual([232, 72, 72])
+    expect(pixel(there, 3 * (4 * size + 8) + 1, size + 1)).toEqual([72, 120, 240])
+  })
+
+  it("has a tick per beat under a held frame", () => {
+    const flat = previewOnion({ frames: [dotAt(0), dotAt(1)], anchor: { x: 0, y: 3 }, beats: [1, 1], loop: "forward" }, 128)
+    const held = previewOnion({ frames: [dotAt(0), dotAt(1)], anchor: { x: 0, y: 3 }, beats: [3, 1], loop: "forward" }, 128)
+    expect(held.height).toBeGreaterThan(flat.height)
+    const row = held.height - 1
+    const ticks = (from: number): number => [0, 1, 2, 3].filter((tick) => pixel(held, from + tick * 6 + 1, row)[0] === 230).length
+    expect(ticks(0)).toBe(3)
+    expect(ticks((held.width + 8) / 2)).toBe(1)
+  })
+})
+

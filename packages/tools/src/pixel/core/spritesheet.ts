@@ -11,7 +11,7 @@
  * frame) for engines that place sprites by it.
  */
 import { TRANSPARENT, type PixelArt } from "./fix.ts"
-import type { Loop, Point } from "./sheet.ts"
+import { frameDuration, playOrder, type Loop, type Point } from "./sheet.ts"
 
 /** How each animation's frames are laid out: one row, or rows of `columns` frames. */
 export interface SheetLayout {
@@ -28,7 +28,15 @@ export interface AtlasClip {
   /** Where every frame's anchor is, in frame pixels at 1x (one spot for all its frames). */
   readonly anchor: Point
   readonly fps: number
+  /** How many beats each of its frames shows (see `SheetFrame`). */
+  readonly beats: ReadonlyArray<number>
   readonly loop: Loop
+}
+
+/** An animation's frames in the order they play, each with how long it shows in milliseconds. */
+export const played = (clip: AtlasClip): { readonly frames: ReadonlyArray<PixelArt>; readonly delays: ReadonlyArray<number> } => {
+  const order = playOrder(clip.frames.length, clip.loop)
+  return { frames: order.map((i) => clip.frames[i]!), delays: order.map((i) => frameDuration(clip.fps, clip.beats[i]!)) }
 }
 
 /** Where one frame is on the picture, in its pixels at 1x. */
@@ -101,7 +109,6 @@ export const spritesheetJson = (info: SpritesheetInfo): string => {
     const rects = info.atlas.rects.filter((rect) => rect.clip === c)
     const first = rects[0]
     if (first === undefined) return
-    const duration = Math.round(1000 / Math.max(0.1, clip.fps))
     const anchor = { x: round((clip.anchor.x + 0.5) / first.w), y: round((clip.anchor.y + 1) / first.h) }
     const names = rects.map((rect) => `${clip.name} ${rect.frame}`)
     frameTags.push({ name: clip.name, from: Object.keys(frames).length, to: Object.keys(frames).length + names.length - 1, direction: clip.loop })
@@ -113,7 +120,7 @@ export const spritesheetJson = (info: SpritesheetInfo): string => {
         trimmed: false,
         spriteSourceSize: { x: 0, y: 0, w: frame.w, h: frame.h },
         sourceSize: { w: frame.w, h: frame.h },
-        duration,
+        duration: frameDuration(clip.fps, clip.beats[rect.frame]!),
         anchor
       }
     })
@@ -131,8 +138,7 @@ export const spritesheetJson = (info: SpritesheetInfo): string => {
           format: "RGBA8888",
           size: { w: info.atlas.art.width * scale, h: info.atlas.art.height * scale },
           scale: "1",
-          frameTags,
-          fps: Object.fromEntries(info.clips.map((clip) => [clip.name, clip.fps]))
+          frameTags
         }
       },
       null,

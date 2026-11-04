@@ -45,11 +45,13 @@ export const anchors: ReadonlyArray<{ readonly id: Anchor; readonly label: strin
 /** How an animation plays: start to end and again, or there and back. */
 export type Loop = "forward" | "pingpong"
 
-/** One frame of a sheet: its box, whether the animation uses it, and a nudge by hand in fixed pixels. */
+/** One frame of a sheet: its box, whether the animation uses it, a nudge by hand in fixed pixels, and how long it holds. */
 export interface SheetFrame {
   readonly box: FrameBox
   readonly include: boolean
   readonly nudge: { readonly x: number; readonly y: number }
+  /** How many beats it shows, a whole number from 1; a beat is one frame at the animation's `fps`. */
+  readonly beats: number
 }
 
 /**
@@ -61,7 +63,7 @@ export interface SheetAnimation {
   readonly name: string
   readonly frames: ReadonlyArray<number>
   readonly include: boolean
-  /** Frames per second. */
+  /** Beats per second: frames per second, for frames that hold one beat. */
   readonly fps: number
   readonly loop: Loop
 }
@@ -84,7 +86,10 @@ export const DEFAULT_FPS = 8
 
 export const defaultSheet: Sheet = { frames: [], animations: [], anchor: "ground", padding: 1 }
 
-export const frameOf = (box: FrameBox): SheetFrame => ({ box, include: true, nudge: { x: 0, y: 0 } })
+export const frameOf = (box: FrameBox): SheetFrame => ({ box, include: true, nudge: { x: 0, y: 0 }, beats: 1 })
+
+/** How long a frame shows, in whole milliseconds. */
+export const frameDuration = (fps: number, beats: number): number => Math.round((1000 * beats) / Math.max(0.1, fps))
 
 /** An animation of these frames, exported, at the default speed, looping. */
 export const animationOf = (name: string, frames: ReadonlyArray<number>): SheetAnimation => ({ name, frames, include: true, fps: DEFAULT_FPS, loop: "forward" })
@@ -245,6 +250,15 @@ export const setAnimation = (sheet: Sheet, animation: number, change: Partial<Pi
   const animations = [...sheet.animations]
   animations[animation] = { ...current, ...change, fps: Math.min(60, Math.max(0.5, change.fps ?? current.fps)) }
   return { ...sheet, animations }
+}
+
+/** The frame held for this many beats, a whole number from 1. */
+export const setBeats = (sheet: Sheet, frame: number, beats: number): Sheet => {
+  const current = sheet.frames[frame]
+  if (current === undefined) return sheet
+  const frames = [...sheet.frames]
+  frames[frame] = { ...current, beats: Math.max(1, Math.round(beats)) }
+  return { ...sheet, frames }
 }
 
 // ---------------------------------------------------------------------------

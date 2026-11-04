@@ -11,7 +11,7 @@
 import { Effect, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { toGif } from "../../pixel/core/gif.ts"
-import { atlasOf, spritesheetJson } from "../../pixel/core/spritesheet.ts"
+import { atlasOf, played, spritesheetJson } from "../../pixel/core/spritesheet.ts"
 import { encodePng } from "../../pixel/cli/png.ts"
 import { Exit } from "../../pixel/cli/commands.ts"
 import { changedSince } from "../core/approval.ts"
@@ -184,13 +184,13 @@ const renderCommand = Command.make(
       const run = runEffect(loaded.effect, bank.palette, { seed: draft.seed, tune: draft.tune, ramps: rampsFor(bank.ramps, draft.recolor) })
       if (run.errors.length > 0) return yield* new CliFailure({ message: `${name} (draft ${id}) does not draw cleanly: ${run.errors.join("; ")}` })
       const frames = framesOf(run, bank.palette)
-      const clip = { name, frames, anchor: run.anchor, fps: run.fps, loop: "forward" as const }
+      const clip = { name, frames, anchor: run.anchor, fps: run.fps, beats: frames.map(() => 1), loop: "forward" as const }
       const atlas = atlasOf([clip], { columns: SHEET_COLUMNS, spacing: 0 })
       const big = scale === 1 ? atlas.art : { ...atlas.art, width: atlas.art.width * scale, height: atlas.art.height * scale, indices: upscale(atlas.art.indices, atlas.art.width, atlas.art.height, scale) }
       const files = [
         yield* writeBytes(path.join(folder, `${name}.png`), encodePng(rgbaOf(big))),
         yield* writeText(path.join(folder, `${name}.json`), withLoop(spritesheetJson({ image: `${name}.png`, clips: [clip], atlas, scale }), name, run.loop)),
-        yield* writeBytes(path.join(folder, `${name}.gif`), toGif(frames, { scale: Math.max(scale, 4), delay: 1000 / run.fps }))
+        yield* writeBytes(path.join(folder, `${name}.gif`), toGif(frames, { scale: Math.max(scale, 4), delays: played(clip).delays }))
       ]
       const said = review.effects[name] ?? newEffect
       const changed = said.status === "approved" && said.approved !== undefined ? changedSince(said.approved, id, run, bank.palette) : undefined
