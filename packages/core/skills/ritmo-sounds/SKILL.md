@@ -18,6 +18,7 @@ description: "Apply whenever a game's sound effects are made, changed, or review
 ## Rules
 
 - Never call a sound done because it checks clean: only the person's `approved` says it sounds right.
+- `changedSinceApproved` on a sound means it no longer matches what the person approved: its recipe, or the bank's master volume. Tell them what changed and ask them to listen again; approving is theirs.
 - Keep the person's `tune` when you change a recipe, unless their note asks otherwise; fold it in (change the layers, drop the tune) only when they agree.
 - One bank per game. Keep similar sounds similar: a family (hits, UI) shares instruments and loudness, so `sound check`'s kind comparison stays meaningful.
 - `sound render <bank> -o <dir>` writes WAV files when the game needs the sounds: the game plays the files, and its own audio code carries a recipe's `heavy` (duck the others for a moment) and `interval` (the least time between two plays).

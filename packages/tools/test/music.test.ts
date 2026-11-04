@@ -1,7 +1,9 @@
 import { spawnSync } from "node:child_process"
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
+import { createServer, type Server } from "node:http"
+import type { AddressInfo } from "node:net"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { join, relative } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 
@@ -11,8 +13,10 @@ import { instrumentIds, instruments } from "@typeonce/ritmo-tools/music/core/ins
 import { isSparse, listen } from "@typeonce/ritmo-tools/music/core/listen.ts"
 import { toMidi } from "@typeonce/ritmo-tools/music/core/midi.ts"
 import { loudnessOf, peakOf, renderSong, SAMPLE_RATE } from "@typeonce/ritmo-tools/music/core/render.ts"
-import { describeEdits, reviewSummary } from "@typeonce/ritmo-tools/music/core/review.ts"
+import { approvalOf, audioChangedOf, audioReviewSummary, changedSince, decodeAudioReview, decodeAudioReviews, decodeReview, describeEdits, emptyReview, encodeAudioReview, encodeAudioReviews, encodeReview, musicSummary, reviewPath, reviewSummary } from "@typeonce/ritmo-tools/music/core/review.ts"
 import { decodeSong, encodeSong, inKey, midiOf, nameOf, parseKey, type Song } from "@typeonce/ritmo-tools/music/core/song.ts"
+import { audioReviewPlace, findMusic, hashFile, libraryOf, readAudioReview, writeAudioReview } from "@typeonce/ritmo-tools/music/cli/library.ts"
+import { api } from "@typeonce/ritmo-tools/music/cli/serve.ts"
 
 const tune = ["A4", "C5", "E5", "D5", "C5", "A4", "G4", "A4"]
 
@@ -256,6 +260,253 @@ describe("reviews", () => {
     })
     expect(summary.comments.map((comment) => comment.where)).toEqual(["bar 1, Melody", "bar 2"])
   })
+
+  it("keep what the person approved through a round trip", () => {
+    const review = { ...emptyReview, status: "approved" as const, approved: approvalOf(song()) }
+    expect(decodeReview(encodeReview(review))).toEqual({ ok: true, value: review })
+    expect(decodeReview(JSON.stringify({ approved: { song: 1 } })).ok).toBe(false)
+    expect(decodeReview(encodeReview(emptyReview))).toEqual({ ok: true, value: emptyReview })
+  })
+
+  it("see a change to what the person heard, and say where", () => {
+    const approved = approvalOf(song())
+    expect(changedSince(approved, song())).toBeUndefined()
+    const melody = song().tracks[0]!
+    expect(changedSince(approved, { ...song(), tracks: [{ ...melody, volume: 0.5 }] })).toBe("Melody changed")
+    expect(changedSince(approved, { ...song(), tracks: [{ ...melody, notes: melody.notes.slice(1) }] })).toBe("Melody changed")
+    expect(changedSince(approved, { ...song(), tempo: 90 })).toBe("its tempo, length, loop, or master changed")
+    expect(changedSince(approved, { ...song(), tracks: [melody, melody] })).toBe("2 tracks, 1 when approved")
+  })
+
+  it("take no change from what is not heard, or what the file rounds away", () => {
+    const approved = approvalOf(song())
+    const melody = song().tracks[0]!
+    expect(changedSince(approved, { ...song(), about: "Another line." })).toBeUndefined()
+    expect(changedSince(approved, { ...song(), key: "C major" })).toBeUndefined()
+    expect(changedSince(approved, { ...song(), tracks: [{ ...melody, name: "Lead" }] })).toBeUndefined()
+    expect(changedSince(approved, { ...song(), reference: { tempo: 100, key: "A minor", length: 8, notes: [], contour: [], offset: 0, start: 0 } })).toBeUndefined()
+    // A slider's value before and after the song is saved.
+    expect(changedSince(approved, { ...song(), tracks: [{ ...melody, volume: 0.80000000001 }] })).toBeUndefined()
+    // Notes in another order are the same notes.
+    expect(changedSince(approved, { ...song(), tracks: [{ ...melody, notes: [...melody.notes].reverse() }] })).toBeUndefined()
+  })
+
+  it("tell the agent to ask again when an approved song changed, and leave an older approval alone", () => {
+    const review = { ...emptyReview, status: "approved" as const, approved: approvalOf(song()) }
+    expect(reviewSummary(song(), review).changedSinceApproved).toBeUndefined()
+    expect(reviewSummary(song(), review).next).toContain("Render it")
+    const changed = reviewSummary({ ...song(), tempo: 90 }, review)
+    expect(changed.changedSinceApproved).toBe("its tempo, length, loop, or master changed")
+    expect(changed.next).toContain("listen again")
+    // Approved before approvals kept anything: nothing to compare with.
+    expect(reviewSummary({ ...song(), tempo: 90 }, { ...emptyReview, status: "approved" }).changedSinceApproved).toBeUndefined()
+    // Asked for changes: what they approved before does not count.
+    expect(reviewSummary({ ...song(), tempo: 90 }, { ...review, status: "changes" }).changedSinceApproved).toBeUndefined()
+  })
+
+  it("of a plain audio file round-trip, and see the file change", () => {
+    const review = { status: "approved" as const, note: "Good.", comments: [{ id: "a", from: 1.5, to: 3, text: "softer" }], approved: "abc" }
+    expect(decodeAudioReview(encodeAudioReview(review))).toEqual({ ok: true, value: review })
+    expect(decodeAudioReviews(encodeAudioReviews({ "public/day.flac": review }))).toEqual({ ok: true, value: { "public/day.flac": review } })
+    expect(decodeAudioReviews("{}").ok).toBe(false)
+    expect(decodeAudioReview(JSON.stringify({ comments: [{ id: "a" }] })).ok).toBe(false)
+    expect(audioChangedOf(review, "abc")).toBeUndefined()
+    expect(audioChangedOf(review, "def")).toBe("the file changed")
+    expect(audioReviewSummary(review, "def").next).toContain("listen again")
+    expect(audioReviewSummary(review, "abc").comments[0]?.where).toBe("0:01.5 to 0:03.0")
+  })
+
+  it("sum up all the music, the changes first", () => {
+    const summary = musicSummary([
+      { file: "a", status: "approved" as const },
+      { file: "b", status: "new" as const },
+      { file: "c", status: "approved" as const, changedSinceApproved: "Melody changed" },
+      { file: "d", status: "changes" as const }
+    ])
+    expect(summary.summary).toBe("2 approved (1 changed since: ask the person to listen again), 1 with changes asked, 1 not reviewed yet (of 4).")
+    expect(summary.music.map((entry) => entry.file)).toEqual(["d", "c", "b", "a"])
+  })
+})
+
+describe("the library", () => {
+  const game = (): string => {
+    const folder = realpathSync(mkdtempSync(join(tmpdir(), "music-")))
+    writeFileSync(join(folder, "package.json"), "{}")
+    for (const dir of ["assets/audio", "assets/audio/theme.song.stems", "public/music", "node_modules/some", ".cache"]) mkdirSync(join(folder, dir), { recursive: true })
+    const write = (name: string, text: string): void => writeFileSync(join(folder, name), text)
+    write("assets/audio/theme.song.json", encodeSong(song()))
+    write("assets/audio/theme.song.review.json", encodeReview(emptyReview))
+    write("assets/audio/theme.song.wav", "a render of the song above")
+    write("assets/audio/theme.song.mid", "its notes")
+    write("assets/audio/theme.song.reference.wav", "the hum it was built around")
+    write("assets/audio/theme.song.stems/01-melody.wav", "a stem")
+    write("assets/audio/other.json", "{}")
+    write("public/music/day.flac", "bytes of the day")
+    write("public/music/night.mp3", "bytes of the night")
+    write("public/music/rendered.sha256", "not music")
+    write("node_modules/some/tone.wav", "a dependency's")
+    write(".cache/old.wav", "a cache's")
+    return folder
+  }
+  const ids = async (folder: string, paths: ReadonlyArray<string>) => (await findMusic(paths.map((path) => join(folder, path)))).map((music) => relative(folder, music.file))
+
+  it("finds songs and audio files in a folder, and leaves out what a tool wrote beside them", async () => {
+    const folder = game()
+    expect(await ids(folder, ["."])).toEqual(["assets/audio/theme.song.json", "public/music/day.flac", "public/music/night.mp3"])
+  })
+
+  it("takes a file named outright, whatever its name, once", async () => {
+    const folder = game()
+    expect(await ids(folder, ["assets/audio/other.json", "assets/audio/other.json", "assets/audio/theme.song.wav"])).toEqual(["assets/audio/other.json", "assets/audio/theme.song.wav"])
+    expect((await findMusic([join(folder, "public/music/day.flac")]))[0]?.kind).toBe("audio")
+    expect((await findMusic([join(folder, "assets/audio/other.json")]))[0]?.kind).toBe("song")
+  })
+
+  it("passes over a path that is gone", async () => {
+    expect(await findMusic([join(game(), "nothing")])).toEqual([])
+  })
+
+  it("keeps a plain audio file's review out of a folder that ships, at the game's root", async () => {
+    const folder = game()
+    const file = join(folder, "public/music/day.flac")
+    expect(audioReviewPlace(file)).toEqual({ reviews: join(folder, "music.review.json"), key: "public/music/day.flac" })
+    const review = { status: "changes" as const, note: "Too busy.", comments: [] }
+    await writeAudioReview(file, review)
+    expect(await readAudioReview(file)).toEqual(review)
+    expect(existsSync(join(folder, "public/music/music.review.json"))).toBe(false)
+  })
+
+  it("keeps every review when several are written at once", async () => {
+    const folder = game()
+    const review = { status: "changes" as const, note: "", comments: [] }
+    await Promise.all(["day.flac", "night.mp3"].map((name, i) => writeAudioReview(join(folder, "public/music", name), { ...review, note: String(i) })))
+    expect((await readAudioReview(join(folder, "public/music/day.flac"))).note).toBe("0")
+    expect((await readAudioReview(join(folder, "public/music/night.mp3"))).note).toBe("1")
+  })
+
+  it("keeps a review beside the file when there is no game around it", () => {
+    const folder = realpathSync(mkdtempSync(join(tmpdir(), "music-")))
+    expect(audioReviewPlace(join(folder, "day.flac")).reviews).toBe(join(folder, "music.review.json"))
+  })
+
+  it("lists each entry's status, and what changed since it was approved", async () => {
+    const folder = game()
+    const songFile = join(folder, "assets/audio/theme.song.json")
+    writeFileSync(reviewPath(songFile), encodeReview({ ...emptyReview, status: "approved", approved: approvalOf({ ...song(), tempo: 90 }) }))
+    const flac = join(folder, "public/music/day.flac")
+    await writeAudioReview(flac, { status: "approved", note: "", comments: [], approved: await hashFile(flac) })
+    const entries = await libraryOf(await findMusic([folder]))
+    expect(entries.map((entry) => [entry.name, entry.status, entry.changed])).toEqual([
+      ["theme", "approved", "its tempo, length, loop, or master changed"],
+      ["day.flac", "approved", undefined],
+      ["night.mp3", "new", undefined]
+    ])
+    // The file changes, and the page's next look sees it.
+    writeFileSync(flac, "bytes of another day")
+    const later = await libraryOf(await findMusic([folder]))
+    expect(later.find((entry) => entry.name === "day.flac")?.changed).toBe("the file changed")
+  })
+
+  it("lists a broken song with its problem, and goes on", async () => {
+    const folder = game()
+    writeFileSync(join(folder, "assets/audio/broken.song.json"), JSON.stringify({ tempo: 100, key: "C major", bars: 1, tracks: [{ instrument: "kazoo", notes: [] }] }))
+    const entries = await libraryOf(await findMusic([folder]))
+    expect(entries.find((entry) => entry.name === "broken")?.problem).toContain("tracks[0].instrument")
+    expect(entries.find((entry) => entry.name === "theme")?.problem).toBeUndefined()
+  })
+})
+
+describe("the review page's server", () => {
+  const withServer = async (paths: ReadonlyArray<string>, run: (url: string) => Promise<void>): Promise<void> => {
+    const server: Server = createServer((request, response) => void api(paths)(request, response))
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done))
+    try {
+      await run(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)
+    } finally {
+      server.close()
+    }
+  }
+  const setup = (): { readonly folder: string; readonly songFile: string; readonly flac: string } => {
+    const folder = realpathSync(mkdtempSync(join(tmpdir(), "music-")))
+    const songFile = join(folder, "theme.song.json")
+    const flac = join(folder, "day.flac")
+    writeFileSync(songFile, encodeSong(song()))
+    writeFileSync(flac, "bytes of the day")
+    writeFileSync(join(folder, "secret.txt"), "not music")
+    return { folder, songFile, flac }
+  }
+  const idOf = (file: string): string => relative(process.cwd(), file)
+
+  it("lists the music, and opens each by its id", async () => {
+    const { folder, songFile, flac } = setup()
+    await withServer([folder], async (url) => {
+      const { entries } = (await (await fetch(`${url}/library`)).json()) as { entries: ReadonlyArray<{ id: string; kind: string }> }
+      expect(entries.map((entry) => [entry.id, entry.kind])).toEqual([[idOf(flac), "audio"], [idOf(songFile), "song"]])
+      const session = (await (await fetch(`${url}/session?id=${encodeURIComponent(idOf(songFile))}`)).json()) as { kind: string; songText: string; reviewText: null }
+      expect(session).toMatchObject({ kind: "song", reviewText: null })
+      expect(decodeSong(session.songText).ok).toBe(true)
+      const audio = (await (await fetch(`${url}/session?id=${encodeURIComponent(idOf(flac))}`)).json()) as { kind: string; hash: string }
+      expect(audio.kind).toBe("audio")
+      expect(audio.hash).toBe(await hashFile(flac))
+      expect(await (await fetch(`${url}/file?id=${encodeURIComponent(idOf(flac))}`)).text()).toBe("bytes of the day")
+    })
+  })
+
+  it("serves nothing but the music it found", async () => {
+    const { folder } = setup()
+    await withServer([folder], async (url) => {
+      for (const id of [idOf(join(folder, "secret.txt")), "../../etc/passwd", ""]) {
+        expect((await fetch(`${url}/file?id=${encodeURIComponent(id)}`)).status, id).toBe(404)
+        expect((await fetch(`${url}/session?id=${encodeURIComponent(id)}`)).status, id).toBe(404)
+      }
+    })
+  })
+
+  it("saves a song and its review beside it, and a plain file's review apart, each with a new version", async () => {
+    const { folder, songFile, flac } = setup()
+    await withServer([folder], async (url) => {
+      const id = encodeURIComponent(idOf(songFile))
+      const saved = await fetch(`${url}/song?id=${id}`, { method: "PUT", body: encodeSong({ ...song(), tempo: 90 }) })
+      expect(saved.status).toBe(200)
+      const songNow = decodeSong(readFileSync(songFile, "utf8"))
+      expect(songNow.ok && songNow.value.tempo).toBe(90)
+      const review = { ...emptyReview, status: "changes" as const, note: "Calmer." }
+      const answer = (await (await fetch(`${url}/review?id=${id}`, { method: "PUT", body: encodeReview(review) })).json()) as { version: string }
+      expect(decodeReview(readFileSync(reviewPath(songFile), "utf8"))).toEqual({ ok: true, value: review })
+      const { entries } = (await (await fetch(`${url}/library`)).json()) as { entries: ReadonlyArray<{ id: string; version: string }> }
+      // What the page keeps after a save is what the list shows, so the page does not read its own save as the agent's.
+      expect(entries.find((entry) => entry.id === idOf(songFile))?.version).toBe(answer.version)
+      const flacReview = { status: "approved" as const, note: "", comments: [], approved: await hashFile(flac) }
+      expect((await fetch(`${url}/review?id=${encodeURIComponent(idOf(flac))}`, { method: "PUT", body: encodeAudioReview(flacReview) })).status).toBe(200)
+      expect(await readAudioReview(flac)).toEqual(flacReview)
+      expect(existsSync(`${flac}.review.json`)).toBe(false)
+    })
+  })
+
+  it("refuses a broken song and review, and writes nothing", async () => {
+    const { folder, songFile } = setup()
+    const before = readFileSync(songFile, "utf8")
+    await withServer([folder], async (url) => {
+      const id = encodeURIComponent(idOf(songFile))
+      expect((await fetch(`${url}/song?id=${id}`, { method: "PUT", body: "{}" })).status).toBe(400)
+      expect((await fetch(`${url}/review?id=${id}`, { method: "PUT", body: "not json" })).status).toBe(400)
+      expect(readFileSync(songFile, "utf8")).toBe(before)
+      expect(existsSync(reviewPath(songFile))).toBe(false)
+    })
+  })
+
+  it("keeps a hum next to its song, by a plain name only", async () => {
+    const { folder, songFile, flac } = setup()
+    await withServer([folder], async (url) => {
+      const id = encodeURIComponent(idOf(songFile))
+      expect((await fetch(`${url}/audio/hum.wav?id=${id}`, { method: "PUT", body: "hummm" })).status).toBe(200)
+      expect(await (await fetch(`${url}/audio/hum.wav?id=${id}`)).text()).toBe("hummm")
+      expect(readFileSync(join(folder, "hum.wav"), "utf8")).toBe("hummm")
+      expect((await fetch(`${url}/audio/${encodeURIComponent("../hum.wav")}?id=${id}`, { method: "PUT", body: "out" })).status).toBe(400)
+      // A plain audio file has no hum beside it.
+      expect((await fetch(`${url}/audio/hum.wav?id=${encodeURIComponent(idOf(flac))}`)).status).toBe(404)
+    })
+  })
 })
 
 describe("the command line", () => {
@@ -285,5 +536,45 @@ describe("the command line", () => {
     const result = run("check", file)
     expect(result.status).toBe(2)
     expect(result.stdout).toContain("tracks[0].instrument")
+  })
+
+  it("reads back what the person said across a folder of music, the changes first", { timeout: 30_000 }, () => {
+    const folder = mkdtempSync(join(tmpdir(), "music-"))
+    const write = (name: string, value: Song, review: Parameters<typeof encodeReview>[0]): void => {
+      writeFileSync(join(folder, `${name}.song.json`), encodeSong(value))
+      writeFileSync(join(folder, `${name}.song.review.json`), encodeReview(review))
+    }
+    write("approved", song(), { ...emptyReview, status: "approved", approved: approvalOf(song()) })
+    write("asked", song(), { ...emptyReview, status: "changes", note: "Calmer." })
+    write("rewritten", { ...song(), tempo: 90 }, { ...emptyReview, status: "approved", approved: approvalOf(song()) })
+    writeFileSync(join(folder, "day.flac"), "bytes of the day")
+    const result = run("notes", folder)
+    expect(result.status).toBe(0)
+    const answer = JSON.parse(result.stdout) as { summary: string; music: ReadonlyArray<{ file: string; kind: string; status: string; note?: string; changedSinceApproved?: string }> }
+    expect(answer.summary).toBe("2 approved (1 changed since: ask the person to listen again), 1 with changes asked, 1 not reviewed yet (of 4).")
+    expect(answer.music.map((entry) => [entry.file.split("/").pop(), entry.kind, entry.status])).toEqual([
+      ["asked.song.json", "song", "changes"],
+      ["rewritten.song.json", "song", "approved"],
+      ["day.flac", "audio", "new"],
+      ["approved.song.json", "song", "approved"]
+    ])
+    expect(answer.music[1]?.changedSinceApproved).toBe("its tempo, length, loop, or master changed")
+  })
+
+  it("says so when a folder holds no music, and a path is not there", { timeout: 30_000 }, () => {
+    const folder = mkdtempSync(join(tmpdir(), "music-"))
+    const empty = run("notes", folder)
+    expect(empty.status).toBe(2)
+    expect(empty.stderr).toContain("no songs or audio files")
+    expect(run("notes", join(folder, "nothing")).status).toBe(2)
+  })
+
+  it("lists a song that changed since it was approved when it renders", { timeout: 30_000 }, () => {
+    const file = join(mkdtempSync(join(tmpdir(), "music-")), "theme.song.json")
+    writeFileSync(file, encodeSong({ ...song(), tempo: 90 }))
+    writeFileSync(reviewPath(file), encodeReview({ ...emptyReview, status: "approved", approved: approvalOf(song()) }))
+    const rendered = run("render", file)
+    expect(rendered.status).toBe(0)
+    expect(JSON.parse(rendered.stdout)).toMatchObject({ changedSinceApproved: "its tempo, length, loop, or master changed" })
   })
 })

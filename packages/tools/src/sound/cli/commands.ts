@@ -12,7 +12,7 @@ import { Argument, Command, Flag } from "effect/cli"
 import { checkBank } from "../core/measure.ts"
 import { encodeBank, type Bank } from "../core/recipe.ts"
 import { render, renderSequence } from "../core/render.ts"
-import { encodeReview, newSound, reviewPath, reviewSummary } from "../core/review.ts"
+import { changedOf, encodeReview, newSound, reviewPath, reviewSummary } from "../core/review.ts"
 import { makeTakes, towards } from "../core/takes.ts"
 import { toWav } from "../core/wav.ts"
 import { CliFailure, printJson, readBank, readReview, readText, writeBytes, writeText } from "./io.ts"
@@ -77,9 +77,19 @@ const renderCommand = Command.make(
       const parts = chosen.map((name, i) => ({ recipe: bank.sounds[name]!, at: i * gap }))
       files.push(yield* writeBytes(path.join(folder, "sequence.wav"), toWav(renderSequence(parts, { master: bank.master }))))
     }
-    yield* printJson({ file: flags.bank, files })
+    const review = yield* readReview(flags.bank)
+    const changed = chosen.flatMap((name) => {
+      const entry = review.sounds[name]
+      const change = entry === undefined ? undefined : changedOf(entry, bank.sounds[name]!, bank.master)
+      return change === undefined ? [] : [{ sound: name, change }]
+    })
+    yield* printJson({ file: flags.bank, files, changedSinceApproved: changed.length === 0 ? undefined : changed })
   })
-).pipe(Command.withDescription("Writes each sound (or the named ones) as a WAV file, at the bank's master volume, exactly as the page plays it."))
+).pipe(
+  Command.withDescription(
+    "Writes each sound (or the named ones) as a WAV file, at the bank's master volume, exactly as the page plays it. Lists `changedSinceApproved` for a sound that differs from what the person approved."
+  )
+)
 
 const vary = Command.make(
   "vary",
@@ -142,9 +152,9 @@ const notes = Command.make(
   Effect.fn("notes")(function* (flags) {
     const bank = yield* readBank(flags.bank)
     const review = yield* readReview(flags.bank)
-    yield* printJson({ file: flags.bank, review: reviewPath(flags.bank), ...reviewSummary(Object.keys(bank.sounds), review) })
+    yield* printJson({ file: flags.bank, review: reviewPath(flags.bank), ...reviewSummary(bank, review) })
   })
-).pipe(Command.withDescription("What the person said in the review: each sound's status (new, approved, changes asked) and note, the changes first."))
+).pipe(Command.withDescription("What the person said in the review: each sound's status (new, approved, changes asked), its note, and, for an approved sound that no longer matches what the person heard, `changedSinceApproved`, the changes first."))
 
 const STARTER: Bank = {
   master: 0.6,

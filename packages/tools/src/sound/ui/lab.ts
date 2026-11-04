@@ -15,7 +15,7 @@ import { makeHistory } from "../../pixel/ui/history.ts"
 import { issuesOf, measure, checkBank, type Issue, type Measures } from "../core/measure.ts"
 import { applyTune, decodeBank, describeLayer, encodeBank, filters, neutralTune, waves, type Bank, type Filter as NoiseFilter, type Layer, type Recipe, type Tune, type Wave } from "../core/recipe.ts"
 import { layerEnd, render, type Rendered } from "../core/render.ts"
-import { decodeReview, emptyReview, encodeReview, newSound, type SoundReview, type Status } from "../core/review.ts"
+import { approvalOf, changedOf, decodeReview, emptyReview, encodeReview, newSound, type SoundReview, type Status } from "../core/review.ts"
 import { makeTakes, towards, type Take, type Toward } from "../core/takes.ts"
 import { toWav } from "../core/wav.ts"
 import { makePlayer } from "./player.ts"
@@ -63,6 +63,12 @@ let middle: { readonly heavy: number | undefined; readonly other: number | undef
 const recipeOf = (name: string): Recipe | undefined => state.bank.sounds[name]
 const reviewOf = (name: string): SoundReview => state.review.sounds[name] ?? newSound
 const names = (): Array<string> => Object.keys(state.bank.sounds)
+
+/** What changed since the person approved this sound, when they did and something has. */
+const changedNow = (name: string): string | undefined => {
+  const recipe = recipeOf(name)
+  return recipe === undefined ? undefined : changedOf(reviewOf(name), recipe, state.bank.master)
+}
 
 /** Renders are cached by what they render, so playing and drawing never render twice. */
 const renders = new Map<string, Rendered>()
@@ -154,6 +160,8 @@ const changed = (what: { readonly bank?: boolean; readonly review?: boolean }): 
 const setRecipe = (name: string, recipe: Recipe): void => {
   state.bank = { ...state.bank, sounds: { ...state.bank.sounds, [name]: recipe } }
 }
+
+const changedReview = (): void => changed({ review: true })
 
 const setReview = (name: string, entry: Partial<SoundReview>): void => {
   state.review = { sounds: { ...state.review.sounds, [name]: { ...reviewOf(name), ...entry } } }
@@ -381,6 +389,7 @@ const renderListRows = (shown = visible()): void => {
       const check = checked.get(name)
       const errors = check?.issues.some((issue) => issue.severity === "error") === true
       const warnings = check?.issues.length ?? 0
+      const changed = changedNow(name)
       return h(
         "div",
         {
@@ -390,6 +399,7 @@ const renderListRows = (shown = visible()): void => {
         },
         statusDot(entry.status),
         h("span", { class: "sound-name" }, name),
+        changed !== undefined && h("span", { class: "sound-flag warn", title: `Changed since you approved it: ${changed}.` }, icon("sparkle")),
         warnings > 0 && h("span", { class: `sound-flag ${errors ? "bad" : "warn"}`, title: check?.issues.map((issue) => issue.message).join("\n") }, icon("alert")),
         entry.takes.length > 0 && entry.picked === undefined && h("span", { class: "sound-takes", title: `${entry.takes.length} takes to choose from` }, `${entry.takes.length}`),
         h("span", { class: "sound-length" }, check === undefined ? "" : seconds(check.measures.duration))
@@ -453,6 +463,7 @@ const renderStage = (): void => {
         { class: "sound-title" },
         h("h1", {}, name),
         h("span", { class: `stage-pill ${entry.status}` }, statusLabel[entry.status]),
+        changedNow(name) !== undefined && h("span", { class: "stage-pill changes", title: changedNow(name) }, "Changed since"),
         recipe.heavy === true && h("span", { class: "stage-pill" }, "Heavy"),
         tuned && h("span", { class: "stage-pill tuned" }, "Tuned")
       ),
@@ -594,6 +605,11 @@ const statusOptions: ReadonlyArray<{ readonly id: Status; readonly label: string
 
 const reviewPanel = (name: string): HTMLElement => {
   const entry = reviewOf(name)
+  const changed = changedNow(name)
+  const approvalNow = (): SoundReview["approved"] => {
+    const recipe = recipeOf(name)
+    return recipe === undefined ? undefined : approvalOf(recipe, state.bank.master)
+  }
   return section(
     {
       id: "review",
@@ -605,11 +621,24 @@ const reviewPanel = (name: string): HTMLElement => {
       entry.status,
       statusOptions,
       (status) => {
-        setReview(name, { status })
-        changed({ review: true })
+        setReview(name, { status, approved: status === "approved" ? approvalNow() : undefined })
+        changedReview()
       },
       { label: "Status", class: "fill" }
     ),
+    changed !== undefined &&
+      callout(
+        "warn",
+        `Changed since you approved it: ${changed}.`,
+        h(
+          "div",
+          { class: "approve-again" },
+          button("Approve it as it is now", () => {
+            setReview(name, { approved: approvalNow() })
+            changedReview()
+          })
+        )
+      ),
     h(
       "label",
       { class: "input note" },

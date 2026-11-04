@@ -86,6 +86,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+.approve-again {
+  margin-top: 8px;
+}
+
 .sound-flag .icon {
   width: 13px;
   height: 13px;

@@ -6,13 +6,21 @@
  *
  * The page writes picks straight into the bank (the chosen take becomes the
  * sound), so the bank is always what the person last chose; the review
- * holds only what words and choices can say about it.
+ * holds only what words and choices can say about it, and, once a sound is
+ * approved, what they heard, so a later change to it shows.
  */
-import { decodeRecipeValue, recipeValue, type Decoded } from "./recipe.ts"
+import { hashText } from "../../internal/hash.ts"
+import { decodeRecipeValue, recipeValue, type Bank, type Decoded, type Recipe } from "./recipe.ts"
 import { towards, type Take, type Toward } from "./takes.ts"
 
 export type Status = "new" | "approved" | "changes"
 export const statuses: ReadonlyArray<Status> = ["new", "approved", "changes"]
+
+/** What the person heard when they approved a sound: a hash of its recipe, and the bank's master volume. */
+export interface Approved {
+  readonly recipe: string
+  readonly master: number
+}
 
 export interface SoundReview {
   readonly status: Status
@@ -23,6 +31,7 @@ export interface SoundReview {
   readonly toward?: Toward | undefined
   /** The take the person chose (it is now the sound in the bank). */
   readonly picked?: string | undefined
+  readonly approved?: Approved | undefined
 }
 
 export interface Review {
@@ -34,6 +43,27 @@ export const newSound: SoundReview = { status: "new", note: "", takes: [] }
 
 /** Where a bank's review lives. */
 export const reviewPath = (bankPath: string): string => (bankPath.endsWith(".json") ? bankPath.slice(0, -".json".length) : bankPath) + ".review.json"
+
+/** What the recipe makes the person hear: not its `about`, nor `heavy` and `interval`, which the game's own audio code carries. */
+const heardOf = (recipe: Recipe): string => {
+  const { about: _about, heavy: _heavy, interval: _interval, ...heard } = recipeValue(recipe)
+  return hashText(JSON.stringify(heard))
+}
+
+/** What to keep when the person approves a sound, as it plays now. */
+export const approvalOf = (recipe: Recipe, master: number | undefined): Approved => ({ recipe: heardOf(recipe), master: master ?? 1 })
+
+/** What is different from what the person approved, in a few words; `undefined` when nothing is. */
+export const changedSince = (approved: Approved, recipe: Recipe, master: number | undefined): string | undefined => {
+  const parts: Array<string> = []
+  if (heardOf(recipe) !== approved.recipe) parts.push("its recipe changed")
+  if ((master ?? 1) !== approved.master) parts.push(`the bank's master volume is ${master ?? 1}, it was ${approved.master} when approved`)
+  return parts.length === 0 ? undefined : parts.join("; ")
+}
+
+/** What changed since the person approved this sound, when they did and something has. */
+export const changedOf = (entry: SoundReview, recipe: Recipe, master: number | undefined): string | undefined =>
+  entry.status === "approved" && entry.approved !== undefined ? changedSince(entry.approved, recipe, master) : undefined
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
 
@@ -65,12 +95,15 @@ export const decodeReview = (text: string): Decoded<Review> => {
       if (recipe !== undefined) takes.push({ id: take.id, label: typeof take.label === "string" ? take.label : "", recipe })
     }
     const toward = towards.find((entry) => entry.id === value.toward)?.id
+    const approved = isRecord(value.approved) && typeof value.approved.recipe === "string" && typeof value.approved.master === "number" ? { recipe: value.approved.recipe, master: value.approved.master } : undefined
+    if (value.approved !== undefined && approved === undefined) errors.push(`${name}.approved must be {"recipe", "master"}`)
     sounds[name] = {
       status: status ?? "new",
       note: typeof value.note === "string" ? value.note : "",
       takes,
       toward,
-      picked: typeof value.picked === "string" ? value.picked : undefined
+      picked: typeof value.picked === "string" ? value.picked : undefined,
+      approved
     }
   }
   return errors.length > 0 ? { ok: false, error: errors.join("; ") } : { ok: true, value: { sounds } }
@@ -84,22 +117,25 @@ export const encodeReview = (review: Review): string => {
       ...(entry.note === "" ? {} : { note: entry.note }),
       ...(entry.picked === undefined ? {} : { picked: entry.picked }),
       ...(entry.toward === undefined ? {} : { toward: entry.toward }),
-      ...(entry.takes.length === 0 ? {} : { takes: entry.takes.map((take) => ({ id: take.id, label: take.label, recipe: recipeValue(take.recipe) })) })
+      ...(entry.takes.length === 0 ? {} : { takes: entry.takes.map((take) => ({ id: take.id, label: take.label, recipe: recipeValue(take.recipe) })) }),
+      ...(entry.approved === undefined ? {} : { approved: entry.approved })
     }
   }
   return JSON.stringify({ version: 1, sounds }, null, 2) + "\n"
 }
 
-/** What the agent needs from a review: every sound's status and note, and what is still to do. */
-export const reviewSummary = (names: ReadonlyArray<string>, review: Review) => {
+/** What the agent needs from a review: every sound's status and note, what changed since it was approved, and what is still to do. */
+export const reviewSummary = (bank: Bank, review: Review) => {
+  const names = Object.keys(bank.sounds)
   const of = (name: string): SoundReview => review.sounds[name] ?? newSound
   const sounds = names.map((name) => {
     const entry = of(name)
-    return { name, status: entry.status, note: entry.note === "" ? undefined : entry.note, picked: entry.picked, takes: entry.takes.length }
+    return { name, status: entry.status, note: entry.note === "" ? undefined : entry.note, picked: entry.picked, takes: entry.takes.length, changedSinceApproved: changedOf(entry, bank.sounds[name]!, bank.master) }
   })
   const count = (status: Status): number => sounds.filter((sound) => sound.status === status).length
+  const stale = sounds.filter((sound) => sound.changedSinceApproved !== undefined).length
   return {
-    summary: `${count("approved")} approved, ${count("changes")} with changes asked, ${count("new")} not reviewed yet (of ${names.length}).`,
+    summary: `${count("approved")} approved${stale === 0 ? "" : ` (${stale} changed since: ask the person to listen again)`}, ${count("changes")} with changes asked, ${count("new")} not reviewed yet (of ${names.length}).`,
     changes: sounds.filter((sound) => sound.status === "changes"),
     sounds
   }
