@@ -21,7 +21,7 @@ import { button, callout, group, hint, icon, mark, prop, section, segmented, swi
 import { h, replace } from "../ui/dom.ts"
 import { makeHistory } from "../ui/history.ts"
 import { parseHex } from "../core/color.ts"
-import { approvalOf, changedOf, decodeReview, emptyReview, encodeReview, mergeReviews, newAsset, whereOf, type AssetReview, type Comment, type Status } from "../core/review.ts"
+import { approvalOf, changedOf, decodeReview, emptyReview, encodeReview, mergeReviews, newAsset, whereOf, type AssetReview, type Comment, type Review, type Status } from "../core/review.ts"
 import { SERVER_GONE, type Detail, type Entry, type FrameIssue, type Store } from "./store.ts"
 
 const RITMO_URL = "https://ritmo.typeonce.dev/"
@@ -85,11 +85,15 @@ const state = {
   frame: 0,
   /** A comment being written, on the area the person drew. */
   composing: undefined as Area | undefined,
+  /** What it says so far: kept here, so a redraw of the panel never loses it. */
+  composingText: "",
   /** Pixels ringed from the Rules section: where a lint issue is. */
   marks: undefined as { readonly frame: number; readonly at: ReadonlyArray<readonly [number, number]> } | undefined,
   saving: "saved" as "saved" | "saving" | "failed",
   /** Whether the review server answered the last look. */
   online: true,
+  /** How far the server is, while it reads the art for the first time. */
+  reading: undefined as { readonly done: number; readonly total: number } | undefined,
   loaded: false
 }
 
@@ -111,6 +115,8 @@ let dirty = false
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 let flushing: Promise<void> = Promise.resolve()
 
+const without = (review: Review, ids: ReadonlyArray<string>): Review => ({ assets: Object.fromEntries(Object.entries(review.assets).filter(([id]) => !ids.includes(id))) })
+
 const flush = (): Promise<void> => {
   flushing = flushing.then(write)
   return flushing
@@ -130,7 +136,11 @@ const write = async (): Promise<void> => {
         owed = false
         state.reviewVersion = saved.version
         const sent = decodeReview(text)
-        if (sent.ok) state.base = sent.value
+        if (sent.ok) state.base = without(sent.value, saved.ignored)
+        if (saved.ignored.length > 0) {
+          state.review = without(state.review, saved.ignored)
+          say(`${saved.ignored.join(", ")} is gone: renamed or deleted. What was said about it stays in pixel.review.json under that name, and the agent sees it in \`pixel notes\`.`)
+        }
         continue
       }
       // The agent wrote the review meanwhile (a resolved comment): keep both, and try again.
@@ -183,6 +193,35 @@ const reviewChanged = (): void => {
   reviewShown()
 }
 
+/** Adds the comment being written, when it says anything, to the asset open, and ends it. */
+const addComposed = (): void => {
+  const area = state.composing
+  const text = state.composingText.trim()
+  state.composing = undefined
+  state.composingText = ""
+  if (area === undefined || text === "") return
+  const id = state.current
+  setReview(id, {
+    comments: [
+      ...reviewOf(id).comments,
+      { ...(area.animation === undefined ? {} : { animation: area.animation }), frame: area.frame, x: area.x, y: area.y, ...(area.width > 1 ? { width: area.width } : {}), ...(area.height > 1 ? { height: area.height } : {}), text }
+    ]
+  })
+  reviewChanged()
+}
+
+/** Moving on keeps what was typed: everything else the person says is saved as they go. Only Cancel or Esc drops it. */
+const settleComposed = (): void => {
+  const added = state.composing !== undefined && state.composingText.trim() !== ""
+  addComposed()
+  if (added) say("Your comment is added. Delete it there if you were not done with it.")
+}
+
+const dropComposed = (): void => {
+  state.composing = undefined
+  state.composingText = ""
+}
+
 /** Sets an asset's status; approving keeps what it looks like now, so a later change to it shows. */
 const setStatus = (entry: Entry, status: Status): void => {
   setReview(entry.id, { status, approved: status === "approved" && entry.problem === undefined ? approvalOf(entry.frames) : undefined })
@@ -210,6 +249,13 @@ const pictureOf = (entry: Entry): Promise<HTMLImageElement | undefined> => {
 }
 
 let opening = 0
+let addressTimer: ReturnType<typeof setTimeout> | undefined
+
+/** The address names the asset open, once the person stops on one: Safari refuses more than 100 changes of it in 10 seconds, and an arrow key held down gets there. */
+const showInAddress = (id: string): void => {
+  if (addressTimer !== undefined) clearTimeout(addressTimer)
+  addressTimer = setTimeout(() => window.history.replaceState(null, "", `#${encodeURIComponent(id)}`), 250)
+}
 
 /** Opens an asset. Nothing is owed first: the review is one file, saved whole. */
 const open = async (id: string): Promise<void> => {
@@ -219,16 +265,16 @@ const open = async (id: string): Promise<void> => {
     if (state.view === "set") setView("asset")
     return
   }
+  settleComposed()
   state.current = id
   state.view = "asset"
   state.animation = animationsOf(entry)[0]!.name
   state.frame = 0
   state.playing = true
-  state.composing = undefined
   state.marks = undefined
   state.detail = undefined
   clock = performance.now()
-  window.history.replaceState(null, "", `#${encodeURIComponent(id)}`)
+  showInAddress(id)
   update()
   scrollToRow(id)
   void loadDetail(id)
@@ -253,7 +299,16 @@ const reviewShown = (): void => {
 }
 
 const load = async (): Promise<void> => {
-  const listed = await store.library("")
+  let listed = await store.library("")
+  // A folder of thousands takes minutes to read: say how far it is, and look again.
+  while (listed?.reading !== undefined) {
+    state.reading = listed.reading
+    renderRail()
+    renderStage()
+    await new Promise((next) => setTimeout(next, 500))
+    listed = await store.library("")
+  }
+  state.reading = undefined
   if (listed?.entries === undefined) return say("The review server sent no art.")
   state.library = listed.entries
   state.libraryVersion = listed.version
@@ -295,7 +350,7 @@ const follow = async (): Promise<void> => {
       renderTopbar()
       if (online && state.saving === "failed") void flush()
     }
-    if (listed === undefined) return
+    if (listed === undefined || listed.reading !== undefined) return
     if (listed.entries !== undefined) {
       const before = entryOf(state.current)?.version
       state.library = listed.entries
@@ -320,12 +375,15 @@ const follow = async (): Promise<void> => {
     if (busy() || answer.version === state.reviewVersion) return
     const review = decodeReview(answer.text)
     if (!review.ok) return
+    // An asset going away changes the version too, with nothing new to read on the ones still here.
+    const onList = (of: Review): string => encodeReview(without(of, Object.keys(of.assets).filter((id) => entryOf(id) === undefined)))
+    const news = onList(review.value) !== onList(state.review)
     state.review = review.value
     state.base = review.value
     state.reviewVersion = answer.version
     state.reviewProblem = undefined
     history.schedule()
-    say("The review changed in its file (the agent's replies show on the comments).")
+    if (news) say("The review changed in its file (the agent's replies show on the comments).")
     reviewShown()
   } catch {
     // The CLI was stopped; the page keeps what it has.
@@ -617,8 +675,8 @@ const visible = (): ReadonlyArray<Entry> => {
 
 const setView = (view: View): void => {
   if (state.view === view) return
+  settleComposed()
   state.view = view
-  state.composing = undefined
   update()
 }
 
@@ -727,6 +785,8 @@ const flags = (entry: Entry): Array<HTMLElement | false> => {
   ]
 }
 
+const readingWords = (): string => (state.reading === undefined ? "Reading the art…" : `Reading the art… ${state.reading.done} of ${state.reading.total}`)
+
 const renderRail = (): void => {
   const scroll = rows.scrollTop
   const entries = visible()
@@ -734,7 +794,7 @@ const renderRail = (): void => {
   let folder: string | undefined
   replace(
     rows,
-    entries.length === 0 && h("p", { class: "hint empty-list" }, state.loaded ? "Nothing here." : "Reading the art…"),
+    entries.length === 0 && h("p", { class: "hint empty-list" }, state.loaded ? "Nothing here." : readingWords()),
     entries.flatMap((entry) => {
       const heading = folders.size > 1 && entry.folder !== folder ? h("h3", { class: "pixel-folder", title: entry.folder }, entry.folder) : false
       folder = entry.folder
@@ -813,7 +873,7 @@ const renderStage = (): void => {
   if (state.view === "set") return renderSet()
   const entry = entryOf(state.current)
   if (entry === undefined) {
-    replace(content, h("div", { class: "empty-card lab-empty" }, h("div", { class: "empty-icon" }, mark()), h("h2", {}, state.loaded ? "No art here" : "Reading the art…")))
+    replace(content, h("div", { class: "empty-card lab-empty" }, h("div", { class: "empty-icon" }, mark()), h("h2", {}, state.loaded ? "No art here" : readingWords())))
     renderPlayback()
     return
   }
@@ -858,10 +918,10 @@ const renderStage = (): void => {
               attrs: { type: "button", "aria-pressed": String(animation.name === animationOf(entry).name) },
               on: {
                 click: () => {
+                  settleComposed()
                   state.animation = animation.name
                   state.frame = 0
                   clock = performance.now()
-                  state.composing = undefined
                   state.marks = undefined
                   renderStage()
                   renderComments()
@@ -1242,17 +1302,7 @@ const renderComments = (): void => {
     reviewChanged()
   }
   const add = (): void => {
-    const text = commentsBox.querySelector<HTMLTextAreaElement>(".pixel-compose textarea")?.value.trim() ?? ""
-    if (text === "" || state.composing === undefined) return
-    const area = state.composing
-    setReview(id, {
-      comments: [
-        ...reviewOf(id).comments,
-        { ...(area.animation === undefined ? {} : { animation: area.animation }), frame: area.frame, x: area.x, y: area.y, ...(area.width > 1 ? { width: area.width } : {}), ...(area.height > 1 ? { height: area.height } : {}), text }
-      ]
-    })
-    state.composing = undefined
-    reviewChanged()
+    if (state.composingText.trim() !== "") addComposed()
   }
   redraw(
     commentsBox,
@@ -1273,13 +1323,16 @@ const renderComments = (): void => {
             "label",
             { class: "input note" },
             h("textarea", {
-              props: { rows: 2 },
+              props: { rows: 2, value: state.composingText },
               attrs: { placeholder: "What should change here? (\"outline too thick\", \"reads as a smudge at 1×\")", "aria-label": "Comment" },
               on: {
+                input: (event) => {
+                  if (event.currentTarget instanceof HTMLTextAreaElement) state.composingText = event.currentTarget.value
+                },
                 keydown: (event) => {
                   if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) add()
                   if (event.key === "Escape") {
-                    state.composing = undefined
+                    dropComposed()
                     renderComments()
                     renderRings()
                   }
@@ -1291,7 +1344,7 @@ const renderComments = (): void => {
             "div",
             { class: "fx-compose-actions" },
             button("Cancel", () => {
-              state.composing = undefined
+              dropComposed()
               renderComments()
               renderRings()
             }, { small: true, variant: "ghost" }),
@@ -1373,7 +1426,7 @@ const renderChecks = (): void => {
                         state.playing = false
                         state.frame = frame?.index ?? 0
                         state.marks = { frame: issue.frame ?? 0, at: issue.at }
-                        state.composing = undefined
+                        settleComposed()
                         renderStage()
                         repaint()
                       }, { small: true, variant: "ghost", title: "Pause on its frame with its pixels ringed" })
@@ -1573,7 +1626,7 @@ window.addEventListener("keydown", (event) => {
     // Not Tab: that key belongs to moving through the page's controls.
     setView(state.view === "asset" ? "set" : "asset")
   } else if (event.key === "Escape" && (state.composing !== undefined || state.marks !== undefined)) {
-    state.composing = undefined
+    dropComposed()
     state.marks = undefined
     renderRings()
     renderComments()

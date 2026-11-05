@@ -12,7 +12,7 @@
  * art's rules: they exit 0, or 2 on a usage problem. Their lint results are
  * warnings to read, never a failure.
  */
-import { Data, Effect, FileSystem, Option, Path, Runtime } from "effect"
+import { Console, Data, Effect, FileSystem, Option, Path, Runtime } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import type { Metric } from "../core/color.ts"
 import { toHex } from "../core/color.ts"
@@ -581,6 +581,12 @@ const assetsUnder = Effect.fn("assetsUnder")(function* (paths: ReadonlyArray<str
   return yield* promised("cannot look through the paths", () => findAssets(paths))
 })
 
+/** Past this many a review takes minutes to read, and a person cannot go through it: most likely the paths hold much that is not art. */
+const MANY_ASSETS = 500
+
+const tooMany = (found: ReadonlyArray<PixelAsset>): string | undefined =>
+  found.length <= MANY_ASSETS ? undefined : `${found.length} assets under these paths, which take minutes to read. Name the folders the game's art is in (\`public/art\`, \`assets/sprites\`), not ones holding renders or captures.`
+
 const review = Command.make(
   "review",
   {
@@ -591,12 +597,14 @@ const review = Command.make(
   Effect.fn("review")(function* (flags) {
     const path = yield* Path.Path
     const found = yield* assetsUnder(flags.paths)
+    const warning = tooMany(found)
     // A broken review file is said now, not when the page cannot save.
     yield* promised("cannot read the review", () => reviewsOf(found))
     const address = yield* promised("cannot serve the page", () => serve({ paths: flags.paths, port: flags.port, host: flags.host }))
     yield* printJson({
       ...address,
       assets: found.length,
+      warning,
       reviews: [...new Set(found.map((asset) => path.relative(process.cwd(), reviewPlace(asset.file).reviews)))],
       next: "Send the person the url. What they approve and comment is saved as they go; read it back with `ritmo-tools pixel notes`, with the same paths, and `pixel resolve` the comments you act on."
     })
@@ -614,6 +622,9 @@ const notes = Command.make(
   Effect.fn("notes")(function* (flags) {
     const path = yield* Path.Path
     const found = yield* assetsUnder(flags.paths)
+    // Said before the reading, since it takes minutes: an agent that gives up on them still sees why.
+    const warning = tooMany(found)
+    if (warning !== undefined) yield* Console.error(`ritmo-tools: ${warning}`)
     const reviews = yield* promised("cannot read the review", () => reviewsOf(found))
     const entries = []
     for (const asset of found) {

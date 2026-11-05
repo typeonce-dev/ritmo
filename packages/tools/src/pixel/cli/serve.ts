@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url"
 import { hashText } from "../../internal/hash.ts"
 import { body, send, servePage, type Address, type Handler } from "../../internal/serve.ts"
 import { decodeReview, encodeReview } from "../core/review.ts"
-import { assetVersion, detailOf, findAssets, libraryOf, readAsset, reviewsOf, reviewVersion, writeReviews, type PixelAsset } from "./library.ts"
+import { assetVersion, detailOf, findAssets, libraryOf, pictureOf, readAsset, readingOf, reviewsOf, reviewVersion, writeReviews, type PixelAsset } from "./library.ts"
 
 export interface ServeOptions {
   /** The pictures, text sprites, and folders to review. */
@@ -24,8 +24,11 @@ export interface ServeOptions {
   readonly host: boolean
 }
 
+/** How long a look at the list waits before saying how far the reading is: a browser may give up on an answer that takes minutes. */
+const LIST_WAIT_MS = 1000
+
 /** The API over the assets under `paths`. */
-export const api = (paths: ReadonlyArray<string>): Handler => {
+export const api = (paths: ReadonlyArray<string>, listWait = LIST_WAIT_MS): Handler => {
   const named = (request: IncomingMessage, assets: ReadonlyArray<PixelAsset>): PixelAsset | undefined => {
     const id = new URL(request.url ?? "/", "http://localhost").searchParams.get("id")
     return assets.find((asset) => asset.id === id)
@@ -37,7 +40,9 @@ export const api = (paths: ReadonlyArray<string>): Handler => {
       const route = `${request.method ?? "GET"} ${path}`
       const assets = await findAssets(paths)
       if (route === "GET /library") {
-        const entries = await libraryOf(assets)
+        // The reading goes on behind this answer, and the next look finds it further along.
+        const entries = await Promise.race([libraryOf(assets), new Promise<undefined>((done) => setTimeout(done, listWait))])
+        if (entries === undefined) return send(response, 200, { version: "", review: "", reading: readingOf(assets) })
         const version = hashText(JSON.stringify(entries.map((entry) => [entry.id, entry.version])))
         const review = await reviewVersion(assets)
         // Most looks change nothing: then only the versions travel.
@@ -47,13 +52,13 @@ export const api = (paths: ReadonlyArray<string>): Handler => {
       if (route === "PUT /review") {
         const decoded = decodeReview((await body(request)).toString("utf8"))
         if (!decoded.ok) return send(response, 400, { error: decoded.error })
-        const unknown = Object.keys(decoded.value.assets).filter((id) => !assets.some((asset) => asset.id === id))
-        if (unknown.length > 0) return send(response, 400, { error: `no such asset: ${unknown.join(", ")}` })
         // Written since the page last read it (the agent resolved a comment): the page merges and tries again.
         const now = await reviewVersion(assets)
         if (query(request, "base") !== now) return send(response, 409, { error: "the review changed since the page read it", text: encodeReview(await reviewsOf(assets)), version: now })
         await writeReviews(assets, decoded.value)
-        return send(response, 200, { version: await reviewVersion(assets) })
+        // Only what was found is written. An id that is not (the agent renamed that file while the page was open) is said back, and its review stays in the file under its old name, for `pixel notes` to list.
+        const ignored = Object.keys(decoded.value.assets).filter((id) => !assets.some((asset) => asset.id === id))
+        return send(response, 200, { version: await reviewVersion(assets), ignored })
       }
       const asset = named(request, assets)
       if (asset === undefined) return send(response, 404, { error: `no such asset for ${route}` })
@@ -61,10 +66,11 @@ export const api = (paths: ReadonlyArray<string>): Handler => {
       if (route === "GET /png") {
         const got = await readAsset(asset)
         if (!got.ok) return send(response, 422, { error: got.problem })
-        response.setHeader("content-type", "image/png")
+        const picture = await pictureOf(asset)
+        response.setHeader("content-type", picture.type)
         // The page asks by version (`v`): a new version is a new address, so the picture at one can be kept.
         response.setHeader("cache-control", query(request, "v") === (await assetVersion(asset)) ? "private, max-age=31536000, immutable" : "no-store")
-        response.end(got.png)
+        response.end(picture.bytes)
         return
       }
       return send(response, 404, { error: `no ${route}` })

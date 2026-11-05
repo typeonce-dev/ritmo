@@ -436,7 +436,8 @@ version; the status stays approved, since only the person changes it.
 
 ↑ and ↓ change asset, Space plays, ← and → step frames, + and − zoom, 0 goes
 back to 1×, F fits each asset again, V switches to the whole set and back, and Ctrl/Cmd+Z undoes.
-Every change is saved as it happens. Art the agent rewrites or adds, and
+Every change is saved as it happens, and a comment still being typed is added
+when the person moves on (Cancel or Esc drops it). Art the agent rewrites or adds, and
 comments it resolves, show up while the page is open; what the person is
 typing is kept.
 
