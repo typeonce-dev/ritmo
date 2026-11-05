@@ -138,6 +138,17 @@ describe("lint", () => {
     expect(lintArt(artOfImage(image).art, {}, partial).map((issue) => issue.rule)).toContain("partial-alpha")
   })
 
+  it("says a picture of thousands of colors is not pixel art yet, without comparing every pair of them", () => {
+    // A smooth app icon: every pixel its own shade.
+    const size = 256
+    const smooth = { width: size, height: size, data: new Uint8ClampedArray(size * size * 4) }
+    for (let i = 0; i < size * size; i++) smooth.data.set([i % 256, Math.floor(i / 256), 128, 255], i * 4)
+    const started = performance.now()
+    const near = lintArt(artOfImage(smooth).art, {}).filter((issue) => issue.rule === "near-duplicate-colors")
+    expect([near.length, near[0]?.message.startsWith("65536 colors")]).toEqual([1, true])
+    expect(performance.now() - started).toBeLessThan(5000)
+  })
+
   it("lets a sprite touch its edges without calling it a background", () => {
     const parsed = parseSprite(coin)
     expect(parsed.ok && lintArt(parsed.art, { transparentBackground: true })).toEqual([])

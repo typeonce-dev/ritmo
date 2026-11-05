@@ -2,7 +2,7 @@
 /**
  * `ritmo-tools`: the asset tools for games made with Ritmo, run by agents.
  *
- *   ritmo-tools pixel <command>   checks, fixes, and makes pixel art and animations
+ *   ritmo-tools pixel <command>   checks, fixes, and makes pixel art and animations, and opens the review page
  *   ritmo-tools sound <command>   checks, renders, and varies game sounds, and opens the review page
  *   ritmo-tools music <command>   listens to a hum, checks and renders songs, and opens the review page
  *   ritmo-tools fx <command>      checks, looks at, and renders pixel art effects written as code, and opens the review page

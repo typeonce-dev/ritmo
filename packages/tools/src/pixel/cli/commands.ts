@@ -7,8 +7,12 @@
  * - 2: a usage problem, a missing file, a broken sprite source
  * - 3: fixable: rules are broken, `ritmo-tools pixel fix` (or editing the source) fixes them
  * - 4: needs a person: the grid is unsure; look at the preview, or open the recipe in the page
+ *
+ * `review`, `notes`, and `resolve` are about what a person said, not the
+ * art's rules: they exit 0, or 2 on a usage problem. Their lint results are
+ * warnings to read, never a failure.
  */
-import { Data, Effect, Option, Path, Runtime } from "effect"
+import { Data, Effect, FileSystem, Option, Path, Runtime } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import type { Metric } from "../core/color.ts"
 import { toHex } from "../core/color.ts"
@@ -24,9 +28,12 @@ import { animationOf, defaultSheet, frameOf, isAnimationName, withFrames, type S
 import { atlasOf, played, spritesheetJson } from "../core/spritesheet.ts"
 import { encodeRecipe, type GridChoice, type Outlines, type Recipe } from "../core/recipe.ts"
 import { checkImage, compareReports, reportOfArt, reportOfFix, reportOfSheet, type Report, type Verdict } from "../core/report.ts"
+import { pixelSummary, resolveComments, reviewSummary } from "../core/review.ts"
 import { artOfImage, formatSprite } from "../core/sprite.ts"
 import { CliFailure, CONFIG_FILE, decodeOrFail, loadConfig, loadPalette, starterConfig, type Config } from "./config.ts"
 import { outputBase, printJson, readPicture, readProjectRecipeOf, readSource, readText, writeBytes, writePng, writeProject, writeText } from "./io.ts"
+import { findAssets, goneOf, readAsset, readReviewFile, reviewPlace, reviewsOf, writeReview, type PixelAsset } from "./library.ts"
+import { serve } from "./serve.ts"
 
 /** Ends the run with an exit code, already reported on stdout. */
 export class Exit extends Data.TaggedError("Exit")<{ readonly code: number }> {
@@ -545,8 +552,132 @@ const init = Command.make(
   })
 ).pipe(Command.withDescription(`Writes a starting ${CONFIG_FILE} (palette, sizes, color limit) in the working directory.`))
 
+
+// The review: a person goes through the art on a page, and the agent reads back what they said.
+
+const pathsArgument = Argument.String("paths").pipe(
+  Argument.withDescription(
+    "PNGs, text sprites, or folders to look through for them. Name the folders the game's art is in (`public/art`, `assets/sprites`): a whole game holds much that is not art, and the tools' own outputs are left out."
+  ),
+  Argument.variadic({ min: 1 })
+)
+
+const promised = <A>(what: string, run: () => Promise<A>): Effect.Effect<A, CliFailure> =>
+  Effect.tryPromise({ try: run, catch: (error) => new CliFailure({ message: `${what}: ${error instanceof Error ? error.message : String(error)}` }) })
+
+/** The assets under `paths`, failing on a path that is not there, a folder with no art, and a file named outright that cannot be read. */
+const assetsUnder = Effect.fn("assetsUnder")(function* (paths: ReadonlyArray<string>) {
+  const fs = yield* FileSystem.FileSystem
+  for (const path of paths) {
+    const info = yield* fs.stat(path).pipe(Effect.mapError(() => new CliFailure({ message: `cannot read ${path}` })))
+    if (info.type === "Directory") {
+      if ((yield* promised(`cannot look through ${path}`, () => findAssets([path]))).length === 0) return yield* new CliFailure({ message: `no PNGs or text sprites in ${path}` })
+      continue
+    }
+    const [asset] = yield* promised(`cannot read ${path}`, () => findAssets([path]))
+    const got = asset === undefined ? undefined : yield* promised(`cannot read ${path}`, () => readAsset(asset))
+    if (got?.ok === false) return yield* new CliFailure({ message: `${path} cannot be read as pixel art: ${got.problem}` })
+  }
+  return yield* promised("cannot look through the paths", () => findAssets(paths))
+})
+
+const review = Command.make(
+  "review",
+  {
+    paths: pathsArgument,
+    port: Flag.Int("port").pipe(Flag.withDescription("The port to serve the page on."), Flag.withDefault(5193)),
+    host: Flag.Boolean("host").pipe(Flag.withDefault(false), Flag.withDescription("Serve on the network too, to look on a phone."))
+  },
+  Effect.fn("review")(function* (flags) {
+    const path = yield* Path.Path
+    const found = yield* assetsUnder(flags.paths)
+    // A broken review file is said now, not when the page cannot save.
+    yield* promised("cannot read the review", () => reviewsOf(found))
+    const address = yield* promised("cannot serve the page", () => serve({ paths: flags.paths, port: flags.port, host: flags.host }))
+    yield* printJson({
+      ...address,
+      assets: found.length,
+      reviews: [...new Set(found.map((asset) => path.relative(process.cwd(), reviewPlace(asset.file).reviews)))],
+      next: "Send the person the url. What they approve and comment is saved as they go; read it back with `ritmo-tools pixel notes`, with the same paths, and `pixel resolve` the comments you act on."
+    })
+    return yield* Effect.never
+  })
+).pipe(
+  Command.withDescription(
+    "Opens the review page for all the pixel art under the paths: the person goes through it by folder, at whole-number zooms over a choice of backdrops, plays sheets by animation, sees the whole set side by side at one scale, approves each asset or asks for changes, and pins comments to an area of pixels on a frame. The lint against each asset's nearest pixel.config.json shows beside it. Runs until stopped; changes are saved as they happen."
+  )
+)
+
+const notes = Command.make(
+  "notes",
+  { paths: pathsArgument },
+  Effect.fn("notes")(function* (flags) {
+    const path = yield* Path.Path
+    const found = yield* assetsUnder(flags.paths)
+    const reviews = yield* promised("cannot read the review", () => reviewsOf(found))
+    const entries = []
+    for (const asset of found) {
+      const got = yield* promised(`cannot read ${asset.id}`, () => readAsset(asset))
+      const said = reviews.assets[asset.id] ?? { status: "new" as const, note: "", comments: [] }
+      const source = asset.source === undefined ? {} : { source: path.relative(process.cwd(), asset.source) }
+      if (!got.ok) {
+        entries.push({ file: asset.id, ...source, ...reviewSummary(said, undefined), problem: got.problem, next: "Fix it: the person cannot see it." })
+        continue
+      }
+      // The lint as warnings to read, each on its frame: never a failure of the notes.
+      const lint = got.lint.ok
+        ? got.lint.issues.length === 0
+          ? {}
+          : {
+              lint: got.lint.issues.map((issue) => {
+                const frame = issue.frame === undefined ? undefined : got.frames[issue.frame]
+                return `${frame === undefined ? "" : `${frame.animation ?? ""} frame ${frame.index}: `}${issue.severity}: ${issue.message}`
+              })
+            }
+        : { lint: [`cannot lint: ${got.lint.problem}`] }
+      entries.push({ file: asset.id, ...source, ...reviewSummary(said, got.frames), ...lint })
+    }
+    const gone = yield* promised("cannot read the review", () => goneOf(found, flags.paths))
+    yield* printJson({
+      ...pixelSummary(entries),
+      gone: gone.map((entry) => ({ ...entry, next: `Its file is gone. If it was renamed, move its review to the new name's key in ${entry.review}; if it was deleted, remove it there.` }))
+    })
+  })
+).pipe(
+  Command.withDescription(
+    "What the person said in the review of the art under the paths: a summary of what is left, then each asset's status, note, open comments (numbered, each on an area of one frame), how many are resolved, and, for an approved asset that no longer looks as the person saw it, `changedSinceApproved`. Changes asked come first. `gone` lists reviews whose file is no longer found. Exit 0 whatever the art's lint says."
+  )
+)
+
+const resolve = Command.make(
+  "resolve",
+  {
+    asset: Argument.String("asset").pipe(Argument.withDescription("The asset the comments are on, as `pixel notes` names it.")),
+    numbers: Argument.Int("numbers").pipe(Argument.withDescription("The comments' numbers, as `pixel notes` lists them."), Argument.atLeast(1)),
+    reply: Flag.String("reply").pipe(Flag.withDescription("What you changed, in a few words: the person reads it beside their comment."), Flag.withDefault(""))
+  },
+  Effect.fn("resolve")(function* (flags) {
+    const path = yield* Path.Path
+    const [asset]: ReadonlyArray<PixelAsset> = yield* assetsUnder([flags.asset])
+    if (asset === undefined) return yield* new CliFailure({ message: `${flags.asset} is not pixel art` })
+    const { reviews, key } = reviewPlace(asset.file)
+    const file = yield* promised("cannot read the review", () => readReviewFile(reviews))
+    const resolved = resolveComments(file, key, flags.numbers, flags.reply)
+    if (!resolved.ok) return yield* new CliFailure({ message: resolved.error })
+    const said = resolved.value.assets[key]
+    if (said !== undefined) yield* promised("cannot write the review", () => writeReview(asset, said))
+    yield* printJson({ review: path.relative(process.cwd(), reviews), asset: asset.id, resolved: flags.numbers, reply: flags.reply === "" ? undefined : flags.reply })
+  })
+).pipe(
+  Command.withDescription(
+    "Marks the person's comments on an asset as resolved, by the numbers `pixel notes` gives, with a reply saying what changed. `pixel notes` stops listing them; the page shows them done, with the reply, even while it is open, and the person can reopen one."
+  )
+)
+
 export const pixel = Command.make("pixel").pipe(
-  Command.withDescription("Ritmo's pixel fixer: checks, fixes, and makes pixel art. Prints JSON; exit 0 clean, 2 usage error, 3 fixable, 4 needs a person."),
-  Command.withSubcommands([check, fix, sheetCommand, pixelate, render, lint, previewCommand, compare, palettes, init])
+  Command.withDescription(
+    "Ritmo's pixel fixer: checks, fixes, and makes pixel art, and opens a review page where a person approves a game's art or pins comments to it. Prints JSON; exit 0 clean, 2 usage error, 3 fixable, 4 needs a person (review, notes, and resolve exit 0 or 2)."
+  ),
+  Command.withSubcommands([check, fix, sheetCommand, pixelate, render, lint, previewCommand, compare, palettes, init, review, notes, resolve])
 )
 
