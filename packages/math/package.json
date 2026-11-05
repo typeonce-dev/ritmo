@@ -1,6 +1,6 @@
 {
   "name": "@typeonce/ritmo-math",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "The 2D helpers most Ritmo games would otherwise rewrite (vectors, angles, swept collision, flow field), plain data in and out, built on Ops so they replay the same on every engine",
   "author": "Sandro Maglione",
   "license": "MIT",

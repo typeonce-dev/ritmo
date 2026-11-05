@@ -1,5 +1,64 @@
 # @typeonce/ritmo-tools
 
+## 0.21.0
+
+### Minor Changes
+
+- 15e5aa9: `ritmo-tools fx`: judge effects at native size, and see when an approved effect has changed. Ideas from [PVFX Foundry](https://nerijs.itch.io/pvfx-foundry).
+  
+  - **1× zoom** on the review page, to judge whether an effect reads at its native size.
+  - **Approval keeps what the person saw.** Approving an effect saves the draft in use, its fps, and a hash of each frame's final colors. When any of them later differ, `fx notes` and `fx render` list `changedSinceApproved` (`"frames 3-5 look different"`), and the page shows it with **Approve it as it is now**. The status stays approved: only the person changes it. A palette edit counts as a change. A review saved before this has no hashes, and reports nothing until the effect is approved again.
+  - The `ritmo-fx` skill adds a craft rule (each material dies its own way), the native-size question for the person, what to do with `changedSinceApproved`, and PVFX Foundry's Strict tier as a reference to look at.
+  - The example `explosion` draft `a` now sits on the floor, with thrown debris, embers, dust, and smoke that comes apart in clumps.
+  
+  Breaking: `fx render` writes sprite sheets in rows of up to 8 frames, not one row, so a long effect stays within a device's texture limit. A game that reads each frame's rectangle from the JSON (`frames["hit 0"].frame`, as Pixi and Phaser do) needs no change. Replace code that computes a frame's place as `x = frame * width` with `x = (frame % 8) * width` and `y = Math.floor(frame / 8) * height`.
+- 6b7df96: `ritmo-tools music` and `sound`: review all of a game's music on one page, and see when something approved has changed.
+  
+  - **`music review` takes songs, audio files, and folders**, and shows them all on a list with each one's status, filtered by what is left to do. A folder is searched for `*.song.json` and audio files, leaving out what the tool wrote beside a song (its render, its stems, its hum). What the person has not saved yet is written before another piece opens.
+  - **Plain audio files can be reviewed** (`.wav`, `.flac`, `.mp3`, `.ogg`, `.m4a`): play, loop, hear the loop point, read the length, loudness, and peak, approve or ask for changes, and comment on a stretch of time. Their reviews live in one `music.review.json` beside the game's `package.json`, not beside the files, since those often sit in a folder that ships with the game.
+  - **Approval keeps what the person heard**, in `music` and `sound` as it already did in `fx`. When an approved song, sound, or file later differs, `music notes`, `music render`, `sound notes`, and `sound render` list `changedSinceApproved`, and the page shows it with **Approve it as it is now**. The status stays approved: only the person changes it. An edit to words alone (an `about`, a track's name) is no change. A review from before this keeps its approval, with nothing to compare against until it is approved again.
+  - The music page checks a song in a worker, so a long song no longer holds the page for seconds when it opens, and going back to a song is instant.
+  
+  Breaking: `music notes` now prints `{ summary, music: [...] }` for any paths, one entry per piece, with `file`, `kind`, and `review` beside what it printed before. Replace `.status`, `.note`, `.comments`, `.edits`, and `.next` with `.music[0].status` and so on. `music review` prints `music` (the list of what it found) in place of `song` and `review`.
+- d1d864d: **Breaking: the packages require Node 22 or newer (Node 20 reached end of life on 2026-04-30).** `engines.node` is `>=22` for `@typeonce/ritmo`, `-browser`, `-render`, `-pixi`, `-math`, and `-netcode`; `>=22.12` for `@typeonce/oxlint-plugin-ritmo` (oxlint's own floor); `>=22.15` for `@typeonce/ritmo-devtools` (unchanged); and `>=22.19` for `@typeonce/ritmo-tools` (what `@effect/platform-node` needs). On Node 20, upgrade Node: `nvm install 22` (or 24), or `"node": ">=22"` in your CI's setup step.
+- f30c9c6: `ritmo-tools pixel`: hold a frame, see an animation as a still, and check a tile's edges. Ideas from [Pixelorama](https://github.com/Orama-Interactive/Pixelorama).
+  
+  - **Holds.** `pixel sheet --animations "attack=5,6x3,7,8"` shows frame 6 for 3 beats, a beat being one frame at `--fps`. The JSON's `duration`, the GIF, the recipe (`sheet.frames[i].beats`), and the page's player all follow it, the page sets it on the chosen frame, and the report lists each frame's time in `durations`.
+  - **Onion pictures.** `pixel sheet` writes `<name>.<animation>.onion.png`: a panel per step of playback, each frame over the one before in red and the one after in blue, so an agent that cannot watch an animation can see a jump, a drift, or a change of size.
+  - **Tile seams.** `pixel lint tile.png --tile both` (or `x`, `y`) warns of a `seam` when a tile's edges do not meet, and `pixel preview tile.png --tile both` writes it repeated.
+  - The `ritmo-pixel-art` skill says when to use each, and that a game plays each frame for its `duration`.
+  
+  Breaking: the sprite sheet JSON of `pixel sheet` and `fx render` no longer has `meta.fps`, since one rate would lose a frame's hold. Replace `meta.fps[name]` with each frame's time, `frames["<name> 0"].duration`, in milliseconds. With Pixi, give `AnimatedSprite` `{ texture, time }` objects built from those durations.
+- 215ba15: `ritmo-tools pixel`: one-pixel outlines, bent grids, and a shrink that keeps strokes whole, after [ToPixel](https://github.com/daisuqe/ToPixel).
+  
+  - **Outlines** (`outlines` in a recipe, `--outlines auto|on|off`, **Outlines** on the page; `"auto"` by default): when the picture's dark strokes are about one cell wide, a stroke a grid line split between two pixels goes back to one, never breaking the outline or a corner, and followed lines keep off dark strokes. The report's `grid.outlines` says whether it ran.
+  - **Follow lines** is now a choice: `"off"`, `"straight"` (every line placed at once, each on a strong edge with every gap near the cell size, instead of one after another), or `"bend"` (lines placed in each row and column of cells on their own, for a grid the generator warped). The page draws bent lines bent.
+  - **Keep outlines** when shrinking (`--shrink-to`, **Size**) carries outlines over as strokes: thinned back to one pixel without breaking, one-pixel steps turned into diagonals. A one-pixel ring shrunk from 16 to 11 pixels stays whole, where it used to lose its sides.
+  
+  Breaking: a recipe's `follow` is `"off"`, `"straight"`, or `"bend"`, no longer `true` or `false`, and `--follow` takes one of them. Replace `"follow": true` with `"follow": "straight"` (`--follow straight`), and `"follow": false` with `"follow": "off"` (or leave it out).
+- d989c0b: `ritmo-tools pixel`: review all of a game's pixel art with a person on one page, and read back what they said.
+  
+  - **`pixel review <paths...>`** serves a local page (port 5193) with every PNG and text sprite under the folders named, by folder, each with its status. A person looks at each asset at whole-number zooms, opening as large as fits with 1× a key away, over a dark, light, checkerboard, or custom backdrop, plays sheets by animation with their durations, sees a tile repeated, lines the whole set up at one scale on a grid by size (picking several to compare or approve at once), approves or asks for changes, and drags over the art to pin a comment to an area of pixels on one frame. Each asset's lint against its nearest `pixel.config.json` shows beside it. What the tools write beside the art (previews, project PNGs, onion pictures, scaled copies, frame folders) is left out, and a fix shows as one row with what it was made from.
+  - **`pixel notes <paths...>`** prints a `summary` of what is left, then each asset's status, note, open comments (numbered, with their area and frame), how many are resolved, its lint, and `next`, changes asked first. **`pixel resolve <asset> <numbers...> --reply "..."`** marks comments done; the open page shows them with the reply.
+  - **Approval keeps the pixels the person saw**: a hash of each frame as decoded, and its duration. A re-export that looks the same is no change, and neither is a color hidden under a transparent pixel. When an approved asset later looks different or plays at other timings, `pixel notes` and the page say which frames under `changedSinceApproved`, and the page offers **Approve it as it is now**.
+  - The review lives in one `pixel.review.json` beside the game's `package.json`, keyed by path, out of the folder that ships.
+  - `review`, `notes`, and `resolve` exit 0 or 2 only.
+  - `pixel lint` no longer runs out of memory on a picture of thousands of colors (a smooth app icon took gigabytes comparing every pair): past 512 colors it says the picture is not pixel art yet instead. On the review page and in `pixel notes`, a sheet frame with nothing drawn in it is an `empty-frame` error.
+  
+  The `ritmo-pixel-art` skill says when to open the review and how to act on it, and that approving on the page does not replace looking at the art in the game at display size.
+
+### Patch Changes
+
+- ea008a4: `ritmo-tools` depends on Effect 4.1.1 (`effect`, `@effect/platform-node`, and `@effect/platform-node-shared`, still pinned exactly and together).
+- f715940: `pixel review` and `pixel notes` fixes, from trying them on real games:
+  
+  - The page keeps saving after the agent renames or replaces art it holds a review of (`pixel fix` does, putting `X.fixed.png` in place of `X.png`). Saves used to fail until a reload, which lost what was unsaved. The old review stays in `pixel.review.json` under its old name, and `pixel notes` lists it under `gone`.
+  - A page that has not heard an asset came back can no longer write over that asset's review.
+  - A comment being typed survives a click on a status or a reply from the agent, and is added when the person moves to another asset, animation, or view. Cancel or Esc drops it.
+  - `pixel notes` no longer says "Leave it as it is" about an approved asset with open comments. An asset with a note or comments but no status comes ahead of untouched ones, and the summary counts it apart.
+  - The server answers while it reads a large folder, and the page says how far it is. Past 500 assets, `pixel review` and `pixel notes` warn to name narrower folders. The page gets a picture's file as it is, rather than a copy written for it up front, so a large folder takes about a third less time and far less memory.
+  - Holding an arrow key down in Safari no longer stops the page moving through assets.
+
 ## 0.20.0
 
 ### Minor Changes

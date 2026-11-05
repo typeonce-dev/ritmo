@@ -1,5 +1,105 @@
 # @typeonce/ritmo
 
+## 0.21.0
+
+### Minor Changes
+
+- 50597a8: **Breaking (debug runtimes only): a runtime made with `debug` freezes every value it is handed, so mutating one afterwards throws where it mutates.** Values were stored by reference: an object passed to `Game.Command.spawn`, `commands.insert`, a cell's `set`/`update`, a resource write, `emit`, `runtime.send`, a next-state `set`, or `Game.Runtime.make` stayed connected to the code that made it. Mutating it later changed the world with no write, so `changed` readers missed it, and a `rewind` brought back the mutated value instead of the checkpointed one. A debug runtime now deep-freezes each value as it is queued or written, and the mutation throws a `TypeError`. Typed arrays are skipped, `Map` and `Set` contents stay writable, and runtimes without `debug` behave as before.
+  
+  If your game's tests or devtools sessions now throw, build a new value instead of mutating the one you handed over:
+  
+  ```diff
+  -const body = { x: 1, trail: [] }
+  -commands.spawn(Game.Command.spawn([Body, body]))
+  -body.x += 1
+  +commands.spawn(Game.Command.spawn([Body, { x: 1, trail: [] }]))
+  +// later, in a system
+  +data.body.update((body) => ({ ...body, x: body.x + 1 }))
+  ```
+  
+  `Runtime.tick` now points to `FixedLoop.start` for ticking at a fixed rate from a frame loop. The `ritmo` skill now treats a variable a system closes over like a module variable: host input reaches systems through a resource, a sent event, or an input source service.
+- d1d864d: **Breaking: the packages require Node 22 or newer (Node 20 reached end of life on 2026-04-30).** `engines.node` is `>=22` for `@typeonce/ritmo`, `-browser`, `-render`, `-pixi`, `-math`, and `-netcode`; `>=22.12` for `@typeonce/oxlint-plugin-ritmo` (oxlint's own floor); `>=22.15` for `@typeonce/ritmo-devtools` (unchanged); and `>=22.19` for `@typeonce/ritmo-tools` (what `@effect/platform-node` needs). On Node 20, upgrade Node: `nvm install 22` (or 24), or `"node": ">=22"` in your CI's setup step.
+- 87466e9: **Breaking: a query's `each()` returns entities, and values are read through `queries.x.data`. Matches, their `data` cells, and `entity.proof` are gone.** Iterating no longer keeps an object per entity and query, so loops over many entities run up to 3x faster, a game-shaped frame about 2x faster, and memory no longer grows with each query.
+  
+  ```diff
+  -for (const { data } of queries.movers.each()) {
+  -  const velocity = data.velocity.get()
+  -  data.position.update((position) => ({ x: position.x + velocity.x, y: position.y + velocity.y }))
+  -}
+  +const { data } = queries.movers
+  +for (const entity of queries.movers.each()) {
+  +  const velocity = data.velocity.get(entity)
+  +  data.position.update(entity, (position) => ({ x: position.x + velocity.x, y: position.y + velocity.y }))
+  +}
+  ```
+  
+  Every slot method takes the entity first. The fix for each old form:
+  
+  | Before | After |
+  |---|---|
+  | `match.data.x.get()` | `data.x.get(entity)` |
+  | `data.x.set(value)`, `update(f)` | `data.x.set(entity, value)`, `update(entity, f)` |
+  | `data.x.setRaw(raw)`, `updateRaw(f)` | `data.x.setRaw(entity, raw)`, `updateRaw(entity, f)` |
+  | `data.state.transition({ from, to })` | `data.state.transition(entity, { from, to })` |
+  | `data.state.update({ state, data })` | `data.state.update(entity, { state, data })` |
+  | `data.sprite?.get()` | `data.sprite.get(entity)`, `undefined` when it lacks the component |
+  | `data.note !== undefined` | `data.note.has(entity)` |
+  | `commands.despawn(match.entity)` | `commands.despawn(entity)` |
+  | `match.entity.id` | `entity.id` |
+  | `found.value.data.x.get()` after `queries.q.get(id)` | `queries.q.data.x.get(found.value)` |
+  | `QueryMatch<S, Q>` | `QueryEntity<S, Q>`, with `QueryData<Q>` for the slots |
+  | `Query.Cells<Q>` | `QueryData<Q>` |
+  | `WriteCellForDescriptor<D>` | `WriteSlotOf<D>` |
+  | `match.entity.proof.position` | `data.position.get(entity)` |
+  
+  `single()`, `singleOptional()`, `get`, `getHandle`, `children`, and `descendants` return entities too. `ReadCell` and `WriteCell` remain for resources.
+  
+  `Entity.EntityRef` now takes `<S, Root, Proves, Lacks, Relates>`. `Entity.EntityMut`, `Entity.ref`, and `Entity.mut` are removed: only a query produces an entity.
+  
+  The type checks are the same or stricter: a read slot has no `set`, a slot rejects an id or an entity whose query does not prove its component, and entities carry their proofs to `commands`.
+  
+  **Kept values changed.** `queries.x.data` kept past its run throws, as a kept match did. A kept entity no longer throws by itself: it keeps naming its entity, reading its current value, and throws once the entity no longer holds the component. It never reads another entity, since ids are never reused, but it does not re-check the query, so an entity that left through `without` stays readable. To follow an entity across runs and re-check the query, keep `entity.id` and resolve it with `queries.x.get(id)`, as before.
+  
+  `RenderSync` callbacks are unchanged: `context.data.x.get()` still works. Lint messages name the new forms.
+
+### Patch Changes
+
+- 15e5aa9: `ritmo-tools fx`: judge effects at native size, and see when an approved effect has changed. Ideas from [PVFX Foundry](https://nerijs.itch.io/pvfx-foundry).
+  
+  - **1× zoom** on the review page, to judge whether an effect reads at its native size.
+  - **Approval keeps what the person saw.** Approving an effect saves the draft in use, its fps, and a hash of each frame's final colors. When any of them later differ, `fx notes` and `fx render` list `changedSinceApproved` (`"frames 3-5 look different"`), and the page shows it with **Approve it as it is now**. The status stays approved: only the person changes it. A palette edit counts as a change. A review saved before this has no hashes, and reports nothing until the effect is approved again.
+  - The `ritmo-fx` skill adds a craft rule (each material dies its own way), the native-size question for the person, what to do with `changedSinceApproved`, and PVFX Foundry's Strict tier as a reference to look at.
+  - The example `explosion` draft `a` now sits on the floor, with thrown debris, embers, dust, and smoke that comes apart in clumps.
+  
+  Breaking: `fx render` writes sprite sheets in rows of up to 8 frames, not one row, so a long effect stays within a device's texture limit. A game that reads each frame's rectangle from the JSON (`frames["hit 0"].frame`, as Pixi and Phaser do) needs no change. Replace code that computes a frame's place as `x = frame * width` with `x = (frame % 8) * width` and `y = Math.floor(frame / 8) * height`.
+- 6b7df96: `ritmo-tools music` and `sound`: review all of a game's music on one page, and see when something approved has changed.
+  
+  - **`music review` takes songs, audio files, and folders**, and shows them all on a list with each one's status, filtered by what is left to do. A folder is searched for `*.song.json` and audio files, leaving out what the tool wrote beside a song (its render, its stems, its hum). What the person has not saved yet is written before another piece opens.
+  - **Plain audio files can be reviewed** (`.wav`, `.flac`, `.mp3`, `.ogg`, `.m4a`): play, loop, hear the loop point, read the length, loudness, and peak, approve or ask for changes, and comment on a stretch of time. Their reviews live in one `music.review.json` beside the game's `package.json`, not beside the files, since those often sit in a folder that ships with the game.
+  - **Approval keeps what the person heard**, in `music` and `sound` as it already did in `fx`. When an approved song, sound, or file later differs, `music notes`, `music render`, `sound notes`, and `sound render` list `changedSinceApproved`, and the page shows it with **Approve it as it is now**. The status stays approved: only the person changes it. An edit to words alone (an `about`, a track's name) is no change. A review from before this keeps its approval, with nothing to compare against until it is approved again.
+  - The music page checks a song in a worker, so a long song no longer holds the page for seconds when it opens, and going back to a song is instant.
+  
+  Breaking: `music notes` now prints `{ summary, music: [...] }` for any paths, one entry per piece, with `file`, `kind`, and `review` beside what it printed before. Replace `.status`, `.note`, `.comments`, `.edits`, and `.next` with `.music[0].status` and so on. `music review` prints `music` (the list of what it found) in place of `song` and `review`.
+- f30c9c6: `ritmo-tools pixel`: hold a frame, see an animation as a still, and check a tile's edges. Ideas from [Pixelorama](https://github.com/Orama-Interactive/Pixelorama).
+  
+  - **Holds.** `pixel sheet --animations "attack=5,6x3,7,8"` shows frame 6 for 3 beats, a beat being one frame at `--fps`. The JSON's `duration`, the GIF, the recipe (`sheet.frames[i].beats`), and the page's player all follow it, the page sets it on the chosen frame, and the report lists each frame's time in `durations`.
+  - **Onion pictures.** `pixel sheet` writes `<name>.<animation>.onion.png`: a panel per step of playback, each frame over the one before in red and the one after in blue, so an agent that cannot watch an animation can see a jump, a drift, or a change of size.
+  - **Tile seams.** `pixel lint tile.png --tile both` (or `x`, `y`) warns of a `seam` when a tile's edges do not meet, and `pixel preview tile.png --tile both` writes it repeated.
+  - The `ritmo-pixel-art` skill says when to use each, and that a game plays each frame for its `duration`.
+  
+  Breaking: the sprite sheet JSON of `pixel sheet` and `fx render` no longer has `meta.fps`, since one rate would lose a frame's hold. Replace `meta.fps[name]` with each frame's time, `frames["<name> 0"].duration`, in milliseconds. With Pixi, give `AnimatedSprite` `{ texture, time }` objects built from those durations.
+- d989c0b: `ritmo-tools pixel`: review all of a game's pixel art with a person on one page, and read back what they said.
+  
+  - **`pixel review <paths...>`** serves a local page (port 5193) with every PNG and text sprite under the folders named, by folder, each with its status. A person looks at each asset at whole-number zooms, opening as large as fits with 1× a key away, over a dark, light, checkerboard, or custom backdrop, plays sheets by animation with their durations, sees a tile repeated, lines the whole set up at one scale on a grid by size (picking several to compare or approve at once), approves or asks for changes, and drags over the art to pin a comment to an area of pixels on one frame. Each asset's lint against its nearest `pixel.config.json` shows beside it. What the tools write beside the art (previews, project PNGs, onion pictures, scaled copies, frame folders) is left out, and a fix shows as one row with what it was made from.
+  - **`pixel notes <paths...>`** prints a `summary` of what is left, then each asset's status, note, open comments (numbered, with their area and frame), how many are resolved, its lint, and `next`, changes asked first. **`pixel resolve <asset> <numbers...> --reply "..."`** marks comments done; the open page shows them with the reply.
+  - **Approval keeps the pixels the person saw**: a hash of each frame as decoded, and its duration. A re-export that looks the same is no change, and neither is a color hidden under a transparent pixel. When an approved asset later looks different or plays at other timings, `pixel notes` and the page say which frames under `changedSinceApproved`, and the page offers **Approve it as it is now**.
+  - The review lives in one `pixel.review.json` beside the game's `package.json`, keyed by path, out of the folder that ships.
+  - `review`, `notes`, and `resolve` exit 0 or 2 only.
+  - `pixel lint` no longer runs out of memory on a picture of thousands of colors (a smooth app icon took gigabytes comparing every pair): past 512 colors it says the picture is not pixel art yet instead. On the review page and in `pixel notes`, a sheet frame with nothing drawn in it is an `empty-frame` error.
+  
+  The `ritmo-pixel-art` skill says when to open the review and how to act on it, and that approving on the page does not replace looking at the art in the game at display size.
+- 027634b: **The `ritmo-prototype` skill prototypes where the fun lives.** It used to start from a verb or the smallest goal, with one exception for story. Now it names five cases. For a verb, build the verb and its feedback. For goals, build the smallest goal. For a story, characters, or a mystery, write a small slice by hand; paper or text is fine when it is faster. For a place to explore, hand-build a small map with a landmark you can see before you can reach it and something off the obvious path. For a mood, bring in the look and sound early. Before this, a game about wandering and discovery got a one-screen loop as its prototype, which tests none of what makes it fun.
+
 ## 0.20.0
 
 ### Minor Changes
