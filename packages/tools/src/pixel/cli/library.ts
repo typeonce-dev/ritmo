@@ -119,8 +119,6 @@ export type AssetRead =
       /** Its size: the pixels are not kept, so a game's worth of reads stays small. */
       readonly width: number
       readonly height: number
-      /** The picture as the page draws it: decoded and written again, so it shows exactly the pixels hashed (a text sprite, rendered). */
-      readonly png: Uint8Array
       readonly frames: ReadonlyArray<Frame>
       readonly animations: ReadonlyArray<SheetAnimationRead>
       /** The sheet's JSON, when it is a sheet. */
@@ -208,7 +206,7 @@ const read = async (asset: PixelAsset): Promise<AssetRead> => {
       if (!parsed.ok) return { ok: false, problem: parsed.problems.map((problem) => (problem.line === undefined ? problem.message : `line ${problem.line}: ${problem.message}`)).join("; ") }
       const image = toRgba(parsed.art)
       const frames: ReadonlyArray<Frame> = [{ name: "", index: 0, x: 0, y: 0, w: image.width, h: image.height, hash: hashFrame(image, 0, 0, image.width, image.height) }]
-      return { ok: true, width: image.width, height: image.height, png: encodePng(image), frames, animations: [], sheet: undefined, lint: await lintOf(asset, image, frames, parsed.art) }
+      return { ok: true, width: image.width, height: image.height, frames, animations: [], sheet: undefined, lint: await lintOf(asset, image, frames, parsed.art) }
     }
     const bytes = await readFile(asset.file)
     let image: RgbaImage
@@ -231,21 +229,48 @@ const read = async (asset: PixelAsset): Promise<AssetRead> => {
             const animation = animations.find((entry) => entry.frames.includes(i))
             return { name: rect.name, animation: animation?.name ?? "frames", index: animation?.frames.indexOf(i) ?? i, x: rect.x, y: rect.y, w: rect.w, h: rect.h, duration: rect.duration, hash: hashFrame(image, rect.x, rect.y, rect.w, rect.h) }
           })
-    return { ok: true, width: image.width, height: image.height, png: encodePng(image), frames, animations, sheet: sheet === undefined ? undefined : sheetFile, lint: await lintOf(asset, image, frames, undefined) }
+    return { ok: true, width: image.width, height: image.height, frames, animations, sheet: sheet === undefined ? undefined : sheetFile, lint: await lintOf(asset, image, frames, undefined) }
   } catch (error) {
     return { ok: false, problem: message(error) }
   }
 }
 
+let turns: Promise<unknown> = Promise.resolve()
+
+/** One read at a time, letting the server answer between them: decoding and linting a picture block it, and a large folder holds thousands. */
+const inTurn = <A>(run: () => Promise<A>): Promise<A> => {
+  const turn = turns.then(() => new Promise((next) => setImmediate(next))).then(run)
+  turns = turn.catch(() => undefined)
+  return turn
+}
+
 /** Each asset's read, by its version: the page's poll reads nothing again until a file changes, and two polls at once share one read. */
-const reads = new Map<string, { readonly version: string; readonly read: Promise<AssetRead> }>()
+const reads = new Map<string, { readonly version: string; readonly read: Promise<AssetRead>; done: boolean }>()
 export const readAsset = async (asset: PixelAsset): Promise<AssetRead> => {
   const version = await assetVersion(asset)
   const known = reads.get(asset.file)
   if (known?.version === version) return known.read
-  const fresh = read(asset)
-  reads.set(asset.file, { version, read: fresh })
+  const fresh = inTurn(() => read(asset))
+  const entry = { version, read: fresh, done: false }
+  reads.set(asset.file, entry)
+  void fresh.finally(() => {
+    entry.done = true
+  })
   return fresh
+}
+
+/**
+ * The picture the page draws: a PNG or JPEG file as it is, which a browser
+ * reads the way the game's does, and a text sprite rendered. Made when asked
+ * for and not kept: a page opening the whole set asks for them all, and its
+ * saves wait behind them for a connection if each takes long.
+ */
+export const pictureOf = async (asset: PixelAsset): Promise<{ readonly bytes: Uint8Array; readonly type: string }> => {
+  if (asset.kind === "picture") return { bytes: await readFile(asset.file), type: /\.png$/i.test(asset.file) ? "image/png" : "image/jpeg" }
+  const text = await readFile(asset.file, "utf8")
+  const parsed = /\.json$/i.test(asset.file) ? parseJsonMap(text) : parseSprite(text)
+  if (!parsed.ok) throw new Error(`${asset.id} no longer reads as a sprite`)
+  return { bytes: encodePng(toRgba(parsed.art)), type: "image/png" }
 }
 
 // ---------------------------------------------------------------------------
@@ -278,10 +303,19 @@ const filesOf = (assets: ReadonlyArray<PixelAsset>): Map<string, Array<PixelAsse
   return files
 }
 
-/** Changes when any of the assets' review files does: a hash of what they hold, so the page knows its own write from another. */
+/**
+ * Changes when what the page holds would: the reviews of these assets as their
+ * files say them, so the page knows its own write from another. An asset going
+ * away or coming back changes it too: a page that has not heard must not write
+ * over a review it cannot see.
+ */
 export const reviewVersion = async (assets: ReadonlyArray<PixelAsset>): Promise<string> => {
   const parts: Array<string> = []
-  for (const reviews of [...filesOf(assets).keys()].sort()) parts.push(reviews, (await textOf(reviews)) ?? "")
+  for (const [reviews, inside] of [...filesOf(assets).entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const text = await textOf(reviews)
+    const file = text === null ? ({ ok: true, value: emptyReview } as const) : decodeReview(text)
+    parts.push(reviews, file.ok ? JSON.stringify(inside.map((asset) => [asset.id, file.value.assets[reviewPlace(asset.file).key] ?? null])) : (text ?? ""))
+  }
   return hashText(parts.join("\u0000"))
 }
 
@@ -371,6 +405,12 @@ export const entryOf = async (asset: PixelAsset): Promise<Entry> => {
 
 /** The page's list, read again only where files changed. */
 export const libraryOf = (assets: ReadonlyArray<PixelAsset>): Promise<ReadonlyArray<Entry>> => Promise.all(assets.map(entryOf))
+
+/** How many of the assets have been read so far: what a page waiting for its list shows. */
+export const readingOf = (assets: ReadonlyArray<PixelAsset>): { readonly done: number; readonly total: number } => ({
+  done: assets.filter((asset) => reads.get(asset.file)?.done === true).length,
+  total: assets.length
+})
 
 /** What the page shows beside one asset: its lint issues, and the files it comes from. */
 export const detailOf = async (asset: PixelAsset): Promise<Detail> => {

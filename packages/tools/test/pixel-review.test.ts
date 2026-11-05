@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, utimesSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, utimesSync, writeFileSync } from "node:fs"
 import { createServer, type Server } from "node:http"
 import type { AddressInfo } from "node:net"
 import { tmpdir } from "node:os"
@@ -321,6 +321,33 @@ describe("comments", () => {
     expect(order.assets.map((entry) => entry.file)).toEqual(["changes", "stale", "new", "approved"])
     expect(order.summary).toBe("2 approved (1 changed since: ask the person to look again), 1 with changes asked, 1 not reviewed yet (of 4).")
   })
+
+  it("never tell the agent to leave alone what still has an open comment", () => {
+    const comment = { frame: 0, x: 0, y: 0, text: "Too dark" }
+    expect(reviewSummary({ status: "approved", note: "", comments: [] }, undefined).next).toContain("Leave it as it is")
+    expect(reviewSummary({ status: "approved", note: "", comments: [comment] }, undefined).next).not.toContain("Leave it as it is")
+    expect(reviewSummary({ status: "approved", note: "", comments: [comment] }, undefined).next).toContain("pixel resolve")
+    expect(reviewSummary({ status: "approved", note: "But the eyes could be wider", comments: [] }, undefined).next).toContain("note")
+    expect(reviewSummary({ status: "new", note: "", comments: [comment] }, undefined).next).toContain("Act on")
+    // Resolved comments ask nothing more.
+    expect(reviewSummary({ status: "approved", note: "", comments: [{ ...comment, resolved: true }] }, undefined).next).toContain("Leave it as it is")
+    const frames: ReadonlyArray<Frame> = [{ name: "", index: 0, x: 0, y: 0, w: 8, h: 8, hash: "new" }]
+    expect(reviewSummary({ status: "approved", note: "", comments: [comment], approved: { frames: ["old"] } }, frames).next).toContain("pixel resolve")
+  })
+
+  it("put words left without a status ahead of what nobody has looked at, and count them apart", () => {
+    const order = pixelSummary([
+      { file: "untouched", status: "new" as const },
+      { file: "approved", status: "approved" as const },
+      { file: "stale", status: "approved" as const, changedSinceApproved: "it looks different" },
+      { file: "commented", status: "new" as const, comments: [{}] },
+      { file: "noted", status: "new" as const, note: "Rounder" },
+      { file: "approved-commented", status: "approved" as const, comments: [{}] },
+      { file: "approved-noted", status: "approved" as const, note: "Lovely" }
+    ])
+    expect(order.assets.map((entry) => entry.file)).toEqual(["commented", "noted", "approved-commented", "stale", "untouched", "approved", "approved-noted"])
+    expect(order.summary).toBe("4 approved (1 changed since: ask the person to look again; 1 with open comments: read them), 0 with changes asked, 2 with a note or comments but no status set: act on them, 1 not reviewed yet (of 7).")
+  })
 })
 
 describe("sheet JSON", () => {
@@ -340,8 +367,8 @@ describe("sheet JSON", () => {
 })
 
 describe("the review page's server", () => {
-  const withServer = async (paths: ReadonlyArray<string>, run: (url: string) => Promise<void>): Promise<void> => {
-    const server: Server = createServer((request, response) => void api(paths)(request, response))
+  const withServer = async (paths: ReadonlyArray<string>, run: (url: string) => Promise<void>, listWait?: number): Promise<void> => {
+    const server: Server = createServer((request, response) => void api(paths, listWait)(request, response))
     await new Promise<void>((done) => server.listen(0, "127.0.0.1", done))
     try {
       await run(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)
@@ -380,11 +407,76 @@ describe("the review page's server", () => {
         expect((await fetch(`${url}/asset?id=${encodeURIComponent(id)}`)).status, id).toBe(404)
       }
       expect((await fetch(`${url}/../../etc/passwd`)).status).toBe(404)
+      // An id in a saved review is never a path to write: nothing found, nothing written, and it is said back.
       const review = encodeReview({ assets: { "../../etc/passwd": { status: "approved", note: "", comments: [] } } })
       const { review: base } = (await (await fetch(`${url}/library?since=`)).json()) as { review: string }
-      expect((await fetch(`${url}/review?base=${base}`, { method: "PUT", body: review })).status).toBe(400)
+      const saved = await fetch(`${url}/review?base=${base}`, { method: "PUT", body: review })
+      expect(saved.status).toBe(200)
+      expect(((await saved.json()) as { ignored: ReadonlyArray<string> }).ignored).toEqual(["../../etc/passwd"])
+      expect(existsSync(join(folder, "pixel.review.json"))).toBe(false)
     })
   })
+
+  it("keeps saving after the agent renames art the page holds a review of, and keeps that review under its old name", async () => {
+    const folder = game()
+    await withServer([join(folder, "public")], async (url) => {
+      const coin = idOf(join(folder, "public/art/coin.png"))
+      const atlas = idOf(join(folder, "public/art/atlas.png"))
+      const said = { status: "changes", note: "Rounder.", comments: [] } as const
+      const first = (await (await fetch(`${url}/review`)).json()) as { version: string }
+      const saved = (await (await fetch(`${url}/review?base=${first.version}`, { method: "PUT", body: encodeReview({ assets: { [coin]: said } }) })).json()) as { version: string }
+      renameSync(join(folder, "public/art/coin.png"), join(folder, "public/art/token.png"))
+      // The page has not looked since: its version is stale, and it still holds the old name.
+      const stale = await fetch(`${url}/review?base=${saved.version}`, { method: "PUT", body: encodeReview({ assets: { [coin]: said, [atlas]: { status: "approved", note: "", comments: [] } } }) })
+      expect(stale.status).toBe(409)
+      const now = ((await stale.json()) as { version: string }).version
+      const merged = await fetch(`${url}/review?base=${now}`, { method: "PUT", body: encodeReview({ assets: { [coin]: said, [atlas]: { status: "approved", note: "", comments: [] } } }) })
+      expect(merged.status).toBe(200)
+      expect(((await merged.json()) as { ignored: ReadonlyArray<string> }).ignored).toEqual([coin])
+      const file = decodeReview(readFileSync(join(folder, "pixel.review.json"), "utf8"))
+      expect(file.ok && [file.value.assets["public/art/coin.png"]?.note, file.value.assets["public/art/atlas.png"]?.status]).toEqual(["Rounder.", "approved"])
+    })
+  })
+
+  it("does not let a page that has not seen art come back write over its review", async () => {
+    const folder = game()
+    const file = join(folder, "public/art/coin.png")
+    const coinKey = "public/art/coin.png"
+    writeFileSync(join(folder, "pixel.review.json"), encodeReview({ assets: { [coinKey]: { status: "changes", note: "Rounder.", comments: [] } } }))
+    renameSync(file, join(folder, "public/art/token.png"))
+    await withServer([join(folder, "public")], async (url) => {
+      // The page reads the review while the file is away.
+      const { version, text } = (await (await fetch(`${url}/review`)).json()) as { version: string; text: string }
+      renameSync(join(folder, "public/art/token.png"), file)
+      expect((await fetch(`${url}/review?base=${version}`, { method: "PUT", body: text })).status).toBe(409)
+      const saved = decodeReview(readFileSync(join(folder, "pixel.review.json"), "utf8"))
+      expect(saved.ok && saved.value.assets[coinKey]?.note).toBe("Rounder.")
+    })
+  })
+
+  it("answers while it reads, and says how far it is", async () => {
+    const folder = game()
+    mkdirSync(join(folder, "public/more"))
+    for (let i = 0; i < 8; i++) writeFileSync(join(folder, `public/more/coin-${i}.png`), encodePng(coin(i)))
+    await withServer(
+      [join(folder, "public")],
+      async (url) => {
+        const first = (await (await fetch(`${url}/library?since=`)).json()) as { reading?: { done: number; total: number }; entries?: ReadonlyArray<unknown> }
+        expect(first.entries).toBeUndefined()
+        expect(first.reading?.total).toBe(12)
+        expect(first.reading?.done).toBeLessThan(12)
+        let listed = first
+        // A look that never waits still gets the list once all is read: it does not have to beat the clock.
+        for (let look = 0; listed.entries === undefined && look < 1000; look++) {
+          await new Promise((next) => setTimeout(next, 20))
+          listed = (await (await fetch(`${url}/library?since=`)).json()) as typeof first
+        }
+        expect(listed.entries).toHaveLength(12)
+        expect(listed.reading).toBeUndefined()
+      },
+      0
+    )
+  }, 60_000)
 
   it("saves the whole review, and refuses one written over a newer file, with what it holds now", async () => {
     const folder = game()

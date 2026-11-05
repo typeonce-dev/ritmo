@@ -58,10 +58,12 @@ export interface Listed {
   readonly review: string
   /** Every asset, unless nothing changed since the version asked about. */
   readonly entries?: ReadonlyArray<Entry> | undefined
+  /** How far the reading is, while the server is still reading the art: no list yet. */
+  readonly reading?: { readonly done: number; readonly total: number } | undefined
 }
 
-/** What a save says: written, with the review's new version, or written meanwhile by someone else, with what the file holds now. */
-export type Saved = { readonly ok: true; readonly version: string } | { readonly ok: false; readonly text: string; readonly version: string }
+/** What a save says: written, with the review's new version and the assets it no longer finds, or written meanwhile by someone else, with what the file holds now. */
+export type Saved = { readonly ok: true; readonly version: string; readonly ignored: ReadonlyArray<string> } | { readonly ok: false; readonly text: string; readonly version: string }
 
 export interface Store {
   /** The list, or `undefined` when it cannot be read (the CLI was stopped). */
@@ -84,6 +86,8 @@ const failure = (answer: unknown, fallback: string): string => (isRecord(answer)
 
 const isDetail = (value: unknown): value is Detail => isRecord(value) && typeof value.id === "string" && typeof value.version === "string" && Array.isArray(value.issues)
 
+const isReading = (value: unknown): value is { readonly done: number; readonly total: number } => isRecord(value) && typeof value.done === "number" && typeof value.total === "number"
+
 const query = (id: string): string => `id=${encodeURIComponent(id)}`
 
 /** The API `ritmo-tools pixel review` serves beside the page. */
@@ -92,7 +96,7 @@ export const serverStore: Store = {
     try {
       const answer: unknown = await (await fetch(`/api/library?since=${encodeURIComponent(since)}`)).json()
       return isRecord(answer) && typeof answer.version === "string" && typeof answer.review === "string"
-        ? { version: answer.version, review: answer.review, entries: Array.isArray(answer.entries) ? answer.entries : undefined }
+        ? { version: answer.version, review: answer.review, entries: Array.isArray(answer.entries) ? answer.entries : undefined, reading: isReading(answer.reading) ? answer.reading : undefined }
         : undefined
     } catch {
       return undefined
@@ -111,7 +115,7 @@ export const serverStore: Store = {
     const answer: unknown = await response.json()
     if (response.status === 409 && isRecord(answer) && typeof answer.text === "string" && typeof answer.version === "string") return { ok: false, text: answer.text, version: answer.version }
     if (!response.ok || !isRecord(answer) || typeof answer.version !== "string") throw new Error(failure(answer, response.statusText))
-    return { ok: true, version: answer.version }
+    return { ok: true, version: answer.version, ignored: Array.isArray(answer.ignored) ? answer.ignored.filter((id): id is string => typeof id === "string") : [] }
   },
   detail: async (id) => {
     try {

@@ -318,6 +318,7 @@ export const reviewSummary = (review: AssetReview, frames: ReadonlyArray<Frame> 
   // Open comments only, each with its number: resolved ones are done.
   const open = review.comments.flatMap((comment, index) => (comment.resolved === true ? [] : [{ number: index + 1, where: whereOf(comment), ...comment }]))
   const resolved = review.comments.length - open.length
+  const worded = open.length > 0 || review.note !== ""
   return {
     status: review.status,
     note: review.note === "" ? undefined : review.note,
@@ -326,30 +327,43 @@ export const reviewSummary = (review: AssetReview, frames: ReadonlyArray<Frame> 
     changedSinceApproved: changed,
     next:
       changed !== undefined
-        ? "It changed since the person approved it. Tell them what changed and ask them to look again; only they approve it."
-        : review.status === "approved"
-          ? "The person approved it. Leave it as it is."
-          : open.length > 0 || review.note !== ""
-            ? "Act on the note and each comment where it points, then `pixel resolve` the comments with a reply saying what changed, and tell the person."
-            : review.status === "changes"
-              ? "The person asked for changes but said nothing yet: ask them what."
-              : "Nothing said yet. Wait for the person, or ask them to look."
+        ? `It changed since the person approved it. Tell them what changed and ask them to look again; only they approve it.${open.length > 0 ? " Then `pixel resolve` the comments you acted on, with a reply saying what changed." : ""}`
+        : review.status === "approved" && open.length > 0
+          ? "The person approved it and left comments too. Read each: change only what it asks for, `pixel resolve` it with a reply saying what changed, and if the art changed, ask them to look again."
+          : review.status === "approved" && worded
+            ? "The person approved it and left a note. Read it, and leave the art as it is unless the note asks for a change."
+            : review.status === "approved"
+              ? "The person approved it. Leave it as it is."
+              : worded
+                ? "Act on the note and each comment where it points, then `pixel resolve` the comments with a reply saying what changed, and tell the person."
+                : review.status === "changes"
+                  ? "The person asked for changes but said nothing yet: ask them what."
+                  : "Nothing said yet. Wait for the person, or ask them to look."
   }
 }
 
 interface Summarized {
   readonly status: Status
+  readonly note?: string | undefined
+  /** The comments still open. */
+  readonly comments?: ReadonlyArray<unknown> | undefined
   readonly changedSinceApproved?: string | undefined
 }
 
-const urgency = (entry: Summarized): number => (entry.status === "changes" ? 0 : entry.changedSinceApproved !== undefined ? 1 : entry.status === "new" ? 2 : 3)
+/** Whether the person said something about it without asking for changes: a note or comments, with no status set; or comments on what they approved. */
+const leftWords = (entry: Summarized): boolean => entry.status !== "changes" && (entry.comments !== undefined || (entry.status === "new" && entry.note !== undefined))
 
-/** What is left to do across the assets, with them in the order to act on them: changes asked, changed since approved, not reviewed yet, approved. */
+const urgency = (entry: Summarized): number => (entry.status === "changes" || leftWords(entry) ? 0 : entry.changedSinceApproved !== undefined ? 1 : entry.status === "new" ? 2 : 3)
+
+/** What is left to do across the assets, with them in the order to act on them: changes asked or words left, changed since approved, not reviewed yet, approved. */
 export const pixelSummary = <A extends Summarized>(entries: ReadonlyArray<A>) => {
   const total = (status: Status): number => entries.filter((entry) => entry.status === status).length
   const stale = entries.filter((entry) => entry.changedSinceApproved !== undefined).length
+  const approvedWords = entries.filter((entry) => entry.status === "approved" && leftWords(entry)).length
+  const newWords = entries.filter((entry) => entry.status === "new" && leftWords(entry)).length
+  const about = [...(stale === 0 ? [] : [`${stale} changed since: ask the person to look again`]), ...(approvedWords === 0 ? [] : [`${approvedWords} with open comments: read them`])]
   return {
-    summary: `${total("approved")} approved${stale === 0 ? "" : ` (${stale} changed since: ask the person to look again)`}, ${total("changes")} with changes asked, ${total("new")} not reviewed yet (of ${entries.length}).`,
+    summary: `${total("approved")} approved${about.length === 0 ? "" : ` (${about.join("; ")})`}, ${total("changes")} with changes asked, ${newWords === 0 ? "" : `${newWords} with a note or comments but no status set: act on them, `}${total("new") - newWords} not reviewed yet (of ${entries.length}).`,
     assets: [...entries].sort((a, b) => urgency(a) - urgency(b))
   }
 }
