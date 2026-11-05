@@ -114,7 +114,8 @@ jobs:
           fetch-depth: 0
 
       # Only code the bench runs can move its results: the packages (without
-      # their docs, skills, type tests, and the version a release writes), the
+      # the two no bench imports, and their docs, skills, type tests, and the
+      # version a release writes), the
       # integration games that have bench cases, the runner, the lockfile, and
       # this workflow.
       - name: Check for runtime changes
@@ -122,6 +123,7 @@ jobs:
         run: |
           if git diff --quiet "$BASE_SHA" HEAD -- packages $(dirname integration/*/bench) scripts/bench.ts package.json pnpm-lock.yaml .github/workflows/ci.yml \
             ':(exclude)**/*.md' ':(exclude)packages/*/dtslint/**' ':(exclude)packages/core/skills/**' \
+            ':(exclude)packages/tools/**' ':(exclude)packages/oxlint-plugin/**' \
             ':(exclude)packages/*/package.json' ':(exclude)packages/devtools/src/internal/version.ts'; then
             echo "No runtime changes: benchmarks skipped."
             echo "run=false" >> "$GITHUB_OUTPUT"

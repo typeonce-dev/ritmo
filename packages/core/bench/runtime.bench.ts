@@ -181,6 +181,8 @@ const iterateWrite: BenchCase = {
   name: "query/iterate-write-10k",
   description: "Integrate velocity into position on 10k entities",
   critical: true,
+  // Identical code settles on speeds up to about 70% apart here, and differently per CPU.
+  timeTolerance: 1,
   setup: () => {
     const runtime = makeRuntime()
     populate(runtime, N, 0)
