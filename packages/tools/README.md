@@ -408,12 +408,17 @@ with a JSON in a format of its own, it shows as a still.
 The list on the left shows every asset by folder with its status, whether it
 changed since it was approved, its lint, and its open comments; the top bar
 narrows it to what is to review, has changes asked, or is approved. The art
-shows at a whole-number zoom (1× first, the size the game draws it before
-any scaling) over a backdrop: dark, light, a checkerboard, or any color.
+opens at the largest whole-number zoom that fits, up to 16×, so a small sprite
+is big enough to judge and to pin a comment on, and a picture too big for the
+stage shrinks to fit, so nothing scrolls until asked; 0 shows it at 1×, the size the
+game draws it before any scaling, and a zoom the person picks stays for the
+next asset until F fits again. It sits over a backdrop: dark, light, a
+checkerboard, or any color.
 **Repeat** draws it three by three, to see a tile meet itself. A sheet
 plays each animation with its durations, and the playback bar pauses and
-steps through the frames. **Set** shows every asset at its own size side by
-side over one backdrop, to see whether they belong together; pick several
+steps through the frames. **Set** shows every asset at one scale, chosen from the set's typical size, on
+a grid by size over one backdrop, to see whether they belong together; a
+picture too big for the grid is smaller and says its own zoom. Pick several
 and **Compare them** shows only those, or **Approve them** approves them
 at once.
 
@@ -430,7 +435,7 @@ When the art later looks different or plays at other timings, the page and
 version; the status stays approved, since only the person changes it.
 
 ↑ and ↓ change asset, Space plays, ← and → step frames, + and − zoom, 0 goes
-back to 1×, V switches to the whole set and back, and Ctrl/Cmd+Z undoes.
+back to 1×, F fits each asset again, V switches to the whole set and back, and Ctrl/Cmd+Z undoes.
 Every change is saved as it happens. Art the agent rewrites or adds, and
 comments it resolves, show up while the page is open; what the person is
 typing is kept.

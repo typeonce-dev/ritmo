@@ -1,13 +1,13 @@
 /**
  * The pixel art review page, served by `ritmo-tools pixel review <paths>`
  * (`main.ts`): the person goes through a game's art on a list, by folder.
- * Each asset opens at its own size (1×) and zooms by whole numbers, over a
- * backdrop of their choosing; a sheet plays by animation, with its frames'
+ * Each asset opens as large as fits the stage and zooms by whole numbers, down
+ * to its own size (1×), over a backdrop of their choosing; a sheet plays by animation, with its frames'
  * own timings. They approve it, or ask for changes with a note and comments
  * pinned to an area of pixels on a frame; the lint against the asset's
  * nearest `pixel.config.json` shows beside it. The whole set also shows
- * side by side at its own size, to judge the art as one game, and to
- * compare and approve several at once.
+ * side by side at one scale, on a grid by size, to judge the art as one game,
+ * and to compare and approve several at once.
  *
  * The review is one file, saved whole as it changes (one undo history for
  * all of it), for the agent to read back with `ritmo-tools pixel notes`. Art
@@ -63,10 +63,14 @@ const state = {
   view: "asset" as View,
   show: "all" as Show,
   search: "",
-  /** The asset's zoom, a whole number: 1 is the art at its own size. */
+  /** The asset's zoom: 1 is the art at its own size. A whole number, or under 1 for a picture shrunk to fit. */
   zoom: 1,
+  /** Whether each asset takes the zoom that fits it, until the person picks one. */
+  fit: true,
   /** The whole set's zoom. */
   setZoom: 1,
+  /** Whether the whole set takes the zoom its art's size asks for, until the person picks one. */
+  setFit: true,
   /** Assets picked in the whole set, to compare or approve together. */
   picked: new Set<string>(),
   onlyPicked: false,
@@ -379,12 +383,30 @@ const tiles = (): number => (state.repeat ? 3 : 1)
 /** The largest zoom that keeps the canvas a size a browser draws. */
 const maxZoom = (entry: Entry): number => Math.max(1, Math.min(32, Math.floor(4096 / (Math.max(1, ...entry.frames.map((frame) => Math.max(frame.w, frame.h))) * tiles()))))
 
+/** Past this a small sprite gains nothing on screen: its pixels are already easy to see and to press. */
+const FIT_MOST = 16
+
+/** The zoom at which the asset's largest frame fits the stage without scrolling, once it is drawn there: the largest whole number, or for a picture too big at 1×, just what fits. */
+const fitZoom = (entry: Entry): number => {
+  const spot = content.querySelector(".pixel-screen")
+  if (spot === null) return 1
+  const box = spot.getBoundingClientRect()
+  const room = content.getBoundingClientRect().bottom - box.top - content.scrollTop - parseFloat(getComputedStyle(content).paddingBottom)
+  const across = Math.max(1, ...entry.frames.map((frame) => frame.w)) * tiles()
+  const down = Math.max(1, ...entry.frames.map((frame) => frame.h)) * tiles()
+  const fits = Math.min((box.width - MARGIN * 2) / across, (room - MARGIN * 2) / down)
+  if (fits >= 1) return Math.min(FIT_MOST, maxZoom(entry), Math.floor(fits))
+  return Math.max(0.01, Math.floor(fits * 100) / 100)
+}
+
+const zoomWords = (zoom: number): string => `${zoom >= 1 ? zoom : zoom.toFixed(2)}×`
+
 /** The canvas's size in page pixels: the largest frame of the animation, at the zoom, with the margin around it. */
 const screenOf = (entry: Entry): { readonly w: number; readonly h: number; readonly fw: number; readonly fh: number } => {
   const frames = animationOf(entry).frames.map((i) => entry.frames[i]!)
   const fw = Math.max(1, ...frames.map((frame) => frame.w))
   const fh = Math.max(1, ...frames.map((frame) => frame.h))
-  return { w: fw * state.zoom * tiles() + MARGIN * 2, h: fh * state.zoom * tiles() + MARGIN * 2, fw, fh }
+  return { w: Math.ceil(fw * state.zoom * tiles()) + MARGIN * 2, h: Math.ceil(fh * state.zoom * tiles()) + MARGIN * 2, fw, fh }
 }
 
 const paint = (canvas: HTMLCanvasElement, entry: Entry, image: HTMLImageElement, global: number): void => {
@@ -401,16 +423,18 @@ const paint = (canvas: HTMLCanvasElement, entry: Entry, image: HTMLImageElement,
   }
   context.setTransform(ratio, 0, 0, ratio, 0, 0)
   context.clearRect(0, 0, screen.w, screen.h)
-  context.imageSmoothingEnabled = false
   const zoom = state.zoom
+  // Whole zooms keep every pixel; a picture shrunk to fit has pixels to lose, and looks better blended.
+  context.imageSmoothingEnabled = zoom < 1
   const [a, b] = backdropColors()
   const spanW = screen.fw * tiles()
   const spanH = screen.fh * tiles()
-  // The backdrop is in squares of 4 art pixels, so the pixel size shows.
-  for (let y = 0; y < spanH; y += 4)
-    for (let x = 0; x < spanW; x += 4) {
-      context.fillStyle = (x / 4 + y / 4) % 2 === 0 ? a : b
-      context.fillRect(MARGIN + x * zoom, MARGIN + y * zoom, Math.min(4, spanW - x) * zoom, Math.min(4, spanH - y) * zoom)
+  // The backdrop is in squares of 4 art pixels, so the pixel size shows; shrunk, in squares that still show on screen.
+  const square = zoom >= 1 ? 4 : Math.ceil(4 / zoom)
+  for (let y = 0; y < spanH; y += square)
+    for (let x = 0; x < spanW; x += square) {
+      context.fillStyle = (x / square + y / square) % 2 === 0 ? a : b
+      context.fillRect(MARGIN + x * zoom, MARGIN + y * zoom, Math.min(square, spanW - x) * zoom, Math.min(square, spanH - y) * zoom)
     }
   for (let ty = 0; ty < tiles(); ty++)
     for (let tx = 0; tx < tiles(); tx++) context.drawImage(image, frame.x, frame.y, frame.w, frame.h, MARGIN + tx * screen.fw * zoom, MARGIN + ty * screen.fh * zoom, frame.w * zoom, frame.h * zoom)
@@ -639,7 +663,7 @@ const renderTopbar = (): void => {
           state.view,
           [
             { id: "asset", label: "Asset", icon: "image", title: "One asset at a time, zoomed (V: the whole set)" },
-            { id: "set", label: "Set", icon: "layers", title: "The whole set side by side at its own size, to judge it as one game (V: one asset)" }
+            { id: "set", label: "Set", icon: "layers", title: "The whole set side by side at one scale, to judge it as one game (V: one asset)" }
           ],
           setView,
           { label: "View", class: "pixel-views" }
@@ -782,6 +806,8 @@ const renderHead = (): void => {
   )
 }
 
+let fitting = false
+
 const renderStage = (): void => {
   screen = undefined
   if (state.view === "set") return renderSet()
@@ -797,11 +823,13 @@ const renderStage = (): void => {
     renderPlayback()
     return
   }
+  // A zoom kept from a smaller asset may be more than a browser draws at this one's size.
+  state.zoom = Math.min(state.zoom, maxZoom(entry))
   const size = screenOf(entry)
   const canvas = h("canvas", {
     class: "pixel-canvas",
     title: "Press on a pixel, or drag across an area, to comment on it (it pauses there)",
-    attrs: { "aria-label": `${entry.name} at ${state.zoom}×`, style: `width:${size.w}px;height:${size.h}px` }
+    attrs: { "aria-label": `${entry.name} at ${zoomWords(state.zoom)}`, style: `width:${size.w}px;height:${size.h}px` }
   })
   const rings = h("div", { class: "pixel-rings", attrs: { "aria-hidden": "true" } })
   const counter = h("span", { class: "frame-counter pixel-counter" })
@@ -847,15 +875,72 @@ const renderStage = (): void => {
       ),
     h("div", { class: "pixel-screen" }, h("div", { class: "pixel-frame", attrs: { style: `width:${size.w}px;height:${size.h}px` } }, canvas, rings))
   )
+  // The room left depends on what is drawn above the art, so it is measured here, and drawn once more at what it says.
+  if (state.fit && !fitting && fitZoom(entry) !== state.zoom) {
+    state.zoom = fitZoom(entry)
+    fitting = true
+    renderStage()
+    fitting = false
+    return
+  }
   renderPlayback()
 }
 
 // ---------------------------------------------------------------------------
 // The whole set side by side
 
+/** The size a typical asset of the set is shown at when it opens: a 16 px sprite at 6×, a 32 px one at 3×. */
+const SET_TYPICAL = 96
+/** A column holds such a sprite and the tile's padding. */
+const SET_COLUMN = 112
+const SET_GAP = 10
+/** Rows this fine let tiles of any height interlock, and still line up. */
+const SET_ROW = 16
+const SET_PADDING = 8
+/** A tile's foot and its padding, under the art. */
+const SET_FOOT = 42
+/** The room a tile's art has at the set's own zoom: enough to see it, so one big picture does not push the rest out of view. */
+const SET_TALL = 192
+const SET_ACROSS = 3
+
+/** The zoom the set's art asks for: its median asset at about `SET_TYPICAL`. One outlier does not move it. */
+const fitSetZoom = (): number => {
+  const sides = state.library.flatMap((entry) => {
+    const frame = entry.frames[0]
+    return frame === undefined ? [] : [Math.max(frame.w, frame.h)]
+  })
+  const median = [...sides].sort((a, b) => a - b)[sides.length >> 1] ?? SET_TYPICAL
+  return Math.max(1, Math.min(8, Math.round(SET_TYPICAL / median)))
+}
+
+/** The grid's columns in the room the stage has now. */
+const setColumns = (): { readonly count: number; readonly width: number } => {
+  const style = getComputedStyle(content)
+  const room = Math.min(980, content.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)) - 24
+  const count = Math.max(2, Math.floor((room + SET_GAP) / (SET_COLUMN + SET_GAP)))
+  return { count, width: (room - SET_GAP * (count - 1)) / count }
+}
+
+let setColumnsDrawn = 0
+
 const renderSet = (): void => {
+  if (state.setFit) state.setZoom = fitSetZoom()
   renderPlayback()
   const zoom = state.setZoom
+  const columns = setColumns()
+  setColumnsDrawn = columns.count
+  const spanned = (count: number): number => count * columns.width + (count - 1) * SET_GAP
+  const wholeWidth = spanned(columns.count) - SET_PADDING * 2
+  // A zoom the person picked past the set's own gives the art room to grow with it; 1× they picked is the art's own size, as far as the grid is wide.
+  const asItIs = !state.setFit && zoom === 1
+  const grown = Math.max(1, zoom / fitSetZoom())
+  const mostAcross = asItIs ? wholeWidth : Math.min(wholeWidth, (spanned(Math.min(SET_ACROSS, columns.count)) - SET_PADDING * 2) * grown)
+  const mostDown = asItIs ? Number.POSITIVE_INFINITY : SET_TALL * grown
+  /** The set's zoom where the art fits; else the largest whole zoom that does, so its pixels stay even; and only a picture too big at 1× goes under it. */
+  const scaleOf = (frame: { readonly w: number; readonly h: number }): number => {
+    const fits = Math.min(mostAcross / frame.w, mostDown / frame.h)
+    return fits >= zoom ? zoom : fits >= 1 ? Math.floor(fits) : fits
+  }
   const entries = visible().filter((entry) => !state.onlyPicked || state.picked.has(entry.id))
   const [a] = backdropColors()
   const folders = new Set(entries.map((entry) => entry.folder))
@@ -865,27 +950,36 @@ const renderSet = (): void => {
   const tile = (entry: Entry): HTMLElement => {
     const frame = entry.frames[animationsOf(entry)[0]!.frames[0] ?? 0]
     const isPicked = state.picked.has(entry.id)
+    const scale = frame === undefined ? zoom : scaleOf(frame)
+    const artWidth = (frame?.w ?? 24) * scale
+    const artHeight = (frame?.h ?? 24) * scale
+    const across = Math.max(1, Math.min(columns.count, Math.ceil((artWidth + SET_PADDING * 2 + SET_GAP) / (columns.width + SET_GAP))))
+    const down = Math.ceil((Math.max(artHeight, 64) + SET_FOOT + SET_GAP) / SET_ROW)
     const art =
       entry.problem !== undefined || frame === undefined
         ? h("div", { class: "pixel-set-broken", title: entry.problem }, icon("alert"))
         : h(
             "div",
-            { class: "pixel-set-art", attrs: { style: `width:${frame.w * zoom}px;height:${frame.h * zoom}px` } },
+            { class: `pixel-set-art${scale < 1 ? " shrunk" : ""}`, attrs: { style: `width:${artWidth}px;height:${artHeight}px` } },
             h("img", {
               attrs: {
                 src: store.picture(entry.id, entry.version),
                 alt: entry.name,
                 loading: "lazy",
                 decoding: "async",
-                width: entry.width * zoom,
-                height: entry.height * zoom,
-                style: `width:${entry.width * zoom}px;height:${entry.height * zoom}px;margin-left:${-frame.x * zoom}px;margin-top:${-frame.y * zoom}px`
+                width: Math.round(entry.width * scale),
+                height: Math.round(entry.height * scale),
+                style: `width:${entry.width * scale}px;height:${entry.height * scale}px;margin-left:${-frame.x * scale}px;margin-top:${-frame.y * scale}px`
               }
             })
           )
     return h(
       "div",
-      { class: `pixel-set-tile${entry.id === state.current ? " on" : ""}${isPicked ? " picked" : ""}`, title: entry.id, attrs: { "data-asset": entry.id } },
+      {
+        class: `pixel-set-tile${entry.id === state.current ? " on" : ""}${isPicked ? " picked" : ""}`,
+        title: `${entry.id} · ${frame?.w ?? 0}×${frame?.h ?? 0}`,
+        attrs: { "data-asset": entry.id, style: `grid-column:span ${across};grid-row:span ${down}` }
+      },
       h(
         "button",
         {
@@ -896,6 +990,8 @@ const renderSet = (): void => {
         },
         art
       ),
+      // Not at the set's scale: said on the tile, so its size is not read against the rest.
+      frame !== undefined && scale !== zoom && h("span", { class: "pixel-set-scale", title: "Too big for the grid at the set's scale" }, `${scale >= 1 ? scale : scale.toFixed(2)}×`),
       h(
         "button",
         {
@@ -922,17 +1018,17 @@ const renderSet = (): void => {
       "div",
       { class: "sound-head" },
       h("div", { class: "sound-title" }, h("h1", {}, "The whole set"), pill(`${entries.length} shown`), pill(`${zoom}×`)),
-      h("p", { class: "sound-about" }, "Every asset at its own size, side by side, over one backdrop: does it read as one game? Pick some to compare them alone or approve them together. A sheet shows its first frame.")
+      h("p", { class: "sound-about" }, "Every asset at one scale, over one backdrop: does it read as one game? A picture too big for the grid is smaller and says its zoom. Pick some to compare or approve them together.")
     ),
-    picked.length > 0 &&
-      h(
+    // Always here, so picking the first asset moves nothing on the page.
+    h(
         "div",
         { class: "pixel-picked" },
-        h("span", {}, `${picked.length} picked`),
+        h("span", {}, picked.length === 0 ? "None picked" : `${picked.length} picked`),
         button(state.onlyPicked ? "Show all" : "Compare them", () => {
           state.onlyPicked = !state.onlyPicked
           renderStage()
-        }, { small: true, variant: "secondary", title: "Only the picked ones, side by side" }),
+        }, { small: true, variant: "secondary", disabled: picked.length === 0, title: "Only the picked ones, side by side" }),
         button("Approve them", () => {
           for (const id of picked) {
             const entry = entryOf(id)
@@ -940,16 +1036,16 @@ const renderSet = (): void => {
           }
           reviewChanged()
           say(`Approved ${picked.length}: they look right as they are now.`)
-        }, { small: true, variant: "primary", icon: "check" }),
+        }, { small: true, variant: "primary", icon: "check", disabled: picked.length === 0 }),
         button("Clear", () => {
           state.picked.clear()
           state.onlyPicked = false
           renderStage()
-        }, { small: true, variant: "ghost" })
+        }, { small: true, variant: "ghost", disabled: picked.length === 0 })
       ),
     entries.length === 0 && h("p", { class: "hint" }, "Nothing here."),
     [...byFolder.entries()].map(([folder, inside]) =>
-      h("section", { class: "pixel-set-folder" }, folders.size > 1 && h("h3", { class: "pixel-folder" }, folder), h("div", { class: "pixel-set", attrs: { style: `--backdrop:${a}` } }, inside.map(tile)))
+      h("section", { class: "pixel-set-folder" }, folders.size > 1 && h("h3", { class: "pixel-folder" }, folder), h("div", { class: "pixel-set", attrs: { style: `--backdrop:${a};--set-columns:${columns.count}` } }, inside.map(tile)))
     )
   )
 }
@@ -959,11 +1055,31 @@ const renderSet = (): void => {
 
 const setZoom = (zoom: number): void => {
   if (state.view === "set") {
+    state.setFit = false
     state.setZoom = Math.max(1, Math.min(8, zoom))
     return renderStage()
   }
   const entry = entryOf(state.current)
+  state.fit = false
   state.zoom = Math.max(1, Math.min(entry === undefined ? 32 : maxZoom(entry), zoom))
+  renderStage()
+}
+
+/** One step: whole zooms up and down; under 1×, only the fit a picture too big for the stage has. */
+const zoomBy = (by: 1 | -1): void => {
+  const zoom = state.view === "set" ? state.setZoom : state.zoom
+  const entry = entryOf(state.current)
+  if (by < 0 && zoom <= 1) {
+    if (state.view === "asset" && entry !== undefined && entry.problem === undefined && fitZoom(entry) < zoom) fitAgain()
+    return
+  }
+  setZoom(by > 0 ? Math.floor(zoom) + 1 : Math.ceil(zoom) - 1)
+}
+
+/** Back to the zoom that fits: each asset's, or the whole set's. */
+const fitAgain = (): void => {
+  if (state.view === "set") state.setFit = true
+  else state.fit = true
   renderStage()
 }
 
@@ -993,6 +1109,7 @@ const renderPlayback = (): void => {
   const sheet = state.view === "asset" && entry !== undefined && entry.problem === undefined && entry.animations.length > 0
   const zoom = state.view === "set" ? state.setZoom : state.zoom
   const top = state.view === "set" ? 8 : entry === undefined ? 32 : maxZoom(entry)
+  const least = state.view === "asset" && entry !== undefined && entry.problem === undefined ? Math.min(1, fitZoom(entry)) : 1
   replace(
     playback,
     sheet && [
@@ -1004,10 +1121,11 @@ const renderPlayback = (): void => {
     ],
     state.view === "asset" && entry !== undefined && entry.animations.length === 0 && screen?.counter,
     state.view === "asset" && entry !== undefined && entry.animations.length === 0 && h("span", { class: "divider" }),
-    button("Zoom out", () => setZoom(zoom - 1), { variant: "ghost", icon: "minus", iconOnly: true, disabled: zoom <= 1, title: "Zoom out (−)" }),
-    h("span", { class: "zoom-value", attrs: { "aria-label": "Zoom" } }, `${zoom}×`),
-    button("Zoom in", () => setZoom(zoom + 1), { variant: "ghost", icon: "plus", iconOnly: true, disabled: zoom >= top, title: "Zoom in (+)" }),
-    zoom !== 1 && button("1×", () => setZoom(1), { variant: "ghost", small: true, title: "Back to its own size (0)" })
+    button("Zoom out", () => zoomBy(-1), { variant: "ghost", icon: "minus", iconOnly: true, disabled: zoom <= least, title: "Zoom out (−)" }),
+    h("span", { class: "zoom-value", attrs: { "aria-label": "Zoom" } }, zoomWords(zoom)),
+    button("Zoom in", () => zoomBy(1), { variant: "ghost", icon: "plus", iconOnly: true, disabled: zoom >= top, title: "Zoom in (+)" }),
+    button("1×", () => setZoom(1), { variant: "ghost", small: true, disabled: zoom === 1 && !(state.view === "set" ? state.setFit : state.fit), title: "Its own size (0)" }),
+    button("Fit", fitAgain, { variant: "ghost", small: true, disabled: state.view === "set" ? state.setFit : state.fit, title: "As large as fits (F)" })
   )
   renderCounter()
 }
@@ -1298,7 +1416,7 @@ const renderViewPanel = (): void => {
   redraw(
     viewBox,
     section(
-      { id: "pixel-view", title: "View", help: "What the art is drawn over, and how. The backdrop is in squares of 4 art pixels, so the pixel size shows; pick one near the game's own ground. Repeat draws the frame three by three, to see a tile's seams.", onToggle: renderViewPanel },
+      { id: "pixel-view", title: "View", closed: true, help: "What the art is drawn over, and how. The backdrop is in squares of 4 art pixels, so the pixel size shows; pick one near the game's own ground. Repeat draws the frame three by three, to see a tile's seams.", onToggle: renderViewPanel },
       group(
         "Backdrop",
         h(
@@ -1344,7 +1462,7 @@ const viewChanged = (): void => {
 
 const setPanel = (): HTMLElement =>
   section(
-    { id: "pixel-set", title: "The whole set", help: "Every asset at its own size, side by side, to judge the art as one game: its sizes, outlines, palette, and detail should agree. Pick some (the check under each) to compare them alone or approve them together; open one to comment on it.", onToggle: renderReview },
+    { id: "pixel-set", title: "The whole set", help: "Every asset at one scale, side by side, to judge the art as one game: its sizes, outlines, palette, and detail should agree. A sheet shows its first frame. Pick some (the check on each) to compare them alone or approve them together; open one to comment on it.", onToggle: renderReview },
     hint(`${visible().length} shown at ${state.setZoom}×. Open one to comment on its pixels.`)
   )
 
@@ -1367,7 +1485,7 @@ const renderAbout = (): void =>
         h("code", {}, "pixel.review.json"),
         " at the game's root. Fixing pixels by hand belongs on the pixel fixer's page."
       ),
-      h("p", { class: "hint" }, "Keys: ↑ ↓ change asset, Space plays, ← → step frames, + − zoom, 0 back to 1×, V the whole set and back, Esc drops a comment being drawn.")
+      h("p", { class: "hint" }, "Keys: ↑ ↓ change asset, Space plays, ← → step frames, + − zoom, 0 back to 1×, F as large as fits, V the whole set and back, Esc drops a comment being drawn.")
     )
   )
 
@@ -1444,11 +1562,13 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault()
     stepFrame(event.key === "ArrowRight" ? 1 : -1)
   } else if (event.key === "+" || event.key === "=") {
-    setZoom((state.view === "set" ? state.setZoom : state.zoom) + 1)
+    zoomBy(1)
   } else if (event.key === "-" || event.key === "_") {
-    setZoom((state.view === "set" ? state.setZoom : state.zoom) - 1)
+    zoomBy(-1)
   } else if (event.key === "0") {
     setZoom(1)
+  } else if (event.key === "f" || event.key === "F") {
+    fitAgain()
   } else if (event.key === "v" || event.key === "V") {
     // Not Tab: that key belongs to moving through the page's controls.
     setView(state.view === "asset" ? "set" : "asset")
@@ -1460,7 +1580,21 @@ window.addEventListener("keydown", (event) => {
   }
 })
 
-window.addEventListener("resize", () => repaint())
+const sizeChanged = (): void => {
+  if (state.view === "set") {
+    if (setColumns().count !== setColumnsDrawn) renderStage()
+    return
+  }
+  const entry = entryOf(state.current)
+  if (state.fit && entry !== undefined && entry.problem === undefined && fitZoom(entry) !== state.zoom) renderStage()
+  else repaint()
+}
+
+window.addEventListener("resize", sizeChanged)
+// The stage's own size, not only the window's: a browser may first lay it out before it has its full height, and the title above the art may wrap. Next frame, since drawing during the observer's own pass would report again.
+const stageWatch = new ResizeObserver(() => requestAnimationFrame(sizeChanged))
+stageWatch.observe(content)
+stageWatch.observe(head)
 
 /** Draws the page and opens the art from where `chosen` keeps it; follows the agent's changes. */
 export const start = (chosen: Store): void => {

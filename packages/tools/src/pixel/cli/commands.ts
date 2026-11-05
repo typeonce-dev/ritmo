@@ -604,7 +604,7 @@ const review = Command.make(
   })
 ).pipe(
   Command.withDescription(
-    "Opens the review page for all the pixel art under the paths: the person goes through it by folder, at whole-number zooms over a choice of backdrops, plays sheets by animation, sees the whole set side by side at its own size, approves each asset or asks for changes, and pins comments to an area of pixels on a frame. The lint against each asset's nearest pixel.config.json shows beside it. Runs until stopped; changes are saved as they happen."
+    "Opens the review page for all the pixel art under the paths: the person goes through it by folder, at whole-number zooms over a choice of backdrops, plays sheets by animation, sees the whole set side by side at one scale, approves each asset or asks for changes, and pins comments to an area of pixels on a frame. The lint against each asset's nearest pixel.config.json shows beside it. Runs until stopped; changes are saved as they happen."
   )
 )
 

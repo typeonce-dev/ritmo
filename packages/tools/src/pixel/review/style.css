@@ -133,10 +133,17 @@
 }
 
 .pixel-counter {
-  min-width: 0;
+  /* Room for most sizes, so the zoom buttons stay where they are from asset to asset. */
+  min-width: 92px;
   padding: 0 6px;
+  text-align: center;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+.pixel-stage .zoom-value {
+  min-width: 34px;
+  text-align: center;
 }
 
 .pixel-stage .playback {
@@ -156,11 +163,16 @@
   cursor: pointer;
 }
 
+.topbar-center .segmented {
+  /* Their text would line them up otherwise, and one has icons: boxes line up instead. */
+  vertical-align: top;
+}
+
 .topbar-center .pixel-views {
   margin-left: 8px;
 }
 
-/* The whole set: every asset at its own size, over one backdrop. */
+/* The whole set: every asset at one scale, on a grid by size, over one backdrop. */
 
 .pixel-set-folder + .pixel-set-folder {
   margin-top: 14px;
@@ -172,11 +184,13 @@
 
 /* One backdrop under the whole set, so the art reads together, as on one screen. */
 .pixel-set {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px 12px;
-  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(var(--set-columns, 4), minmax(0, 1fr));
+  /* Fine rows, each tile spanning what it needs: tiles of any height interlock, and dense fills the gaps. */
+  grid-auto-rows: 16px;
+  grid-auto-flow: dense;
+  column-gap: 10px;
+  padding: 12px 12px 2px;
   border-radius: var(--radius-lg);
   background: var(--backdrop, #1a1c2c);
 }
@@ -185,11 +199,15 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
-  padding: 3px;
-  border-radius: 4px;
+  min-width: 0;
+  margin-bottom: 10px;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(128, 128, 128, 0.1);
+}
+
+.pixel-set-tile:hover {
+  background: rgba(128, 128, 128, 0.18);
 }
 
 .pixel-set-tile.on {
@@ -202,9 +220,11 @@
 
 .pixel-set-open {
   display: grid;
+  flex: 1;
   place-items: center;
-  max-width: 100%;
-  overflow: auto;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
   padding: 0;
   border: 0;
   background: transparent;
@@ -221,6 +241,25 @@
   image-rendering: pixelated;
 }
 
+.pixel-set-art.shrunk img {
+  image-rendering: auto;
+}
+
+/* A picture not at the set's scale says its own. */
+.pixel-set-scale {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(15, 16, 20, 0.75);
+  color: #d4d4da;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 15px;
+  pointer-events: none;
+}
+
 .pixel-set-broken {
   display: grid;
   place-items: center;
@@ -233,8 +272,9 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  flex: none;
   min-width: 0;
-  max-width: 112px;
+  margin-top: 6px;
   padding: 1px 4px;
   border-radius: 4px;
   background: rgba(15, 16, 20, 0.6);
@@ -242,6 +282,7 @@
 }
 
 .pixel-set-name {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   color: #d4d4da;
@@ -253,6 +294,13 @@
 .pixel-set-foot .dot {
   width: 7px;
   height: 7px;
+}
+
+/* A flag holds only its icon: no line of text around it to push it off center. */
+.pixel-list .sound-flag,
+.pixel-set-foot .sound-flag {
+  display: inline-flex;
+  flex: none;
 }
 
 .pixel-set-foot .sound-flag .icon {
@@ -303,7 +351,8 @@
 
 .pixel-picked {
   position: sticky;
-  top: 0;
+  /* Sticky measures from inside the stage's padding: this leaves 8px under the top bar. */
+  top: -20px;
   z-index: 1;
   display: flex;
   flex-wrap: wrap;
@@ -312,7 +361,8 @@
   margin-bottom: 14px;
   padding: 8px 10px;
   border-radius: var(--radius-lg);
-  background: var(--floating);
+  /* Solid: tiles scroll under it, and their names would read through. */
+  background: #1f2128;
   box-shadow: var(--shadow-float);
   color: #ececef;
   font-size: 12.5px;
@@ -322,13 +372,24 @@
   margin-right: auto;
 }
 
+/* "Compare them" and "Show all" take the same room. */
+.pixel-picked > button:first-of-type {
+  min-width: 104px;
+}
+
 @media (max-width: 760px) {
   .topbar-center .pixel-views {
     margin-left: 0;
   }
 
-  .pixel-set-foot {
-    max-width: 96px;
+  /* The stage's padding is 16px here. */
+  .pixel-picked {
+    top: -8px;
+  }
+
+  /* The count on a row of its own: the buttons never wrap differently as it changes. */
+  .pixel-picked > span {
+    flex-basis: 100%;
   }
 
   /* "2 of 7 · 125 ms": the playback bar stays one row on a phone. */
