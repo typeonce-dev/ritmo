@@ -46,7 +46,7 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { promisify } from "node:util"
-import { calibration, measure, measureAllocations, type AllocationOptions, type AllocationSample, type BenchCase, type BenchSample, type MeasureOptions } from "../packages/core/bench/harness.ts"
+import { calibration, measure, measureAllocations, median, type AllocationOptions, type AllocationSample, type BenchCase, type BenchSample, type MeasureOptions } from "../packages/core/bench/harness.ts"
 
 const root = fileURLToPath(new URL("..", import.meta.url))
 const baselinePath = fileURLToPath(new URL("../packages/core/bench/baseline.json", import.meta.url))
@@ -57,9 +57,11 @@ const ALLOCATION_TOLERANCE = 0.1
 // Absorbs the bytes V8 allocates for itself, so a case that allocates nothing stays at noise.
 const ALLOCATION_SLACK_BYTES = 1024
 const TYPES_TOLERANCE = 0.05
-const RETRIES = 2
+const RETRIES = 4
 const UPDATE_RUNS = 3
-// Alternating base and head rounds per critical case under --against; a failing case gets RETRIES more.
+// Alternating base and head rounds per critical case under --against; a slower case gets RETRIES more.
+// V8 settles a process on one of several speeds, so one fast process can make a side's best look far ahead.
+// A case fails only when head is slower on both its best process and its median process: a real slowdown moves both.
 const ROUNDS = 2
 
 const measureOptions: MeasureOptions = {
@@ -351,19 +353,24 @@ const runAgainst = async (dir: string, limits: Limits, baseline: Baseline | unde
   const times: Record<string, { head: number; base: number }> = {}
   for (const bench of selected.filter((candidate) => candidate.critical === true)) {
     const best = { head: Infinity, base: Infinity }
+    const runs = { head: [] as Array<number>, base: [] as Array<number> }
     let round = 0
     const play = (rounds: number): void => {
       for (const end = round + rounds; round < end; round++) {
         for (const side of round % 2 === 0 ? ["base", "head"] as const : ["head", "base"] as const) {
           if (side === "base" && !baseNames.has(bench.name)) continue
-          best[side] = Math.min(best[side], measureCase(bench.name, side === "head" ? root : dir).sample.minMs)
+          const { minMs } = measureCase(bench.name, side === "head" ? root : dir).sample
+          runs[side].push(minMs)
+          best[side] = Math.min(best[side], minMs)
         }
       }
     }
-    const slower = (): boolean => best.head > best.base * (1 + limits.tolerance)
+    const over = (head: number, base: number): boolean => head > base * (1 + (bench.timeTolerance ?? limits.tolerance))
     play(ROUNDS)
-    if (slower()) play(RETRIES)
-    if (slower()) failures.push(`runtime ${bench.name}: ${formatMs(best.head)} ms exceeds base ${formatMs(best.base)} ms by ${formatDelta(best.head, best.base)}`)
+    if (over(best.head, best.base)) play(RETRIES)
+    if (over(best.head, best.base) && over(median(runs.head), median(runs.base))) {
+      failures.push(`runtime ${bench.name}: ${formatMs(best.head)} ms exceeds base ${formatMs(best.base)} ms by ${formatDelta(best.head, best.base)}, median ${formatMs(median(runs.head))} ms against ${formatMs(median(runs.base))} ms`)
+    }
     times[bench.name] = best
   }
 
@@ -432,7 +439,7 @@ const main = async (): Promise<void> => {
   for (const [name, result] of Object.entries(runtime.results)) {
     let current = result
     const base = reference?.[name]
-    const limit = base ? base.score * (1 + tolerance) : Infinity
+    const limit = base ? base.score * (1 + (cases.find((bench) => bench.name === name)?.timeTolerance ?? tolerance)) : Infinity
     if (mode === "check" && base && current.score > limit) {
       // Wall-clock noise: re-measure a failing case before reporting it.
       for (let attempt = 0; attempt < RETRIES && current.score > limit; attempt++) {
