@@ -466,7 +466,8 @@ describe("the review page's server", () => {
         expect(first.reading?.total).toBe(12)
         expect(first.reading?.done).toBeLessThan(12)
         let listed = first
-        for (let look = 0; listed.entries === undefined && look < 200; look++) {
+        // A look that never waits still gets the list once all is read: it does not have to beat the clock.
+        for (let look = 0; listed.entries === undefined && look < 1000; look++) {
           await new Promise((next) => setTimeout(next, 20))
           listed = (await (await fetch(`${url}/library?since=`)).json()) as typeof first
         }
@@ -475,7 +476,7 @@ describe("the review page's server", () => {
       },
       0
     )
-  })
+  }, 60_000)
 
   it("saves the whole review, and refuses one written over a newer file, with what it holds now", async () => {
     const folder = game()

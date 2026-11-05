@@ -40,9 +40,12 @@ export const api = (paths: ReadonlyArray<string>, listWait = LIST_WAIT_MS): Hand
       const route = `${request.method ?? "GET"} ${path}`
       const assets = await findAssets(paths)
       if (route === "GET /library") {
-        // The reading goes on behind this answer, and the next look finds it further along.
-        const entries = await Promise.race([libraryOf(assets), new Promise<undefined>((done) => setTimeout(done, listWait))])
-        if (entries === undefined) return send(response, 200, { version: "", review: "", reading: readingOf(assets) })
+        const listing = libraryOf(assets)
+        const listed = await Promise.race([listing, new Promise<undefined>((done) => setTimeout(done, listWait))])
+        // The reading goes on behind this answer, and the next look finds it further along. Once it is all read, the list comes however long its files take to check: a page must not wait for a look that always runs out of time.
+        const reading = readingOf(assets)
+        if (listed === undefined && reading.done < reading.total) return send(response, 200, { version: "", review: "", reading })
+        const entries = listed ?? (await listing)
         const version = hashText(JSON.stringify(entries.map((entry) => [entry.id, entry.version])))
         const review = await reviewVersion(assets)
         // Most looks change nothing: then only the versions travel.
