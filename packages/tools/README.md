@@ -6,7 +6,7 @@ tool per kind of asset:
 
 | Tool | For |
 | --- | --- |
-| `ritmo-tools pixel` | Pixel art: fixes AI-made or blurry pictures and animation sheets onto a true pixel grid and a palette, renders sprites drawn as text, checks a project's art against its rules, and opens a local page with all of a game's art by folder, where a person looks at each piece at whole-number zooms, plays its animations, sees the whole set side by side, approves, and pins comments to an area of pixels. |
+| `ritmo-tools pixel` | Pixel art: fixes AI-made or blurry pictures and animation sheets onto a true pixel grid and a palette, renders sprites drawn as text, makes normal maps for art a game lights, checks a project's art against its rules, and opens a local page with all of a game's art by folder, where a person looks at each piece at whole-number zooms, plays its animations, sees the whole set side by side, approves, and pins comments to an area of pixels. |
 | `ritmo-tools sound` | Sound effects: keeps them as JSON recipes, measures and varies them, writes WAV files, and opens a local page where a person listens, picks, tunes, and notes. |
 | `ritmo-tools fx` | Pixel art effects: keeps each effect as a few drafts written as code, checks them for pixel art craft and the project's rules, draws contact sheets an agent can look at, writes sprite sheets and GIFs, and opens a local page where a person watches the drafts side by side, picks, tunes, and pins comments to a pixel. |
 | `ritmo-tools music` | Game music: hears a person's hum for its tune, tempo, and key, keeps songs as JSON tracks of notes, checks them, writes WAV and MIDI files, and opens a local page with all of a game's music on one list, songs and plain audio files, where a person plays, edits notes, records, approves, and comments. |
@@ -298,6 +298,7 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 | `compare <a> <b>` | Which of two versions is better, and why. |
 | `palettes [name]` | The presets, or one palette's colors. |
 | `init` | Writes a starting `pixel.config.json`. |
+| `normals <art> [--preset character\|object\|architecture\|terrain] [--strength N] [--force]` | Makes a normal map beside the art: `.normal.png`, `.normals.json` (what it was made from, and corrections), and `.lit.png` (a picture of it lit from each side). See "Normal maps". |
 | `review <paths...> [--port 5193] [--host]` | Serves the review page for the PNGs, text sprites, and folders named, and prints its address; runs until stopped. |
 | `notes <paths...>` | What the person said about the same paths: a `summary` of what is left, then `assets`, each one's status, note, open comments (numbered, with their area and frame), how many are resolved, `changedSinceApproved`, the lint, and `next`, changes asked first; `gone` lists reviews whose file is no longer found. |
 | `resolve <asset> <numbers...> [--reply "what changed"]` | Marks comments as resolved: `pixel notes` stops listing them, and the page shows them done with the reply. The person can reopen one. |
@@ -434,8 +435,16 @@ When the art later looks different or plays at other timings, the page and
 `pixel notes` say which frames, and **Approve it as it is now** takes the new
 version; the status stays approved, since only the person changes it.
 
+Art with a normal map beside it (see "Normal maps") has a sun on its row, and
+**Art**, **Lit**, and **Normal** at the end of the playback bar show it as
+drawn, under a light, or as the map itself; they are greyed for art with no map.
+Under the light, drag it over the art, or turn on **Go round** in the **Light**
+section; **Set** shows the whole set under one light. Pressing on the art still
+pins a comment, which can say which way the surface there should face.
+An approval keeps the map too, so a changed map shows as a change.
+
 ↑ and ↓ change asset, Space plays, ← and → step frames, + and − zoom, 0 goes
-back to 1×, F fits each asset again, V switches to the whole set and back, and Ctrl/Cmd+Z undoes.
+back to 1×, F fits each asset again, V switches to the whole set and back, L shows the light, N the normal map, and Ctrl/Cmd+Z undoes.
 Every change is saved as it happens, and a comment still being typed is added
 when the person moves on (Cancel or Esc drops it). Art the agent rewrites or adds, and
 comments it resolves, show up while the page is open; what the person is
@@ -451,6 +460,98 @@ alone at whole-number zooms, and the game shows it among the rest, scaled,
 moving, and over its own ground. Look at it in the game at the size it is
 drawn too.
 
+### Normal maps
+
+For a game that lights its sprites, and only then: painted shading needs none of
+this. A normal map is a second picture, the art's size, where each pixel's color
+says which way that pixel faces, so a light can shade it from any side.
+
+```sh
+ritmo-tools pixel normals public/art/hero.png    # a still, a sheet (its JSON beside it), or a sprite source
+ritmo-tools pixel review public/art              # the person judges it under a light
+```
+
+It writes, beside the art, and always by its name, since the review and the
+lint find them that way:
+
+- `hero.normal.png`: the map, the same size and layout as the art, with its alpha.
+- `hero.normals.json`: the preset, the strength, the corrections, the art's hashes,
+  and how the colors read: x to the right, y up (green up, as OpenGL and Godot
+  read it), z to the viewer, each channel from 0 to 255 for -1 to 1.
+- `hero.lit.png`: a picture to look at. For a still, the art, the map, and the art
+  lit from each side. For a sheet, each animation's map and light, and the frame
+  where most pixels jump, those pixels in magenta.
+
+The presets say what the art is of: `character` (the default for a sheet),
+`object` (for a still), `architecture`, and `terrain`.
+
+**It is an estimate.** Connected pixels of one color form a surface, and each
+surface faces the way a height guessed from the silhouette and the brightness
+slopes, snapped to 8 directions and 4 tilts so the map stays in flat facets. It
+cannot tell painted shading from a dark material. On a ball painted in bands, it
+is about 27° off on average, where a flat map is 45° off. So a person looks, and
+corrects.
+
+**Correcting.** A comment on the review page can carry a direction. It comes
+back through `pixel notes` with its area and its `facing`; copy those into
+`corrections` in the `.normals.json` and run `pixel normals` again:
+
+```json
+{ "animation": "walk", "frame": 2, "x": 3, "y": 1, "width": 6, "height": 4, "facing": "up-left", "tilt": 30 }
+```
+
+A correction picks whole surfaces (those mostly inside its area, or making up a
+good part of it) and they turn in every frame of the animation they carry on
+through, so a correction made on one frame does not flicker. It stays when the
+command runs again. One that does nothing exits 3 and says why.
+
+**Animation.** Made one frame at a time, a map boils: small changes to the
+silhouette tip a surface into another direction, on pixels that did not change.
+Here a surface that carries on from frame to frame keeps one direction through
+its animation. The report's `flicker` gives each animation's share of unchanged
+pixels whose light jumps, measured at 4-5% on the worst animation of two
+hand-drawn sheets and 19% on an AI-made one, against 11-55% for those sheets one
+frame at a time. Past 15% is a `normal-flicker` warning, with **Show** on the page
+ringing the pixels.
+
+**The lint.** `pixel lint` on the art, and the review's **Rules**, check its map:
+`normal-stale` (the art changed since: run it again), `normal-size`,
+`normal-alpha`, `normal-invalid` (not directions), `normal-flicker`, and
+`normal-flat` (it adds next to nothing). `pixel lint hero.normal.png` checks the map
+against its art rather than the rules for art, which its colors would all
+break. A map with no `.normals.json` beside it counts as painted by hand: it
+shows and is checked the same, it is never stale, and `pixel normals` only
+replaces it with `--force`.
+
+**In the game.** Ritmo draws nothing, so the light is the game's own shader. The
+core of one, in GLSL:
+
+```glsl
+// uArt, uNormal: the two pictures, nearest-filtered, the normal map with no color conversion.
+// vUv: where this pixel is on them. vPos: this pixel, in art pixels, rows counting down.
+// uLight: the light, in art pixels, with z its height. uFlip: -1 while the sprite is mirrored, else 1.
+vec4 art = texture2D(uArt, vUv);
+vec3 normal = texture2D(uNormal, vUv).rgb * 2.0 - 1.0;
+normal.x *= uFlip;
+vec3 toLight = vec3(uLight.x - vPos.x, vPos.y - uLight.y, uLight.z);
+float away = length(toLight);
+float diffuse = max(0.0, dot(normal, toLight / away));
+float falloff = 1.0 / (1.0 + (away / uReach) * (away / uReach));
+gl_FragColor = vec4(art.rgb * (uAmbient + uLightColor * diffuse * falloff), art.a);
+```
+
+Three things go wrong silently. A mirrored sprite needs its normal's x mirrored
+too (`uFlip`), and a rotated one its x and y rotated. The map must not be
+filtered: a blended normal is no direction. And it must load with no color
+conversion, since its colors are numbers (in Pixi, a texture source with
+`alphaMode: "no-premultiply-alpha"`). The page's light is a preview of the map's
+shape, not of this shader: the final look is judged in the game.
+
+The method comes from [Pixel Art Lighter](https://moonfell-rpg.com/pixel-lighter.html)
+by Red Hat Sprite (MIT; its notice is in this package's `LICENSE`). Carrying
+surfaces through an animation, corrections as data, and the checks are this
+tool's.
+
 ### Code
 
 - `src/pixel/core/`: the headless core, tested in `test/` with fake AI pictures made
@@ -460,7 +561,8 @@ drawn too.
   (reading cells, quantizing, dithering),
   `cleanup.ts` (specks), `palette.ts` (presets, files, extraction, proposals), `reduce.ts`
   (fewer, bigger pixels), `background.ts` (background removal), `lost.ts`
-  (colors the palette lost), `export.ts` (PNG pixels,
+  (colors the palette lost), `normals.ts` (normal maps, the preview's light, and flicker),
+  `export.ts` (PNG pixels,
   SVG, JSON), `demo.ts` (the fake AI picture generator),
   `pipeline.ts` (the whole fix, from a picture and a recipe: what the page and
   the CLI both run), `recipe.ts` (recipes as JSON), `project.ts` (project

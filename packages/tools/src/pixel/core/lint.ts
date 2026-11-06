@@ -34,6 +34,15 @@ export interface Issue {
     | "stray-pixel"
     | "near-duplicate-colors"
     | "seam"
+    // A normal map beside the art (see `normalIssues`).
+    | "normal-size"
+    | "normal-stale"
+    | "normal-alpha"
+    | "normal-invalid"
+    | "normal-flicker"
+    | "normal-flat"
+    | "normal-correction"
+    | "normal-unreadable"
     // Animation sheets (see `reportOfSheet`).
     | "one-frame"
     | "empty-frame"

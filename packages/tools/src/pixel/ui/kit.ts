@@ -62,6 +62,7 @@ const paths = {
   music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
   stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
   repeat: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
+  light: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/>',
   comment: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
 } as const
 
@@ -128,7 +129,7 @@ export const button = (label: string, onClick: (event: MouseEvent) => void, opti
 /** A row of choices, one of them on: views, tools, and small enumerations. */
 export const segmented = <T extends string>(
   value: T,
-  options: ReadonlyArray<{ readonly id: T; readonly label: string; readonly icon?: IconName; readonly title?: string; readonly iconOnly?: boolean }>,
+  options: ReadonlyArray<{ readonly id: T; readonly label: string; readonly icon?: IconName; readonly title?: string; readonly iconOnly?: boolean; readonly disabled?: boolean }>,
   onChange: (value: T) => void,
   extra: { readonly label?: string; readonly class?: string } = {}
 ): HTMLElement =>
@@ -142,6 +143,7 @@ export const segmented = <T extends string>(
           class: option.id === value ? "on" : "",
           title: option.title ?? (option.iconOnly === true ? option.label : undefined),
           attrs: { type: "button", "aria-pressed": String(option.id === value), "aria-label": option.iconOnly === true ? option.label : undefined },
+          props: { disabled: option.disabled === true },
           on: { click: () => onChange(option.id) }
         },
         option.icon !== undefined && icon(option.icon),

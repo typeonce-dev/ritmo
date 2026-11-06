@@ -7,7 +7,10 @@
  * pinned to an area of pixels on a frame; the lint against the asset's
  * nearest `pixel.config.json` shows beside it. The whole set also shows
  * side by side at one scale, on a grid by size, to judge the art as one game,
- * and to compare and approve several at once.
+ * and to compare and approve several at once. Art with a normal map beside it
+ * (`ritmo-tools pixel normals`) also shows under a light they can move, alone
+ * or the whole set under one light, and a comment can say which way a surface
+ * should face.
  *
  * The review is one file, saved whole as it changes (one undo history for
  * all of it), for the agent to read back with `ritmo-tools pixel notes`. Art
@@ -17,10 +20,11 @@
  *
  * Built from the pixel fixer's kit, so the tools look and work alike.
  */
-import { button, callout, group, hint, icon, mark, prop, section, segmented, switchRow } from "../ui/kit.ts"
+import { button, callout, group, hint, icon, mark, prop, section, segmented, sliderRow, switchRow } from "../ui/kit.ts"
 import { h, replace } from "../ui/dom.ts"
 import { makeHistory } from "../ui/history.ts"
 import { parseHex } from "../core/color.ts"
+import { facings, lightFrame, type Facing, type Light } from "../core/normals.ts"
 import { approvalOf, changedOf, decodeReview, emptyReview, encodeReview, mergeReviews, newAsset, whereOf, type AssetReview, type Comment, type Review, type Status } from "../core/review.ts"
 import { SERVER_GONE, type Detail, type Entry, type FrameIssue, type Store } from "./store.ts"
 
@@ -35,6 +39,8 @@ let store!: Store
 type Show = "all" | Status
 type View = "asset" | "set"
 type Backdrop = "dark" | "light" | "checker" | "custom"
+/** What the art is drawn as: itself, under the light, or its normal map. */
+type Look = "art" | "lit" | "normal"
 
 /** An area of one frame, in its pixels: where a comment is pinned. */
 interface Area {
@@ -78,6 +84,11 @@ const state = {
   custom: "#3a4466",
   /** The frame drawn three by three, to see a tile repeat. */
   repeat: false,
+  look: "art" as Look,
+  /** The light, by each frame's own size, so the whole set takes one light the same way: x and y from 0 to 1 across the frame, height and reach as shares of its longest side. */
+  light: { x: 0.15, y: 0.2, height: 0.4, reach: 3, ambient: 0.2, brightness: 1.1, color: "#ffffff", steps: 0 },
+  /** The light going round by itself, to see every side of the shape. */
+  orbit: false,
   /** The animation open on a sheet, by name. */
   animation: "",
   playing: true,
@@ -87,6 +98,8 @@ const state = {
   composing: undefined as Area | undefined,
   /** What it says so far: kept here, so a redraw of the panel never loses it. */
   composingText: "",
+  /** The way it says the surface should face, if it does. */
+  composingFacing: undefined as Facing | undefined,
   /** Pixels ringed from the Rules section: where a lint issue is. */
   marks: undefined as { readonly frame: number; readonly at: ReadonlyArray<readonly [number, number]> } | undefined,
   saving: "saved" as "saved" | "saving" | "failed",
@@ -99,7 +112,7 @@ const state = {
 
 const entryOf = (id: string): Entry | undefined => state.library.find((entry) => entry.id === id)
 const reviewOf = (id: string): AssetReview => state.review.assets[id] ?? newAsset
-const changedNow = (entry: Entry): string | undefined => (entry.problem === undefined ? changedOf(reviewOf(entry.id), entry.frames) : undefined)
+const changedNow = (entry: Entry): string | undefined => (entry.problem === undefined ? changedOf(reviewOf(entry.id), entry.frames, entry.normal) : undefined)
 const openComments = (id: string): number => reviewOf(id).comments.filter((comment) => comment.resolved !== true).length
 
 /** An asset's animations; a still is one of one frame, with no name. */
@@ -196,15 +209,17 @@ const reviewChanged = (): void => {
 /** Adds the comment being written, when it says anything, to the asset open, and ends it. */
 const addComposed = (): void => {
   const area = state.composing
-  const text = state.composingText.trim()
+  const facing = state.composingFacing
+  const text = state.composingText.trim() || (facing === undefined ? "" : `Should face ${facing}`)
   state.composing = undefined
   state.composingText = ""
+  state.composingFacing = undefined
   if (area === undefined || text === "") return
   const id = state.current
   setReview(id, {
     comments: [
       ...reviewOf(id).comments,
-      { ...(area.animation === undefined ? {} : { animation: area.animation }), frame: area.frame, x: area.x, y: area.y, ...(area.width > 1 ? { width: area.width } : {}), ...(area.height > 1 ? { height: area.height } : {}), text }
+      { ...(area.animation === undefined ? {} : { animation: area.animation }), frame: area.frame, x: area.x, y: area.y, ...(area.width > 1 ? { width: area.width } : {}), ...(area.height > 1 ? { height: area.height } : {}), text, ...(facing === undefined ? {} : { facing }) }
     ]
   })
   reviewChanged()
@@ -212,7 +227,7 @@ const addComposed = (): void => {
 
 /** Moving on keeps what was typed: everything else the person says is saved as they go. Only Cancel or Esc drops it. */
 const settleComposed = (): void => {
-  const added = state.composing !== undefined && state.composingText.trim() !== ""
+  const added = state.composing !== undefined && (state.composingText.trim() !== "" || state.composingFacing !== undefined)
   addComposed()
   if (added) say("Your comment is added. Delete it there if you were not done with it.")
 }
@@ -220,11 +235,12 @@ const settleComposed = (): void => {
 const dropComposed = (): void => {
   state.composing = undefined
   state.composingText = ""
+  state.composingFacing = undefined
 }
 
 /** Sets an asset's status; approving keeps what it looks like now, so a later change to it shows. */
 const setStatus = (entry: Entry, status: Status): void => {
-  setReview(entry.id, { status, approved: status === "approved" && entry.problem === undefined ? approvalOf(entry.frames) : undefined })
+  setReview(entry.id, { status, approved: status === "approved" && entry.problem === undefined ? approvalOf(entry.frames, entry.normal) : undefined })
 }
 
 // ---------------------------------------------------------------------------
@@ -233,8 +249,12 @@ const setStatus = (entry: Entry, status: Status): void => {
 const pictures = new Map<string, Promise<HTMLImageElement | undefined>>()
 
 /** An asset's picture at its version, decoded once. */
-const pictureOf = (entry: Entry): Promise<HTMLImageElement | undefined> => {
-  const url = store.picture(entry.id, entry.version)
+const pictureOf = (entry: Entry): Promise<HTMLImageElement | undefined> => decoded(store.picture(entry.id, entry.version))
+
+/** An asset's normal map at its version, decoded once. */
+const normalOf = (entry: Entry): Promise<HTMLImageElement | undefined> => decoded(store.normal(entry.id, entry.version))
+
+const decoded = (url: string): Promise<HTMLImageElement | undefined> => {
   let found = pictures.get(url)
   if (found === undefined) {
     const image = new Image()
@@ -365,6 +385,7 @@ const follow = async (): Promise<void> => {
         if (!animationsOf(now).some((animation) => animation.name === state.animation)) state.animation = animationsOf(now)[0]!.name
         renderStage()
         renderReview()
+        renderLightPanel()
         void loadDetail(now.id)
       }
       if (state.view === "set") renderStage()
@@ -467,6 +488,55 @@ const screenOf = (entry: Entry): { readonly w: number; readonly h: number; reado
   return { w: Math.ceil(fw * state.zoom * tiles()) + MARGIN * 2, h: Math.ceil(fh * state.zoom * tiles()) + MARGIN * 2, fw, fh }
 }
 
+/** What the asset is drawn as now: art with no map has only itself. */
+const lookOf = (entry: Entry): Look => (entry.normal === undefined ? "art" : state.look)
+
+const pixelCache = new WeakMap<HTMLImageElement, Uint8ClampedArray>()
+
+/** A picture's pixels, to light: read once. */
+const pixelsOf = (image: HTMLImageElement): Uint8ClampedArray | undefined => {
+  const known = pixelCache.get(image)
+  if (known !== undefined) return known
+  const canvas = document.createElement("canvas")
+  canvas.width = image.naturalWidth
+  canvas.height = image.naturalHeight
+  const context = canvas.getContext("2d", { willReadFrequently: true })
+  if (context === null) return undefined
+  context.drawImage(image, 0, 0)
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
+  pixelCache.set(image, pixels)
+  return pixels
+}
+
+const channel = (hex: string, at: number): number => Number.parseInt(hex.slice(at, at + 2), 16) || 0
+
+/** The light as a frame this size takes it. */
+const lightOn = (frame: { readonly w: number; readonly h: number }): Light => {
+  const side = Math.max(frame.w, frame.h)
+  const { x, y, height, reach, ambient, brightness, color, steps } = state.light
+  return { x: x * frame.w, y: y * frame.h, height: height * side, reach: reach * side, ambient, brightness, steps, color: [channel(color, 1), channel(color, 3), channel(color, 5)] }
+}
+
+const litCanvas = document.createElement("canvas")
+
+/** One frame under the light, on a canvas of its own size to draw from; `undefined` when the two pictures do not line up. */
+const litFrame = (image: HTMLImageElement, normal: HTMLImageElement, frame: { readonly x: number; readonly y: number; readonly w: number; readonly h: number }, into: HTMLCanvasElement): HTMLCanvasElement | undefined => {
+  if (image.naturalWidth !== normal.naturalWidth || image.naturalHeight !== normal.naturalHeight) return undefined
+  const art = pixelsOf(image)
+  const map = pixelsOf(normal)
+  if (art === undefined || map === undefined || frame.w === 0 || frame.h === 0) return undefined
+  if (into.width !== frame.w || into.height !== frame.h) {
+    into.width = frame.w
+    into.height = frame.h
+  }
+  const context = into.getContext("2d")
+  if (context === null) return undefined
+  const lit = context.createImageData(frame.w, frame.h)
+  lightFrame(lit.data, art, map, image.naturalWidth, frame, lightOn(frame))
+  context.putImageData(lit, 0, 0)
+  return into
+}
+
 const paint = (canvas: HTMLCanvasElement, entry: Entry, image: HTMLImageElement, global: number): void => {
   const frame = entry.frames[global]
   const context = canvas.getContext("2d")
@@ -494,8 +564,17 @@ const paint = (canvas: HTMLCanvasElement, entry: Entry, image: HTMLImageElement,
       context.fillStyle = (x / square + y / square) % 2 === 0 ? a : b
       context.fillRect(MARGIN + x * zoom, MARGIN + y * zoom, Math.min(square, spanW - x) * zoom, Math.min(square, spanH - y) * zoom)
     }
-  for (let ty = 0; ty < tiles(); ty++)
-    for (let tx = 0; tx < tiles(); tx++) context.drawImage(image, frame.x, frame.y, frame.w, frame.h, MARGIN + tx * screen.fw * zoom, MARGIN + ty * screen.fh * zoom, frame.w * zoom, frame.h * zoom)
+  const look = lookOf(entry)
+  const normal = holderNormal()
+  const lit = look === "lit" && normal !== undefined ? litFrame(image, normal, frame, litCanvas) : undefined
+  for (let ty = 0; ty < tiles(); ty++) {
+    for (let tx = 0; tx < tiles(); tx++) {
+      const left = MARGIN + tx * screen.fw * zoom
+      const top = MARGIN + ty * screen.fh * zoom
+      if (lit !== undefined) context.drawImage(lit, 0, 0, frame.w, frame.h, left, top, frame.w * zoom, frame.h * zoom)
+      else context.drawImage(look === "normal" && normal !== undefined ? normal : image, frame.x, frame.y, frame.w, frame.h, left, top, frame.w * zoom, frame.h * zoom)
+    }
+  }
   if (state.repeat) {
     // The middle copy is the one comments are pinned to.
     context.strokeStyle = "rgba(255, 255, 255, 0.35)"
@@ -506,12 +585,22 @@ const paint = (canvas: HTMLCanvasElement, entry: Entry, image: HTMLImageElement,
 }
 
 /** The canvas of the asset open, its rings, and what it shows now. */
-let screen: { readonly entry: Entry; readonly canvas: HTMLCanvasElement; readonly rings: HTMLElement; readonly counter: HTMLElement; image: HTMLImageElement | undefined; global: number; place: number } | undefined
+let screen: { readonly entry: Entry; readonly canvas: HTMLCanvasElement; readonly rings: HTMLElement; readonly lamp: HTMLElement; readonly counter: HTMLElement; image: HTMLImageElement | undefined; normal: HTMLImageElement | undefined; global: number; place: number } | undefined
+
+const holderNormal = (): HTMLImageElement | undefined => screen?.normal
 
 const tick = (now: number): void => {
   if (screen !== undefined && screen.image !== undefined && state.view === "asset") {
     const at = shown(screen.entry, now)
-    if (at.global !== screen.global) {
+    if (state.orbit && lookOf(screen.entry) === "lit") {
+      state.light.x = 0.5 + Math.cos(now / ORBIT_MS) * 0.5
+      state.light.y = 0.5 + Math.sin(now / ORBIT_MS) * 0.5
+      screen.global = at.global
+      screen.place = at.place
+      paint(screen.canvas, screen.entry, screen.image, at.global)
+      renderLamp()
+      renderCounter()
+    } else if (at.global !== screen.global) {
       screen.global = at.global
       screen.place = at.place
       paint(screen.canvas, screen.entry, screen.image, at.global)
@@ -530,7 +619,57 @@ const repaint = (): void => {
   screen.place = at.place
   paint(screen.canvas, screen.entry, screen.image, at.global)
   renderRings()
+  renderLamp()
   renderCounter()
+}
+
+/** How long the light takes to go round, over 2π. */
+const ORBIT_MS = 700
+
+/** Where the light is over the art, shown only while the art is lit: over the middle copy when it repeats. */
+const renderLamp = (): void => {
+  if (screen === undefined) return
+  const on = lookOf(screen.entry) === "lit"
+  screen.lamp.classList.toggle("on", on)
+  if (!on) return
+  const { fw, fh } = screenOf(screen.entry)
+  const offsetX = state.repeat ? fw : 0
+  const offsetY = state.repeat ? fh : 0
+  screen.lamp.style.left = `${MARGIN + (offsetX + state.light.x * fw) * state.zoom}px`
+  screen.lamp.style.top = `${MARGIN + (offsetY + state.light.y * fh) * state.zoom}px`
+  screen.lamp.style.background = state.light.color
+}
+
+/** Dragging the light over the art: pressing anywhere else still pins a comment. */
+const attachLamp = (lamp: HTMLElement, canvas: HTMLCanvasElement, entry: Entry): void => {
+  const moveTo = (event: PointerEvent): void => {
+    const box = canvas.getBoundingClientRect()
+    const { fw, fh } = screenOf(entry)
+    const offsetX = state.repeat ? fw : 0
+    const offsetY = state.repeat ? fh : 0
+    state.light.x = Math.max(0, Math.min(1, ((event.clientX - box.left - MARGIN) / state.zoom - offsetX) / fw))
+    state.light.y = Math.max(0, Math.min(1, ((event.clientY - box.top - MARGIN) / state.zoom - offsetY) / fh))
+    repaint()
+  }
+  lamp.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return
+    event.stopPropagation()
+    lamp.setPointerCapture(event.pointerId)
+    if (state.orbit) {
+      state.orbit = false
+      renderLightPanel()
+    }
+    moveTo(event)
+  })
+  lamp.addEventListener("pointermove", (event) => {
+    if (lamp.hasPointerCapture(event.pointerId)) moveTo(event)
+  })
+  const finish = (event: PointerEvent): void => {
+    if (lamp.hasPointerCapture(event.pointerId)) lamp.releasePointerCapture(event.pointerId)
+    remember()
+  }
+  lamp.addEventListener("pointerup", finish)
+  lamp.addEventListener("pointercancel", finish)
 }
 
 /** Magenta: the debug color, in almost no game's palette, so a ring shows on any art. */
@@ -656,10 +795,11 @@ const stage = h("div", { class: "stage pixel-stage" }, content, playback, toast)
 // Each section draws into its own box, so a change redraws only the section it is about.
 const reviewBox = h("div", {})
 const commentsBox = h("div", {})
+const lightBox = h("div", {})
 const checksBox = h("div", {})
 const viewBox = h("div", {})
 const aboutBox = h("div", {})
-panels.append(reviewBox, commentsBox, checksBox, viewBox, aboutBox)
+panels.append(reviewBox, commentsBox, lightBox, checksBox, viewBox, aboutBox)
 
 app.append(topbar, h("main", { class: "layout lab" }, list, h("section", { class: "workspace" }, stage), panels))
 
@@ -781,6 +921,7 @@ const flags = (entry: Entry): Array<HTMLElement | false> => {
     entry.problem === undefined &&
       entry.errors + entry.warnings > 0 &&
       h("span", { class: `sound-flag ${entry.errors > 0 ? "bad" : "warn"} lint`, title: `${entry.errors} lint error${entry.errors === 1 ? "" : "s"}, ${entry.warnings} warning${entry.warnings === 1 ? "" : "s"}`, attrs: { "data-flag": "lint" } }, icon("info")),
+    entry.normal !== undefined && h("span", { class: "sound-flag", title: "It has a normal map: L shows it under the light", attrs: { "data-flag": "normal" } }, icon("light")),
     comments > 0 && h("span", { class: "sound-takes", title: `${comments} open comment${comments === 1 ? "" : "s"}`, attrs: { "data-flag": "comments" } }, String(comments))
   ]
 }
@@ -892,9 +1033,11 @@ const renderStage = (): void => {
     attrs: { "aria-label": `${entry.name} at ${zoomWords(state.zoom)}`, style: `width:${size.w}px;height:${size.h}px` }
   })
   const rings = h("div", { class: "pixel-rings", attrs: { "aria-hidden": "true" } })
+  const lamp = h("span", { class: "pixel-lamp", title: "The light: drag it", attrs: { role: "button", "aria-label": "The light: drag it" } })
   const counter = h("span", { class: "frame-counter pixel-counter" })
-  screen = { entry, canvas, rings, counter, image: undefined, global: -1, place: 0 }
+  screen = { entry, canvas, rings, lamp, counter, image: undefined, normal: undefined, global: -1, place: 0 }
   attachPinning(canvas, entry)
+  attachLamp(lamp, canvas, entry)
   const holder = screen
   void pictureOf(entry).then((image) => {
     if (screen !== holder) return
@@ -902,6 +1045,13 @@ const renderStage = (): void => {
     holder.image = image
     repaint()
   })
+  if (entry.normal !== undefined) {
+    void normalOf(entry).then((normal) => {
+      if (screen !== holder) return
+      holder.normal = normal
+      repaint()
+    })
+  }
   const animations = animationsOf(entry)
   replace(
     content,
@@ -933,7 +1083,7 @@ const renderStage = (): void => {
           )
         )
       ),
-    h("div", { class: "pixel-screen" }, h("div", { class: "pixel-frame", attrs: { style: `width:${size.w}px;height:${size.h}px` } }, canvas, rings))
+    h("div", { class: "pixel-screen" }, h("div", { class: "pixel-frame", attrs: { style: `width:${size.w}px;height:${size.h}px` } }, canvas, rings, lamp))
   )
   // The room left depends on what is drawn above the art, so it is measured here, and drawn once more at what it says.
   if (state.fit && !fitting && fitZoom(entry) !== state.zoom) {
@@ -943,6 +1093,7 @@ const renderStage = (): void => {
     fitting = false
     return
   }
+  renderLamp()
   renderPlayback()
 }
 
@@ -983,6 +1134,18 @@ const setColumns = (): { readonly count: number; readonly width: number } => {
 
 let setColumnsDrawn = 0
 
+/** The tiles drawn under the light: all redrawn when it moves, so the set stays under one light. */
+let setLit: ReadonlyArray<{ readonly canvas: HTMLCanvasElement; readonly entry: Entry; readonly frame: Entry["frames"][number] }> = []
+
+const paintSetTile = async (tile: (typeof setLit)[number]): Promise<void> => {
+  const [image, normal] = await Promise.all([pictureOf(tile.entry), normalOf(tile.entry)])
+  if (image !== undefined && normal !== undefined) litFrame(image, normal, tile.frame, tile.canvas)
+}
+
+const repaintSet = (): void => {
+  for (const tile of setLit) void paintSetTile(tile)
+}
+
 const renderSet = (): void => {
   if (state.setFit) state.setZoom = fitSetZoom()
   renderPlayback()
@@ -1007,6 +1170,7 @@ const renderSet = (): void => {
   const byFolder = new Map<string, Array<Entry>>()
   for (const entry of entries) byFolder.set(entry.folder, [...(byFolder.get(entry.folder) ?? []), entry])
   const picked = [...state.picked].filter((id) => entryOf(id) !== undefined)
+  const lit: Array<(typeof setLit)[number]> = []
   const tile = (entry: Entry): HTMLElement => {
     const frame = entry.frames[animationsOf(entry)[0]!.frames[0] ?? 0]
     const isPicked = state.picked.has(entry.id)
@@ -1021,9 +1185,15 @@ const renderSet = (): void => {
         : h(
             "div",
             { class: `pixel-set-art${scale < 1 ? " shrunk" : ""}`, attrs: { style: `width:${artWidth}px;height:${artHeight}px` } },
-            h("img", {
+            lookOf(entry) === "lit"
+              ? (() => {
+                  const canvas = h("canvas", { class: "pixel-set-lit", attrs: { width: frame.w, height: frame.h, "aria-label": entry.name, style: `width:${artWidth}px;height:${artHeight}px` } })
+                  lit.push({ canvas, entry, frame })
+                  return canvas
+                })()
+              : h("img", {
               attrs: {
-                src: store.picture(entry.id, entry.version),
+                src: lookOf(entry) === "normal" ? store.normal(entry.id, entry.version) : store.picture(entry.id, entry.version),
                 alt: entry.name,
                 loading: "lazy",
                 decoding: "async",
@@ -1108,6 +1278,8 @@ const renderSet = (): void => {
       h("section", { class: "pixel-set-folder" }, folders.size > 1 && h("h3", { class: "pixel-folder" }, folder), h("div", { class: "pixel-set", attrs: { style: `--backdrop:${a};--set-columns:${columns.count}` } }, inside.map(tile)))
     )
   )
+  setLit = lit
+  repaintSet()
 }
 
 // ---------------------------------------------------------------------------
@@ -1185,9 +1357,42 @@ const renderPlayback = (): void => {
     h("span", { class: "zoom-value", attrs: { "aria-label": "Zoom" } }, zoomWords(zoom)),
     button("Zoom in", () => zoomBy(1), { variant: "ghost", icon: "plus", iconOnly: true, disabled: zoom >= top, title: "Zoom in (+)" }),
     button("1×", () => setZoom(1), { variant: "ghost", small: true, disabled: zoom === 1 && !(state.view === "set" ? state.setFit : state.fit), title: "Its own size (0)" }),
-    button("Fit", fitAgain, { variant: "ghost", small: true, disabled: state.view === "set" ? state.setFit : state.fit, title: "As large as fits (F)" })
+    button("Fit", fitAgain, { variant: "ghost", small: true, disabled: state.view === "set" ? state.setFit : state.fit, title: "As large as fits (F)" }),
+    h("span", { class: "divider" }),
+    lookControl(entry)
   )
   renderCounter()
+}
+
+/** Whether what is on screen has a normal map to show: the asset open, or any of the set. */
+const hasMapShown = (entry: Entry | undefined): boolean => (state.view === "set" ? state.library.some((other) => other.normal !== undefined) : entry?.normal !== undefined)
+
+/** Art, Lit, Normal: always in its place, and greyed where there is no map to show. */
+const lookControl = (entry: Entry | undefined): HTMLElement => {
+  const off = !hasMapShown(entry)
+  const none = "No normal map beside this: `ritmo-tools pixel normals` makes one"
+  return segmented(
+    off ? "art" : state.look,
+    [
+      { id: "art", label: "Art", title: "The art as drawn" },
+      { id: "lit", label: "Lit", disabled: off, title: off ? none : "Under the light (L): drag it over the art" },
+      { id: "normal", label: "Normal", disabled: off, title: off ? none : "The normal map itself (N)" }
+    ],
+    setLook,
+    { label: "Look", class: "pixel-looks" }
+  )
+}
+
+const setLook = (look: Look): void => {
+  state.look = look
+  remember()
+  renderStage()
+  renderLightPanel()
+}
+
+/** Goes to a look, or back to the art from it; nothing when there is no map to show. */
+const toggleLook = (look: Look): void => {
+  if (hasMapShown(entryOf(state.current))) setLook(state.look === look ? "art" : look)
 }
 
 // ---------------------------------------------------------------------------
@@ -1248,7 +1453,7 @@ const renderReview = (): void => {
             "div",
             { class: "approve-again" },
             button("Approve it as it is now", () => {
-              setReview(id, { approved: approvalOf(entry.frames) })
+              setReview(id, { approved: approvalOf(entry.frames, entry.normal) })
               reviewChanged()
             })
           )
@@ -1302,7 +1507,7 @@ const renderComments = (): void => {
     reviewChanged()
   }
   const add = (): void => {
-    if (state.composingText.trim() !== "") addComposed()
+    if (state.composingText.trim() !== "" || state.composingFacing !== undefined) addComposed()
   }
   redraw(
     commentsBox,
@@ -1319,12 +1524,13 @@ const renderComments = (): void => {
           "div",
           { class: "fx-compose pixel-compose" },
           h("p", { class: "hint" }, `On ${areaWords(composing)}`),
+          entry.normal !== undefined && facingPicker(),
           h(
             "label",
             { class: "input note" },
             h("textarea", {
               props: { rows: 2, value: state.composingText },
-              attrs: { placeholder: "What should change here? (\"outline too thick\", \"reads as a smudge at 1×\")", "aria-label": "Comment" },
+              attrs: { placeholder: entry.normal !== undefined ? "What should change here? (optional with a direction)" : "What should change here? (\"outline too thick\", \"reads as a smudge at 1×\")", "aria-label": "Comment" },
               on: {
                 input: (event) => {
                   if (event.currentTarget instanceof HTMLTextAreaElement) state.composingText = event.currentTarget.value
@@ -1364,7 +1570,7 @@ const renderComments = (): void => {
                   "button",
                   { class: "fx-comment", title: "Show this frame, with the area ringed", attrs: { type: "button" }, on: { click: () => goTo(entry, comment) } },
                   h("span", { class: "fx-comment-number" }, comment.resolved === true ? icon("check") : String(index + 1)),
-                  h("span", { class: "fx-comment-where" }, `${whereOf(comment)}${comment.resolved === true ? " · resolved" : ""}`),
+                  h("span", { class: "fx-comment-where" }, `${whereOf(comment)}${comment.facing === undefined ? "" : ` · faces ${comment.facing}`}${comment.resolved === true ? " · resolved" : ""}`),
                   h("span", { class: "fx-comment-text" }, comment.text),
                   comment.resolved === true && comment.reply !== undefined && h("span", { class: "fx-comment-reply" }, `Agent: ${comment.reply}`)
                 ),
@@ -1376,6 +1582,115 @@ const renderComments = (): void => {
               )
             )
           )
+    )
+  )
+}
+
+const FACING_ARROWS: Readonly<Record<Facing, string>> = { "up-left": "↖", up: "↑", "up-right": "↗", left: "←", front: "•", right: "→", "down-left": "↙", down: "↓", "down-right": "↘" }
+
+/** Which way the surface here should face: nine buttons laid out as the directions they name. */
+const facingPicker = (): HTMLElement =>
+  h(
+    "div",
+    { class: "pixel-facing-row" },
+    h(
+      "div",
+      { class: "pixel-facing", attrs: { role: "group", "aria-label": "Should face" } },
+      facings.map((facing) =>
+        h(
+          "button",
+          {
+            class: state.composingFacing === facing ? "on" : "",
+            title: facing === "front" ? "Faces the viewer" : `Faces ${facing}`,
+            attrs: { type: "button", "aria-pressed": String(state.composingFacing === facing), "aria-label": `Faces ${facing}`, "data-facing": facing },
+            on: {
+              click: () => {
+                state.composingFacing = state.composingFacing === facing ? undefined : facing
+                renderComments()
+              }
+            }
+          },
+          FACING_ARROWS[facing]
+        )
+      )
+    ),
+    h("p", { class: "hint" }, state.composingFacing === undefined ? "Which way it should face, if the map has it wrong." : state.composingFacing === "front" ? "Should face the viewer." : `Should face ${state.composingFacing}.`)
+  )
+
+const renderLightPanel = (): void => {
+  if (!state.loaded) return redraw(lightBox)
+  const entry = entryOf(state.current)
+  const hasMap = hasMapShown(entry)
+  const on = hasMap && state.look === "lit"
+  const moved = (): void => {
+    if (state.view === "set") repaintSet()
+    else repaint()
+  }
+  const set = (change: Partial<typeof state.light>): void => {
+    state.light = { ...state.light, ...change }
+    moved()
+  }
+  redraw(
+    lightBox,
+    section(
+      {
+        id: "pixel-light",
+        title: "Light",
+        help: "A plain point light to judge the normal map's shape by, made by `ritmo-tools pixel normals`: does each surface catch the light from the side it faces? Drag the light over the art, or let it go round. If a surface is wrong, press on it and say which way it should face. The final look is the game's own shader, judged in the game.",
+        onToggle: renderLightPanel,
+        action: h("span", { class: "meta" }, on ? "on" : "")
+      },
+      hint(!hasMap ? "No normal map beside this: the agent makes one with `ritmo-tools pixel normals`." : on ? (state.view === "set" ? "The whole set under one light." : "Drag the light over the art.") : "Press L to see the art under the light."),
+      h(
+        "div",
+        { class: `pixel-light-controls${on ? "" : " off"}`, attrs: on ? {} : { inert: true } },
+        sliderRow("Height", state.light.height, { min: 0.05, max: 1.5, step: 0.05 }, (v) => `${Math.round(v * 100)}%`, (height) => set({ height }), remember, "How far in front of the art the light is: low shows the shape most"),
+        sliderRow("Reach", state.light.reach, { min: 0.5, max: 6, step: 0.5 }, (v) => `${v}×`, (reach) => set({ reach }), remember, "How far it reaches, by the art's longest side"),
+        sliderRow("Ambient", state.light.ambient, { min: 0, max: 1, step: 0.05 }, (v) => `${Math.round(v * 100)}%`, (ambient) => set({ ambient }), remember, "How much of the art shows with no light on it"),
+        sliderRow("Brightness", state.light.brightness, { min: 0.2, max: 3, step: 0.1 }, (v) => v.toFixed(1), (brightness) => set({ brightness }), remember),
+        prop(
+          "Color",
+          h("input", {
+            class: "pixel-color",
+            props: { type: "color", value: state.light.color },
+            attrs: { "aria-label": "The light's color", title: "The light's color" },
+            on: {
+              input: (event) => {
+                if (event.currentTarget instanceof HTMLInputElement) set({ color: event.currentTarget.value })
+              },
+              change: () => {
+                remember()
+                renderLamp()
+              }
+            }
+          })
+        ),
+        prop(
+          "Steps",
+          segmented(
+            String(state.light.steps),
+            [
+              { id: "0", label: "Smooth", title: "The light as it falls" },
+              { id: "2", label: "2" },
+              { id: "3", label: "3" },
+              { id: "4", label: "4" }
+            ],
+            (steps) => {
+              set({ steps: Number(steps) })
+              remember()
+              renderLightPanel()
+            },
+            { label: "Steps", class: "fill" }
+          ),
+          "The light in even steps, as a game that steps its light would show it"
+        ),
+        state.view === "asset" &&
+          switchRow("Go round", state.orbit, (orbit) => {
+            state.orbit = orbit
+            renderLightPanel()
+            renderLamp()
+          }, "The light circles the art, to see every side of the shape")
+      )
     )
   )
 }
@@ -1398,7 +1713,7 @@ const renderChecks = (): void => {
       {
         id: "pixel-checks",
         title: "Rules",
-        help: "The lint against this asset's nearest pixel.config.json, the rules the agent checks with `ritmo-tools pixel lint`: its size, palette, colors, transparency, and stray pixels, each frame of a sheet apart. Warnings to weigh, not a verdict: you judge how it looks.",
+        help: "The lint against this asset's nearest pixel.config.json, the rules the agent checks with `ritmo-tools pixel lint`: its size, palette, colors, transparency, and stray pixels, each frame of a sheet apart, and whether its normal map still matches it. Warnings to weigh, not a verdict: you judge how it looks.",
         onToggle: renderChecks,
         action: h("span", { class: "meta" }, entry.problem !== undefined ? "" : entry.errors + entry.warnings === 0 ? "clean" : `${entry.errors} error${entry.errors === 1 ? "" : "s"} · ${entry.warnings} warning${entry.warnings === 1 ? "" : "s"}`)
       },
@@ -1439,6 +1754,8 @@ const renderChecks = (): void => {
           prop("Asset", h("code", { title: detail.file }, entry.id)),
           detail.source !== undefined && prop("Made from", h("code", {}, detail.source), "The file the agent changes to make this one again"),
           detail.sheet !== undefined && prop("Frames", h("code", {}, detail.sheet)),
+          detail.normal !== undefined && prop("Normal map", h("code", {}, detail.normal)),
+          detail.normalData !== undefined && prop("Corrections", h("code", {}, detail.normalData), "What the map was made from, and the corrections the agent keeps there"),
           prop("Rules", h("code", {}, detail.config ?? "none"))
         )
     )
@@ -1538,7 +1855,7 @@ const renderAbout = (): void =>
         h("code", {}, "pixel.review.json"),
         " at the game's root. Fixing pixels by hand belongs on the pixel fixer's page."
       ),
-      h("p", { class: "hint" }, "Keys: ↑ ↓ change asset, Space plays, ← → step frames, + − zoom, 0 back to 1×, F as large as fits, V the whole set and back, Esc drops a comment being drawn.")
+      h("p", { class: "hint" }, "Keys: ↑ ↓ change asset, Space plays, ← → step frames, + − zoom, 0 back to 1×, F as large as fits, V the whole set and back, L under the light, N the normal map, Esc drops a comment being drawn.")
     )
   )
 
@@ -1559,7 +1876,7 @@ const VIEW_KEY = "ritmo-pixel-review-view"
 /** Remembers how the person looks at art (backdrop, repeat): a convenience only. */
 const remember = (): void => {
   try {
-    localStorage.setItem(VIEW_KEY, JSON.stringify({ backdrop: state.backdrop, custom: state.custom, repeat: state.repeat }))
+    localStorage.setItem(VIEW_KEY, JSON.stringify({ backdrop: state.backdrop, custom: state.custom, repeat: state.repeat, look: state.look, light: state.light }))
   } catch {
     // Storage may be off; the page works without it.
   }
@@ -1572,6 +1889,26 @@ const recall = (): void => {
     if ("backdrop" in raw && (raw.backdrop === "dark" || raw.backdrop === "light" || raw.backdrop === "checker" || raw.backdrop === "custom")) state.backdrop = raw.backdrop
     if ("custom" in raw && typeof raw.custom === "string" && parseHex(raw.custom) !== undefined) state.custom = raw.custom
     if ("repeat" in raw && typeof raw.repeat === "boolean") state.repeat = raw.repeat
+    if ("look" in raw && (raw.look === "art" || raw.look === "lit" || raw.look === "normal")) state.look = raw.look
+    if ("light" in raw && typeof raw.light === "object" && raw.light !== null) {
+      const light = raw.light
+      const number = (name: string, least: number, most: number, fallback: number): number => {
+        const value: unknown = Reflect.get(light, name)
+        return typeof value === "number" && value >= least && value <= most ? value : fallback
+      }
+      const color: unknown = Reflect.get(light, "color")
+      const was = state.light
+      state.light = {
+        x: number("x", 0, 1, was.x),
+        y: number("y", 0, 1, was.y),
+        height: number("height", 0.05, 1.5, was.height),
+        reach: number("reach", 0.5, 6, was.reach),
+        ambient: number("ambient", 0, 1, was.ambient),
+        brightness: number("brightness", 0.2, 3, was.brightness),
+        color: typeof color === "string" && parseHex(color) !== undefined ? color : was.color,
+        steps: number("steps", 0, 4, was.steps)
+      }
+    }
   } catch {
     // Nothing remembered.
   }
@@ -1583,6 +1920,7 @@ function update(): void {
   renderStage()
   renderReview()
   renderComments()
+  renderLightPanel()
   renderChecks()
   renderViewPanel()
   renderAbout()
@@ -1622,6 +1960,10 @@ window.addEventListener("keydown", (event) => {
     setZoom(1)
   } else if (event.key === "f" || event.key === "F") {
     fitAgain()
+  } else if (event.key === "l" || event.key === "L") {
+    toggleLook("lit")
+  } else if (event.key === "n" || event.key === "N") {
+    toggleLook("normal")
   } else if (event.key === "v" || event.key === "V") {
     // Not Tab: that key belongs to moving through the page's controls.
     setView(state.view === "asset" ? "set" : "asset")

@@ -5,6 +5,7 @@
 import { TRANSPARENT, type PixelArt } from "./fix.ts"
 import type { Grid, RgbaImage } from "./grid.ts"
 import type { TileAxis } from "./lint.ts"
+import { flickerOf, lightFrame, type Light, type NormalFrame } from "./normals.ts"
 import { playOrder } from "./sheet.ts"
 import type { AtlasClip } from "./spritesheet.ts"
 
@@ -315,5 +316,85 @@ export const previewOnion = (clip: Pick<AtlasClip, "frames" | "anchor" | "beats"
       for (let tick = 0; tick < shown; tick++) fill(left + tick * (ONION_TICK + 2), top + panelHeight - ONION_TICK, ONION_TICK, ONION_TICK, [230, 230, 230])
     }
   })
+  return { width, height, data }
+}
+
+const LIT_SIDE = 96
+const LIT_MOST_ACROSS = 12
+
+/** How the art looks under a light from each side in `previewLit`: low enough to show the shape. */
+const litFrom = (frame: { readonly w: number; readonly h: number }, x: number, y: number): Light => {
+  const side = Math.max(frame.w, frame.h)
+  return { x: frame.w / 2 + x * side, y: frame.h / 2 + y * side, height: side * 0.5, reach: side * 3, color: [255, 255, 255], ambient: 0.2, brightness: 1.1, steps: 0 }
+}
+
+/** What each row of `previewLit` shows, for whoever reads the picture. */
+export const LIT_ROWS = {
+  still: "From the left: the art, its normal map, then lit from the left, right, top, and bottom.",
+  sheet: "For each animation, as rows: the normal map, lit from the left, lit from the right, then the frame where most pixels change their light with those pixels in magenta (none when nothing jumps)."
+} as const
+
+/**
+ * A picture to judge a normal map by, for an agent that can see images: the art
+ * under a light from each side, and what jumps while it plays.
+ */
+export const previewLit = <F extends NormalFrame>(art: RgbaImage, normal: RgbaImage, frames: ReadonlyArray<F>): RgbaImage => {
+  const groups = new Map<string, Array<F>>()
+  for (const frame of frames) groups.set(frame.animation ?? "", [...(groups.get(frame.animation ?? "") ?? []), frame])
+  const widest = Math.max(1, ...frames.map((frame) => frame.w))
+  const tallest = Math.max(1, ...frames.map((frame) => frame.h))
+  const scale = Math.max(1, Math.floor(LIT_SIDE / Math.max(widest, tallest)))
+  type Cell = { readonly frame: F; readonly look: "art" | "normal" | Light; readonly marks?: ReadonlyArray<readonly [number, number]> | undefined }
+  const rows: Array<ReadonlyArray<Cell>> = []
+  const still = frames.length === 1 && frames[0]!.animation === undefined
+  if (still) {
+    const frame = frames[0]!
+    rows.push([{ frame, look: "art" }, { frame, look: "normal" }, { frame, look: litFrom(frame, -1, 0) }])
+    rows.push([{ frame, look: litFrom(frame, 1, 0) }, { frame, look: litFrom(frame, 0, -1) }, { frame, look: litFrom(frame, 0, 1) }])
+  } else {
+    const flickers = flickerOf(art, normal, frames)
+    for (const [name, group] of groups) {
+      const sorted = [...group].sort((a, b) => a.index - b.index).slice(0, LIT_MOST_ACROSS)
+      rows.push(sorted.map((frame) => ({ frame, look: "normal" as const })))
+      rows.push(sorted.map((frame) => ({ frame, look: litFrom(frame, -1, 0) })))
+      rows.push(sorted.map((frame) => ({ frame, look: litFrom(frame, 1, 0) })))
+      const worst = flickers.find((flicker) => flicker.animation === name)?.worst
+      const frame = worst === undefined ? undefined : frames[worst.frame]
+      if (frame !== undefined) rows.push([{ frame, look: litFrom(frame, -1, 0), marks: worst?.at }])
+    }
+  }
+  const across = Math.max(1, ...rows.map((row) => row.length))
+  const width = GAP + across * (widest * scale + GAP)
+  const height = GAP + rows.length * (tallest * scale + GAP)
+  const data = new Uint8ClampedArray(width * height * 4)
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = BACKDROP[0]
+    data[i + 1] = BACKDROP[1]
+    data[i + 2] = BACKDROP[2]
+    data[i + 3] = 255
+  }
+  for (const [r, row] of rows.entries()) {
+    for (const [c, cell] of row.entries()) {
+      const { frame, look } = cell
+      const pixels = new Uint8ClampedArray(frame.w * frame.h * 4)
+      if (look === "art" || look === "normal") {
+        const from = look === "art" ? art : normal
+        for (let y = 0; y < frame.h; y++) pixels.set(from.data.subarray(((frame.y + y) * from.width + frame.x) * 4, ((frame.y + y) * from.width + frame.x + frame.w) * 4), y * frame.w * 4)
+      } else lightFrame(pixels, art.data, normal.data, art.width, frame, look)
+      for (const [x, y] of cell.marks ?? []) pixels.set([255, 43, 214, 255], (y * frame.w + x) * 4)
+      const left = GAP + c * (widest * scale + GAP)
+      const top = GAP + r * (tallest * scale + GAP)
+      for (let y = 0; y < frame.h * scale; y++) {
+        for (let x = 0; x < frame.w * scale; x++) {
+          const from = (Math.floor(y / scale) * frame.w + Math.floor(x / scale)) * 4
+          if (pixels[from + 3] === 0) continue
+          const to = ((top + y) * width + left + x) * 4
+          data[to] = pixels[from]!
+          data[to + 1] = pixels[from + 1]!
+          data[to + 2] = pixels[from + 2]!
+        }
+      }
+    }
+  }
   return { width, height, data }
 }

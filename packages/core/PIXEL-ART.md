@@ -137,6 +137,13 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 - Berry, "Remaking Celeste's Lighting" ([link][berry]): "We decided early on the lighting had to interact with the environment."
 - **Ritmo:** the rule under engine lighting is the reviewer's note in Still Time review 4: "Don't bake strong lighting or gradients into tiles. Keep sprites evenly lit with their own 3–4 shades." The skill keeps "strong": form shading stays (Celeste shades its sprites under its light map). Gameplay signals at full brightness under the light map ("Threat decals and shots stay at full brightness") is the same note, and the first read's rule carried into lighting.
 
+### Normal maps only where the game's look depends on them, judged by a person
+
+- Moreira, Coutinho and Chaimowicz, "Analysis and Compilation of Normal Map Generation Techniques for Pixel Art", SBGames 2022 ([link][normals]): "applying them for pixel art may not yield correct results due to the style specificities." … "both volume and texture are encoded together in pixel art." … "no technique could produce maps as good as the one an artist can manually paint".
+- Pixel Beef, "4 things we did to add light and depth to our Pixel Art Game", itch.io devlog ([link][pixelbeef]): "the most efficient way to light a 2D game still is to paint the shadows directly onto your sprites".
+- Red Hat Sprite, Pixel Art Lighter ([link][lighter]): "Generated normal maps are estimates. Manual correction is expected where the inferred shape does not match the artwork".
+- **Ritmo:** `pixel normals` measured about 27° off on a ball with known directions, where a flat map is 45° off, so the skill has the person judge a map under a light and keeps it the person's choice. `pixel lint` flags a stale map since an agent that redraws a sprite has a second picture to forget.
+
 ## Motion
 
 ### Key poses first, few frames; one frame of wind-up; the area stays
@@ -220,3 +227,6 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 [george]: https://www.gamedeveloper.com/design/crafting-the-perfect-game-art-brief
 [gimate]: https://www.gamedeveloper.com/blogs/from-references-to-concept-art
 [pixelorama]: https://github.com/Orama-Interactive/Pixelorama
+[normals]: https://ar5iv.labs.arxiv.org/html/2212.09692
+[pixelbeef]: https://pixel-beef.itch.io/xdasher/devlog/192949/4-things-we-did-to-add-light-and-depth-to-our-pixel-art-game
+[lighter]: https://moonfell-rpg.com/pixel-lighter.html

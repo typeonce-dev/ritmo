@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url"
 import { hashText } from "../../internal/hash.ts"
 import { body, send, servePage, type Address, type Handler } from "../../internal/serve.ts"
 import { decodeReview, encodeReview } from "../core/review.ts"
-import { assetVersion, detailOf, findAssets, libraryOf, pictureOf, readAsset, readingOf, reviewsOf, reviewVersion, writeReviews, type PixelAsset } from "./library.ts"
+import { assetVersion, detailOf, findAssets, libraryOf, normalPictureOf, pictureOf, readAsset, readingOf, reviewsOf, reviewVersion, writeReviews, type PixelAsset } from "./library.ts"
 
 export interface ServeOptions {
   /** The pictures, text sprites, and folders to review. */
@@ -74,6 +74,14 @@ export const api = (paths: ReadonlyArray<string>, listWait = LIST_WAIT_MS): Hand
         // The page asks by version (`v`): a new version is a new address, so the picture at one can be kept.
         response.setHeader("cache-control", query(request, "v") === (await assetVersion(asset)) ? "private, max-age=31536000, immutable" : "no-store")
         response.end(picture.bytes)
+        return
+      }
+      if (route === "GET /normal") {
+        const normal = await normalPictureOf(asset)
+        if (normal === undefined) return send(response, 404, { error: `${asset.id} has no normal map` })
+        response.setHeader("content-type", "image/png")
+        response.setHeader("cache-control", query(request, "v") === (await assetVersion(asset)) ? "private, max-age=31536000, immutable" : "no-store")
+        response.end(normal)
         return
       }
       return send(response, 404, { error: `no ${route}` })

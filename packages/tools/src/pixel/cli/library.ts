@@ -7,7 +7,8 @@
  *
  * A folder's files are found by name, and what the pixel tools write beside
  * an asset is left out: previews, project PNGs, onion skins, enlarged copies
- * (`@4x`), and a sheet's frames. Where a tool's output sits beside what it
+ * (`@4x`), a sheet's frames, and a normal map and its picture under light,
+ * which belong to the asset of their name. Where a tool's output sits beside what it
  * was made from (`pic.png` and `pic.fixed.png`, `x.sprite.txt` and
  * `x.sprite.render.png`), the review shows the output, the file the game
  * uses, and names the other as its source. A text file is an asset only
@@ -25,6 +26,7 @@ import { mtime } from "../../internal/serve.ts"
 import { toRgba } from "../core/export.ts"
 import type { RgbaImage } from "../core/grid.ts"
 import type { Severity } from "../core/lint.ts"
+import { decodeNormals, normalIssues, type NormalsFile } from "../core/normals.ts"
 import { reportOfArt } from "../core/report.ts"
 import { decodeReview, emptyReview, encodeReview, hashFrame, REVIEW_FILE, type AssetReview, type Frame, type Review } from "../core/review.ts"
 import { artOfImage, parseJsonMap, parseSprite } from "../core/sprite.ts"
@@ -44,8 +46,8 @@ export interface PixelAsset {
 }
 
 const PICTURE = /\.(png|jpe?g)$/i
-/** What the pixel tools write beside an asset that is not an asset: a preview, a project PNG, an onion skin, an enlarged copy and its JSON. */
-const TOOL_OUTPUT = /(\.(preview|project|onion)\.png|@\d+x\.(png|json))$/i
+/** What the pixel tools write beside an asset that is not an asset: a preview, a project PNG, an onion skin, a normal map and its picture under light, an enlarged copy and its JSON. */
+const TOOL_OUTPUT = /(\.(preview|project|onion|normal|lit)\.png|@\d+x\.(png|json))$/i
 /** A sheet's frames, written one PNG each. */
 const isFrames = (name: string): boolean => name.endsWith(".frames")
 /** The outputs named after what they were made from: `pixel fix`, `sheet`, and `pixelate` (from a picture), `render` (from text). */
@@ -124,6 +126,8 @@ export type AssetRead =
       /** The sheet's JSON, when it is a sheet. */
       readonly sheet: string | undefined
       readonly lint: Lint
+      /** The normal map beside it, when there is one: a hash of its pixels, and what is wrong with it (also in `lint`). */
+      readonly normal: { readonly hash: string; readonly issues: ReadonlyArray<FrameIssue> } | undefined
     }
   | { readonly ok: false; readonly problem: string }
 
@@ -142,11 +146,15 @@ const configOf = (file: string): string | undefined => {
 /** Where a picture's sheet JSON would be: beside it, by its name. */
 const sheetFileOf = (asset: PixelAsset): string | undefined => (asset.kind === "picture" ? `${stemOf(asset.file)}.json` : undefined)
 
-/** Changes when what the asset draws or how it is linted does: its file, its sheet JSON, its config. */
+/** Where an asset's normal map goes, and the file saying what it was made from: beside it, by its name. */
+export const normalFilesOf = (file: string): { readonly map: string; readonly data: string } => ({ map: `${stemOf(file)}.normal.png`, data: `${stemOf(file)}.normals.json` })
+
+/** Changes when what the asset draws or how it is linted does: its file, its sheet JSON, its config, its normal map. */
 export const assetVersion = async (asset: PixelAsset): Promise<string> => {
   const config = configOf(asset.file)
   const sheet = sheetFileOf(asset)
-  return hashText(`${await mtime(asset.file)}:${sheet === undefined ? 0 : await mtime(sheet)}:${config ?? ""}:${config === undefined ? 0 : await mtime(config)}`)
+  const normal = normalFilesOf(asset.file)
+  return hashText(`${await mtime(asset.file)}:${sheet === undefined ? 0 : await mtime(sheet)}:${config ?? ""}:${config === undefined ? 0 : await mtime(config)}:${await mtime(normal.map)}:${await mtime(normal.data)}`)
 }
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error))
@@ -198,6 +206,32 @@ const lintOf = async (asset: PixelAsset, image: RgbaImage, frames: ReadonlyArray
   return { ok: true, issues, errors: count("error"), warnings: count("warning"), config: config === undefined ? undefined : idOf(config) }
 }
 
+/** The normal map beside an asset, read and checked against it; none when there is no map. */
+const normalOf = async (asset: PixelAsset, image: RgbaImage, frames: ReadonlyArray<Frame>): Promise<{ readonly hash: string; readonly issues: ReadonlyArray<FrameIssue> } | undefined> => {
+  const files = normalFilesOf(asset.file)
+  const bytes = await readFile(files.map).catch(() => undefined)
+  if (bytes === undefined) return undefined
+  const hash = hashText(bytes.toString("latin1"))
+  let map: RgbaImage
+  try {
+    map = decodePicture(bytes)
+  } catch (error) {
+    return { hash, issues: [{ rule: "normal-unreadable", severity: "error", message: `${basename(files.map)} is not a PNG that decodes: ${message(error)}`, count: 1, at: [] }] }
+  }
+  // A map with no file beside it was painted by hand: nothing says what art it was made from.
+  const text = await readFile(files.data, "utf8").catch(() => undefined)
+  const made = text === undefined ? undefined : decodeNormals(text)
+  if (made?.ok === false) return { hash, issues: [{ rule: "normal-unreadable", severity: "error", message: `${basename(files.data)}: ${made.error}`, count: 1, at: [] }] }
+  return { hash: hashFrame(map, 0, 0, map.width, map.height), issues: normalIssues(image, map, frames, made?.value.frames) }
+}
+
+/** The lint with what is wrong with the normal map beside it. */
+const withNormal = (lint: Lint, normal: { readonly issues: ReadonlyArray<FrameIssue> } | undefined): Lint => {
+  if (!lint.ok || normal === undefined) return lint
+  const issues = [...lint.issues, ...normal.issues]
+  return { ...lint, issues, errors: issues.filter((issue) => issue.severity === "error").length, warnings: issues.filter((issue) => issue.severity === "warning").length }
+}
+
 const read = async (asset: PixelAsset): Promise<AssetRead> => {
   try {
     if (asset.kind === "text") {
@@ -206,7 +240,8 @@ const read = async (asset: PixelAsset): Promise<AssetRead> => {
       if (!parsed.ok) return { ok: false, problem: parsed.problems.map((problem) => (problem.line === undefined ? problem.message : `line ${problem.line}: ${problem.message}`)).join("; ") }
       const image = toRgba(parsed.art)
       const frames: ReadonlyArray<Frame> = [{ name: "", index: 0, x: 0, y: 0, w: image.width, h: image.height, hash: hashFrame(image, 0, 0, image.width, image.height) }]
-      return { ok: true, width: image.width, height: image.height, frames, animations: [], sheet: undefined, lint: await lintOf(asset, image, frames, parsed.art) }
+      const normal = await normalOf(asset, image, frames)
+      return { ok: true, width: image.width, height: image.height, frames, animations: [], sheet: undefined, lint: withNormal(await lintOf(asset, image, frames, parsed.art), normal), normal }
     }
     const bytes = await readFile(asset.file)
     let image: RgbaImage
@@ -229,7 +264,8 @@ const read = async (asset: PixelAsset): Promise<AssetRead> => {
             const animation = animations.find((entry) => entry.frames.includes(i))
             return { name: rect.name, animation: animation?.name ?? "frames", index: animation?.frames.indexOf(i) ?? i, x: rect.x, y: rect.y, w: rect.w, h: rect.h, duration: rect.duration, hash: hashFrame(image, rect.x, rect.y, rect.w, rect.h) }
           })
-    return { ok: true, width: image.width, height: image.height, frames, animations, sheet: sheet === undefined ? undefined : sheetFile, lint: await lintOf(asset, image, frames, undefined) }
+    const normal = await normalOf(asset, image, frames)
+    return { ok: true, width: image.width, height: image.height, frames, animations, sheet: sheet === undefined ? undefined : sheetFile, lint: withNormal(await lintOf(asset, image, frames, undefined), normal), normal }
   } catch (error) {
     return { ok: false, problem: message(error) }
   }
@@ -271,6 +307,18 @@ export const pictureOf = async (asset: PixelAsset): Promise<{ readonly bytes: Ui
   const parsed = /\.json$/i.test(asset.file) ? parseJsonMap(text) : parseSprite(text)
   if (!parsed.ok) throw new Error(`${asset.id} no longer reads as a sprite`)
   return { bytes: encodePng(toRgba(parsed.art)), type: "image/png" }
+}
+
+/** The asset's normal map as a file, `undefined` when it has none. */
+export const normalPictureOf = (asset: PixelAsset): Promise<Uint8Array | undefined> => readFile(normalFilesOf(asset.file).map).catch(() => undefined)
+
+/** What a normal map was made from, when the file beside it says: `undefined` when there is no file. */
+export const normalsFileOf = async (asset: PixelAsset): Promise<NormalsFile | { readonly problem: string } | undefined> => {
+  const file = normalFilesOf(asset.file).data
+  const text = await readFile(file, "utf8").catch(() => undefined)
+  if (text === undefined) return undefined
+  const decoded = decodeNormals(text)
+  return decoded.ok ? decoded.value : { problem: `${basename(file)}: ${decoded.error}` }
 }
 
 // ---------------------------------------------------------------------------
@@ -388,7 +436,7 @@ export const entryOf = async (asset: PixelAsset): Promise<Entry> => {
   const version = await assetVersion(asset)
   const got = await readAsset(asset)
   const base = { id: asset.id, name: basename(asset.file), folder: posix(dirname(asset.id)), source: asset.source === undefined ? undefined : idOf(asset.source), version }
-  if (!got.ok) return { ...base, kind: "still", width: 0, height: 0, frames: [], animations: [], errors: 0, warnings: 0, lintProblem: undefined, problem: got.problem }
+  if (!got.ok) return { ...base, kind: "still", width: 0, height: 0, frames: [], animations: [], normal: undefined, errors: 0, warnings: 0, lintProblem: undefined, problem: got.problem }
   return {
     ...base,
     kind: got.sheet === undefined ? "still" : "sheet",
@@ -396,6 +444,7 @@ export const entryOf = async (asset: PixelAsset): Promise<Entry> => {
     height: got.height,
     frames: got.frames,
     animations: got.animations,
+    normal: got.normal?.hash,
     errors: got.lint.ok ? got.lint.errors : 0,
     warnings: got.lint.ok ? got.lint.warnings : 0,
     lintProblem: got.lint.ok ? undefined : got.lint.problem,
@@ -416,6 +465,7 @@ export const readingOf = (assets: ReadonlyArray<PixelAsset>): { readonly done: n
 export const detailOf = async (asset: PixelAsset): Promise<Detail> => {
   const got = await readAsset(asset)
   const config = configOf(asset.file)
+  const normal = normalFilesOf(asset.file)
   return {
     id: asset.id,
     file: asset.file,
@@ -423,6 +473,8 @@ export const detailOf = async (asset: PixelAsset): Promise<Detail> => {
     sheet: got.ok && got.sheet !== undefined ? idOf(got.sheet) : undefined,
     // The rules it would be linted against, even while it cannot be read.
     config: config === undefined ? undefined : idOf(config),
+    normal: got.ok && got.normal !== undefined ? idOf(normal.map) : undefined,
+    normalData: got.ok && got.normal !== undefined && existsSync(normal.data) ? idOf(normal.data) : undefined,
     issues: got.ok && got.lint.ok ? got.lint.issues : [],
     version: await assetVersion(asset)
   }

@@ -23,7 +23,8 @@ import { presets, proposePalette, type ProposeMethod } from "../core/palette.ts"
 import { runRecipe, type Outcome } from "../core/pipeline.ts"
 import { atlasClips, detectFrames, proposeForSheet, runSheet, type AnimationCache } from "../core/animation.ts"
 import { toGif } from "../core/gif.ts"
-import { fitScale, previewArt, previewFix, previewOnion, previewSheet, previewTile } from "../core/preview.ts"
+import { decodeNormals, encodeNormals, flickerOf, isNormalPreset, makeNormals, NORMAL_CONVENTION, normalIssues, normalPresets, type NormalPreset } from "../core/normals.ts"
+import { fitScale, LIT_ROWS, previewArt, previewFix, previewLit, previewOnion, previewSheet, previewTile } from "../core/preview.ts"
 import { animationOf, defaultSheet, frameOf, isAnimationName, withFrames, type Sheet, type SheetAnimation } from "../core/sheet.ts"
 import { atlasOf, played, spritesheetJson } from "../core/spritesheet.ts"
 import { encodeRecipe, type GridChoice, type Outlines, type Recipe } from "../core/recipe.ts"
@@ -31,8 +32,9 @@ import { checkImage, compareReports, reportOfArt, reportOfFix, reportOfSheet, ty
 import { pixelSummary, resolveComments, reviewSummary } from "../core/review.ts"
 import { artOfImage, formatSprite } from "../core/sprite.ts"
 import { CliFailure, CONFIG_FILE, decodeOrFail, loadConfig, loadPalette, starterConfig, type Config } from "./config.ts"
+import { decodePicture } from "./png.ts"
 import { outputBase, printJson, readPicture, readProjectRecipeOf, readSource, readText, writeBytes, writePng, writeProject, writeText } from "./io.ts"
-import { findAssets, goneOf, readAsset, readReviewFile, reviewPlace, reviewsOf, writeReview, type PixelAsset } from "./library.ts"
+import { findAssets, goneOf, normalFilesOf, pictureOf, readAsset, readReviewFile, reviewPlace, reviewsOf, writeReview, type PixelAsset } from "./library.ts"
 import { serve } from "./serve.ts"
 
 /** Ends the run with an exit code, already reported on stdout. */
@@ -305,6 +307,34 @@ const tileFlag = Flag.Literals("tile", ["both", "x", "y"]).pipe(
   Flag.optional
 )
 
+const promised = <A>(what: string, run: () => Promise<A>): Effect.Effect<A, CliFailure> =>
+  Effect.tryPromise({ try: run, catch: (error) => new CliFailure({ message: `${what}: ${error instanceof Error ? error.message : String(error)}` }) })
+
+/** What is wrong with the normal map beside an asset, or none. */
+const normalLint = Effect.fn("normalLint")(function* (input: string) {
+  const [asset] = yield* promised(`cannot read ${input}`, () => findAssets([input]))
+  if (asset === undefined) return []
+  const got = yield* promised(`cannot read ${input}`, () => readAsset(asset))
+  return got.ok ? (got.normal?.issues ?? []) : []
+})
+
+/** A normal map named outright is checked against the art of its name, not by the rules for art, which its colors would all break. */
+const lintNormalMap = Effect.fn("lintNormalMap")(function* (input: string) {
+  const fs = yield* FileSystem.FileSystem
+  const stem = input.replace(/\.normal\.png$/i, "")
+  const candidates = [`${stem}.png`, `${stem}.txt`, `${stem}.json`]
+  let art: string | undefined
+  for (const candidate of candidates) {
+    if (art === undefined && (yield* fs.exists(candidate).pipe(Effect.orElseSucceed(() => false)))) art = candidate
+  }
+  if (art === undefined) return yield* new CliFailure({ message: `${input} is a normal map with no art beside it: it needs ${stem}.png or a sprite source of that name` })
+  const issues = yield* normalLint(art)
+  const errors = issues.filter((issue) => issue.severity === "error").length
+  const verdict: Verdict = errors > 0 ? "fixable" : "clean"
+  yield* printJson({ file: input, art, verdict, summary: issues.length === 0 ? `It lines up with ${art}.` : `${issues.length} issue${issues.length === 1 ? "" : "s"} against ${art}.`, issues })
+  yield* exitWith(exitCode[verdict])
+})
+
 const lint = Command.make(
   "lint",
   {
@@ -314,13 +344,19 @@ const lint = Command.make(
     tile: tileFlag
   },
   Effect.fn("lint")(function* (flags) {
+    if (/\.normal\.png$/i.test(flags.input)) return yield* lintNormalMap(flags.input)
     const project = yield* loadConfig(flags.config)
     const rules: LintRules = Option.isSome(flags.palette) ? { ...project.rules, palette: (yield* loadPalette(flags.palette.value, ".")).colors } : project.rules
     const source = yield* readSource(flags.input)
     const { art, partial } = source.kind === "art" ? { art: source.art, partial: 0 } : artOfImage(source.image)
     const report = reportOfArt(art, { ...rules, tile: Option.getOrUndefined(flags.tile) }, partial)
-    yield* printJson({ file: flags.input, verdict: report.verdict, summary: report.summary, issues: report.issues })
-    yield* exitWith(exitCode[report.verdict])
+    // The normal map beside it, if it has one, has to match it.
+    const normal = yield* normalLint(flags.input)
+    const issues = [...report.issues, ...normal]
+    const verdict = report.verdict === "clean" && normal.some((issue) => issue.severity === "error") ? "fixable" : report.verdict
+    const summary = normal.length === 0 ? report.summary : `${report.summary} Its normal map: ${normal.length} issue${normal.length === 1 ? "" : "s"}.`
+    yield* printJson({ file: flags.input, verdict, summary, issues })
+    yield* exitWith(exitCode[verdict])
   })
 ).pipe(Command.withDescription("Checks pixel art against the project's rules (size, palette, colors, transparency, stray pixels), as it is; with --tile, also that its edges meet."))
 
@@ -562,9 +598,6 @@ const pathsArgument = Argument.String("paths").pipe(
   Argument.variadic({ min: 1 })
 )
 
-const promised = <A>(what: string, run: () => Promise<A>): Effect.Effect<A, CliFailure> =>
-  Effect.tryPromise({ try: run, catch: (error) => new CliFailure({ message: `${what}: ${error instanceof Error ? error.message : String(error)}` }) })
-
 /** The assets under `paths`, failing on a path that is not there, a folder with no art, and a file named outright that cannot be read. */
 const assetsUnder = Effect.fn("assetsUnder")(function* (paths: ReadonlyArray<string>) {
   const fs = yield* FileSystem.FileSystem
@@ -586,6 +619,77 @@ const MANY_ASSETS = 500
 
 const tooMany = (found: ReadonlyArray<PixelAsset>): string | undefined =>
   found.length <= MANY_ASSETS ? undefined : `${found.length} assets under these paths, which take minutes to read. Name the folders the game's art is in (\`public/art\`, \`assets/sprites\`), not ones holding renders or captures.`
+
+const normals = Command.make(
+  "normals",
+  {
+    input: Argument.String("input").pipe(Argument.withDescription("The art: a PNG at its true size (a sheet when its JSON sits beside it), or a sprite source.")),
+    preset: Flag.Literals("preset", normalPresets).pipe(Flag.withDescription("What the art is of, which sets how the shape is guessed (default: the last run's; else character for a sheet, object for a still)."), Flag.optional),
+    strength: Flag.Int("strength").pipe(Flag.withDescription("How steep the shape is, in percent (default: the last run's; else the preset's own)."), Flag.optional),
+    force: Flag.Boolean("force").pipe(Flag.withDefault(false), Flag.withDescription("Replace a normal map with no `.normals.json` beside it: one painted by hand."))
+  },
+  Effect.fn("normals")(function* (flags) {
+    const fs = yield* FileSystem.FileSystem
+    if (/\.(normal|lit)\.png$/i.test(flags.input)) return yield* new CliFailure({ message: `${flags.input} is what this command writes: name the art it is made from` })
+    if (/\.jpe?g$/i.test(flags.input)) return yield* new CliFailure({ message: `${flags.input} is a JPEG, whose colors are too noisy to read surfaces from: run \`ritmo-tools pixel fix\` on it first and name the PNG that writes` })
+    const info = yield* fs.stat(flags.input).pipe(Effect.mapError(() => new CliFailure({ message: `cannot read ${flags.input}` })))
+    if (info.type === "Directory") return yield* new CliFailure({ message: `${flags.input} is a folder: name one picture, a sheet, or a sprite source. Each has its own map, chosen on purpose` })
+    const [asset]: ReadonlyArray<PixelAsset> = yield* assetsUnder([flags.input])
+    if (asset === undefined) return yield* new CliFailure({ message: `${flags.input} is not pixel art` })
+    const got = yield* promised(`cannot read ${flags.input}`, () => readAsset(asset))
+    if (!got.ok) return yield* new CliFailure({ message: `${flags.input} cannot be read: ${got.problem}` })
+    const picture = yield* promised(`cannot read ${flags.input}`, () => pictureOf(asset))
+    const image = decodePicture(picture.bytes)
+    const project = yield* loadConfig(Option.none())
+    if (got.sheet === undefined && checkImage(image, project.recipe).report.kind === "upscaled") {
+      yield* printJson({ file: flags.input, verdict: "fixable", summary: "This is fake pixels, each many real ones, so there are no surfaces to read.", issues: [], next: `Run \`ritmo-tools pixel fix ${flags.input}\` and name the true-size PNG it writes.` })
+      return yield* exitWith(exitCode.fixable)
+    }
+    const files = normalFilesOf(asset.file)
+    const before = yield* fs.readFileString(files.data).pipe(Effect.option)
+    const hasMap = yield* fs.exists(files.map).pipe(Effect.orElseSucceed(() => false))
+    if (hasMap && Option.isNone(before) && !flags.force) {
+      return yield* new CliFailure({ message: `${files.map} has no .normals.json beside it, so it was not made here: it may be painted by hand. --force replaces it` })
+    }
+    const kept = Option.isSome(before) ? decodeNormals(before.value) : undefined
+    if (kept?.ok === false) return yield* new CliFailure({ message: `${files.data}: ${kept.error}` })
+    const preset: NormalPreset = Option.getOrElse(flags.preset, () => kept?.value.preset ?? (got.sheet === undefined ? "object" : "character"))
+    if (!isNormalPreset(preset)) return yield* new CliFailure({ message: `--preset is one of ${normalPresets.join(", ")}` })
+    const strength = Option.isSome(flags.strength) ? flags.strength.value : kept?.value.strength
+    if (strength !== undefined && (strength <= 0 || strength > 400)) return yield* new CliFailure({ message: "--strength is in percent, above 0 and up to 400" })
+    const corrections = kept?.value.corrections ?? []
+    const made = makeNormals(image, got.frames, { preset, strength, corrections })
+    const problems = made.corrections.flatMap((result, i) => (result.problem === undefined ? [] : [{ rule: "normal-correction" as const, severity: "error" as const, message: `corrections[${i}] did nothing: ${result.problem}`, count: 1, at: [] }]))
+    const issues = [...problems, ...normalIssues(image, made.image, got.frames, undefined)]
+    const written = {
+      normal: yield* writePng(files.map, made.image),
+      data: yield* writeText(files.data, encodeNormals({ preset, strength, corrections, frames: got.frames.map((frame) => frame.hash) })),
+      lit: yield* writePng(files.map.replace(/\.normal\.png$/, ".lit.png"), previewLit(image, made.image, got.frames))
+    }
+    const flicker = flickerOf(image, made.image, got.frames).map((entry) => ({ animation: entry.animation, pixels: entry.pixels, share: Math.round(entry.share * 1000) / 1000 }))
+    const verdict: Verdict = problems.length > 0 ? "fixable" : "clean"
+    yield* printJson({
+      file: flags.input,
+      verdict,
+      summary: `Made its normal map (${preset}): ${Math.round(made.front * 100)}% of it faces the viewer${flicker.length === 0 ? "" : `, ${flicker.length} animation${flicker.length === 1 ? "" : "s"} measured`}${corrections.length === 0 ? "" : `, ${corrections.length} correction${corrections.length === 1 ? "" : "s"} applied`}.`,
+      preset,
+      strength,
+      convention: NORMAL_CONVENTION,
+      front: Math.round(made.front * 1000) / 1000,
+      ...(flicker.length === 0 ? {} : { flicker }),
+      ...(corrections.length === 0 ? {} : { corrections: corrections.map((correction, i) => ({ ...correction, ...made.corrections[i] })) }),
+      issues,
+      files: written,
+      litShows: got.frames.length === 1 && got.frames[0]!.animation === undefined ? LIT_ROWS.still : LIT_ROWS.sheet,
+      next: "The map is an estimate. Open the `lit` picture, then `ritmo-tools pixel review` so the person judges it under a light: comments with a direction come back through `pixel notes`, and go into `corrections` in the `data` file."
+    })
+    yield* exitWith(exitCode[verdict])
+  })
+).pipe(
+  Command.withDescription(
+    "Makes a normal map for pixel art, for a game that lights its sprites: a PNG the art's size beside it, a `.normals.json` with what it was made from and any corrections, and a picture of it lit from each side. A sheet keeps each surface's direction through its animation, and the report says how much still flickers. Corrections live in the `.normals.json`, so they survive running it again. Only for a game that has chosen dynamic light: painted shading needs none of this."
+  )
+)
 
 const review = Command.make(
   "review",
@@ -646,7 +750,7 @@ const notes = Command.make(
               })
             }
         : { lint: [`cannot lint: ${got.lint.problem}`] }
-      entries.push({ file: asset.id, ...source, ...reviewSummary(said, got.frames), ...lint })
+      entries.push({ file: asset.id, ...source, ...reviewSummary(said, got.frames, got.normal?.hash), ...lint })
     }
     const gone = yield* promised("cannot read the review", () => goneOf(found, flags.paths))
     yield* printJson({
@@ -689,6 +793,6 @@ export const pixel = Command.make("pixel").pipe(
   Command.withDescription(
     "Ritmo's pixel fixer: checks, fixes, and makes pixel art, and opens a review page where a person approves a game's art or pins comments to it. Prints JSON; exit 0 clean, 2 usage error, 3 fixable, 4 needs a person (review, notes, and resolve exit 0 or 2)."
   ),
-  Command.withSubcommands([check, fix, sheetCommand, pixelate, render, lint, previewCommand, compare, palettes, init, review, notes, resolve])
+  Command.withSubcommands([check, fix, sheetCommand, pixelate, render, lint, previewCommand, compare, palettes, init, normals, review, notes, resolve])
 )
 

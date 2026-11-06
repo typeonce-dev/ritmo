@@ -17,6 +17,7 @@
  */
 import { makeHash } from "../../internal/hash.ts"
 import type { RgbaImage } from "./grid.ts"
+import { facings, isFacing, type Facing } from "./normals.ts"
 import type { Decoded } from "./recipe.ts"
 
 export type Status = "new" | "approved" | "changes"
@@ -39,14 +40,17 @@ export interface Comment {
   readonly width?: number | undefined
   readonly height?: number | undefined
   readonly text: string
+  /** Which way the surface here should face, when the comment is about the asset's normal map: exact where the words are not. */
+  readonly facing?: Facing | undefined
   readonly resolved?: boolean | undefined
   readonly reply?: string | undefined
 }
 
-/** What the person saw when they approved an asset: a hash of each frame's pixels, in the sheet's order, and how long each frame shows (a still has none). */
+/** What the person saw when they approved an asset: a hash of each frame's pixels, in the sheet's order, how long each frame shows (a still has none), and a hash of its normal map, when it had one. */
 export interface Approved {
   readonly frames: ReadonlyArray<string>
   readonly durations?: ReadonlyArray<number> | undefined
+  readonly normal?: string | undefined
 }
 
 export interface AssetReview {
@@ -106,9 +110,9 @@ export const hashFrame = (image: RgbaImage, x: number, y: number, w: number, h: 
 }
 
 /** What to keep when the person approves an asset, as it looks now. */
-export const approvalOf = (frames: ReadonlyArray<Frame>): Approved => {
+export const approvalOf = (frames: ReadonlyArray<Frame>, normal?: string): Approved => {
   const durations = frames.map((frame) => frame.duration)
-  return { frames: frames.map((frame) => frame.hash), ...(durations.every((d) => d !== undefined) && durations.length > 0 ? { durations } : {}) }
+  return { frames: frames.map((frame) => frame.hash), ...(durations.every((d) => d !== undefined) && durations.length > 0 ? { durations } : {}), ...(normal === undefined ? {} : { normal }) }
 }
 
 /** "3-5, 7": frame numbers as runs. */
@@ -136,7 +140,7 @@ const framesNamed = (frames: ReadonlyArray<Frame>): string => {
 }
 
 /** What is different from what the person approved, in a few words; `undefined` when nothing is. */
-export const changedSince = (approved: Approved, frames: ReadonlyArray<Frame>): string | undefined => {
+export const changedSince = (approved: Approved, frames: ReadonlyArray<Frame>, normal?: string): string | undefined => {
   if (frames.length !== approved.frames.length) return `${frames.length} frame${frames.length === 1 ? "" : "s"}, ${approved.frames.length} when approved`
   const parts: Array<string> = []
   const looks = frames.filter((frame, i) => frame.hash !== approved.frames[i])
@@ -144,12 +148,13 @@ export const changedSince = (approved: Approved, frames: ReadonlyArray<Frame>): 
   const timed = approved.durations === undefined ? [] : frames.filter((frame, i) => frame.duration !== approved.durations?.[i])
   if (timed.length === 1) parts.push(`${framesNamed(timed)} shows for ${timed[0]!.duration ?? 0} ms, ${approved.durations?.[frames.indexOf(timed[0]!)]} when approved`)
   else if (timed.length > 1) parts.push(`the timing of ${framesNamed(timed)} changed`)
+  if (normal !== approved.normal) parts.push(approved.normal === undefined ? "it has a normal map now, which you have not seen under a light" : normal === undefined ? "its normal map is gone" : "its normal map changed")
   return parts.length === 0 ? undefined : parts.join("; ")
 }
 
 /** What changed since the person approved this asset, when they did and something has. A review with no hashes has nothing to compare. */
-export const changedOf = (review: AssetReview, frames: ReadonlyArray<Frame>): string | undefined =>
-  review.status === "approved" && review.approved !== undefined ? changedSince(review.approved, frames) : undefined
+export const changedOf = (review: AssetReview, frames: ReadonlyArray<Frame>, normal?: string): string | undefined =>
+  review.status === "approved" && review.approved !== undefined ? changedSince(review.approved, frames, normal) : undefined
 
 // ---------------------------------------------------------------------------
 // The file
@@ -170,6 +175,10 @@ const commentOf = (raw: unknown, where: string, errors: Array<string>): Comment 
     errors.push(`${where}.animation must be a name`)
     return undefined
   }
+  if (raw.facing !== undefined && !isFacing(raw.facing)) {
+    errors.push(`${where}.facing must be one of ${facings.join(", ")}`)
+    return undefined
+  }
   return commentJson({
     animation: raw.animation,
     frame: raw.frame,
@@ -178,6 +187,7 @@ const commentOf = (raw: unknown, where: string, errors: Array<string>): Comment 
     width: raw.width,
     height: raw.height,
     text: raw.text,
+    facing: raw.facing,
     resolved: raw.resolved === true,
     reply: typeof raw.reply === "string" ? raw.reply : undefined
   })
@@ -186,10 +196,12 @@ const commentOf = (raw: unknown, where: string, errors: Array<string>): Comment 
 const approvedOf = (raw: unknown): Approved | undefined => {
   if (!isRecord(raw) || !Array.isArray(raw.frames) || !raw.frames.every((hash) => typeof hash === "string")) return undefined
   const frames: ReadonlyArray<string> = raw.frames
-  if (raw.durations === undefined) return { frames }
+  if (raw.normal !== undefined && typeof raw.normal !== "string") return undefined
+  const normal = raw.normal === undefined ? {} : { normal: raw.normal }
+  if (raw.durations === undefined) return { frames, ...normal }
   if (!Array.isArray(raw.durations) || raw.durations.length !== frames.length || !raw.durations.every((d) => typeof d === "number")) return undefined
   const durations: ReadonlyArray<number> = raw.durations
-  return { frames, durations }
+  return { frames, durations, ...normal }
 }
 
 const assetOf = (raw: unknown, where: string, errors: Array<string>): AssetReview | undefined => {
@@ -236,6 +248,7 @@ const commentJson = (comment: Comment): Comment => ({
   ...(comment.width === undefined || comment.width === 1 ? {} : { width: comment.width }),
   ...(comment.height === undefined || comment.height === 1 ? {} : { height: comment.height }),
   text: comment.text,
+  ...(comment.facing === undefined ? {} : { facing: comment.facing }),
   ...(comment.resolved === true ? { resolved: true } : {}),
   ...(comment.reply === undefined || comment.reply === "" ? {} : { reply: comment.reply })
 })
@@ -245,7 +258,7 @@ const assetJson = (entry: AssetReview) => ({
   status: entry.status,
   ...(entry.note === "" ? {} : { note: entry.note }),
   ...(entry.comments.length === 0 ? {} : { comments: entry.comments.map(commentJson) }),
-  ...(entry.approved === undefined ? {} : { approved: entry.approved.durations === undefined ? { frames: entry.approved.frames } : { frames: entry.approved.frames, durations: entry.approved.durations } })
+  ...(entry.approved === undefined ? {} : { approved: { frames: entry.approved.frames, ...(entry.approved.durations === undefined ? {} : { durations: entry.approved.durations }), ...(entry.approved.normal === undefined ? {} : { normal: entry.approved.normal }) } })
 })
 
 /** The file as written: assets in path order, and an asset nothing was said about left out. */
@@ -313,19 +326,24 @@ export const whereOf = (comment: Comment): string => {
 }
 
 /** What `pixel notes` says about one asset's review: its status, note, open comments (numbered, as `pixel resolve` takes them), and what changed since it was approved. */
-export const reviewSummary = (review: AssetReview, frames: ReadonlyArray<Frame> | undefined) => {
-  const changed = frames === undefined ? undefined : changedOf(review, frames)
+export const reviewSummary = (review: AssetReview, frames: ReadonlyArray<Frame> | undefined, normal?: string) => {
+  const changed = frames === undefined ? undefined : changedOf(review, frames, normal)
   // Open comments only, each with its number: resolved ones are done.
   const open = review.comments.flatMap((comment, index) => (comment.resolved === true ? [] : [{ number: index + 1, where: whereOf(comment), ...comment }]))
   const resolved = review.comments.length - open.length
   const worded = open.length > 0 || review.note !== ""
+  // Said once for the asset: what to do with the direction a comment carries.
+  const facing = open.some((comment) => comment.facing !== undefined)
+    ? " A comment with `facing` says which way that surface should face: copy its animation, frame, x, y, width, height, and facing into `corrections` in the asset's `.normals.json`, and run `ritmo-tools pixel normals` on the asset again."
+    : ""
+  const withFacing = (next: string): string => `${next}${facing}`
   return {
     status: review.status,
     note: review.note === "" ? undefined : review.note,
     comments: open.length === 0 ? undefined : open,
     resolved: resolved === 0 ? undefined : resolved,
     changedSinceApproved: changed,
-    next:
+    next: withFacing(
       changed !== undefined
         ? `It changed since the person approved it. Tell them what changed and ask them to look again; only they approve it.${open.length > 0 ? " Then `pixel resolve` the comments you acted on, with a reply saying what changed." : ""}`
         : review.status === "approved" && open.length > 0
@@ -339,6 +357,7 @@ export const reviewSummary = (review: AssetReview, frames: ReadonlyArray<Frame> 
                 : review.status === "changes"
                   ? "The person asked for changes but said nothing yet: ask them what."
                   : "Nothing said yet. Wait for the person, or ask them to look."
+    )
   }
 }
 

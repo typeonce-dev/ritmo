@@ -397,3 +397,91 @@
     display: none;
   }
 }
+
+/* The light over the art: above the rings, and the only thing on them that takes the pointer. */
+.pixel-lamp {
+  position: absolute;
+  display: none;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  box-sizing: border-box;
+  border: 2px solid #1a1c2c;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 10px 2px rgba(255, 255, 255, 0.6);
+  cursor: grab;
+  touch-action: none;
+}
+
+.pixel-lamp.on {
+  display: block;
+}
+
+.pixel-lamp:active {
+  cursor: grabbing;
+}
+
+.pixel-looks button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pixel-set-lit {
+  display: block;
+  image-rendering: pixelated;
+}
+
+.pixel-set-art.shrunk .pixel-set-lit {
+  image-rendering: auto;
+}
+
+/* Kept in place while they do nothing, so nothing moves when the light comes on. */
+.pixel-light-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pixel-light-controls.off {
+  opacity: 0.45;
+}
+
+.pixel-facing-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.pixel-facing-row .hint {
+  margin: 0;
+}
+
+.pixel-facing {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(3, 26px);
+  grid-auto-rows: 26px;
+  gap: 2px;
+}
+
+.pixel-facing button {
+  padding: 0;
+  border: 1px solid var(--line, rgba(127, 127, 127, 0.35));
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pixel-facing button:hover {
+  background: rgba(127, 127, 127, 0.18);
+}
+
+.pixel-facing button.on {
+  border-color: var(--accent, #ff7a1a);
+  background: var(--accent, #ff7a1a);
+  color: #ffffff;
+}
