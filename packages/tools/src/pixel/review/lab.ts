@@ -1346,19 +1346,19 @@ const renderPlayback = (): void => {
     playback,
     sheet && [
       button(state.playing ? "Pause" : "Play", () => toggle(), { variant: "ghost", icon: state.playing ? "pause" : "play", iconOnly: true, title: state.playing ? "Pause (Space)" : "Play (Space)" }),
-      button("Previous frame", () => stepFrame(-1), { variant: "ghost", icon: "previous", iconOnly: true, title: "Previous frame (←)" }),
-      button("Next frame", () => stepFrame(1), { variant: "ghost", icon: "next", iconOnly: true, title: "Next frame (→)" }),
+      button("Previous frame", () => stepFrame(-1), { variant: "ghost", icon: "previous", iconOnly: true, title: "Previous frame (←)", class: "pixel-bar-step" }),
+      button("Next frame", () => stepFrame(1), { variant: "ghost", icon: "next", iconOnly: true, title: "Next frame (→)", class: "pixel-bar-step" }),
       screen?.counter,
       h("span", { class: "divider" })
     ],
     state.view === "asset" && entry !== undefined && entry.animations.length === 0 && screen?.counter,
     state.view === "asset" && entry !== undefined && entry.animations.length === 0 && h("span", { class: "divider" }),
-    button("Zoom out", () => zoomBy(-1), { variant: "ghost", icon: "minus", iconOnly: true, disabled: zoom <= least, title: "Zoom out (−)" }),
-    h("span", { class: "zoom-value", attrs: { "aria-label": "Zoom" } }, zoomWords(zoom)),
-    button("Zoom in", () => zoomBy(1), { variant: "ghost", icon: "plus", iconOnly: true, disabled: zoom >= top, title: "Zoom in (+)" }),
-    button("1×", () => setZoom(1), { variant: "ghost", small: true, disabled: zoom === 1 && !(state.view === "set" ? state.setFit : state.fit), title: "Its own size (0)" }),
-    button("Fit", fitAgain, { variant: "ghost", small: true, disabled: state.view === "set" ? state.setFit : state.fit, title: "As large as fits (F)" }),
-    h("span", { class: "divider" }),
+    button("Zoom out", () => zoomBy(-1), { variant: "ghost", icon: "minus", iconOnly: true, disabled: zoom <= least, title: "Zoom out (−)", class: "pixel-bar-zoom" }),
+    h("span", { class: "zoom-value pixel-bar-zoom", attrs: { "aria-label": "Zoom" } }, zoomWords(zoom)),
+    button("Zoom in", () => zoomBy(1), { variant: "ghost", icon: "plus", iconOnly: true, disabled: zoom >= top, title: "Zoom in (+)", class: "pixel-bar-zoom" }),
+    button("1×", () => setZoom(1), { variant: "ghost", small: true, disabled: zoom === 1 && !(state.view === "set" ? state.setFit : state.fit), title: "Its own size (0)", class: "pixel-bar-size" }),
+    button("Fit", fitAgain, { variant: "ghost", small: true, disabled: state.view === "set" ? state.setFit : state.fit, title: "As large as fits (F)", class: "pixel-bar-size" }),
+    h("span", { class: "divider pixel-bar-zoom" }),
     lookControl(entry)
   )
   renderCounter()
@@ -1367,7 +1367,7 @@ const renderPlayback = (): void => {
 /** Whether what is on screen has a normal map to show: the asset open, or any of the set. */
 const hasMapShown = (entry: Entry | undefined): boolean => (state.view === "set" ? state.library.some((other) => other.normal !== undefined) : entry?.normal !== undefined)
 
-/** Art, Lit, Normal: always in its place, and greyed where there is no map to show. */
+/** Art, Lit, Normal map: always in its place, and greyed where there is no map to show. */
 const lookControl = (entry: Entry | undefined): HTMLElement => {
   const off = !hasMapShown(entry)
   const none = "No normal map beside this: `ritmo-tools pixel normals` makes one"
@@ -1376,7 +1376,7 @@ const lookControl = (entry: Entry | undefined): HTMLElement => {
     [
       { id: "art", label: "Art", title: "The art as drawn" },
       { id: "lit", label: "Lit", disabled: off, title: off ? none : "Under the light (L): drag it over the art" },
-      { id: "normal", label: "Normal", disabled: off, title: off ? none : "The normal map itself (N)" }
+      { id: "normal", label: "Normal map", disabled: off, title: off ? none : "The normal map itself (N)" }
     ],
     setLook,
     { label: "Look", class: "pixel-looks" }

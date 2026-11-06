@@ -436,7 +436,7 @@ When the art later looks different or plays at other timings, the page and
 version; the status stays approved, since only the person changes it.
 
 Art with a normal map beside it (see "Normal maps") has a sun on its row, and
-**Art**, **Lit**, and **Normal** at the end of the playback bar show it as
+**Art**, **Lit**, and **Normal map** at the end of the playback bar show it as
 drawn, under a light, or as the map itself; they are greyed for art with no map.
 Under the light, drag it over the art, or turn on **Go round** in the **Light**
 section; **Set** shows the whole set under one light. Pressing on the art still

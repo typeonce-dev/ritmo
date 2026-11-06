@@ -146,11 +146,65 @@
   text-align: center;
 }
 
+.pixel-stage {
+  container-type: inline-size;
+}
+
 .pixel-stage .playback {
-  flex-wrap: wrap;
-  justify-content: center;
+  flex-wrap: nowrap;
   width: max-content;
   max-width: calc(100% - 24px);
+}
+
+/* The bar stays one row: as the stage narrows it gives up what has a key or a gesture, least needed first. An animation's bar is the longest. */
+@container (max-width: 690px) {
+  .pixel-stage .playback {
+    gap: 2px;
+  }
+
+  /* "2 of 7 · 125 ms" */
+  .pixel-counter-word {
+    display: none;
+  }
+}
+
+@container (max-width: 610px) {
+  .pixel-playback:has(.pixel-bar-step) .pixel-bar-size {
+    display: none;
+  }
+}
+
+@container (max-width: 540px) {
+  .pixel-playback:has(.pixel-bar-step) .pixel-bar-zoom {
+    display: none;
+  }
+}
+
+@container (max-width: 470px) {
+  .pixel-bar-size {
+    display: none;
+  }
+}
+
+@container (max-width: 440px) {
+  .pixel-playback:has(.pixel-bar-step) :is(.pixel-counter, .pixel-counter + .divider) {
+    display: none;
+  }
+}
+
+@container (max-width: 400px) {
+  .pixel-playback:has(.pixel-counter) .pixel-bar-zoom {
+    display: none;
+  }
+}
+
+@container (max-width: 310px) {
+  .pixel-bar-zoom,
+  .pixel-bar-step,
+  .pixel-counter,
+  .pixel-counter + .divider {
+    display: none;
+  }
 }
 
 .pixel-color {
@@ -390,11 +444,6 @@
   /* The count on a row of its own: the buttons never wrap differently as it changes. */
   .pixel-picked > span {
     flex-basis: 100%;
-  }
-
-  /* "2 of 7 · 125 ms": the playback bar stays one row on a phone. */
-  .pixel-counter-word {
-    display: none;
   }
 }
 
