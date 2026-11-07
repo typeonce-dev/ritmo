@@ -34,6 +34,9 @@ export interface Issue {
     | "stray-pixel"
     | "near-duplicate-colors"
     | "seam"
+    // What `pixel bake` says about a model (see `bake`).
+    | "bake-cut"
+    | "bake-hidden"
     // A normal map beside the art (see `normalIssues`).
     | "normal-size"
     | "normal-stale"
@@ -96,6 +99,33 @@ const seamAlong = (lines: number, along: number, cell: (line: number, at: number
   const breaks = Array.from({ length: along }, (_, at) => at).filter((at) => cell(lines - 1, at) !== cell(0, at))
   const otherSide = inside.some((_, line) => breaks.filter((at) => cell(line, at) === cell(0, at) && cell(line + 1, at) === cell(lines - 1, at)).length >= SEAM_SAME_SHAPE * breaks.length)
   return otherSide ? undefined : breaks
+}
+
+/**
+ * The stray pixels, as positions in `indices`: none of a pixel's four
+ * neighbours shares its color, while five or more of its eight share another
+ * (transparency counts as one).
+ */
+export const strayPixels = (indices: Int32Array, width: number, height: number): Array<number> => {
+  const strays: Array<number> = []
+  const at = (x: number, y: number): number | undefined => (x < 0 || y < 0 || x >= width || y >= height ? undefined : indices[y * width + x])
+  const around = new Map<number, number>()
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const self = indices[y * width + x]!
+      if (self === TRANSPARENT) continue
+      if (at(x - 1, y) === self || at(x + 1, y) === self || at(x, y - 1) === self || at(x, y + 1) === self) continue
+      around.clear()
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const value = dx === 0 && dy === 0 ? undefined : at(x + dx, y + dy)
+          if (value !== undefined && value !== self) around.set(value, (around.get(value) ?? 0) + 1)
+        }
+      }
+      if ([...around.values()].some((count) => count >= 5)) strays.push(y * width + x)
+    }
+  }
+  return strays
 }
 
 /** `partial`: how many half-transparent pixels the picture had before it became pixel art (see `artOfImage`). */
@@ -177,25 +207,7 @@ export const lintArt = (art: PixelArt, rules: LintRules = {}, partial = 0): Arra
     }
   }
 
-  // A stray pixel: none of its four neighbours shares its color, while five or more of its eight share another.
-  const strays: Array<number> = []
-  const at = (x: number, y: number): number | undefined => (x < 0 || y < 0 || x >= width || y >= height ? undefined : indices[y * width + x])
-  const around = new Map<number, number>()
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const self = indices[y * width + x]!
-      if (self === TRANSPARENT) continue
-      if (at(x - 1, y) === self || at(x + 1, y) === self || at(x, y - 1) === self || at(x, y + 1) === self) continue
-      around.clear()
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const value = dx === 0 && dy === 0 ? undefined : at(x + dx, y + dy)
-          if (value !== undefined && value !== self) around.set(value, (around.get(value) ?? 0) + 1)
-        }
-      }
-      if ([...around.values()].some((count) => count >= 5)) strays.push(y * width + x)
-    }
-  }
+  const strays = strayPixels(indices, width, height)
   if (strays.length > 0) {
     issues.push({
       rule: "stray-pixel",

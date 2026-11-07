@@ -18,9 +18,10 @@ import type { Metric } from "../core/color.ts"
 import { toHex } from "../core/color.ts"
 import { TRANSPARENT, usedColors, type PixelArt } from "../core/fix.ts"
 import { toJson, toRgba, toSvg } from "../core/export.ts"
-import type { LintRules } from "../core/lint.ts"
+import type { Issue, LintRules } from "../core/lint.ts"
 import { presets, proposePalette, type ProposeMethod } from "../core/palette.ts"
 import { runRecipe, type Outcome } from "../core/pipeline.ts"
+import { bake as bakeModel, parseBakeModel, type BakedClip } from "../core/bake.ts"
 import { atlasClips, detectFrames, proposeForSheet, runSheet, type AnimationCache } from "../core/animation.ts"
 import { toGif } from "../core/gif.ts"
 import { decodeNormals, encodeNormals, flickerOf, isNormalPreset, makeNormals, NORMAL_CONVENTION, normalIssues, normalPresets, type NormalPreset } from "../core/normals.ts"
@@ -559,6 +560,107 @@ const sheetCommand = Command.make(
   )
 )
 
+/** A model's outputs share a sheet's layout: each clip from a new row. */
+const bakedClips = (clips: ReadonlyArray<BakedClip>, anchor: { readonly x: number; readonly y: number }, pick: (frame: BakedClip["frames"][number]) => PixelArt) =>
+  clips.map((clip) => ({
+    name: clip.name ?? "still",
+    frames: clip.frames.map(pick),
+    // `spritesheetJson` reads an anchor as a pixel, and takes its middle and its foot. A model's is the corner between pixels.
+    anchor: { x: anchor.x - 0.5, y: anchor.y - 1 },
+    fps: clip.fps,
+    beats: clip.frames.map(() => 1),
+    loop: clip.loop
+  }))
+
+const bake = Command.make(
+  "bake",
+  {
+    input: Argument.String("input").pipe(Argument.withDescription("A model: `<name>.bake.json`.")),
+    config,
+    out
+  },
+  Effect.fn("bake")(function* (flags) {
+    if (!/\.bake\.json$/i.test(flags.input)) return yield* new CliFailure({ message: `${flags.input}: name a model \`<name>.bake.json\`, so what it makes sits beside it as \`<name>.png\`` })
+    const project = yield* loadConfig(flags.config)
+    const parsed = parseBakeModel(yield* readText(flags.input), project.bake)
+    if (!parsed.ok) return yield* new CliFailure({ message: `${flags.input} has ${parsed.problems.length} problem${parsed.problems.length === 1 ? "" : "s"}`, details: { file: flags.input, problems: parsed.problems } })
+    const model = parsed.value
+    const result = bakeModel(model, project.bake, project.palette?.colors)
+    const path = yield* Path.Path
+    const base = Option.isSome(flags.out) ? flags.out.value.replace(/\.(png|json)$/i, "") : flags.input.replace(/\.bake\.json$/i, "")
+    const name = path.basename(base)
+    const clips = bakedClips(result.clips, result.anchor, (frame) => frame.art)
+    const everyFrame = clips.flatMap((clip) => clip.frames)
+    const still = result.clips.length === 1 && result.clips[0]!.name === undefined
+    const atlas = atlasOf(clips, { columns: Number.MAX_SAFE_INTEGER, spacing: 0 })
+    const atlasPick = (pick: (frame: BakedClip["frames"][number]) => PixelArt) => atlasOf(bakedClips(result.clips, result.anchor, pick), { columns: Number.MAX_SAFE_INTEGER, spacing: 0 })
+    const files: Record<string, string | ReadonlyArray<string>> = {}
+    files.png = yield* writePng(`${base}.png`, toRgba(atlas.art))
+    if (still) files.sprite = yield* writeText(`${base}.sprite.txt`, formatSprite(atlas.art, `Baked from ${path.basename(flags.input)}: change the model, and bake again.`))
+    else files.json = yield* writeText(`${base}.json`, spritesheetJson({ image: `${name}.png`, clips, atlas, scale: 1 }))
+    if (model.normals) {
+      const data = new Uint8ClampedArray(atlas.art.width * atlas.art.height * 4)
+      const placed = result.clips.flatMap((clip) => clip.frames)
+      atlas.rects.forEach((rect, i) => {
+        const normal = placed[i]!.normal
+        for (let y = 0; y < rect.h; y++) data.set(normal.data.subarray(y * rect.w * 4, (y + 1) * rect.w * 4), ((rect.y + y) * atlas.art.width + rect.x) * 4)
+      })
+      files.normal = yield* writePng(`${base}.normal.png`, { width: atlas.art.width, height: atlas.art.height, data })
+    }
+    if (model.shadow) files.shadow = yield* writePng(`${base}.shadow.png`, toRgba(atlasPick((frame) => frame.shadow).art))
+    const moving = clips.filter((clip) => clip.frames.length > 1)
+    if (moving.length > 0) {
+      const gifs: Array<string> = []
+      const onions: Array<string> = []
+      for (const clip of moving) {
+        const { frames, delays } = played(clip)
+        gifs.push(yield* writeBytes(`${base}.${clip.name}.gif`, toGif(frames, { scale: fitScale(frames[0]!, 256), delays })))
+        onions.push(yield* writePng(`${base}.${clip.name}.onion.png`, previewOnion(clip)))
+      }
+      files.gifs = gifs
+      files.onions = onions
+    }
+    const contact = atlasOf(
+      [{ name: "all", frames: everyFrame, anchor: { x: 0, y: 0 }, fps: 8, beats: everyFrame.map(() => 1), loop: "forward" as const }],
+      { columns: Math.ceil(Math.sqrt(everyFrame.length)), spacing: 2 }
+    )
+    files.preview = yield* writePng(`${base}.preview.png`, previewArt(contact.art, fitScale(contact.art)))
+    // The project's rules on every frame, and what is odd about the model.
+    const frameIssues = clips.flatMap((clip) =>
+      clip.frames.flatMap((art, i) => {
+        const report = reportOfArt(art, project.rules)
+        return report.issues.map((issue) => (still ? issue : { ...issue, frame: `${clip.name} ${i}` }))
+      })
+    )
+    const { cut } = result
+    const cutBy = cut.left + cut.right + cut.up + cut.below
+    const modelIssues: ReadonlyArray<Issue> = [
+      ...(cutBy === 0
+        ? []
+        : [{ rule: "bake-cut" as const, severity: "error" as const, message: `The frame cuts the art: it reaches ${[cut.up > 0 ? `${cut.up} up` : "", cut.below > 0 ? `${cut.below} below` : "", cut.left > 0 ? `${cut.left} left` : "", cut.right > 0 ? `${cut.right} right` : ""].filter((part) => part !== "").join(", ")} past it. Grow \`frame\`, or leave a side out to fit`, count: cutBy, at: [] }]),
+      ...result.hidden.map((part) => ({ rule: "bake-hidden" as const, severity: "warning" as const, message: `${part.name === undefined ? part.path : `${part.name} (${part.path})`} shows no pixel in any frame: too small, or behind another part. Make it bigger, mark it \`detail\`, or paint it`, count: 1, at: [] }))
+    ]
+    const issues = [...modelIssues, ...frameIssues]
+    const errors = issues.filter((issue) => issue.severity === "error").length
+    const verdict: Verdict = errors > 0 ? "fixable" : "clean"
+    yield* printJson({
+      file: flags.input,
+      verdict,
+      summary: `Baked ${result.parts} part${result.parts === 1 ? "" : "s"} into ${everyFrame.length} frame${everyFrame.length === 1 ? "" : "s"} of ${result.width}×${result.height}${errors === 0 ? "" : `, with ${errors} rule${errors === 1 ? "" : "s"} broken: see issues`}.`,
+      frame: { width: result.width, height: result.height, anchor: result.anchor },
+      ...(still ? {} : { animations: clips.map((clip) => clip.name) }),
+      issues,
+      files,
+      next: "Open the preview, then judge it in the game at its display size. To change it, change the model and bake again: the PNG is rewritten every time."
+    })
+    yield* exitWith(exitCode[verdict])
+  })
+).pipe(
+  Command.withDescription(
+    "Draws a model of 3D shapes (`<name>.bake.json`) through the project's one camera and light: `.png`, `.sprite.txt` for a still or `.json` for a sheet, and `.preview.png`, with `.normal.png` and `.shadow.png` when the model asks for them. For things with a solid shape, seen from any angle; the design is the model's."
+  )
+)
+
 const palettes = Command.make(
   "palettes",
   { name: Argument.String("name").pipe(Argument.withDescription("A preset to show, or a palette file."), Argument.optional) },
@@ -793,6 +895,6 @@ export const pixel = Command.make("pixel").pipe(
   Command.withDescription(
     "Ritmo's pixel fixer: checks, fixes, and makes pixel art, and opens a review page where a person approves a game's art or pins comments to it. Prints JSON; exit 0 clean, 2 usage error, 3 fixable, 4 needs a person (review, notes, and resolve exit 0 or 2)."
   ),
-  Command.withSubcommands([check, fix, sheetCommand, pixelate, render, lint, previewCommand, compare, palettes, init, normals, review, notes, resolve])
+  Command.withSubcommands([check, fix, sheetCommand, pixelate, render, bake, lint, previewCommand, compare, palettes, init, normals, review, notes, resolve])
 )
 

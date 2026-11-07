@@ -18,6 +18,7 @@
  * every fix starts from.
  */
 import { Data, Effect, FileSystem, Option, Path, Schema } from "effect"
+import { defaultBakeSetup, parseBakeSetup, type BakeSetup } from "../core/bake.ts"
 import type { LintRules } from "../core/lint.ts"
 import { parsePalette } from "../core/palette.ts"
 import { decodeRecipe, defaultRecipe, presetPalette, type Recipe, type RecipePalette } from "../core/recipe.ts"
@@ -34,7 +35,8 @@ const ConfigSchema = Schema.Struct({
   sizes: Schema.optionalKey(Schema.Array(Size)),
   maxColors: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))),
   transparentBackground: Schema.optionalKey(Schema.Boolean),
-  recipe: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown))
+  recipe: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+  bake: Schema.optionalKey(Schema.Unknown)
 })
 
 export interface Config {
@@ -44,9 +46,11 @@ export interface Config {
   readonly rules: LintRules
   /** The recipe every fix starts from. */
   readonly recipe: Recipe
+  /** The camera, light, and materials every model is baked with. */
+  readonly bake: BakeSetup
 }
 
-export const emptyConfig: Config = { path: undefined, palette: undefined, rules: {}, recipe: defaultRecipe }
+export const emptyConfig: Config = { path: undefined, palette: undefined, rules: {}, recipe: defaultRecipe, bake: defaultBakeSetup }
 
 /** Reads a palette given as a preset's name, a palette file, or hex colors separated by commas or spaces. */
 export const loadPalette = Effect.fn("loadPalette")(function* (value: string | ReadonlyArray<string>, base: string) {
@@ -100,6 +104,8 @@ export const loadConfig = Effect.fn("loadConfig")(function* (explicit: Option.Op
     Effect.mapError((error) => new CliFailure({ message: `${file.value}: ${error.message}` }))
   )
   const base = path.dirname(file.value)
+  const bake = parseBakeSetup(config.bake)
+  if (!bake.ok) return yield* new CliFailure({ message: `${file.value} has ${bake.problems.length} problem${bake.problems.length === 1 ? "" : "s"} in \`bake\``, details: { file: file.value, problems: bake.problems } })
   const palette = config.palette === undefined ? undefined : yield* loadPalette(config.palette, base)
   const recipe = config.recipe === undefined ? defaultRecipe : yield* decodeOrFail(JSON.stringify(config.recipe), `${file.value} (recipe)`)
   return {
@@ -114,7 +120,8 @@ export const loadConfig = Effect.fn("loadConfig")(function* (explicit: Option.Op
       maxColors: config.maxColors,
       transparentBackground: config.transparentBackground
     },
-    recipe: { ...recipe, palette: recipe.palette ?? palette, removeBackground: recipe.removeBackground || config.transparentBackground === true }
+    recipe: { ...recipe, palette: recipe.palette ?? palette, removeBackground: recipe.removeBackground || config.transparentBackground === true },
+    bake: bake.value
   } satisfies Config
 })
 
