@@ -1,5 +1,13 @@
 # @typeonce/ritmo-tools
 
+## 0.22.0
+
+### Minor Changes
+
+- 256993e: `ritmo-tools pixel bake` draws sprites from a model of 3D shapes (`<name>.bake.json`) through one camera and one light, set once in `pixel.config.json` under `bake`, so a set of buildings, vehicles, or props stays one set. A model can be boxes, cylinders, spheres, flat faces, and free meshes, in groups and repeats, with hand-placed pixels on top, and can turn to any number of headings and animate. It writes a clean PNG on the palette, a sprite source or a sheet, a preview, and on request a normal map from the real surfaces and a ground shadow. `pixel review` names the model as the art's source. The `ritmo-pixel-art` skill says when to use it.
+- c794bca: `ritmo-tools pixel normals` makes a normal map for art a game lights: `.normal.png`, `.normals.json` (settings and corrections), and `.lit.png`. A sheet keeps each surface's direction through its animation, and the report measures what still flickers. `pixel review` shows art under a light you can drag, the whole set under one light, and comments can carry a direction; approvals cover the map. `pixel lint` checks a map against its art, and says when the art changed since. The method follows Pixel Art Lighter by Red Hat Sprite (MIT).
+- 95f5218: `ritmo-tools pixel review` reviews each part of a file apart. On the list, a file opens into its sprite or its animations, and the normal map of each, each with its own status, note, comments, and lint, and the file's status follows from them. Each part's controls sit at the bottom left and the zoom stays at the bottom right. Holding **Without map** (or M) shows the same light with no map, and the light has a **Half-Lambert** switch. A new map only flags the animations whose frames it changed. In the whole set, a click on a tile picks it and the arrow in its corner opens it. **Approve them** now approves only what shows, so a sheet's animations and their maps need opening. `pixel notes` lists `parts`, each with its own status and note, marks comments on the map with `about: "map"`, and lists `goneParts`, and `status` is now the file's status across its parts. A `pixel.review.json` from before parts still reads: what it said about a sheet stands for each animation, until one is reviewed on its own.
+
 ## 0.21.0
 
 ### Minor Changes
