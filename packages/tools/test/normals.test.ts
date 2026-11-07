@@ -24,7 +24,7 @@ import {
   type NormalPreset
 } from "@typeonce/ritmo-tools/pixel/core/normals.ts"
 import { previewLit } from "@typeonce/ritmo-tools/pixel/core/preview.ts"
-import { approvalOf, changedSince, decodeReview, encodeReview, hashFrame, reviewSummary, type Frame } from "@typeonce/ritmo-tools/pixel/core/review.ts"
+import { approvalOf, approvalOfPart, changedOfPart, changedSince, decodeReview, encodeReview, hashFrame, newAsset, reviewSummary, withPart, type Frame } from "@typeonce/ritmo-tools/pixel/core/review.ts"
 
 const cli = fileURLToPath(new URL("../bin/ritmo-tools.mjs", import.meta.url))
 const run = (cwd: string, ...args: Array<string>) => spawnSync(process.execPath, [cli, "pixel", ...args], { cwd, encoding: "utf8" })
@@ -337,6 +337,14 @@ describe("under a light", () => {
   }
   const red = (data: Uint8ClampedArray, x: number, y: number): number => data[(y * image.width + x) * 4]!
 
+  it("keeps the far side's shape under half-Lambert, from the same map", () => {
+    const plain = lit(light(-5, 11, { ambient: 0 }))
+    const half = lit(light(-5, 11, { ambient: 0, halfLambert: true }))
+    // The side away from the light: gone under the plain formula, still there under half-Lambert.
+    expect(red(plain, 17, 11)).toBeLessThan(red(half, 17, 11))
+    expect(half[3]).toBe(0)
+  })
+
   it("lights the side that faces it, and leaves transparent pixels alone", () => {
     const left = lit(light(-5, 11))
     const right = lit(light(27, 11))
@@ -379,21 +387,22 @@ describe("reviewing with a map", () => {
   })
 
   it("tells the agent what to do with a direction, and only then", () => {
-    const said = (facing: "up" | undefined) => reviewSummary({ status: "changes", note: "", comments: [{ frame: 0, x: 0, y: 0, text: "t", ...(facing === undefined ? {} : { facing }) }] }, frames).next
+    const said = (facing: "up" | undefined) => reviewSummary({ status: "changes", note: "", comments: [{ frame: 0, x: 0, y: 0, text: "t", ...(facing === undefined ? {} : { facing }) }] }, { frames, animations: [], normal: "map" }).next
     expect(said("up")).toContain("`corrections`")
     expect(said(undefined)).not.toContain("`corrections`")
   })
 
   it("keeps the map in what was approved, and says how it changed", () => {
-    const approved = approvalOf(frames, "map")
-    expect(approved.normal).toBe("map")
+    const mapped = frames.map((frame) => ({ ...frame, normal: "map" }))
+    const shape = { frames: mapped, animations: [], normal: "map" }
+    const approved = approvalOfPart(shape, { kind: "map" })
+    expect(approved.normal).toEqual(mapped.map(() => "map"))
     const round = decodeReview(encodeReview({ assets: { "a.png": { status: "approved", note: "", comments: [], approved } } }))
-    expect(round.ok && round.value.assets["a.png"]?.approved?.normal).toBe("map")
-    expect(changedSince(approved, frames, "map")).toBeUndefined()
-    expect(changedSince(approved, frames, "other")).toBe("its normal map changed")
-    expect(changedSince(approved, frames)).toBe("its normal map is gone")
-    expect(changedSince(approvalOf(frames), frames, "map")).toContain("has a normal map now")
-    expect(changedSince(approvalOf(frames), frames)).toBeUndefined()
+    expect(round.ok && round.value.assets["a.png"]?.approved?.normal).toEqual(approved.normal)
+    expect(changedSince(approved, mapped)).toBeUndefined()
+    expect(changedSince(approved, mapped.map((frame) => ({ ...frame, normal: "other" })))).toBe("its normal map changed")
+    // Approved as art, the map is not part of what was seen.
+    expect(changedSince(approvalOf(frames), mapped)).toBeUndefined()
   })
 })
 
@@ -518,6 +527,34 @@ describe("the command and the library", () => {
     const got = await readAsset(ballAsset)
     expect(got.ok && got.normal?.hash).not.toBe(ballEntry?.normal)
     expect(got.ok && got.lint.ok && got.lint.issues.map((issue) => issue.rule)).toContain("normal-flat")
+  })
+
+  it("keeps a hash of the map under each frame, so a new map flags only the frames it changed", { timeout: 60_000 }, async () => {
+    const folder = game()
+    run(folder, "normals", "art/hero.png")
+    const hero = (await findAssets([join(folder, "art")])).find((asset) => asset.id.endsWith("hero.png"))!
+    const shapeOf = async () => {
+      const got = await readAsset(hero)
+      if (!got.ok) throw new Error(got.problem)
+      return { frames: got.frames, animations: got.animations, normal: got.normal?.hash }
+    }
+    const before = await shapeOf()
+    const part = { kind: "map", name: "walk" } as const
+    const approved = approvalOfPart(before, part)
+    expect(approved.normal).toEqual(before.frames.map((frame) => frame.normal))
+    const review = withPart(newAsset, part, { status: "approved", approved })
+    expect(changedOfPart(review, before, part)).toBeUndefined()
+    // Another color on one pixel of the second frame's surface, which any look at the map would show.
+    const file = join(folder, "art/hero.normal.png")
+    const map = decodePng(readFileSync(file))
+    const second = before.frames[1]!
+    let at = -1
+    for (let y = second.y; at < 0 && y < second.y + second.h; y++)
+      for (let x = second.x; at < 0 && x < second.x + second.w; x++) if (map.data[(y * map.width + x) * 4 + 3] !== 0) at = (y * map.width + x) * 4
+    map.data[at] = map.data[at] === 128 ? 200 : 128
+    writeFileSync(file, encodePng(map))
+    utimesSync(file, new Date(), new Date(Date.now() + 5000))
+    expect(changedOfPart(review, await shapeOf(), part)).toBe("the normal map of walk frame 1 changed")
   })
 
   it("serves the map beside the picture, and says when there is none", { timeout: 60_000 }, async () => {

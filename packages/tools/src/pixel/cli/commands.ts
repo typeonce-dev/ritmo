@@ -750,7 +750,7 @@ const notes = Command.make(
               })
             }
         : { lint: [`cannot lint: ${got.lint.problem}`] }
-      entries.push({ file: asset.id, ...source, ...reviewSummary(said, got.frames, got.normal?.hash), ...lint })
+      entries.push({ file: asset.id, ...source, ...reviewSummary(said, { frames: got.frames, animations: got.animations, normal: got.normal?.hash }), ...lint })
     }
     const gone = yield* promised("cannot read the review", () => goneOf(found, flags.paths))
     yield* printJson({
@@ -760,7 +760,7 @@ const notes = Command.make(
   })
 ).pipe(
   Command.withDescription(
-    "What the person said in the review of the art under the paths: a summary of what is left, then each asset's status, note, open comments (numbered, each on an area of one frame), how many are resolved, and, for an approved asset that no longer looks as the person saw it, `changedSinceApproved`. Changes asked come first. `gone` lists reviews whose file is no longer found. Exit 0 whatever the art's lint says."
+    "What the person said in the review of the art under the paths: a summary of what is left, then each asset's status, note, open comments (numbered, each on an area of one frame, with `about: \"map\"` on those about its normal map), how many are resolved, and, for an approved asset that no longer looks as the person saw it, `changedSinceApproved`. An asset with several parts (a sheet's animations, a normal map) also lists `parts`, each with its own status and note, and `goneParts` for reviewed parts it no longer has. Changes asked come first. `gone` lists reviews whose file is no longer found. Exit 0 whatever the art's lint says."
   )
 )
 

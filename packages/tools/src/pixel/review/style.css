@@ -18,6 +18,95 @@
   margin-top: 2px;
 }
 
+/* A file opens into its parts on the list. The folder headings above stay where the art comes from. */
+.pixel-list .sound-row {
+  gap: 6px;
+  padding-left: 4px;
+}
+
+.pixel-folder-toggle,
+.pixel-folder-space {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.pixel-folder-toggle {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.pixel-folder-toggle:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.pixel-folder-toggle .icon {
+  width: 12px;
+  height: 12px;
+  transform: rotate(-90deg);
+  transition: transform 0.12s;
+}
+
+.pixel-folder-toggle.opened .icon {
+  transform: none;
+}
+
+.pixel-part {
+  min-height: 26px;
+  font-size: 12.5px;
+}
+
+.pixel-part .meta {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.pixel-list .pixel-part.level-2 {
+  padding-left: 26px;
+}
+
+.pixel-list .pixel-part-group.level-2 {
+  padding-left: 10px;
+}
+
+.pixel-list .pixel-part.level-3 {
+  padding-left: 42px;
+}
+
+.pixel-file.holds .sound-name {
+  font-weight: 600;
+}
+
+/* Some of the file's parts approved, the rest not judged yet. */
+.dot.partly {
+  border-color: var(--good);
+  background: linear-gradient(90deg, var(--good) 50%, transparent 50%);
+}
+
+.stage-pill.part {
+  border-color: var(--accent);
+}
+
+.pixel-file-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pixel-file-progress .hint {
+  margin: 0;
+}
+
 .sound-flag.lint .icon {
   width: 12px;
   height: 12px;
@@ -40,40 +129,6 @@
 }
 
 /* One asset: its animations, then the canvas, which scrolls inside its own box when it is wider than the stage. */
-
-.pixel-animations {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.pixel-animation {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px;
-  border: 1px solid rgba(243, 241, 236, 0.12);
-  border-radius: 999px;
-  background: rgba(243, 241, 236, 0.04);
-  color: #bdbab3;
-  font: 500 12px var(--mono);
-  cursor: pointer;
-}
-
-.pixel-animation:hover {
-  background: rgba(243, 241, 236, 0.08);
-}
-
-.pixel-animation.on {
-  border-color: var(--accent);
-  color: #f3f1ec;
-}
-
-.pixel-animation .meta {
-  color: #80858e;
-}
 
 .pixel-screen {
   max-width: 100%;
@@ -150,60 +205,105 @@
   container-type: inline-size;
 }
 
+/* Two groups that stay where they are from part to part: what the part open does on the left, the zoom on the right. */
 .pixel-stage .playback {
+  left: 12px;
+  right: auto;
+  bottom: 16px;
   flex-wrap: nowrap;
+  justify-content: flex-start;
   width: max-content;
   max-width: calc(100% - 24px);
+  transform: none;
 }
 
-/* The bar stays one row: as the stage narrows it gives up what has a key or a gesture, least needed first. An animation's bar is the longest. */
-@container (max-width: 690px) {
-  .pixel-stage .playback {
-    gap: 2px;
-  }
+.pixel-playback[hidden] {
+  display: none;
+}
 
+.pixel-zoom {
+  right: 12px;
+  bottom: 16px;
+  gap: 2px;
+}
+
+.pixel-zoom .btn.ghost.icon-only {
+  width: 30px;
+  height: 30px;
+}
+
+/* Held, so a long press on a phone must not select it or open a menu. */
+.pixel-hold {
+  flex: none;
+  white-space: nowrap;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Solid and light, so it does not read as a second look chosen beside Lit. Above the bar's own hover, since the pointer is on it. */
+.pixel-stage .btn.ghost.pixel-hold.on:not(:disabled) {
+  background: #ececef;
+  color: #16161a;
+}
+
+/* Each row keeps to one line: the normal map's has the most on it, so it gives up the most. */
+@container (max-width: 810px) {
   /* "2 of 7 · 125 ms" */
   .pixel-counter-word {
     display: none;
   }
+
+  .pixel-stage .playback {
+    gap: 2px;
+  }
 }
 
-@container (max-width: 610px) {
-  .pixel-playback:has(.pixel-bar-step) .pixel-bar-size {
+/* No room for both side by side: the zoom goes above, in the same place for every part. */
+@container (max-width: 680px) {
+  .pixel-zoom {
+    bottom: 64px;
+  }
+
+  .pixel-view {
+    padding-bottom: 112px;
+  }
+}
+
+@container (max-width: 500px) {
+  .pixel-playback:has(.pixel-looks) .pixel-counter,
+  .pixel-playback:has(.pixel-looks) .pixel-counter + .divider {
     display: none;
   }
 }
 
-@container (max-width: 540px) {
-  .pixel-playback:has(.pixel-bar-step) .pixel-bar-zoom {
+@container (max-width: 350px) {
+  .pixel-playback:has(.pixel-looks) .pixel-bar-step {
     display: none;
   }
 }
 
-@container (max-width: 470px) {
-  .pixel-bar-size {
-    display: none;
+@container (max-width: 300px) {
+  .pixel-looks button,
+  .pixel-stage .btn.pixel-hold {
+    padding: 0 4px;
+  }
+
+  .pixel-stage .playback {
+    gap: 0;
+    padding-inline: 4px;
   }
 }
 
-@container (max-width: 440px) {
-  .pixel-playback:has(.pixel-bar-step) :is(.pixel-counter, .pixel-counter + .divider) {
+@container (max-width: 285px) {
+  .pixel-playback:has(.pixel-looks) .btn:not(.pixel-hold) {
     display: none;
   }
-}
 
-@container (max-width: 400px) {
-  .pixel-playback:has(.pixel-counter) .pixel-bar-zoom {
-    display: none;
-  }
-}
-
-@container (max-width: 310px) {
-  .pixel-bar-zoom,
-  .pixel-bar-step,
-  .pixel-counter,
-  .pixel-counter + .divider {
-    display: none;
+  .pixel-looks button,
+  .pixel-stage .btn.pixel-hold {
+    font-size: 11px;
   }
 }
 
@@ -251,6 +351,7 @@
 
 .pixel-set-tile {
   position: relative;
+  cursor: pointer;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -272,17 +373,13 @@
   box-shadow: 0 0 0 2px var(--accent);
 }
 
-.pixel-set-open {
+.pixel-set-picture {
   display: grid;
   flex: 1;
   place-items: center;
   width: 100%;
   min-height: 0;
   overflow: hidden;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
 }
 
 .pixel-set-art {
@@ -303,7 +400,7 @@
 .pixel-set-scale {
   position: absolute;
   top: 4px;
-  left: 4px;
+  left: 26px;
   padding: 0 4px;
   border-radius: 3px;
   background: rgba(15, 16, 20, 0.75);
@@ -362,11 +459,12 @@
   height: 11px;
 }
 
-/* Picking: a check in the tile's corner, shown on hover, when picked, and always where there is no hover. */
-.pixel-pick {
+/* A check in the tile's corner says it is picked, and the other corner opens it: inside the tile, so a tile's arrow never meets its neighbor's check. Each shown on hover, the check when picked, and both always where there is no hover. */
+.pixel-pick,
+.pixel-set-go {
   position: absolute;
-  top: -6px;
-  left: -6px;
+  top: 4px;
+  left: 4px;
   display: inline-grid;
   place-items: center;
   width: 18px;
@@ -380,19 +478,34 @@
   opacity: 0;
 }
 
+.pixel-set-go {
+  right: 4px;
+  left: auto;
+  color: #d4d4da;
+}
+
+.pixel-set-go:hover {
+  border-color: rgba(243, 241, 236, 0.9);
+  color: #ffffff;
+}
+
 .pixel-set-tile:hover .pixel-pick,
+.pixel-set-tile:hover .pixel-set-go,
 .pixel-pick:focus-visible,
+.pixel-set-go:focus-visible,
 .pixel-pick.on {
   opacity: 1;
 }
 
 @media (hover: none) {
-  .pixel-pick {
+  .pixel-pick,
+  .pixel-set-go {
     opacity: 1;
   }
 }
 
-.pixel-pick .icon {
+.pixel-pick .icon,
+.pixel-set-go .icon {
   width: 12px;
   height: 12px;
 }

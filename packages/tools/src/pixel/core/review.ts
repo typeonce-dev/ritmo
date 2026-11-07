@@ -40,25 +40,42 @@ export interface Comment {
   readonly width?: number | undefined
   readonly height?: number | undefined
   readonly text: string
-  /** Which way the surface here should face, when the comment is about the asset's normal map: exact where the words are not. */
+  /** Set when the comment is about the normal map, not the art: the agent corrects the map and leaves the art as it is. */
+  readonly about?: "map" | undefined
+  /** Which way the surface here should face, on a comment about the normal map: exact where the words are not. */
   readonly facing?: Facing | undefined
   readonly resolved?: boolean | undefined
   readonly reply?: string | undefined
 }
 
-/** What the person saw when they approved an asset: a hash of each frame's pixels, in the sheet's order, how long each frame shows (a still has none), and a hash of its normal map, when it had one. */
+/** What the person saw when they approved a part of an asset: a hash of each frame's pixels, in the sheet's order, how long each frame shows (a still has none), and, for a normal map, a hash of the map under each frame, since a map is judged on the art it lights. */
 export interface Approved {
   readonly frames: ReadonlyArray<string>
   readonly durations?: ReadonlyArray<number> | undefined
-  readonly normal?: string | undefined
+  readonly normal?: ReadonlyArray<string> | undefined
 }
 
-export interface AssetReview {
+/** What the person said about one part of an asset. */
+export interface PartReview {
   readonly status: Status
   readonly note: string
-  readonly comments: ReadonlyArray<Comment>
   /** Set when the person approves. */
   readonly approved?: Approved | undefined
+}
+
+/**
+ * One asset's review. Its own status and note are a still's. On a sheet they
+ * stand in for each animation with no review of its own, which is what a
+ * review from before animations had their own says.
+ */
+export interface AssetReview extends PartReview {
+  readonly comments: ReadonlyArray<Comment>
+  /** A sheet's animations, by name, each reviewed apart. */
+  readonly animations?: Readonly<Record<string, PartReview>> | undefined
+  /** A still's normal map, reviewed apart from it. On a sheet it stands in for each animation's map with no review of its own. */
+  readonly map?: PartReview | undefined
+  /** A sheet's normal map, by animation, each judged on that animation in motion. */
+  readonly maps?: Readonly<Record<string, PartReview>> | undefined
 }
 
 export interface Review {
@@ -67,6 +84,7 @@ export interface Review {
 
 export const emptyReview: Review = { assets: {} }
 export const newAsset: AssetReview = { status: "new", note: "", comments: [] }
+const newPart: PartReview = { status: "new", note: "" }
 
 // ---------------------------------------------------------------------------
 // What an asset looks like now
@@ -89,6 +107,8 @@ export interface Frame {
   /** How long it shows, in milliseconds; none for a still. */
   readonly duration?: number | undefined
   readonly hash: string
+  /** A hash of the normal map under it, when the art has a map. */
+  readonly normal?: string | undefined
 }
 
 /** The hash of a frame's size and each pixel's color: a transparent pixel is the same whatever its hidden color. */
@@ -110,9 +130,9 @@ export const hashFrame = (image: RgbaImage, x: number, y: number, w: number, h: 
 }
 
 /** What to keep when the person approves an asset, as it looks now. */
-export const approvalOf = (frames: ReadonlyArray<Frame>, normal?: string): Approved => {
+export const approvalOf = (frames: ReadonlyArray<Frame>): Approved => {
   const durations = frames.map((frame) => frame.duration)
-  return { frames: frames.map((frame) => frame.hash), ...(durations.every((d) => d !== undefined) && durations.length > 0 ? { durations } : {}), ...(normal === undefined ? {} : { normal }) }
+  return { frames: frames.map((frame) => frame.hash), ...(durations.every((d) => d !== undefined) && durations.length > 0 ? { durations } : {}) }
 }
 
 /** "3-5, 7": frame numbers as runs. */
@@ -140,7 +160,7 @@ const framesNamed = (frames: ReadonlyArray<Frame>): string => {
 }
 
 /** What is different from what the person approved, in a few words; `undefined` when nothing is. */
-export const changedSince = (approved: Approved, frames: ReadonlyArray<Frame>, normal?: string): string | undefined => {
+export const changedSince = (approved: Approved, frames: ReadonlyArray<Frame>): string | undefined => {
   if (frames.length !== approved.frames.length) return `${frames.length} frame${frames.length === 1 ? "" : "s"}, ${approved.frames.length} when approved`
   const parts: Array<string> = []
   const looks = frames.filter((frame, i) => frame.hash !== approved.frames[i])
@@ -148,13 +168,96 @@ export const changedSince = (approved: Approved, frames: ReadonlyArray<Frame>, n
   const timed = approved.durations === undefined ? [] : frames.filter((frame, i) => frame.duration !== approved.durations?.[i])
   if (timed.length === 1) parts.push(`${framesNamed(timed)} shows for ${timed[0]!.duration ?? 0} ms, ${approved.durations?.[frames.indexOf(timed[0]!)]} when approved`)
   else if (timed.length > 1) parts.push(`the timing of ${framesNamed(timed)} changed`)
-  if (normal !== approved.normal) parts.push(approved.normal === undefined ? "it has a normal map now, which you have not seen under a light" : normal === undefined ? "its normal map is gone" : "its normal map changed")
+  const remapped = approved.normal === undefined ? [] : frames.filter((frame, i) => frame.normal !== approved.normal?.[i])
+  if (remapped.length > 0) parts.push(remapped.length === frames.length ? "its normal map changed" : `the normal map of ${framesNamed(remapped)} changed`)
   return parts.length === 0 ? undefined : parts.join("; ")
 }
 
-/** What changed since the person approved this asset, when they did and something has. A review with no hashes has nothing to compare. */
-export const changedOf = (review: AssetReview, frames: ReadonlyArray<Frame>, normal?: string): string | undefined =>
-  review.status === "approved" && review.approved !== undefined ? changedSince(review.approved, frames, normal) : undefined
+// ---------------------------------------------------------------------------
+// The parts of an asset, each reviewed apart
+
+/** What the person reviews on its own: a still's sprite or its normal map, or one animation of a sheet or that animation's normal map. */
+export type Part = { readonly kind: "sprite" } | { readonly kind: "animation"; readonly name: string } | { readonly kind: "map"; readonly name?: string | undefined }
+
+/** What an asset has to review, as it is now. */
+export interface ArtShape {
+  readonly frames: ReadonlyArray<Frame>
+  /** A sheet's animations, each its frames as indices into `frames`; none for a still. */
+  readonly animations: ReadonlyArray<{ readonly name: string; readonly frames: ReadonlyArray<number> }>
+  /** A hash of the normal map beside it, when there is one. */
+  readonly normal: string | undefined
+}
+
+/** An asset's parts, art first. */
+export const partsOf = (shape: ArtShape): ReadonlyArray<Part> => [
+  ...(shape.animations.length > 0 ? shape.animations.map((animation): Part => ({ kind: "animation", name: animation.name })) : [{ kind: "sprite" } as const]),
+  ...(shape.normal === undefined ? [] : shape.animations.length > 0 ? shape.animations.map((animation): Part => ({ kind: "map", name: animation.name })) : [{ kind: "map" } as const])
+]
+
+export const samePart = (a: Part, b: Part): boolean => a.kind === b.kind && (a.kind === "sprite" || b.kind === "sprite" || a.name === b.name)
+
+/** A part in words. */
+export const partName = (part: Part): string => (part.kind === "animation" ? part.name : part.kind === "sprite" ? "sprite" : part.name === undefined ? "normal map" : `${part.name} normal map`)
+
+/** The part a comment is on: an animation that is gone still names its animation. */
+export const partOfComment = (comment: Comment): Part =>
+  comment.about === "map" ? (comment.animation === undefined ? { kind: "map" } : { kind: "map", name: comment.animation }) : comment.animation !== undefined ? { kind: "animation", name: comment.animation } : { kind: "sprite" }
+
+/** What was said about a part. */
+export const partReview = (review: AssetReview, part: Part): PartReview =>
+  part.kind === "map" ? ((part.name === undefined ? undefined : review.maps?.[part.name]) ?? review.map ?? newPart) : part.kind === "sprite" ? review : (review.animations?.[part.name] ?? review)
+
+/** The review with a change to one part: an animation, or its map, that took its review from elsewhere gets its own. */
+export const withPart = (review: AssetReview, part: Part, change: Partial<PartReview>): AssetReview =>
+  part.kind === "map"
+    ? part.name === undefined
+      ? { ...review, map: { ...partReview(review, part), ...change } }
+      : { ...review, maps: { ...review.maps, [part.name]: { ...partOwn(partReview(review, part)), ...change } } }
+    : part.kind === "sprite"
+      ? { ...review, ...change }
+      : { ...review, animations: { ...review.animations, [part.name]: { ...partOwn(partReview(review, part)), ...change } } }
+
+/** A part's status, note, and approval alone, whatever else the review it came from holds. */
+const partOwn = (said: PartReview): PartReview => ({ status: said.status, note: said.note, ...(said.approved === undefined ? {} : { approved: said.approved }) })
+
+/** The frames a part is judged on. */
+export const partFrames = (shape: ArtShape, part: Part): ReadonlyArray<Frame> => {
+  if (part.kind === "sprite" || part.name === undefined) return shape.frames
+  const animation = shape.animations.find((entry) => entry.name === part.name)
+  return animation === undefined ? [] : animation.frames.flatMap((index) => shape.frames[index] ?? [])
+}
+
+/** What to keep when the person approves a part, as it looks now. */
+export const approvalOfPart = (shape: ArtShape, part: Part): Approved => {
+  const frames = partFrames(shape, part)
+  return part.kind === "map" ? { ...approvalOf(frames), normal: frames.map((frame) => frame.normal ?? "") } : approvalOf(frames)
+}
+
+/** What changed since the person approved this part, when they did and something has. A review with no hashes has nothing to compare. */
+export const changedOfPart = (review: AssetReview, shape: ArtShape, part: Part): string | undefined => {
+  const said = partReview(review, part)
+  const approved = said.approved
+  if (said.status !== "approved" || approved === undefined) return undefined
+  const frames = partFrames(shape, part)
+  if (part.kind !== "animation" || review.animations?.[part.name] !== undefined) return changedSince(approved, frames)
+  // Approved as a whole sheet: its hashes are in the sheet's order, so only the frames of this animation count.
+  if (approved.frames.length !== shape.frames.length) return `${shape.frames.length} frame${shape.frames.length === 1 ? "" : "s"} on the sheet, ${approved.frames.length} when approved`
+  const places = frames.map((frame) => shape.frames.indexOf(frame))
+  const durations = approved.durations
+  return changedSince({ frames: places.map((i) => approved.frames[i]!), ...(durations === undefined ? {} : { durations: places.map((i) => durations[i]!) }) }, frames)
+}
+
+/** One status for some parts: changes asked if any part has them, approved once all are, else not reviewed yet. */
+const statusOfAll = (statuses: ReadonlyArray<Status>): Status => (statuses.includes("changes") ? "changes" : statuses.length > 0 && statuses.every((status) => status === "approved") ? "approved" : "new")
+
+/** The one status of some of an asset's parts. */
+export const partsStatus = (review: AssetReview, parts: ReadonlyArray<Part>): Status => statusOfAll(parts.map((part) => partReview(review, part).status))
+
+/** The asset's one status, for the list and its counts. */
+export const assetStatus = (review: AssetReview, shape: ArtShape): Status => partsStatus(review, partsOf(shape))
+
+/** The asset's one status from the review alone, for art that is gone or cannot be read. */
+export const statusSaid = (review: AssetReview): Status => statusOfAll([...Object.values(review.animations ?? {}).map((part) => part.status), ...Object.values(review.maps ?? {}).map((part) => part.status), ...(review.map === undefined ? [] : [review.map.status]), ...(review.animations === undefined ? [review.status] : [])])
 
 // ---------------------------------------------------------------------------
 // The file
@@ -179,6 +282,10 @@ const commentOf = (raw: unknown, where: string, errors: Array<string>): Comment 
     errors.push(`${where}.facing must be one of ${facings.join(", ")}`)
     return undefined
   }
+  if (raw.about !== undefined && raw.about !== "map") {
+    errors.push(`${where}.about must be "map", or left out for the art`)
+    return undefined
+  }
   return commentJson({
     animation: raw.animation,
     frame: raw.frame,
@@ -187,6 +294,8 @@ const commentOf = (raw: unknown, where: string, errors: Array<string>): Comment 
     width: raw.width,
     height: raw.height,
     text: raw.text,
+    // A direction is only ever about the map.
+    about: raw.about === "map" || raw.facing !== undefined ? "map" : undefined,
     facing: raw.facing,
     resolved: raw.resolved === true,
     reply: typeof raw.reply === "string" ? raw.reply : undefined
@@ -196,12 +305,32 @@ const commentOf = (raw: unknown, where: string, errors: Array<string>): Comment 
 const approvedOf = (raw: unknown): Approved | undefined => {
   if (!isRecord(raw) || !Array.isArray(raw.frames) || !raw.frames.every((hash) => typeof hash === "string")) return undefined
   const frames: ReadonlyArray<string> = raw.frames
-  if (raw.normal !== undefined && typeof raw.normal !== "string") return undefined
-  const normal = raw.normal === undefined ? {} : { normal: raw.normal }
+  const hashes = raw.normal
+  if (hashes !== undefined && (!Array.isArray(hashes) || !hashes.every((hash) => typeof hash === "string"))) return undefined
+  const normal = hashes === undefined ? {} : { normal: hashes }
   if (raw.durations === undefined) return { frames, ...normal }
   if (!Array.isArray(raw.durations) || raw.durations.length !== frames.length || !raw.durations.every((d) => typeof d === "number")) return undefined
   const durations: ReadonlyArray<number> = raw.durations
   return { frames, durations, ...normal }
+}
+
+const partOf = (raw: Record<string, unknown>, where: string, errors: Array<string>): PartReview => {
+  const status = statuses.find((entry) => entry === raw.status)
+  if (raw.status !== undefined && status === undefined) errors.push(`${where}.status must be one of ${statuses.join(", ")}`)
+  const approved = approvedOf(raw.approved)
+  if (raw.approved !== undefined && approved === undefined) errors.push(`${where}.approved must be {"frames": ["hash", ...], "durations": [ms, ...]}`)
+  return { status: status ?? "new", note: typeof raw.note === "string" ? raw.note : "", ...(approved === undefined ? {} : { approved }) }
+}
+
+/** Parts reviewed by an animation's name. */
+const namedPartsOf = (raw: unknown, where: string, errors: Array<string>): Record<string, PartReview> => {
+  if (raw !== undefined && !isRecord(raw)) errors.push(`${where} must be {"name": {"status", "note"}}`)
+  const parts: Record<string, PartReview> = {}
+  for (const [name, part] of Object.entries(isRecord(raw) ? raw : {})) {
+    if (isRecord(part)) parts[name] = partOf(part, `${where}.${name}`, errors)
+    else errors.push(`${where}.${name} must be {"status", "note"}`)
+  }
+  return parts
 }
 
 const assetOf = (raw: unknown, where: string, errors: Array<string>): AssetReview | undefined => {
@@ -209,13 +338,13 @@ const assetOf = (raw: unknown, where: string, errors: Array<string>): AssetRevie
     errors.push(`${where} must be {"status", "note", "comments"}`)
     return undefined
   }
-  const status = statuses.find((entry) => entry === raw.status)
-  if (raw.status !== undefined && status === undefined) errors.push(`${where}.status must be one of ${statuses.join(", ")}`)
+  const own = partOf(raw, where, errors)
   if (raw.comments !== undefined && !Array.isArray(raw.comments)) errors.push(`${where}.comments must be a list`)
   const comments = (Array.isArray(raw.comments) ? raw.comments : []).flatMap((comment, i) => commentOf(comment, `${where}.comments[${i}]`, errors) ?? [])
-  const approved = approvedOf(raw.approved)
-  if (raw.approved !== undefined && approved === undefined) errors.push(`${where}.approved must be {"frames": ["hash", ...], "durations": [ms, ...]}`)
-  return { status: status ?? "new", note: typeof raw.note === "string" ? raw.note : "", comments, ...(approved === undefined ? {} : { approved }) }
+  const animations = namedPartsOf(raw.animations, `${where}.animations`, errors)
+  const maps = namedPartsOf(raw.maps, `${where}.maps`, errors)
+  if (raw.map !== undefined && !isRecord(raw.map)) errors.push(`${where}.map must be {"status", "note"}`)
+  return { ...own, comments, ...(Object.keys(animations).length === 0 ? {} : { animations }), ...(isRecord(raw.map) ? { map: partOf(raw.map, `${where}.map`, errors) } : {}), ...(Object.keys(maps).length === 0 ? {} : { maps }) }
 }
 
 /** `pixel.review.json`, or the page's whole review: each asset's review by its path. */
@@ -236,8 +365,11 @@ export const decodeReview = (text: string): Decoded<Review> => {
   return errors.length > 0 ? { ok: false, error: errors.join("; ") } : { ok: true, value: { assets } }
 }
 
-/** Whether a review says nothing: not reviewed, no note, no comments. */
-export const isEmpty = (review: AssetReview): boolean => review.status === "new" && review.note === "" && review.comments.length === 0 && review.approved === undefined
+const partSaysNothing = (part: PartReview): boolean => part.status === "new" && part.note === "" && part.approved === undefined
+
+/** Whether a review says nothing: no part reviewed, no note, no comments. */
+export const isEmpty = (review: AssetReview): boolean =>
+  partSaysNothing(review) && review.comments.length === 0 && Object.values(review.animations ?? {}).every(partSaysNothing) && Object.values(review.maps ?? {}).every(partSaysNothing) && (review.map === undefined || partSaysNothing(review.map))
 
 /** A comment with its fields in one order, as the file writes it. */
 const commentJson = (comment: Comment): Comment => ({
@@ -248,18 +380,38 @@ const commentJson = (comment: Comment): Comment => ({
   ...(comment.width === undefined || comment.width === 1 ? {} : { width: comment.width }),
   ...(comment.height === undefined || comment.height === 1 ? {} : { height: comment.height }),
   text: comment.text,
+  ...(comment.about === undefined ? {} : { about: comment.about }),
   ...(comment.facing === undefined ? {} : { facing: comment.facing }),
   ...(comment.resolved === true ? { resolved: true } : {}),
   ...(comment.reply === undefined || comment.reply === "" ? {} : { reply: comment.reply })
 })
 
+const approvedJson = (approved: Approved | undefined) =>
+  approved === undefined ? {} : { approved: { frames: approved.frames, ...(approved.durations === undefined ? {} : { durations: approved.durations }), ...(approved.normal === undefined ? {} : { normal: approved.normal }) } }
+
+/** A part's review as the file writes it. */
+const partJson = (part: PartReview) => ({ status: part.status, ...(part.note === "" ? {} : { note: part.note }), ...approvedJson(part.approved) })
+
+/** Parts by name as the file writes them: those that say nothing left out. */
+const namedPartsJson = (parts: Readonly<Record<string, PartReview>> | undefined) => {
+  const said = Object.entries(parts ?? {}).filter(([, part]) => !partSaysNothing(part))
+  return said.length === 0 ? undefined : Object.fromEntries(said.map(([name, part]) => [name, partJson(part)]))
+}
+
 /** An asset's review as the file writes it: what is unset left out. */
-const assetJson = (entry: AssetReview) => ({
-  status: entry.status,
-  ...(entry.note === "" ? {} : { note: entry.note }),
-  ...(entry.comments.length === 0 ? {} : { comments: entry.comments.map(commentJson) }),
-  ...(entry.approved === undefined ? {} : { approved: { frames: entry.approved.frames, ...(entry.approved.durations === undefined ? {} : { durations: entry.approved.durations }), ...(entry.approved.normal === undefined ? {} : { normal: entry.approved.normal }) } })
-})
+const assetJson = (entry: AssetReview) => {
+  const animations = namedPartsJson(entry.animations)
+  const maps = namedPartsJson(entry.maps)
+  return {
+    status: entry.status,
+    ...(entry.note === "" ? {} : { note: entry.note }),
+    ...(entry.comments.length === 0 ? {} : { comments: entry.comments.map(commentJson) }),
+    ...approvedJson(entry.approved),
+    ...(animations === undefined ? {} : { animations }),
+    ...(entry.map === undefined || partSaysNothing(entry.map) ? {} : { map: partJson(entry.map) }),
+    ...(maps === undefined ? {} : { maps })
+  }
+}
 
 /** The file as written: assets in path order, and an asset nothing was said about left out. */
 export const encodeReview = (review: Review): string => {
@@ -325,38 +477,73 @@ export const whereOf = (comment: Comment): string => {
   return comment.animation === undefined ? (comment.frame === 0 ? pixels : `frame ${comment.frame}, ${pixels}`) : `${comment.animation} frame ${comment.frame}, ${pixels}`
 }
 
-/** What `pixel notes` says about one asset's review: its status, note, open comments (numbered, as `pixel resolve` takes them), and what changed since it was approved. */
-export const reviewSummary = (review: AssetReview, frames: ReadonlyArray<Frame> | undefined, normal?: string) => {
-  const changed = frames === undefined ? undefined : changedOf(review, frames, normal)
+/** What `pixel notes` says about one asset's review: its one status and what changed, each part apart when it has several, its open comments (numbered, as `pixel resolve` takes them), and what is left of parts that are gone. */
+export const reviewSummary = (review: AssetReview, shape: ArtShape | undefined) => {
+  const parts = shape === undefined ? [] : partsOf(shape)
+  const changedParts = shape === undefined ? [] : parts.flatMap((part) => {
+    const changed = changedOfPart(review, shape, part)
+    return changed === undefined ? [] : [{ part, changed }]
+  })
+  const changed = changedParts.length === 0 ? undefined : parts.length === 1 ? changedParts[0]!.changed : changedParts.map((entry) => (entry.changed.startsWith(partName(entry.part)) ? entry.changed : `${partName(entry.part)}: ${entry.changed}`)).join("; ")
   // Open comments only, each with its number: resolved ones are done.
-  const open = review.comments.flatMap((comment, index) => (comment.resolved === true ? [] : [{ number: index + 1, where: whereOf(comment), ...comment }]))
+  const open = review.comments.flatMap((comment, index) => (comment.resolved === true ? [] : [{ number: index + 1, where: `${comment.about === "map" ? "normal map, " : ""}${whereOf(comment)}`, ...comment }]))
   const resolved = review.comments.length - open.length
-  const worded = open.length > 0 || review.note !== ""
-  // Said once for the asset: what to do with the direction a comment carries.
-  const facing = open.some((comment) => comment.facing !== undefined)
-    ? " A comment with `facing` says which way that surface should face: copy its animation, frame, x, y, width, height, and facing into `corrections` in the asset's `.normals.json`, and run `ritmo-tools pixel normals` on the asset again."
-    : ""
-  const withFacing = (next: string): string => `${next}${facing}`
+  const status = shape === undefined ? statusSaid(review) : assetStatus(review, shape)
+  // A part's own words: the asset's note is said once, on the asset.
+  const ownNote = (part: Part): string | undefined => {
+    const note = part.kind === "map" ? partReview(review, part).note : part.kind === "animation" ? review.animations?.[part.name]?.note : undefined
+    return note === "" ? undefined : note
+  }
+  const each = parts.length < 2 || shape === undefined
+    ? undefined
+    : parts.map((part) => {
+        const partChanged = changedParts.find((entry) => samePart(entry.part, part))?.changed
+        return { part: part.kind, ...(part.kind !== "sprite" && part.name !== undefined ? { animation: part.name } : {}), status: partReview(review, part).status, note: ownNote(part), changedSinceApproved: partChanged }
+      })
+  const gone = (kind: Part["kind"], name: string | undefined, said: PartReview) => ({ part: kind, animation: name, status: said.status, note: said.note === "" ? undefined : said.note })
+  const named = (of: Readonly<Record<string, PartReview>> | undefined, kind: Part["kind"], here: (name: string) => boolean) => Object.entries(of ?? {}).filter(([name, said]) => !here(name) && !partSaysNothing(said)).map(([name, said]) => gone(kind, name, said))
+  const goneParts = shape === undefined
+    ? undefined
+    : [
+        ...named(review.animations, "animation", (name) => shape.animations.some((animation) => animation.name === name)),
+        ...named(review.maps, "map", (name) => shape.normal !== undefined && shape.animations.some((animation) => animation.name === name)),
+        ...(review.map !== undefined && shape.normal === undefined && !partSaysNothing(review.map) ? [gone("map", undefined, review.map)] : [])
+      ]
+  const worded = open.length > 0 || review.note !== "" || (each?.some((part) => part.note !== undefined) ?? false)
+  const partly = status === "new" && parts.some((part) => partReview(review, part).status === "approved")
+  // Said once for the asset: how to read what the parts and the comments carry.
+  const about = [
+    ...(each !== undefined && (worded || changed !== undefined) ? [" Each entry of `parts` is reviewed apart: change only the part that was asked about."] : []),
+    ...(open.some((comment) => comment.about === "map") ? [" A comment with `about: \"map\"` is about the normal map: correct the map, not the art."] : []),
+    ...(open.some((comment) => comment.facing !== undefined)
+      ? [" A comment with `facing` says which way that surface should face: copy its animation, frame, x, y, width, height, and facing into `corrections` in the asset's `.normals.json`, and run `ritmo-tools pixel normals` on the asset again."]
+      : [])
+  ].join("")
+  const withAbout = (next: string): string => `${next}${about}`
   return {
-    status: review.status,
+    status,
     note: review.note === "" ? undefined : review.note,
+    ...(each === undefined ? {} : { parts: each }),
     comments: open.length === 0 ? undefined : open,
     resolved: resolved === 0 ? undefined : resolved,
     changedSinceApproved: changed,
-    next: withFacing(
+    ...(goneParts === undefined || goneParts.length === 0 ? {} : { goneParts }),
+    next: withAbout(
       changed !== undefined
         ? `It changed since the person approved it. Tell them what changed and ask them to look again; only they approve it.${open.length > 0 ? " Then `pixel resolve` the comments you acted on, with a reply saying what changed." : ""}`
-        : review.status === "approved" && open.length > 0
+        : status === "approved" && open.length > 0
           ? "The person approved it and left comments too. Read each: change only what it asks for, `pixel resolve` it with a reply saying what changed, and if the art changed, ask them to look again."
-          : review.status === "approved" && worded
+          : status === "approved" && worded
             ? "The person approved it and left a note. Read it, and leave the art as it is unless the note asks for a change."
-            : review.status === "approved"
+            : status === "approved"
               ? "The person approved it. Leave it as it is."
               : worded
                 ? "Act on the note and each comment where it points, then `pixel resolve` the comments with a reply saying what changed, and tell the person."
-                : review.status === "changes"
+                : status === "changes"
                   ? "The person asked for changes but said nothing yet: ask them what."
-                  : "Nothing said yet. Wait for the person, or ask them to look."
+                  : partly
+                    ? "The person approved some of it and has not judged the rest yet. Wait for them, or ask them to look."
+                    : "Nothing said yet. Wait for the person, or ask them to look."
     )
   }
 }
@@ -364,13 +551,16 @@ export const reviewSummary = (review: AssetReview, frames: ReadonlyArray<Frame> 
 interface Summarized {
   readonly status: Status
   readonly note?: string | undefined
+  /** Each part, when it has several: a note may be on one of them. */
+  readonly parts?: ReadonlyArray<{ readonly note?: string | undefined }> | undefined
   /** The comments still open. */
   readonly comments?: ReadonlyArray<unknown> | undefined
   readonly changedSinceApproved?: string | undefined
 }
 
 /** Whether the person said something about it without asking for changes: a note or comments, with no status set; or comments on what they approved. */
-const leftWords = (entry: Summarized): boolean => entry.status !== "changes" && (entry.comments !== undefined || (entry.status === "new" && entry.note !== undefined))
+const leftWords = (entry: Summarized): boolean =>
+  entry.status !== "changes" && (entry.comments !== undefined || (entry.status === "new" && (entry.note !== undefined || (entry.parts?.some((part) => part.note !== undefined) ?? false))))
 
 const urgency = (entry: Summarized): number => (entry.status === "changes" || leftWords(entry) ? 0 : entry.changedSinceApproved !== undefined ? 1 : entry.status === "new" ? 2 : 3)
 

@@ -28,7 +28,7 @@ import type { RgbaImage } from "../core/grid.ts"
 import type { Severity } from "../core/lint.ts"
 import { decodeNormals, normalIssues, type NormalsFile } from "../core/normals.ts"
 import { reportOfArt } from "../core/report.ts"
-import { decodeReview, emptyReview, encodeReview, hashFrame, REVIEW_FILE, type AssetReview, type Frame, type Review } from "../core/review.ts"
+import { decodeReview, emptyReview, encodeReview, hashFrame, REVIEW_FILE, type AssetReview, type Frame, type Review, statusSaid } from "../core/review.ts"
 import { artOfImage, parseJsonMap, parseSprite } from "../core/sprite.ts"
 import { readSpritesheet, type SheetAnimationRead } from "../core/spritesheet.ts"
 import type { Detail, Entry, FrameIssue } from "../review/store.ts"
@@ -206,23 +206,30 @@ const lintOf = async (asset: PixelAsset, image: RgbaImage, frames: ReadonlyArray
   return { ok: true, issues, errors: count("error"), warnings: count("warning"), config: config === undefined ? undefined : idOf(config) }
 }
 
-/** The normal map beside an asset, read and checked against it; none when there is no map. */
-const normalOf = async (asset: PixelAsset, image: RgbaImage, frames: ReadonlyArray<Frame>): Promise<{ readonly hash: string; readonly issues: ReadonlyArray<FrameIssue> } | undefined> => {
+/** The normal map beside an asset, read and checked against it, with its frames carrying the hash of the map under each; none when there is no map. */
+const normalOf = async (asset: PixelAsset, image: RgbaImage, frames: ReadonlyArray<Frame>): Promise<{ readonly hash: string; readonly frames: ReadonlyArray<Frame>; readonly issues: ReadonlyArray<FrameIssue> } | undefined> => {
   const files = normalFilesOf(asset.file)
   const bytes = await readFile(files.map).catch(() => undefined)
   if (bytes === undefined) return undefined
   const hash = hashText(bytes.toString("latin1"))
+  // A map that cannot be cut into frames has one hash, so any change to it shows on all of them.
+  const whole = frames.map((frame) => ({ ...frame, normal: hash }))
   let map: RgbaImage
   try {
     map = decodePicture(bytes)
   } catch (error) {
-    return { hash, issues: [{ rule: "normal-unreadable", severity: "error", message: `${basename(files.map)} is not a PNG that decodes: ${message(error)}`, count: 1, at: [] }] }
+    return { hash, frames: whole, issues: [{ rule: "normal-unreadable", severity: "error", message: `${basename(files.map)} is not a PNG that decodes: ${message(error)}`, count: 1, at: [] }] }
   }
   // A map with no file beside it was painted by hand: nothing says what art it was made from.
   const text = await readFile(files.data, "utf8").catch(() => undefined)
   const made = text === undefined ? undefined : decodeNormals(text)
-  if (made?.ok === false) return { hash, issues: [{ rule: "normal-unreadable", severity: "error", message: `${basename(files.data)}: ${made.error}`, count: 1, at: [] }] }
-  return { hash: hashFrame(map, 0, 0, map.width, map.height), issues: normalIssues(image, map, frames, made?.value.frames) }
+  if (made?.ok === false) return { hash, frames: whole, issues: [{ rule: "normal-unreadable", severity: "error", message: `${basename(files.data)}: ${made.error}`, count: 1, at: [] }] }
+  const lines = map.width === image.width && map.height === image.height
+  return {
+    hash: hashFrame(map, 0, 0, map.width, map.height),
+    frames: lines ? frames.map((frame) => ({ ...frame, normal: hashFrame(map, frame.x, frame.y, frame.w, frame.h) })) : whole,
+    issues: normalIssues(image, map, frames, made?.value.frames)
+  }
 }
 
 /** The lint with what is wrong with the normal map beside it. */
@@ -241,7 +248,7 @@ const read = async (asset: PixelAsset): Promise<AssetRead> => {
       const image = toRgba(parsed.art)
       const frames: ReadonlyArray<Frame> = [{ name: "", index: 0, x: 0, y: 0, w: image.width, h: image.height, hash: hashFrame(image, 0, 0, image.width, image.height) }]
       const normal = await normalOf(asset, image, frames)
-      return { ok: true, width: image.width, height: image.height, frames, animations: [], sheet: undefined, lint: withNormal(await lintOf(asset, image, frames, parsed.art), normal), normal }
+      return { ok: true, width: image.width, height: image.height, frames: normal?.frames ?? frames, animations: [], sheet: undefined, lint: withNormal(await lintOf(asset, image, frames, parsed.art), normal), normal }
     }
     const bytes = await readFile(asset.file)
     let image: RgbaImage
@@ -265,7 +272,7 @@ const read = async (asset: PixelAsset): Promise<AssetRead> => {
             return { name: rect.name, animation: animation?.name ?? "frames", index: animation?.frames.indexOf(i) ?? i, x: rect.x, y: rect.y, w: rect.w, h: rect.h, duration: rect.duration, hash: hashFrame(image, rect.x, rect.y, rect.w, rect.h) }
           })
     const normal = await normalOf(asset, image, frames)
-    return { ok: true, width: image.width, height: image.height, frames, animations, sheet: sheet === undefined ? undefined : sheetFile, lint: withNormal(await lintOf(asset, image, frames, undefined), normal), normal }
+    return { ok: true, width: image.width, height: image.height, frames: normal?.frames ?? frames, animations, sheet: sheet === undefined ? undefined : sheetFile, lint: withNormal(await lintOf(asset, image, frames, undefined), normal), normal }
   } catch (error) {
     return { ok: false, problem: message(error) }
   }
@@ -423,7 +430,7 @@ export const goneOf = async (assets: ReadonlyArray<PixelAsset>, paths: ReadonlyA
       if (found.has(file)) continue
       // Gone: deleted, or no longer an asset inside a folder under review. A review of art elsewhere is not this review's.
       if (existsSync(file) && !folders.some((folder) => !relative(folder, file).startsWith(".."))) continue
-      gone.push({ file: idOf(file), review: idOf(reviews), key, status: said.status, note: said.note === "" ? undefined : said.note, comments: said.comments.filter((comment) => comment.resolved !== true).length })
+      gone.push({ file: idOf(file), review: idOf(reviews), key, status: statusSaid(said), note: said.note === "" ? undefined : said.note, comments: said.comments.filter((comment) => comment.resolved !== true).length })
     }
   }
   return gone
