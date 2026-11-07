@@ -1,5 +1,11 @@
 # @typeonce/ritmo-math
 
+## 0.22.0
+
+### Patch Changes
+
+- @typeonce/ritmo@0.22.0
+
 ## 0.21.0
 
 ### Minor Changes
