@@ -572,6 +572,47 @@ const bakedClips = (clips: ReadonlyArray<BakedClip>, anchor: { readonly x: numbe
     loop: clip.loop
   }))
 
+/**
+ * What an earlier bake of the same model wrote that this one did not: a sheet's
+ * JSON when it is now a still, a still's text when it is now a sheet, an
+ * animation's GIF and onion picture once it is gone, and a map or shadow the
+ * model no longer asks for. Only files that are the bake's own: a sheet JSON
+ * for this PNG, text baked from this model, and a normal map with no
+ * `.normals.json` beside it (`pixel normals` makes that one).
+ */
+const staleBakeFiles = Effect.fn("staleBakeFiles")(function* (base: string, model: string, writtenFiles: ReadonlyArray<string>) {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const name = path.basename(base)
+  const written = new Set(writtenFiles.map((file) => path.resolve(file)))
+  const isWritten = (file: string) => written.has(path.resolve(file))
+  const exists = (file: string) => fs.exists(file).pipe(Effect.orElseSucceed(() => false))
+  const text = (file: string) => fs.readFileString(file).pipe(Effect.orElseSucceed(() => ""))
+  const stale: Array<string> = []
+  const json = `${base}.json`
+  if (!isWritten(json) && (yield* exists(json))) {
+    const raw = yield* text(json)
+    const image = yield* Effect.try((): unknown => (JSON.parse(raw) as { meta?: { image?: unknown } } | null)?.meta?.image).pipe(Effect.orElseSucceed(() => undefined))
+    if (image === `${name}.png`) stale.push(json)
+  }
+  const sprite = `${base}.sprite.txt`
+  if (!isWritten(sprite) && (yield* exists(sprite)) && (yield* text(sprite)).includes(`Baked from ${model}:`)) stale.push(sprite)
+  const shadow = `${base}.shadow.png`
+  if (!isWritten(shadow) && (yield* exists(shadow))) stale.push(shadow)
+  const normal = `${base}.normal.png`
+  if (!isWritten(normal) && (yield* exists(normal)) && !(yield* exists(`${base}.normals.json`))) stale.push(normal)
+  const dir = path.dirname(base)
+  const entries = yield* fs.readDirectory(dir).pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []))
+  // `<name>.<animation>.gif` and `.onion.png`, and not another model's (`<name>.big.turn.gif`).
+  for (const entry of entries) {
+    if (!entry.startsWith(`${name}.`) || !/^[^.]+\.(gif|onion\.png)$/.test(entry.slice(name.length + 1))) continue
+    const file = path.join(dir, entry)
+    if (!isWritten(file)) stale.push(file)
+  }
+  for (const file of stale) yield* fs.remove(file).pipe(Effect.mapError(() => new CliFailure({ message: `cannot remove ${file}, left from an earlier bake` })))
+  return stale
+})
+
 const bake = Command.make(
   "bake",
   {
@@ -625,6 +666,8 @@ const bake = Command.make(
       { columns: Math.ceil(Math.sqrt(everyFrame.length)), spacing: 2 }
     )
     files.preview = yield* writePng(`${base}.preview.png`, previewArt(contact.art, fitScale(contact.art)))
+    const removed = yield* staleBakeFiles(base, path.basename(flags.input), Object.values(files).flat())
+    if (removed.length > 0) files.removed = removed
     // The project's rules on every frame, and what is odd about the model.
     const frameIssues = clips.flatMap((clip) =>
       clip.frames.flatMap((art, i) => {

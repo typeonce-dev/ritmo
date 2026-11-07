@@ -713,7 +713,9 @@ leaves what is there, and `_` clears it. The outline goes around paint;
 still `<name>.sprite.txt`. Several frames make a sheet instead: `<name>.json` in
 the format `pixel sheet` writes (each frame's `anchor` is the model's origin, and
 each animation starts a new row), with a `<name>.<animation>.gif` and
-`.onion.png` for each animation that moves. `issues` holds the project's rules
+`.onion.png` for each animation that moves. What an earlier bake wrote that
+this one does not (a still's text once it is a sheet, a gone animation's GIF) is
+removed and listed in `files.removed`. `issues` holds the project's rules
 on every frame (`stray-pixel` with its positions in `at`, and `frame` on a
 sheet), and two of its own: `bake-cut`, an error (exit 3), when an explicit
 `frame` cuts the art; and `bake-hidden`, a warning, for a part with no pixel in

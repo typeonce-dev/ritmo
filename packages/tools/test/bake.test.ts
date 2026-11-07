@@ -417,6 +417,25 @@ describe("the command", () => {
     expect(issues.map((issue) => issue.rule)).not.toContain("normal-flicker")
   })
 
+  it("removes what an earlier bake wrote that this one does not, and nothing else", () => {
+    const dir = folder()
+    const moving = { animations: { roll: { frames: 2 } }, normals: true, shadow: true, parts: [{ ...box, animate: { roll: { move: [0, 0, 1] } } }] }
+    write(dir, "cart.bake.json", moving)
+    expect(run(dir, "bake", "cart.bake.json").status).toBe(0)
+    writeFileSync(join(dir, "cart.big.roll.gif"), "another model's")
+    write(dir, "cart.bake.json", { parts: [box] })
+    const still = JSON.parse(run(dir, "bake", "cart.bake.json").stdout) as { files: { removed: ReadonlyArray<string> } }
+    expect(still.files.removed.map((file) => file.split(/[\\/]/).pop()).sort()).toEqual(["cart.json", "cart.normal.png", "cart.roll.gif", "cart.roll.onion.png", "cart.shadow.png"])
+    expect(existsSync(join(dir, "cart.big.roll.gif"))).toBe(true)
+    // Back to a sheet: the still's text goes, and a map `pixel normals` made stays.
+    write(dir, "cart.bake.json", { headings: 2, parts: [box] })
+    writeFileSync(join(dir, "cart.normal.png"), readFileSync(join(dir, "cart.png")))
+    write(dir, "cart.normals.json", {})
+    const sheet = JSON.parse(run(dir, "bake", "cart.bake.json").stdout) as { files: { removed: ReadonlyArray<string> } }
+    expect(sheet.files.removed.map((file) => file.split(/[\\/]/).pop())).toEqual(["cart.sprite.txt"])
+    expect(existsSync(join(dir, "cart.normal.png"))).toBe(true)
+  })
+
   it("does not call a turn an animation that flickers", () => {
     const dir = folder()
     write(dir, "cart.bake.json", { headings: 8, normals: true, parts: [box] })
