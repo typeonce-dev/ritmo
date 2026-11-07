@@ -179,6 +179,17 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 - Godot docs ([link][godot-settings]) and Schlitter ([link][slynyrd-23]) each name the cost of the pixel-perfect default (less smooth movement; "you can't move a half pixel"), which is what makes smoothing a choice with a reason rather than a mistake.
 - **Ritmo:** "the game's design notes" is where the `ritmo-prototype` skill's graduation keeps what is worth keeping, so a game already has the place. The same shape as the repo's lint (`// oxlint-disable-next-line ritmo/<rule> -- <reason>`) and `fx`'s `accept` with a reason: a judged exception is written with why. "Two agents agreeing never settles a look" is the maintainer's lesson from Still Time, where a briefing two models agreed on was rejected by the first playtest; the person who plays decides, as in `ritmo-prototype` ("Never say it is fun").
 
+
+## The tool: baking a solid thing from a model
+
+The skill says to use `pixel bake` for something with a solid shape, not for characters or under about 24 pixels across, and that a piece can be finished by hand.
+
+- Xie, "How Pixel Singapore was made", 2026 ([link][xie]): "The vehicles are small 3D models made of boxes. I draw them through the map's camera, light them with the same sun, and turn them into pixel sprites at 32 headings, so a car looks right at any angle."
+- Vasseur, on a 3D pipeline for Dead Cells ([link][deadcells]), quoted under One light: the same reason on the light's side, no shadow drawn by hand on every frame.
+- **Ritmo:** tested blind on 2026-11-07, on the eight buildings of a game, from one written brief with no references: one agent with a first version of the command, one with only what ships today, free to write its own scripts. The maintainer judged the pictures on the game's real board without knowing which was which, and preferred the baked set with Opus 5.5 High ("especially in terms of 3d volume"), the beacon aside, and with ChatGPT 6.1 Sol High ("more solid and with less perceptive errors"), all eight. One run per side per model. The Opus agent without the command wrote its own renderer anyway, as that game's own scripts had.
+- **Ritmo:** the design stays open because of a direction from the maintainer: the tool is for consistent and solid results, and must not hold back unique designs. So a model can be any shape in any color, proportions included, with hand-placed pixels on top; what is odd about one comes back as a report; and a piece can leave the model to be finished by hand.
+- **Ritmo:** not for characters from the maintainer's rejection of every character sprite tried on 2026-11-02. "Under about 24 pixels across, draw a sprite source" from the same game's buildings baked at half size (18 across), which lost what told them apart, and from a fresh agent given only the docs on 2026-11-08, whose small log ends read only once painted by hand.
+
 [saint-consistency]: https://saint11.art/blog/consistency/
 [saint-scaling]: https://saint11.art/blog/scaling/
 [saint-lowres]: https://saint11.art/blog/thoughts_on_low_resolution/
@@ -211,6 +222,7 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 [berry]: https://noelberry.ca/posts/celeste_lighting
 [octopath]: https://web.archive.org/web/20231202140802/https://www.unrealengine.com/en-US/spotlights/octopath-traveler-s-hd-2d-art-style-and-story-make-for-a-jrpg-dream-come-true
 [yacht]: https://www.yachtclubgames.com/blog/breaking-the-nes
+[xie]: https://www.yadongxie.com/blog/how-pixel-singapore-was-made
 [deadcells]: https://www.gamedeveloper.com/production/art-design-deep-dive-using-a-3d-pipeline-for-2d-animation-in-i-dead-cells-i-
 [spritelamp]: https://www.snakehillgames.com/spritelamp/
 [gage]: https://stfj.net/DesigningForSubwayLegibility/

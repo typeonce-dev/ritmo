@@ -6,8 +6,8 @@
  * `pixel notes` both read it here, so they agree on what there is.
  *
  * A folder's files are found by name, and what the pixel tools write beside
- * an asset is left out: previews, project PNGs, onion skins, enlarged copies
- * (`@4x`), a sheet's frames, and a normal map and its picture under light,
+ * an asset is left out: previews, project PNGs, onion skins, ground shadows,
+ * enlarged copies (`@4x`), a sheet's frames, and a normal map and its picture under light,
  * which belong to the asset of their name. Where a tool's output sits beside what it
  * was made from (`pic.png` and `pic.fixed.png`, `x.sprite.txt` and
  * `x.sprite.render.png`), the review shows the output, the file the game
@@ -46,8 +46,8 @@ export interface PixelAsset {
 }
 
 const PICTURE = /\.(png|jpe?g)$/i
-/** What the pixel tools write beside an asset that is not an asset: a preview, a project PNG, an onion skin, a normal map and its picture under light, an enlarged copy and its JSON. */
-const TOOL_OUTPUT = /(\.(preview|project|onion|normal|lit)\.png|@\d+x\.(png|json))$/i
+/** What the pixel tools write beside an asset that is not an asset: a preview, a project PNG, an onion skin, a ground shadow, a normal map and its picture under light, an enlarged copy and its JSON. */
+const TOOL_OUTPUT = /(\.(preview|project|onion|shadow|normal|lit)\.png|@\d+x\.(png|json))$/i
 /** A sheet's frames, written one PNG each. */
 const isFrames = (name: string): boolean => name.endsWith(".frames")
 /** The outputs named after what they were made from: `pixel fix`, `sheet`, and `pixelate` (from a picture), `render` (from text). */
@@ -84,6 +84,11 @@ const inFolder = async (folder: string): Promise<Array<PixelAsset>> => {
   }
   // A text sprite beside a PNG of its name (`hero.txt` or `hero.sprite.txt` by `hero.png`) is that PNG again, as text.
   const shown = new Set(pictures.filter((picture) => !covered.has(picture)))
+  // A model beside a PNG of its name is what that PNG was baked from, ahead of the text it was also written as.
+  for (const picture of shown) {
+    const model = `${stemOf(picture)}.bake.json`
+    if (names.has(model)) sources.set(picture, model)
+  }
   for (const text of texts) {
     const stem = stemOf(text)
     const picture = [`${stem}.png`, `${stem.replace(/\.sprite$/i, "")}.png`].find((file) => shown.has(file))

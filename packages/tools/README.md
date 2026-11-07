@@ -6,7 +6,7 @@ tool per kind of asset:
 
 | Tool | For |
 | --- | --- |
-| `ritmo-tools pixel` | Pixel art: fixes AI-made or blurry pictures and animation sheets onto a true pixel grid and a palette, renders sprites drawn as text, makes normal maps for art a game lights, checks a project's art against its rules, and opens a local page with all of a game's art by folder, where a person looks at each piece at whole-number zooms, plays its animations, sees the whole set side by side, approves, and pins comments to an area of pixels. |
+| `ritmo-tools pixel` | Pixel art: fixes AI-made or blurry pictures and animation sheets onto a true pixel grid and a palette, renders sprites drawn as text, bakes sprites from models of 3D shapes, makes normal maps for art a game lights, checks a project's art against its rules, and opens a local page with all of a game's art by folder, where a person looks at each piece at whole-number zooms, plays its animations, sees the whole set side by side, approves, and pins comments to an area of pixels. |
 | `ritmo-tools sound` | Sound effects: keeps them as JSON recipes, measures and varies them, writes WAV files, and opens a local page where a person listens, picks, tunes, and notes. |
 | `ritmo-tools fx` | Pixel art effects: keeps each effect as a few drafts written as code, checks them for pixel art craft and the project's rules, draws contact sheets an agent can look at, writes sprite sheets and GIFs, and opens a local page where a person watches the drafts side by side, picks, tunes, and pins comments to a pixel. |
 | `ritmo-tools music` | Game music: hears a person's hum for its tune, tempo, and key, keeps songs as JSON tracks of notes, checks them, writes WAV and MIDI files, and opens a local page with all of a game's music on one list, songs and plain audio files, where a person plays, edits notes, records, approves, and comments. |
@@ -293,6 +293,7 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 | `sheet <png>` | Fixes an animation sheet: `.png` (each animation's frames in a strip from a new row, or `--columns N` per row), its `.json`, a `.<animation>.gif` and `.<animation>.onion.png` each, `.frames/<animation>/` (one PNG per frame), `.recipe.json`, and `.preview.png` (the boxes found over the source, and each animation's fixed frames). The report lists the animations with their frame numbers and each frame's time in milliseconds. |
 | `pixelate <png> -w N` | Cuts a picture that is not pixel art into N pixels across, on the palette (or `--colors N` proposed from it). |
 | `render <sprite>` | Renders a sprite source or JSON map to PNG and SVG, and lints it. |
+| `bake <model>` | Draws a model of 3D shapes (`<name>.bake.json`, see "Baking") through the project's one camera and light: `.png`, `.sprite.txt` for a still or `.json` for a sheet, `.preview.png`, and `.normal.png` and `.shadow.png` when the model asks. |
 | `lint <file>` | The project's rules on the pixels as they are; with `--tile both` (or `x`, `y`), also that a tile's edges meet. |
 | `preview <file>` | A picture to look at: the art enlarged, the source and its grid beside the fix, or with `--tile both` (or `x`, `y`) the art at its own size repeated. |
 | `compare <a> <b>` | Which of two versions is better, and why. |
@@ -573,6 +574,154 @@ by Red Hat Sprite (MIT; its notice is in this package's `LICENSE`). Carrying
 surfaces through an animation, corrections as data, and the checks are this
 tool's.
 
+### Baking
+
+For a thing with a solid shape: a building, a vehicle, a prop, a turret, above
+all one of a set or one seen from several angles. You describe it in 3D, and the
+tool draws it through the project's one camera and light, so every sprite shares
+the angle, the shading on the palette's ramps, clean edges, and one outline. The
+design stays yours: any shapes, any colors, proportions as exaggerated as the
+style wants, and hand-placed pixels for what geometry cannot say. What is odd
+about a model comes back in the report, never as a refusal.
+
+Not for characters or anything soft. Below about 24 pixels across, a bake loses
+what tells things apart: draw those as a sprite source (`pixel render`), from a
+bake if that helps.
+
+**The loop.** Write `<name>.bake.json` (by hand, or from a script: a model is
+only data), bake it, open `<name>.preview.png`, judge the set in the game at its
+display size, and change the model. Every bake rewrites everything but the
+model, so an edit to the PNG is lost. To finish a piece by hand, carry on from
+its `.sprite.txt` with `pixel render`: it no longer bakes.
+
+```sh
+ritmo-tools pixel bake public/art/cottage.bake.json
+```
+
+```json
+{
+  "materials": { "Y": "#ffcd75" },
+  "parts": [
+    { "name": "walls", "shape": "box", "material": "plaster", "from": [-6, -5, 0], "to": [6, 5, 8] },
+    { "name": "roof", "shape": "box", "material": "thatch", "from": [-7, -6, 8], "to": [7, 6, 16], "top": [0, 1] },
+    { "name": "door", "shape": "face", "material": "#b13e53", "corners": [[6, -1, 0], [6, 1, 0], [6, 1, 5], [6, -1, 5]] },
+    { "name": "chimney", "shape": "box", "material": "stone", "from": [-5, -4, 10], "to": [-2, -1, 20] }
+  ],
+  "paint": [{ "at": [-3, -22], "rows": [".Y.", "YYY"] }]
+}
+```
+
+**Axes.** Every number is in the model's units, in the screen's axes as at
+`yaw` 0: +x right, +y toward the viewer, +z up. A `yaw` of 45 shows a corner:
++x runs down-right and +y down-left, so a box shows its +x side, its +y side,
+and its top. What faces away never shows, and what points at the camera is a dot.
+
+**The project's setup**, `bake` in `pixel.config.json`, is the only place the
+camera, the light, and shared materials live: that is what makes models one set.
+
+```json
+{
+  "palette": "sweetie-16",
+  "bake": {
+    "camera": { "yaw": 45, "elevation": 30, "scale": 2, "heightScale": 1 },
+    "light": { "sun": [-0.7, 0.05, 0.7], "dark": 0, "bright": 0.6, "castShadows": false },
+    "outline": "#1a1c2c",
+    "edges": 4,
+    "materials": {
+      "plaster": ["#566c86", "#94b0c2", "#f4f4f4"],
+      "thatch": ["#b13e53", "#ef7d57", "#ffcd75"],
+      "stone": ["#333c57", "#566c86", "#94b0c2"]
+    }
+  }
+}
+```
+
+Every field has that default except `scale` (1), `outline`, and `materials`.
+
+- `camera`: `scale` is art pixels per unit; `elevation` is degrees above the
+  ground (30 makes ground 2:1, 90 looks straight down); `heightScale` is for a
+  game whose view is not a true projection. A point lands at
+  `X = x cos(yaw) - y sin(yaw)`, `Y = x sin(yaw) + y cos(yaw)`, then across
+  `X * scale` and down `(Y * sin(elevation) - z * heightScale * cos(elevation)) * scale`.
+- `light`: `sun` points toward the sun in the screen's axes whatever the `yaw`
+  (`[0.7, 0.05, 0.7]` is the picture's upper right), and stays put as a model
+  turns. A ramp's steps fall evenly from `dark` to `bright` on how directly a
+  surface faces the sun, from -1 to 1. `castShadows` makes parts darken what they
+  shade: lively at large sizes, noisy at small ones.
+- `outline`: a color, or `false`. Left out, the palette's darkest.
+- `edges`: a surface this many art pixels behind its neighbour goes one step
+  darker, which separates parts without a line around each. `false` for never.
+- `materials`: one color, or a ramp from dark to light, of any length. Ramps far
+  apart keep neighbours apart: at small sizes contrast says more than modelling.
+
+**A model** is `parts`, and all of these are optional:
+
+| Field | What it is |
+| --- | --- |
+| `materials` | More materials, or this model's own version of one. |
+| `headings` | How many directions to draw, as animations named `heading-0` (the view under Axes), `heading-1`, and so on, each turned clockwise by 360 / `headings` degrees. They share one frame around the origin, so put the model's middle on it. |
+| `animations` | `{ "spin": { "frames": 6, "fps": 8, "loop": "forward" } }`; `loop` can be `"pingpong"`. With headings too, `spin-heading-0`. |
+| `frame` | `{ "width": 34, "up": 24, "below": 10 }`: art pixels around the model's origin. Each one you leave out fits the art. An even width puts the origin on the corner between pixels. |
+| `outline` | This model's own, or `false`. |
+| `cleanup` | `false` keeps lone pixels. |
+| `normals` | `true` writes `<name>.normal.png`, from the real surfaces, to light the art in a game; `pixel review` shows it under a light. |
+| `shadow` | `true` writes `<name>.shadow.png`, the model flattened along the sun, for a game to draw under it. |
+| `paint` | Hand-placed pixels, below. |
+
+**Parts.** What is nearest the camera shows, as in 3D, so their order does not
+matter. Every surface shows from either side, and nothing cuts holes: a pit is
+walls around a floor.
+
+| `shape` | Takes |
+| --- | --- |
+| `box` | `from` and `to`, two opposite corners. `top: [a, b]` scales its top along x and y: `[1, 0]` is a roof with its ridge along x, `[0, 1]` along y, `[0, 0]` a point, `[0.5, 0.5]` a frustum. `lean: [dx, dy]` moves its top. |
+| `cylinder` | `from` and `to`, the corners of the box around it. `axis`: `"z"` (default), `"x"`, or `"y"`. `sides` (20; 8 or 10 look faceted). `taper` scales its far end: `0.05` is a cone. |
+| `sphere` | `from` and `to`, the corners of the box around it. |
+| `face` | `corners`: a flat convex polygon, `[x, y, z]` going around its edge. It shows over a surface it lies exactly on: doors, windows, stripes, trim, or one side of a part in its own material. |
+| `mesh` | `points`, and `faces` as lists of positions in `points`. Any shape at all. Each face has to be flat and convex: split one that is not, and the report says which. |
+
+Any part, and any group (`"parts": [...]` in place of `shape`) takes these. A
+group's `material`, `detail`, and `step` go to its parts that have none of their
+own. A part is animated, turned, then moved, and then its group does the same:
+
+| Field | What it is |
+| --- | --- |
+| `material` | A color like `"#ef7d57"`, or a material's name. |
+| `name` | What the report calls it. |
+| `move` | `[x, y, z]`. |
+| `rotate` | `{ "axis": "z", "degrees": 90, "about": [0, 0, 0] }`, `about` in the part's own units before its `move`. Positive takes x toward y around z, y toward z around x, and z toward x around y. |
+| `repeat` | `{ "count": 8, "move": [2, 0, 0], "rotate": { ... }, "materials": ["#f4f4f4", "#b13e53"] }`: copies, each one step further, taking materials in turn. Stripes, fence posts, windows, spokes. |
+| `animate` | `{ "spin": { "rotate": { "axis": "x", "degrees": 90 }, "move": [0, 0, 2], "wave": false } }`: where it gets to at the animation's end, which is never drawn, so a loop closes cleanly. `wave` swings out to it, back through rest, and out the other way: a bob or a sway. |
+| `detail` | `true` counts it three times when pixels are decided, and keeps its lone pixels. Under about two pixels it still comes out a lone pixel: paint that instead. |
+| `step` | Holds a ramp on one of its steps, 0 the darkest. |
+
+**Paint** is for what geometry cannot say: a flame, a flag, a face, the one
+pixel that makes a shape read. It bakes with the model every time.
+
+```json
+{ "at": [-3, -22], "rows": [".Y.", "YYY"], "animation": "spin", "frames": [0, 2], "headings": [0] }
+```
+
+Only `at` and `rows` are needed. `at` is art pixels from the model's origin to
+the first row's first pixel, x right and y down: the report's `frame.anchor` is
+the origin in the PNG, so the PNG's pixel at column `c` and row `r` is
+`[c - anchor.x, r - anchor.y]`. Each letter names a one-color material; `.`
+leaves what is there, and `_` clears it. The outline goes around paint;
+`"after": true` puts it over the outline instead.
+
+**What it writes, and the report.** `<name>.png`, `<name>.preview.png`, and for a
+still `<name>.sprite.txt`. Several frames make a sheet instead: `<name>.json` in
+the format `pixel sheet` writes (each frame's `anchor` is the model's origin, and
+each animation starts a new row), with a `<name>.<animation>.gif` and
+`.onion.png` for each animation that moves. What an earlier bake wrote that
+this one does not (a still's text once it is a sheet, a gone animation's GIF) is
+removed and listed in `files.removed`. `issues` holds the project's rules
+on every frame (`stray-pixel` with its positions in `at`, and `frame` on a
+sheet), and two of its own: `bake-cut`, an error (exit 3), when an explicit
+`frame` cuts the art; and `bake-hidden`, a warning, for a part with no pixel in
+any frame. Warnings exit 0, so read `issues` every time. Exit 2 lists every
+`problems` entry in the model at once, each with its `path` and what to do.
+
 ### Code
 
 - `src/pixel/core/`: the headless core, tested in `test/` with fake AI pictures made
@@ -592,7 +741,7 @@ tool's.
   `preview.ts` (pictures to look at), `sheet.ts` (clearing a sheet, finding
   its frames, anchors, and laying frames on one canvas), `animation.ts` (the
   whole fix for a sheet), `spritesheet.ts` (sheet layouts and their JSON),
-  `gif.ts` (animated GIFs), `zip.ts` (stored ZIP files), `review.ts` (the
+  `bake.ts` (models of 3D shapes, and drawing them), `gif.ts` (animated GIFs), `zip.ts` (stored ZIP files), `review.ts` (the
   review file, approval hashes, and the notes). The outline
   handling, bent lines, and the outline-keeping shrink follow
   [ToPixel](https://github.com/daisuqe/ToPixel).
