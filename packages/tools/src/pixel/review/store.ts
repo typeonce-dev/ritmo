@@ -24,6 +24,8 @@ export interface Entry {
   readonly animations: ReadonlyArray<SheetAnimationRead>
   /** What it is made from, when that sits beside it. */
   readonly source: string | undefined
+  /** A hash of the normal map beside it, when there is one: what an approval keeps. */
+  readonly normal: string | undefined
   /** The lint's counts; the issues come with the detail. */
   readonly errors: number
   readonly warnings: number
@@ -47,6 +49,9 @@ export interface Detail {
   readonly source: string | undefined
   readonly sheet: string | undefined
   readonly config: string | undefined
+  /** The normal map beside it, and the file saying what it was made from (none when it was painted by hand). */
+  readonly normal: string | undefined
+  readonly normalData: string | undefined
   readonly issues: ReadonlyArray<FrameIssue>
   readonly version: string
 }
@@ -75,6 +80,8 @@ export interface Store {
   readonly detail: (id: string) => Promise<Detail | undefined>
   /** Where the asset's picture is, as PNG, at this version. */
   readonly picture: (id: string, version: string) => string
+  /** Where the asset's normal map is, as PNG, at this version. */
+  readonly normal: (id: string, version: string) => string
 }
 
 /** What a save failure says when the server cannot be reached at all. */
@@ -126,5 +133,6 @@ export const serverStore: Store = {
       return undefined
     }
   },
-  picture: (id, version) => `/api/png?${query(id)}&v=${encodeURIComponent(version)}`
+  picture: (id, version) => `/api/png?${query(id)}&v=${encodeURIComponent(version)}`,
+  normal: (id, version) => `/api/normal?${query(id)}&v=${encodeURIComponent(version)}`
 }
