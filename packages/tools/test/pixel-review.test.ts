@@ -12,7 +12,7 @@ import { decodePng, encodePng } from "@typeonce/ritmo-tools/pixel/cli/png.ts"
 import { findAssets, goneOf, libraryOf, readAsset, reviewPlace, reviewsOf, writeReview, writeReviews } from "@typeonce/ritmo-tools/pixel/cli/library.ts"
 import { api } from "@typeonce/ritmo-tools/pixel/cli/serve.ts"
 import type { RgbaImage } from "@typeonce/ritmo-tools/pixel/core/grid.ts"
-import { approvalOf, changedOf, changedSince, decodeReview, encodeReview, hashFrame, mergeReviews, newAsset, pixelSummary, resolveComments, reviewSummary, whereOf, type Frame, type Review } from "@typeonce/ritmo-tools/pixel/core/review.ts"
+import { approvalOf, approvalOfPart, assetStatus, changedOfPart, changedSince, decodeReview, encodeReview, hashFrame, mergeReviews, newAsset, partName, partOfComment, partReview, partsOf, partsStatus, pixelSummary, samePart, resolveComments, reviewSummary, statusSaid, whereOf, withPart, type AssetReview, type Frame, type Review } from "@typeonce/ritmo-tools/pixel/core/review.ts"
 import { atlasOf, readSpritesheet, spritesheetJson } from "@typeonce/ritmo-tools/pixel/core/spritesheet.ts"
 import { TRANSPARENT, type PixelArt } from "@typeonce/ritmo-tools/pixel/core/fix.ts"
 
@@ -272,9 +272,174 @@ describe("what an approval keeps", () => {
 
   it("is only compared while approved, and not at all from a review with no hashes", () => {
     const frames: ReadonlyArray<Frame> = [{ name: "", index: 0, x: 0, y: 0, w: 1, h: 1, hash: "a" }]
-    expect(changedOf({ status: "approved", note: "", comments: [], approved: { frames: ["b"] } }, frames)).toBe("it looks different")
-    expect(changedOf({ status: "approved", note: "", comments: [] }, frames)).toBeUndefined()
-    expect(changedOf({ status: "changes", note: "", comments: [], approved: { frames: ["b"] } }, frames)).toBeUndefined()
+    const shape = { frames, animations: [], normal: undefined }
+    const sprite = { kind: "sprite" } as const
+    expect(changedOfPart({ status: "approved", note: "", comments: [], approved: { frames: ["b"] } }, shape, sprite)).toBe("it looks different")
+    expect(changedOfPart({ status: "approved", note: "", comments: [] }, shape, sprite)).toBeUndefined()
+    expect(changedOfPart({ status: "changes", note: "", comments: [], approved: { frames: ["b"] } }, shape, sprite)).toBeUndefined()
+  })
+})
+
+describe("the parts of an asset", () => {
+  const frame = (animation: string, index: number, hash: string, normal = `map of ${hash}`): Frame => ({ name: `${animation} ${index}`, animation, index, x: 0, y: 0, w: 1, h: 1, duration: 100, hash, normal })
+  const frames = [frame("walk", 0, "a"), frame("walk", 1, "b"), frame("idle", 0, "c")]
+  const animations = [
+    { name: "walk", frames: [0, 1] },
+    { name: "idle", frames: [2] }
+  ]
+  const sheetShape = { frames, animations, normal: "map" }
+  const walk = { kind: "animation", name: "walk" } as const
+  const idle = { kind: "animation", name: "idle" } as const
+  const walkMap = { kind: "map", name: "walk" } as const
+  const idleMap = { kind: "map", name: "idle" } as const
+  const allParts = [walk, idle, walkMap, idleMap]
+
+  it("are a still's sprite and its normal map, or each animation of a sheet and the normal map of each", () => {
+    expect(partsOf({ frames: [frames[0]!], animations: [], normal: undefined })).toEqual([{ kind: "sprite" }])
+    expect(partsOf({ frames: [frames[0]!], animations: [], normal: "map" })).toEqual([{ kind: "sprite" }, { kind: "map" }])
+    expect(partsOf(sheetShape)).toEqual(allParts)
+    expect(partsOf({ ...sheetShape, normal: undefined })).toEqual([walk, idle])
+    expect(samePart(walkMap, idleMap)).toBe(false)
+    expect(samePart(walkMap, walk)).toBe(false)
+    expect(samePart(walkMap, { kind: "map", name: "walk" })).toBe(true)
+    expect(partName(walkMap)).toBe("walk normal map")
+    expect(partName({ kind: "map" })).toBe("normal map")
+  })
+
+  it("are reviewed apart, and the file says each", () => {
+    const review = withPart(withPart(newAsset, walk, { status: "approved", approved: approvalOfPart(sheetShape, walk) }), walkMap, { status: "changes", note: "Hair faces up" })
+    expect(partReview(review, walk).status).toBe("approved")
+    expect(partReview(review, idle).status).toBe("new")
+    expect(partReview(review, walkMap).note).toBe("Hair faces up")
+    expect(partReview(review, idleMap).status).toBe("new")
+    expect(review.status).toBe("new")
+    const round = decodeReview(encodeReview({ assets: { "a.png": review } }))
+    expect(round.ok && round.value.assets["a.png"]).toEqual(review)
+    expect(round.ok && round.value.assets["a.png"]?.animations?.walk?.approved?.frames).toEqual(["a", "b"])
+    expect(round.ok && round.value.assets["a.png"]?.maps?.walk?.status).toBe("changes")
+  })
+
+  it("leave out of the file what says nothing", () => {
+    const review = withPart(withPart(newAsset, walk, { note: "x" }), walk, { note: "" })
+    expect(encodeReview({ assets: { "a.png": review } })).toBe('{\n  "version": 1,\n  "assets": {}\n}\n')
+  })
+
+  it("give the file one status: changes if any asks, approved once all are", () => {
+    const approve = (review: AssetReview, part: Parameters<typeof partReview>[1]) => withPart(review, part, { status: "approved" })
+    expect(assetStatus(newAsset, sheetShape)).toBe("new")
+    expect(assetStatus(approve(newAsset, walk), sheetShape)).toBe("new")
+    expect(assetStatus(approve(approve(newAsset, walk), idle), sheetShape)).toBe("new")
+    expect(assetStatus(approve(approve(approve(newAsset, walk), idle), walkMap), sheetShape)).toBe("new")
+    expect(assetStatus(allParts.reduce(approve, newAsset), sheetShape)).toBe("approved")
+    expect(assetStatus(withPart(approve(approve(newAsset, walk), idle), idleMap, { status: "changes" }), sheetShape)).toBe("changes")
+    expect(partsStatus(approve(newAsset, walkMap), [walkMap, idleMap])).toBe("new")
+    expect(partsStatus(approve(approve(newAsset, walkMap), idleMap), [walkMap, idleMap])).toBe("approved")
+    expect(statusSaid(withPart(approve(newAsset, walk), idleMap, { status: "changes" }))).toBe("changes")
+    expect(statusSaid({ status: "approved", note: "", comments: [] })).toBe("approved")
+  })
+
+  it("flag only what changed: new art flags its animation and that animation's map, a new map only the map of the frames it changed", () => {
+    const seen = allParts.reduce((review: AssetReview, part) => withPart(review, part, { status: "approved", approved: approvalOfPart(sheetShape, part) }), newAsset)
+    expect(allParts.map((part) => changedOfPart(seen, sheetShape, part))).toEqual([undefined, undefined, undefined, undefined])
+    const newMap = { ...sheetShape, normal: "other", frames: [frame("walk", 0, "a", "other"), frames[1]!, frames[2]!] }
+    expect(allParts.map((part) => changedOfPart(seen, newMap, part))).toEqual([undefined, undefined, "the normal map of walk frame 0 changed", undefined])
+    const allNew = { ...sheetShape, normal: "other", frames: [frames[0]!, frames[1]!, frame("idle", 0, "c", "other")] }
+    expect(allParts.map((part) => changedOfPart(seen, allNew, part))).toEqual([undefined, undefined, undefined, "its normal map changed"])
+    const newArt = { ...sheetShape, frames: [frame("walk", 0, "x", "map of a"), frames[1]!, frames[2]!] }
+    expect(allParts.map((part) => changedOfPart(seen, newArt, part))).toEqual(["walk frame 0 looks different", undefined, "walk frame 0 looks different", undefined])
+  })
+
+  it("let a still's map stand in for each animation's when the still becomes a sheet", () => {
+    const still = withPart(newAsset, { kind: "map" }, { status: "changes", note: "Hair" })
+    expect(partReview(still, walkMap)).toEqual(still.map)
+    const changed = withPart(still, walkMap, { status: "approved" })
+    expect(changed.maps?.walk).toEqual({ status: "approved", note: "Hair" })
+    expect(partReview(changed, idleMap).status).toBe("changes")
+  })
+
+  it("read a review from before them as it was: a sheet's approval stands for each animation, and a map nobody judged is not approved", () => {
+    const old = decodeReview(JSON.stringify({ version: 1, assets: { "a.png": { status: "approved", note: "Good", comments: [{ animation: "walk", frame: 1, x: 0, y: 0, text: "t" }], approved: { frames: ["a", "b", "c"], durations: [100, 100, 100] } } } }))
+    if (!old.ok) throw new Error(old.error)
+    const review = old.value.assets["a.png"]!
+    expect(partReview(review, walk).status).toBe("approved")
+    expect(partReview(review, idle).note).toBe("Good")
+    expect(partReview(review, walkMap).status).toBe("new")
+    expect(assetStatus(review, sheetShape)).toBe("new")
+    expect(assetStatus(review, { ...sheetShape, normal: undefined })).toBe("approved")
+    expect(partOfComment(review.comments[0]!)).toEqual(walk)
+    expect(changedOfPart(review, sheetShape, walk)).toBeUndefined()
+    // Only the animation whose frames changed is flagged, though the approval was of the whole sheet.
+    const newIdle = { ...sheetShape, frames: [frames[0]!, frames[1]!, frame("idle", 0, "x")] }
+    expect(changedOfPart(review, newIdle, walk)).toBeUndefined()
+    expect(changedOfPart(review, newIdle, idle)).toBe("idle frame 0 looks different")
+    // Changing one keeps the rest as they were, and takes none of the file's comments along.
+    const changed = withPart(review, idle, { status: "changes" })
+    expect(partReview(changed, walk).status).toBe("approved")
+    expect(partReview(changed, idle).status).toBe("changes")
+    expect(partReview(changed, idle).note).toBe("Good")
+    expect(changed.animations?.idle).toEqual({ status: "changes", note: "Good", approved: review.approved })
+  })
+
+  it("say apart what `pixel notes` reports, with comments on the map marked", () => {
+    const review: AssetReview = {
+      ...withPart(withPart(newAsset, walk, { status: "approved", approved: approvalOfPart(sheetShape, walk) }), walkMap, { status: "changes", note: "Hair" }),
+      comments: [
+        { animation: "walk", frame: 0, x: 0, y: 0, text: "Art" },
+        { animation: "walk", frame: 0, x: 0, y: 0, text: "Map", about: "map", facing: "up" }
+      ]
+    }
+    const said = reviewSummary(review, sheetShape)
+    expect(said.status).toBe("changes")
+    expect(said.parts).toEqual([
+      { part: "animation", animation: "walk", status: "approved", note: undefined, changedSinceApproved: undefined },
+      { part: "animation", animation: "idle", status: "new", note: undefined, changedSinceApproved: undefined },
+      { part: "map", animation: "walk", status: "changes", note: "Hair", changedSinceApproved: undefined },
+      { part: "map", animation: "idle", status: "new", note: undefined, changedSinceApproved: undefined }
+    ])
+    expect(said.comments?.map((comment) => comment.where)).toEqual(["walk frame 0, pixel 0,0", "normal map, walk frame 0, pixel 0,0"])
+    expect(said.next).toContain("`parts`")
+    expect(said.next).toContain('`about: "map"`')
+    expect(partOfComment(review.comments[1]!)).toEqual(walkMap)
+    // One part says as it always did, with nothing about parts.
+    const still = reviewSummary({ status: "approved", note: "", comments: [] }, { frames: [frames[0]!], animations: [], normal: undefined })
+    expect(still).not.toHaveProperty("parts")
+    expect(still.next).toContain("Leave it as it is")
+  })
+
+  it("say when the person approved some and has not judged the rest", () => {
+    expect(reviewSummary(withPart(newAsset, walk, { status: "approved" }), sheetShape).next).toContain("has not judged the rest")
+    expect(pixelSummary([{ file: "a", ...reviewSummary(withPart(newAsset, walkMap, { note: "Hair" }), sheetShape) }]).summary).toContain("with a note or comments")
+  })
+
+  it("that are gone stay in the notes, and their comments stay open", () => {
+    const review: AssetReview = {
+      ...[{ kind: "map", name: "walk" } as const, { kind: "map", name: "run" } as const].reduce((all: AssetReview, part) => withPart(all, part, { status: "approved" }), withPart(newAsset, { kind: "animation", name: "run" }, { status: "changes", note: "Faster" })),
+      comments: [{ animation: "run", frame: 0, x: 0, y: 0, text: "Knee" }]
+    }
+    // The animation renamed takes its map with it; the rest of the maps are still here.
+    const renamed = reviewSummary(review, sheetShape)
+    expect(renamed.goneParts).toEqual([
+      { part: "animation", animation: "run", status: "changes", note: "Faster" },
+      { part: "map", animation: "run", status: "approved", note: undefined }
+    ])
+    expect(renamed.comments?.map((comment) => comment.text)).toEqual(["Knee"])
+    // With the map itself gone, so is each animation's.
+    expect(reviewSummary(review, { ...sheetShape, normal: undefined }).goneParts?.map((part) => [part.part, part.animation])).toEqual([
+      ["animation", "run"],
+      ["map", "walk"],
+      ["map", "run"]
+    ])
+    expect(reviewSummary(withPart(newAsset, { kind: "map" }, { status: "approved" }), { frames, animations, normal: undefined }).goneParts).toEqual([{ part: "map", animation: undefined, status: "approved", note: undefined }])
+  })
+
+  it("take a direction as about the map, and refuse any other subject", () => {
+    const read = decodeReview(JSON.stringify({ assets: { "a.png": { comments: [{ frame: 0, x: 0, y: 0, text: "t", facing: "up" }] } } }))
+    expect(read.ok && read.value.assets["a.png"]?.comments[0]?.about).toBe("map")
+    expect(decodeReview(JSON.stringify({ assets: { "a.png": { comments: [{ frame: 0, x: 0, y: 0, text: "t", about: "art" }] } } }))).toMatchObject({ ok: false, error: expect.stringContaining("about must be") })
+    expect(decodeReview(JSON.stringify({ assets: { "a.png": { animations: [] } } }))).toMatchObject({ ok: false, error: expect.stringContaining("animations must be") })
+    expect(decodeReview(JSON.stringify({ assets: { "a.png": { animations: { walk: { status: "maybe" } } } } }))).toMatchObject({ ok: false, error: expect.stringContaining("a.png.animations.walk.status") })
+    expect(decodeReview(JSON.stringify({ assets: { "a.png": { map: { approved: { frames: [1] } } } } }))).toMatchObject({ ok: false, error: expect.stringContaining("a.png.map.approved") })
+    expect(decodeReview(JSON.stringify({ assets: { "a.png": { maps: { walk: { approved: { frames: ["a"], normal: "b" } } } } } }))).toMatchObject({ ok: false, error: expect.stringContaining("a.png.maps.walk.approved") })
   })
 })
 
@@ -332,7 +497,7 @@ describe("comments", () => {
     // Resolved comments ask nothing more.
     expect(reviewSummary({ status: "approved", note: "", comments: [{ ...comment, resolved: true }] }, undefined).next).toContain("Leave it as it is")
     const frames: ReadonlyArray<Frame> = [{ name: "", index: 0, x: 0, y: 0, w: 8, h: 8, hash: "new" }]
-    expect(reviewSummary({ status: "approved", note: "", comments: [comment], approved: { frames: ["old"] } }, frames).next).toContain("pixel resolve")
+    expect(reviewSummary({ status: "approved", note: "", comments: [comment], approved: { frames: ["old"] } }, { frames, animations: [], normal: undefined }).next).toContain("pixel resolve")
   })
 
   it("put words left without a status ahead of what nobody has looked at, and count them apart", () => {

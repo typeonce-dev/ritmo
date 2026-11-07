@@ -300,7 +300,7 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 | `init` | Writes a starting `pixel.config.json`. |
 | `normals <art> [--preset character\|object\|architecture\|terrain] [--strength N] [--force]` | Makes a normal map beside the art: `.normal.png`, `.normals.json` (what it was made from, and corrections), and `.lit.png` (a picture of it lit from each side). See "Normal maps". |
 | `review <paths...> [--port 5193] [--host]` | Serves the review page for the PNGs, text sprites, and folders named, and prints its address; runs until stopped. |
-| `notes <paths...>` | What the person said about the same paths: a `summary` of what is left, then `assets`, each one's status, note, open comments (numbered, with their area and frame), how many are resolved, `changedSinceApproved`, the lint, and `next`, changes asked first; `gone` lists reviews whose file is no longer found. |
+| `notes <paths...>` | What the person said about the same paths: a `summary` of what is left, then `assets`, each one's status, note, open comments (numbered, with their area and frame, and `about: "map"` on those about its normal map), how many are resolved, `changedSinceApproved`, the lint, and `next`, changes asked first. An asset with several parts also lists `parts`, each with its own status and note, and `goneParts` for reviewed parts it no longer has. `gone` lists reviews whose file is no longer found. |
 | `resolve <asset> <numbers...> [--reply "what changed"]` | Marks comments as resolved: `pixel notes` stops listing them, and the page shows them done with the reply. The person can reopen one. |
 
 `review`, `notes`, and `resolve` exit 0 or 2 only: what the lint says about
@@ -406,45 +406,65 @@ exits 2. A PNG with a JSON beside it in the format `pixel sheet` writes (or
 Aseprite's) is a sheet, played by animation with each frame's duration;
 with a JSON in a format of its own, it shows as a still.
 
-The list on the left shows every asset by folder with its status, whether it
-changed since it was approved, its lint, and its open comments; the top bar
-narrows it to what is to review, has changes asked, or is approved. The art
+The list on the left shows every asset under the folder it comes from, with its
+status, whether it changed since it was approved, its lint, and its open comments;
+the top bar narrows it to what is to review, has changes asked, or is approved. A
+file with more than one thing to judge opens into its parts: the **Sprite** of a
+still and its **Normal map**, or a sheet's **Animations** and **Normal map**, each
+with one row per animation. Each part has its own status, note, comments, and lint, and the file's
+status follows: changes asked if any part has them, approved once all are, half
+filled while some are. **Approve the rest** approves the parts not judged yet, and
+leaves any with changes asked. A click on a file opens its art; only the person
+closes a file, so rows never move under the pointer. The art
 opens at the largest whole-number zoom that fits, up to 16×, so a small sprite
 is big enough to judge and to pin a comment on, and a picture too big for the
 stage shrinks to fit, so nothing scrolls until asked; 0 shows it at 1×, the size the
 game draws it before any scaling, and a zoom the person picks stays for the
 next asset until F fits again. It sits over a backdrop: dark, light, a
 checkerboard, or any color.
-**Repeat** draws it three by three, to see a tile meet itself. A sheet
-plays each animation with its durations, and the playback bar pauses and
-steps through the frames. **Set** shows every asset at one scale, chosen from the set's typical size, on
+**Repeat** draws it three by three, to see a tile meet itself. An animation
+plays with its durations. The bar at the bottom left holds what the part open
+does (it pauses and steps through an animation's frames), and the zoom stays at
+the bottom right on every part. **Set** shows every asset at one scale, chosen from the set's typical size, on
 a grid by size over one backdrop, to see whether they belong together; a
-picture too big for the grid is smaller and says its own zoom. Pick several
-and **Compare them** shows only those, or **Approve them** approves them
-at once.
+picture too big for the grid is smaller and says its own zoom. A click on a
+tile picks it, and the arrow in its corner opens it; the browser's Back, **Set**, or V
+goes back to the same spot on the set. Pick several
+and **Compare them** shows only those, or **Approve them** approves what
+shows at once: stills only, their art when the set shows art, their normal maps
+when it shows them. A sheet's animations and their maps are left for opening,
+since a tile shows only the first frame.
 
 Dragging over the art pins a comment to that area of the frame shown (a
-click pins it to one pixel); each comment's number rings its area, at every
-zoom. On the right are the review (status and note), the comments (resolved
-ones greyed, with the agent's reply, and **Reopen**), the lint against the
+click pins it to one pixel), on the part open; each comment's number rings its
+area, at every zoom. On the right are the part's review (status and note), its
+comments (resolved ones greyed, with the agent's reply, and **Reopen**), the lint against the
 asset's nearest `pixel.config.json` (**Show** rings a rule's pixels on its
 frame), and the files the asset comes from. **Approved** keeps a hash of
 each frame's pixels as decoded and its duration: a re-export that looks the
 same is no change, and neither is a color hidden under a transparent pixel.
 When the art later looks different or plays at other timings, the page and
-`pixel notes` say which frames, and **Approve it as it is now** takes the new
-version; the status stays approved, since only the person changes it.
+`pixel notes` say which frames, on the parts they are in, and **Approve it as it
+is now** takes the new version; the status stays approved, since only the person
+changes it. A renamed or removed animation leaves its review in `pixel notes`
+(`goneParts`), and its comments show on the file's first part. A
+`pixel.review.json` from before parts still reads: what it said about a sheet
+stands for each animation, until one is reviewed on its own.
 
-Art with a normal map beside it (see "Normal maps") has a sun on its row, and
-**Art**, **Lit**, and **Normal map** at the end of the playback bar show it as
-drawn, under a light, or as the map itself; they are greyed for art with no map.
-Under the light, drag it over the art, or turn on **Go round** in the **Light**
-section; **Set** shows the whole set under one light. Pressing on the art still
-pins a comment, which can say which way the surface there should face.
-An approval keeps the map too, so a changed map shows as a change.
+Art with a normal map beside it (see "Normal maps") has a sun on its row and
+**Normal map** parts: a still has one, and a sheet one for each animation, closed
+until opened, since flicker only shows in motion. The bar shows the art **Lit**,
+under a light, or the **Normal map** itself; hold **Without map** (or M) for the
+same light with no map, so what changes is what the map adds. Under the light,
+drag it over the art, or use the **Light** section: **Go round** circles the art,
+and **Half-Lambert** lights the same map so the far side keeps its shape. **Set**
+shows the whole set in any of these, under one light. Pressing on the art pins a
+comment about the map, which can say which way the surface there should face. Its
+approval keeps a hash of the art and the map under each frame, so new art, or a
+new map, shows as a change only on the animations it touches.
 
-↑ and ↓ change asset, Space plays, ← and → step frames, + and − zoom, 0 goes
-back to 1×, F fits each asset again, V switches to the whole set and back, L shows the light, N the normal map, and Ctrl/Cmd+Z undoes.
+↑ and ↓ move down the list, Shift with them goes to the same kind of part on the next file (a normal map to the next normal map), Enter opens or closes the file, Space plays, ← and → step frames, + and − zoom, 0 goes
+back to 1×, F fits each asset again, V switches to the whole set and back, L goes to the same animation's normal map under the light and back, on the same frame, N to the map itself and back, holding M takes the map away, and Ctrl/Cmd+Z undoes.
 Every change is saved as it happens, and a comment still being typed is added
 when the person moves on (Cancel or Esc drops it). Art the agent rewrites or adds, and
 comments it resolves, show up while the page is open; what the person is
@@ -536,6 +556,7 @@ normal.x *= uFlip;
 vec3 toLight = vec3(uLight.x - vPos.x, vPos.y - uLight.y, uLight.z);
 float away = length(toLight);
 float diffuse = max(0.0, dot(normal, toLight / away));
+// Valve's half-Lambert keeps the far side's shape: float wrapped = 0.5 * dot(normal, toLight / away) + 0.5; diffuse = wrapped * wrapped;
 float falloff = 1.0 / (1.0 + (away / uReach) * (away / uReach));
 gl_FragColor = vec4(art.rgb * (uAmbient + uLightColor * diffuse * falloff), art.a);
 ```

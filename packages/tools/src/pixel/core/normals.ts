@@ -582,6 +582,8 @@ export interface Light {
   readonly brightness: number
   /** The light in this many even steps, to see it as a game that steps its light would; 0 is smooth. */
   readonly steps: number
+  /** Valve's half-Lambert, `(0.5 * dot + 0.5)²`: the far side keeps its shape instead of going dark. The same map, lit by another formula. */
+  readonly halfLambert?: boolean | undefined
 }
 
 const toLinear = Float32Array.from({ length: 256 }, (_, v) => {
@@ -615,7 +617,8 @@ export const lightFrame = (into: Uint8ClampedArray, art: Uint8ClampedArray, norm
       // Up the picture is up for the normal: the picture's rows count down.
       const dy = y + 0.5 - light.y
       const distance = Math.hypot(dx, dy, z)
-      const diffuse = Math.max(0, (nx * dx + ny * dy + nz * z) / distance)
+      const facing = (nx * dx + ny * dy + nz * z) / distance
+      const diffuse = light.halfLambert === true ? (0.5 * facing + 0.5) ** 2 : Math.max(0, facing)
       let direct = (light.brightness * diffuse) / (1 + (distance / reach) ** 2)
       if (light.steps > 0) direct = Math.round(direct * light.steps) / light.steps
       into[to] = toSrgb(Math.min(1, toLinear[art[from]!]! * (light.ambient + direct * red)))
