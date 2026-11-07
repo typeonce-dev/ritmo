@@ -12,7 +12,8 @@
  *
  * Coordinates are the screen's: at `yaw` 0, +x runs right, +y runs toward the
  * viewer, and +z runs up. A yaw of 45 shows a corner: +x runs down-right and +y
- * down-left. The sun is given the same way, and stays put as a model turns.
+ * down-left. The sun is given in the axes of yaw 0 whatever the yaw (+x
+ * right on the picture), and stays put as a model turns.
  */
 import { parseHex, toHex, type Rgb } from "./color.ts"
 import { TRANSPARENT, type PixelArt } from "./fix.ts"

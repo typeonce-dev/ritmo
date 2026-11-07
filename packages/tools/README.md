@@ -635,8 +635,10 @@ Every field has that default except `scale` (1), `outline`, and `materials`.
   `X = x cos(yaw) - y sin(yaw)`, `Y = x sin(yaw) + y cos(yaw)`, then across
   `X * scale` and down `(Y * sin(elevation) - z * heightScale * cos(elevation)) * scale`.
   `heightScale` is for a game whose view is not a true projection.
-- `light`: `sun` points toward the sun, in the same axes, and stays put as a
-  model turns. A material's ramp goes dark to light, and its steps fall evenly
+- `light`: `sun` points toward the sun in the screen's axes, as at `yaw` 0 (+x
+  right, +y toward the viewer, +z up) whatever the `yaw`, so `[0.7, 0.05, 0.7]`
+  lights from the upper right of the picture. It stays put as a model turns.
+  A material's ramp goes dark to light, and its steps fall evenly
   from `dark` to `bright` on how directly a surface faces the sun, from -1 to 1:
   with three steps, under `dark` is the first, and `bright` or more the last.
   `castShadows` makes parts darken what they shade, lively at large sizes and
@@ -668,7 +670,7 @@ Every field has that default except `scale` (1), `outline`, and `materials`.
 | `box` | `from` and `to`, two opposite corners. `top: [a, b]` scales its top along x and y: `[1, 0]` is a roof with its ridge along x, `[0, 1]` along y, `[0, 0]` a point, `[0.5, 0.5]` a frustum. `lean: [dx, dy]` moves its top. |
 | `cylinder` | `from` and `to`, the corners of the box around it. `axis`: `"z"` (default), `"x"`, or `"y"`. `sides` (20; 8 or 10 look faceted). `taper` scales its far end: `0.05` is a cone. |
 | `sphere` | `from` and `to`, the corners of the box around it. |
-| `face` | `corners`: a flat convex polygon, `[x, y, z]` going around its edge. For what is painted on a surface: doors, windows, stripes, trim. It shows over a surface it lies exactly on. |
+| `face` | `corners`: a flat convex polygon, `[x, y, z]` going around its edge, seen from either side. For what is painted on a surface: doors, windows, stripes, trim, or one side of a part in its own material (a log's cut end). It shows over a surface it lies exactly on. |
 | `mesh` | `points`, and `faces` as lists of positions in `points`. Any shape at all. Each face has to be flat and convex: split one that is not, and the report says which. |
 
 Any part, and any group (`"parts": [...]` in place of `shape`) takes:
@@ -681,7 +683,7 @@ Any part, and any group (`"parts": [...]` in place of `shape`) takes:
 | `rotate` | `{ "axis": "z", "degrees": 90, "about": [0, 0, 0] }`. Positive takes x toward y around z, y toward z around x, and z toward x around y. |
 | `repeat` | `{ "count": 8, "move": [2, 0, 0], "rotate": { ... }, "materials": ["#f4f4f4", "#b13e53"] }`: copies, each one step further, taking materials in turn. Stripes, fence posts, windows, spokes. |
 | `animate` | `{ "spin": { "rotate": { "axis": "x", "degrees": 90 }, "move": [0, 0, 2], "wave": false } }`: where it gets to over a whole animation. `wave` goes there and back instead, for a bob or a sway. |
-| `detail` | `true` counts it three times when pixels are decided, and keeps its lone pixels: for what must survive shrinking. |
+| `detail` | `true` counts it three times when pixels are decided, and keeps its lone pixels: for what must survive shrinking. What comes out under about two pixels is still a lone pixel the report flags: paint that instead. |
 | `step` | Holds a ramp on one of its steps, 0 the darkest. |
 
 **Paint** is for what geometry cannot say: a flame, a flag, a face, one pixel
@@ -692,7 +694,10 @@ that makes a shape read.
 ```
 
 `at` is art pixels from the model's origin to the first row's first pixel, x
-right and y down. Each letter names a one-color material; `.` leaves what is
+right and y down. The report's `frame.anchor` is where the origin is in the
+PNG, so the pixel at column `c` and row `r` of the PNG is `at: [c - anchor.x, r - anchor.y]`,
+and a model point is at the art pixels from the origin that the camera's formula
+above gives. Each letter names a one-color material; `.` leaves what is
 there, and `_` clears it. Only `at` and `rows` are needed. It goes under the
 outline, which then goes around it; `"after": true` puts it over the outline
 instead. It is kept through cleanup, and it bakes with the model every time, so
@@ -719,7 +724,8 @@ but the model is rewritten by every bake: change the model, not the PNG.
 
 **The report**, with the exit codes every command uses. `issues` holds the
 project's rules on every frame (`off-palette`, `too-many-colors`, `size`,
-`stray-pixel` with its positions in `at`, and `frame` on a sheet), and two of its own:
+`stray-pixel` with its positions in `at`, and `frame` on a sheet; a lone pixel is
+a warning, exit 0, so read `issues` even when the bake succeeds), and two of its own:
 
 - `bake-cut`, an error: an explicit `frame` cuts the art. Exit 3.
 - `bake-hidden`, a warning: a part shows no pixel in any frame, so it is too small
