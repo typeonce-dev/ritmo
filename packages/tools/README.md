@@ -576,11 +576,23 @@ tool's.
 
 ### Baking
 
-For things with a solid shape: a building, a vehicle, a prop, a turret. The
-design is the model's, and the tool holds what has to stay the same from sprite
-to sprite: the angle, the light, shading on the palette's ramps, clean edges,
-and one outline. A model turns, re-lights, and redraws at another size with no
-new drawing.
+For a thing with a solid shape: a building, a vehicle, a prop, a turret, above
+all one of a set or one seen from several angles. You describe it in 3D, and the
+tool draws it through the project's one camera and light, so every sprite shares
+the angle, the shading on the palette's ramps, clean edges, and one outline. The
+design stays yours: any shapes, any colors, proportions as exaggerated as the
+style wants, and hand-placed pixels for what geometry cannot say. What is odd
+about a model comes back in the report, never as a refusal.
+
+Not for characters or anything soft. Below about 24 pixels across, a bake loses
+what tells things apart: draw those as a sprite source (`pixel render`), from a
+bake if that helps.
+
+**The loop.** Write `<name>.bake.json` (by hand, or from a script: a model is
+only data), bake it, open `<name>.preview.png`, judge the set in the game at its
+display size, and change the model. Every bake rewrites everything but the
+model, so an edit to the PNG is lost. To finish a piece by hand, carry on from
+its `.sprite.txt` with `pixel render`: it no longer bakes.
 
 ```sh
 ritmo-tools pixel bake public/art/cottage.bake.json
@@ -599,17 +611,13 @@ ritmo-tools pixel bake public/art/cottage.bake.json
 }
 ```
 
-Nothing here decides what a thing looks like. Any shapes, any colors, and
-hand-placed pixels for what geometry cannot say. What is odd about a model comes
-back in the report, and the choice stays with you.
+**Axes.** Every number is in the model's units, in the screen's axes as at
+`yaw` 0: +x right, +y toward the viewer, +z up. A `yaw` of 45 shows a corner:
++x runs down-right and +y down-left, so a box shows its +x side, its +y side,
+and its top. What faces away never shows, and what points at the camera is a dot.
 
-**Every number is in the model's units**, in the screen's axes: at `yaw` 0, +x
-runs right, +y runs toward the viewer, and +z runs up. A `yaw` of 45 shows a
-corner: +x runs down-right, +y runs down-left, and a box shows its +x side, its
-+y side, and its top. So paint a door on the side that faces you.
-
-**In `pixel.config.json`, `bake` is the same for every model:** that is what
-makes them one set, and it is the only place these live.
+**The project's setup**, `bake` in `pixel.config.json`, is the only place the
+camera, the light, and shared materials live: that is what makes models one set.
 
 ```json
 {
@@ -630,26 +638,23 @@ makes them one set, and it is the only place these live.
 
 Every field has that default except `scale` (1), `outline`, and `materials`.
 
-- `camera`: `scale` is art pixels per unit. `elevation` is degrees above the
-  ground: 30 makes ground 2:1, 90 looks straight down. A point lands at
+- `camera`: `scale` is art pixels per unit; `elevation` is degrees above the
+  ground (30 makes ground 2:1, 90 looks straight down); `heightScale` is for a
+  game whose view is not a true projection. A point lands at
   `X = x cos(yaw) - y sin(yaw)`, `Y = x sin(yaw) + y cos(yaw)`, then across
   `X * scale` and down `(Y * sin(elevation) - z * heightScale * cos(elevation)) * scale`.
-  `heightScale` is for a game whose view is not a true projection.
-- `light`: `sun` points toward the sun in the screen's axes, as at `yaw` 0 (+x
-  right, +y toward the viewer, +z up) whatever the `yaw`, so `[0.7, 0.05, 0.7]`
-  lights from the upper right of the picture. It stays put as a model turns.
-  A material's ramp goes dark to light, and its steps fall evenly
-  from `dark` to `bright` on how directly a surface faces the sun, from -1 to 1:
-  with three steps, under `dark` is the first, and `bright` or more the last.
-  `castShadows` makes parts darken what they shade, lively at large sizes and
-  noisy at small ones.
-- `outline`: a color, or `false` for none. Left out, the palette's darkest.
+- `light`: `sun` points toward the sun in the screen's axes whatever the `yaw`
+  (`[0.7, 0.05, 0.7]` is the picture's upper right), and stays put as a model
+  turns. A ramp's steps fall evenly from `dark` to `bright` on how directly a
+  surface faces the sun, from -1 to 1. `castShadows` makes parts darken what they
+  shade: lively at large sizes, noisy at small ones.
+- `outline`: a color, or `false`. Left out, the palette's darkest.
 - `edges`: a surface this many art pixels behind its neighbour goes one step
   darker, which separates parts without a line around each. `false` for never.
-- `materials`: one color, or a ramp from dark to light, of any length. A model's
-  own `materials` go on top of these.
+- `materials`: one color, or a ramp from dark to light, of any length. Ramps far
+  apart keep neighbours apart: at small sizes contrast says more than modelling.
 
-**A model** (`<name>.bake.json`) is `parts`, and all of these are optional:
+**A model** is `parts`, and all of these are optional:
 
 | Field | What it is |
 | --- | --- |
@@ -663,14 +668,15 @@ Every field has that default except `scale` (1), `outline`, and `materials`.
 | `shadow` | `true` writes `<name>.shadow.png`, the model flattened along the sun, for a game to draw under it. |
 | `paint` | Hand-placed pixels, below. |
 
-**Parts.** What is nearest the camera shows, as in 3D, so their order does not matter.
+**Parts.** What is nearest the camera shows, as in 3D, so their order does not
+matter. Nothing cuts holes: a pit is walls around a floor.
 
 | `shape` | Takes |
 | --- | --- |
 | `box` | `from` and `to`, two opposite corners. `top: [a, b]` scales its top along x and y: `[1, 0]` is a roof with its ridge along x, `[0, 1]` along y, `[0, 0]` a point, `[0.5, 0.5]` a frustum. `lean: [dx, dy]` moves its top. |
 | `cylinder` | `from` and `to`, the corners of the box around it. `axis`: `"z"` (default), `"x"`, or `"y"`. `sides` (20; 8 or 10 look faceted). `taper` scales its far end: `0.05` is a cone. |
 | `sphere` | `from` and `to`, the corners of the box around it. |
-| `face` | `corners`: a flat convex polygon, `[x, y, z]` going around its edge, seen from either side. For what is painted on a surface: doors, windows, stripes, trim, or one side of a part in its own material (a log's cut end). It shows over a surface it lies exactly on. |
+| `face` | `corners`: a flat convex polygon, `[x, y, z]` going around its edge, seen from either side. It shows over a surface it lies exactly on: doors, windows, stripes, trim, or one side of a part in its own material. |
 | `mesh` | `points`, and `faces` as lists of positions in `points`. Any shape at all. Each face has to be flat and convex: split one that is not, and the report says which. |
 
 Any part, and any group (`"parts": [...]` in place of `shape`) takes:
@@ -683,59 +689,33 @@ Any part, and any group (`"parts": [...]` in place of `shape`) takes:
 | `rotate` | `{ "axis": "z", "degrees": 90, "about": [0, 0, 0] }`. Positive takes x toward y around z, y toward z around x, and z toward x around y. |
 | `repeat` | `{ "count": 8, "move": [2, 0, 0], "rotate": { ... }, "materials": ["#f4f4f4", "#b13e53"] }`: copies, each one step further, taking materials in turn. Stripes, fence posts, windows, spokes. |
 | `animate` | `{ "spin": { "rotate": { "axis": "x", "degrees": 90 }, "move": [0, 0, 2], "wave": false } }`: where it gets to over a whole animation. `wave` goes there and back instead, for a bob or a sway. |
-| `detail` | `true` counts it three times when pixels are decided, and keeps its lone pixels: for what must survive shrinking. What comes out under about two pixels is still a lone pixel the report flags: paint that instead. |
+| `detail` | `true` counts it three times when pixels are decided, and keeps its lone pixels. Under about two pixels it still comes out a lone pixel: paint that instead. |
 | `step` | Holds a ramp on one of its steps, 0 the darkest. |
 
-**Paint** is for what geometry cannot say: a flame, a flag, a face, one pixel
-that makes a shape read.
+**Paint** is for what geometry cannot say: a flame, a flag, a face, the one
+pixel that makes a shape read. It bakes with the model every time.
 
 ```json
 { "at": [-3, -22], "rows": [".Y.", "YYY"], "animation": "spin", "frames": [0, 2], "headings": [0] }
 ```
 
-`at` is art pixels from the model's origin to the first row's first pixel, x
-right and y down. The report's `frame.anchor` is where the origin is in the
-PNG, so the pixel at column `c` and row `r` of the PNG is `at: [c - anchor.x, r - anchor.y]`,
-and a model point is at the art pixels from the origin that the camera's formula
-above gives. Each letter names a one-color material; `.` leaves what is
-there, and `_` clears it. Only `at` and `rows` are needed. It goes under the
-outline, which then goes around it; `"after": true` puts it over the outline
-instead. It is kept through cleanup, and it bakes with the model every time, so
-a hand's touch outlives the next change.
+Only `at` and `rows` are needed. `at` is art pixels from the model's origin to
+the first row's first pixel, x right and y down: the report's `frame.anchor` is
+the origin in the PNG, so the PNG's pixel at column `c` and row `r` is
+`[c - anchor.x, r - anchor.y]`. Each letter names a one-color material; `.`
+leaves what is there, and `_` clears it. The outline goes around paint;
+`"after": true` puts it over the outline instead.
 
-**Getting a good result.** Open the preview and judge the whole set in the game
-at its display size: a clean report never settles a look.
-
-- At small sizes contrast between neighbours says more than modelling detail.
-  Goods on a counter, log ends, and tufts merge with what they sit on unless their
-  colors are far apart.
-- Below about 24 pixels across, a shape reads or it does not: model only the big
-  shapes, and paint the one detail that says what it is.
-- Use the camera: what faces away from it never shows, and something pointing
-  straight at it is a dot.
-- A model is only data, so a script can write it, when `repeat` is not enough.
-
-**What it writes.** `<name>.png` and `<name>.preview.png`. A still also gets
-`<name>.sprite.txt`, the same pixels as text. Several frames make a sheet instead,
-with `<name>.json` in the format `pixel sheet` writes (each frame's `anchor` is
-the model's origin, and each animation starts a new row), and a
-`<name>.<animation>.gif` and `.onion.png` for each animation that moves. Everything
-but the model is rewritten by every bake: change the model, not the PNG.
-
-**The report**, with the exit codes every command uses. `issues` holds the
-project's rules on every frame (`off-palette`, `too-many-colors`, `size`,
-`stray-pixel` with its positions in `at`, and `frame` on a sheet; a lone pixel is
-a warning, exit 0, so read `issues` even when the bake succeeds), and two of its own:
-
-- `bake-cut`, an error: an explicit `frame` cuts the art. Exit 3.
-- `bake-hidden`, a warning: a part shows no pixel in any frame, so it is too small
-  or behind another. Exit 0, since it may be on purpose.
-
-Exit 2 lists every `problems` entry at once, each with its `path` in the file and
-what to do.
-
-**Its limits.** Geometry has no hand in it: characters and anything soft are not
-for this. It cuts no holes, so a pit is walls around a floor.
+**What it writes, and the report.** `<name>.png`, `<name>.preview.png`, and for a
+still `<name>.sprite.txt`. Several frames make a sheet instead: `<name>.json` in
+the format `pixel sheet` writes (each frame's `anchor` is the model's origin, and
+each animation starts a new row), with a `<name>.<animation>.gif` and
+`.onion.png` for each animation that moves. `issues` holds the project's rules
+on every frame (`stray-pixel` with its positions in `at`, and `frame` on a
+sheet), and two of its own: `bake-cut`, an error (exit 3), when an explicit
+`frame` cuts the art; and `bake-hidden`, a warning, for a part with no pixel in
+any frame. Warnings exit 0, so read `issues` every time. Exit 2 lists every
+`problems` entry in the model at once, each with its `path` and what to do.
 
 ### Code
 
