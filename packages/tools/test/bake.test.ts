@@ -369,7 +369,8 @@ describe("clean pixels", () => {
   })
 })
 
-describe("the command", () => {
+// Each case runs the CLI as its own process, a few seconds each on CI.
+describe("the command", { timeout: 60_000 }, () => {
   const folder = (config: unknown = { bake: { camera: { scale: 2 }, outline: "#000000", materials: { ramp: RAMP } } }): string => {
     const dir = mkdtempSync(join(tmpdir(), "ritmo-bake-"))
     writeFileSync(join(dir, "pixel.config.json"), JSON.stringify(config))
