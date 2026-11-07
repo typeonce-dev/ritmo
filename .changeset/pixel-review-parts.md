@@ -1,5 +1,0 @@
----
-"@typeonce/ritmo-tools": minor
----
-
-`ritmo-tools pixel review` reviews each part of a file apart. On the list, a file opens into its sprite or its animations, and the normal map of each, each with its own status, note, comments, and lint, and the file's status follows from them. Each part's controls sit at the bottom left and the zoom stays at the bottom right. Holding **Without map** (or M) shows the same light with no map, and the light has a **Half-Lambert** switch. A new map only flags the animations whose frames it changed. In the whole set, a click on a tile picks it and the arrow in its corner opens it. **Approve them** now approves only what shows, so a sheet's animations and their maps need opening. `pixel notes` lists `parts`, each with its own status and note, marks comments on the map with `about: "map"`, and lists `goneParts`, and `status` is now the file's status across its parts. A `pixel.review.json` from before parts still reads: what it said about a sheet stands for each animation, until one is reviewed on its own.
