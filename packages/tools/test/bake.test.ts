@@ -202,6 +202,9 @@ describe("one light", () => {
 
   it("holds a part to one step when told, and darkens what a part shades when asked", () => {
     expect(colors(still(bake(model({ outline: false, parts: [{ ...box, step: 1 }] }), setup())))).toEqual(new Set([MID]))
+    const { material: _, ...bare } = box
+    expect(colors(still(bake(model({ outline: false, parts: [{ material: "ramp", step: 1, parts: [bare] }] }), setup())))).toEqual(new Set([MID]))
+    expect(colors(still(bake(model({ outline: false, parts: [{ material: "ramp", step: 1, parts: [{ ...bare, step: 2 }] }] }), setup())))).toEqual(new Set([LIGHT]))
     const ramp = { materials: { ground: ["#101010", "#505050", "#a0a0a0"] }, outline: false, parts: [{ shape: "box", material: "ground", from: [-20, -20, 0], to: [20, 20, 1] }, { shape: "box", material: "ramp", from: [-3, -3, 1], to: [3, 3, 25] }] }
     const flat = setup()
     const lively = setup({ light: { ...defaultBakeSetup.light, castShadows: true } })
@@ -261,6 +264,7 @@ describe("what a model can say", () => {
     const thin = { shape: "box", material: "#ff0000", from: [-0.1, -0.1, 0], to: [0.1, 0.1, 18] }
     expect(count(still(bake(model({ ...without, parts: [thin] }), setup())), "#ff0000")).toBe(0)
     expect(count(still(bake(model({ ...without, parts: [{ ...thin, from: [-0.2, -0.2, 0], to: [0.2, 0.2, 18], detail: true }] }), setup())), "#ff0000")).toBeGreaterThan(0)
+    expect(count(still(bake(model({ ...without, parts: [{ detail: true, parts: [{ ...thin, from: [-0.2, -0.2, 0], to: [0.2, 0.2, 18] }] }] }), setup())), "#ff0000")).toBeGreaterThan(0)
   })
 
   it("moves parts through an animation, a whole turn or there and back", () => {

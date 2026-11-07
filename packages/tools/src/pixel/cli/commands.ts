@@ -638,7 +638,7 @@ const bake = Command.make(
       ...(cutBy === 0
         ? []
         : [{ rule: "bake-cut" as const, severity: "error" as const, message: `The frame cuts the art: it reaches ${[cut.up > 0 ? `${cut.up} up` : "", cut.below > 0 ? `${cut.below} below` : "", cut.left > 0 ? `${cut.left} left` : "", cut.right > 0 ? `${cut.right} right` : ""].filter((part) => part !== "").join(", ")} past it. Grow \`frame\`, or leave a side out to fit`, count: cutBy, at: [] }]),
-      ...result.hidden.map((part) => ({ rule: "bake-hidden" as const, severity: "warning" as const, message: `${part.name === undefined ? part.path : `${part.name} (${part.path})`} shows no pixel in any frame: too small, or behind another part. Make it bigger, mark it \`detail\`, or paint it`, count: 1, at: [] }))
+      ...result.hidden.map((part) => ({ rule: "bake-hidden" as const, severity: "warning" as const, message: `${part.name === undefined ? part.path : `${part.name} (${part.path})`} shows no pixel in any frame: too small, behind another part, or facing away. If it should show, make it bigger, mark it \`detail\`, or paint it`, count: 1, at: [] }))
     ]
     const issues = [...modelIssues, ...frameIssues]
     const errors = issues.filter((issue) => issue.severity === "error").length

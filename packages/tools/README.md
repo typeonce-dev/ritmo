@@ -659,7 +659,7 @@ Every field has that default except `scale` (1), `outline`, and `materials`.
 | Field | What it is |
 | --- | --- |
 | `materials` | More materials, or this model's own version of one. |
-| `headings` | How many directions to draw, turning clockwise from the camera's yaw: animations named `heading-0`, `heading-1`, and so on. |
+| `headings` | How many directions to draw, as animations named `heading-0` (the view under Axes), `heading-1`, and so on, each turned clockwise by 360 / `headings` degrees. They share one frame around the origin, so put the model's middle on it. |
 | `animations` | `{ "spin": { "frames": 6, "fps": 8, "loop": "forward" } }`; `loop` can be `"pingpong"`. With headings too, `spin-heading-0`. |
 | `frame` | `{ "width": 34, "up": 24, "below": 10 }`: art pixels around the model's origin. Each one you leave out fits the art. An even width puts the origin on the corner between pixels. |
 | `outline` | This model's own, or `false`. |
@@ -669,26 +669,29 @@ Every field has that default except `scale` (1), `outline`, and `materials`.
 | `paint` | Hand-placed pixels, below. |
 
 **Parts.** What is nearest the camera shows, as in 3D, so their order does not
-matter. Nothing cuts holes: a pit is walls around a floor.
+matter. Every surface shows from either side, and nothing cuts holes: a pit is
+walls around a floor.
 
 | `shape` | Takes |
 | --- | --- |
 | `box` | `from` and `to`, two opposite corners. `top: [a, b]` scales its top along x and y: `[1, 0]` is a roof with its ridge along x, `[0, 1]` along y, `[0, 0]` a point, `[0.5, 0.5]` a frustum. `lean: [dx, dy]` moves its top. |
 | `cylinder` | `from` and `to`, the corners of the box around it. `axis`: `"z"` (default), `"x"`, or `"y"`. `sides` (20; 8 or 10 look faceted). `taper` scales its far end: `0.05` is a cone. |
 | `sphere` | `from` and `to`, the corners of the box around it. |
-| `face` | `corners`: a flat convex polygon, `[x, y, z]` going around its edge, seen from either side. It shows over a surface it lies exactly on: doors, windows, stripes, trim, or one side of a part in its own material. |
+| `face` | `corners`: a flat convex polygon, `[x, y, z]` going around its edge. It shows over a surface it lies exactly on: doors, windows, stripes, trim, or one side of a part in its own material. |
 | `mesh` | `points`, and `faces` as lists of positions in `points`. Any shape at all. Each face has to be flat and convex: split one that is not, and the report says which. |
 
-Any part, and any group (`"parts": [...]` in place of `shape`) takes:
+Any part, and any group (`"parts": [...]` in place of `shape`) takes these. A
+group's `material`, `detail`, and `step` go to its parts that have none of their
+own. A part is animated, turned, then moved, and then its group does the same:
 
 | Field | What it is |
 | --- | --- |
-| `material` | A color like `"#ef7d57"`, or a material's name. A group's goes to its parts that have none. |
+| `material` | A color like `"#ef7d57"`, or a material's name. |
 | `name` | What the report calls it. |
 | `move` | `[x, y, z]`. |
-| `rotate` | `{ "axis": "z", "degrees": 90, "about": [0, 0, 0] }`. Positive takes x toward y around z, y toward z around x, and z toward x around y. |
+| `rotate` | `{ "axis": "z", "degrees": 90, "about": [0, 0, 0] }`, `about` in the part's own units before its `move`. Positive takes x toward y around z, y toward z around x, and z toward x around y. |
 | `repeat` | `{ "count": 8, "move": [2, 0, 0], "rotate": { ... }, "materials": ["#f4f4f4", "#b13e53"] }`: copies, each one step further, taking materials in turn. Stripes, fence posts, windows, spokes. |
-| `animate` | `{ "spin": { "rotate": { "axis": "x", "degrees": 90 }, "move": [0, 0, 2], "wave": false } }`: where it gets to over a whole animation. `wave` goes there and back instead, for a bob or a sway. |
+| `animate` | `{ "spin": { "rotate": { "axis": "x", "degrees": 90 }, "move": [0, 0, 2], "wave": false } }`: where it gets to at the animation's end, which is never drawn, so a loop closes cleanly. `wave` swings out to it, back through rest, and out the other way: a bob or a sway. |
 | `detail` | `true` counts it three times when pixels are decided, and keeps its lone pixels. Under about two pixels it still comes out a lone pixel: paint that instead. |
 | `step` | Holds a ramp on one of its steps, 0 the darkest. |
 

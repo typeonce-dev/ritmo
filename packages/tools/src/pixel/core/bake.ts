@@ -687,7 +687,8 @@ interface View {
 const flatten = (model: BakeModel, moment: Moment, resolve: (name: string) => ReadonlyArray<string>, heightScale: number): View => {
   const triangles: Array<Triangle> = []
   const pieces: Array<Piece> = []
-  const visit = (node: BakeNode, parent: Matrix, material: string | undefined): void => {
+  // A group's material, detail, and step go to its parts that have none of their own.
+  const visit = (node: BakeNode, parent: Matrix, material: string | undefined, detail: boolean, step: number | undefined): void => {
     const count = node.repeat?.count ?? 1
     for (let copy = 0; copy < count; copy++) {
       let placed = parent
@@ -696,11 +697,11 @@ const flatten = (model: BakeModel, moment: Moment, resolve: (name: string) => Re
       placed = multiply(placed, nodeMatrix(node, moment))
       const chosen = node.repeat?.materials?.[copy % node.repeat.materials.length] ?? node.material ?? material
       if (node.kind === "group") {
-        for (const part of node.parts) visit(part, placed, chosen)
+        for (const part of node.parts) visit(part, placed, chosen, node.detail || detail, node.step ?? step)
         continue
       }
       const part = pieces.length
-      pieces.push({ source: node.path, name: node.name, ramp: resolve(chosen!), detail: node.detail, step: node.step, lifted: node.kind === "mesh" && node.lifted })
+      pieces.push({ source: node.path, name: node.name, ramp: resolve(chosen!), detail: node.detail || detail, step: node.step ?? step, lifted: node.kind === "mesh" && node.lifted })
       for (const polygon of polygonsOf(node)) {
         const points = polygon.map((point) => {
           const p = apply(placed, point)
@@ -710,7 +711,7 @@ const flatten = (model: BakeModel, moment: Moment, resolve: (name: string) => Re
       }
     }
   }
-  for (const node of model.parts) visit(node, IDENTITY, undefined)
+  for (const node of model.parts) visit(node, IDENTITY, undefined, false, undefined)
   return { triangles, pieces }
 }
 
