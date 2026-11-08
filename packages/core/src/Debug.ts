@@ -41,6 +41,12 @@
  * it mutates. Typed arrays cannot be frozen, and `Map` and `Set` contents
  * stay writable; runtimes without `debug` freeze nothing.
  *
+ * A debug runtime also checks each entity a query's `data` is given: one that
+ * still holds the component but matches none of the system's queries was kept
+ * from an earlier run and has left its query since (through `without`, `with`,
+ * or a relation filter), so the slot throws instead of reading a value the
+ * query no longer proves. Runtimes without `debug` read it.
+ *
  * `@typeonce/ritmo-devtools` builds sessions, histories, formatting, and invariants
  * on top of this handle.
  *

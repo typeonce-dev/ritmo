@@ -1331,8 +1331,16 @@ const makeValidatedRuntime = <
     return lookup
   }
 
-  const makeQueryHandle = <Q extends Query.Query.Any<Root>>(query: Q, reader: ReaderState, lookup: LookupApi<S, Root>): QueryIteration<S, Q> & QueryLookups<S, Q> => {
+  const makeQueryHandle = <Q extends Query.Query.Any<Root>>(
+    query: Q,
+    reader: ReaderState,
+    lookup: LookupApi<S, Root>,
+    system: string,
+    systemQueries: ReadonlyArray<Query.Query.Any<Root>>
+  ): QueryIteration<S, Q> & QueryLookups<S, Q> => {
     const each = () => queries.each(query, reader.since, reader.reverts) as unknown as ReadonlyArray<QueryEntity<S, Q>>
+    let guardedFor: Record<string, unknown> | undefined
+    let guarded: Record<string, unknown> | undefined
     const matching = (ids: ReadonlyArray<Entity.EntityId<S, Root>>): Array<QueryEntity<S, Q>> => {
       const entities: Array<QueryEntity<S, Q>> = []
       for (const id of ids) {
@@ -1344,7 +1352,14 @@ const makeValidatedRuntime = <
     return {
       each,
       get data() {
-        return queries.data(query) as QueryData<Q>
+        const made = queries.data(query)
+        if (!debugEnabled) return made as QueryData<Q>
+        // A debug runtime checks each entity a slot is given (see `guardedData`), made again when the slots are.
+        if (made !== guardedFor) {
+          guardedFor = made
+          guarded = queries.guardedData(query, made, systemQueries, system)
+        }
+        return guarded as QueryData<Q>
       },
       get(target) {
         return resolve(target, query, reader)
@@ -1826,7 +1841,8 @@ const makeValidatedRuntime = <
     return {
       local: (spec.local as (() => unknown) | undefined)?.(),
       // A filtered query hands out the same object; its type hides the lookups.
-      queries: mapRecord(spec.queries as Record<string, Query.Query.Any<Root>>, (query) => makeQueryHandle(query, reader, lookup) as never),
+      queries: mapRecord(spec.queries as Record<string, Query.Query.Any<Root>>, (query) =>
+        makeQueryHandle(query, reader, lookup, system.name, Object.values(spec.queries as Record<string, Query.Query.Any<Root>>)) as never),
       lookup,
       resources: mapRecord(spec.resources as Record<string, any>, (access) =>
         access.mode === "read"

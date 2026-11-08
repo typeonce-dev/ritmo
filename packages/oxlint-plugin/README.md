@@ -9,6 +9,7 @@ Ritmo's types reject wrong calls, and its devtools lints reject wrong runs. Thes
 - data that cannot be saved;
 - casts that claim a brand's check without running it;
 - state values that keep a previous state's fields;
+- query entities and data kept past their run;
 - runtime results that are dropped.
 
 Every report says what goes wrong and which Ritmo API to use instead.
@@ -29,7 +30,8 @@ Register the plugin and turn the rules on in `.oxlintrc.json`. The simulation ru
   "rules": {
     "ritmo/handle-runtime-result": "error",
     "ritmo/prefix-descriptor-and-system-names": "error",
-    "ritmo/no-state-spread": "error"
+    "ritmo/no-state-spread": "error",
+    "ritmo/no-kept-query-values": "error"
   },
   "overrides": [
     {
@@ -70,6 +72,7 @@ const started = performance.now()
 | [`handle-runtime-result`](#ritmohandle-runtime-result) | everywhere | a dropped or unchecked `runtime.tick(...)` / `restore(...)` / `rewind(...)` / `snapshot()` / `checksum()` result | check `.ok` |
 | [`prefix-descriptor-and-system-names`](#ritmoprefix-descriptor-and-system-names) | everywhere | `"Position"`, `Game.System("Move", ...)` | `"Game/Position"` |
 | [`no-state-spread`](#ritmono-state-spread) | everywhere | `{ ...ground, _tag: "air", vy }` | `data.state.transition(entity, { from, to, data })`, `nextMachines.x.set({ _tag, ...fields })`, or the new state's fields written out |
+| [`no-kept-query-values`](#ritmono-kept-query-values) | everywhere | `local.target = queries.x.each()[0]`, `local.slots = queries.x.data` | `entity.id` and `queries.x.get(id)`, or plain values from `queries.x.rows()` |
 
 ## Simulation rules
 
@@ -270,6 +273,23 @@ const popped = { _tag: "air", vy: 2, coyote: 0 }   // in a pure function
 ```
 
 Spreading the previous value to change fields of the same state (`{ ...air, vy: air.vy - 1 }`) is not reported, nor is a `_tag` written before the spread (`{ _tag: to, ...data }`).
+
+### `ritmo/no-kept-query-values`
+
+An entity from `queries.x.each()` and a query's `data` live for one run. Kept past it, the data throws in the next run, and the entity is not checked against its query again: a runtime without `debug` keeps reading it after it left the query (gained a `without` component, lost a `with` one), and a debug runtime throws. The rule reports an entity or `data` stored in `local` state (directly, in a field or element of a literal, pushed or set into a collection there, or captured by a closure stored there) or in a variable declared outside the `Game.System` or `Game.Inspector` callback.
+
+```ts
+local.target ??= queries.targets.each()[0]       // reported
+local.slots = queries.targets.data               // reported
+
+// instead
+local.target ??= queries.targets.each()[0]?.id
+const found = local.target === undefined ? undefined : queries.targets.get(local.target)
+if (found?.ok) aimAt(queries.targets.data.position.get(found.value))
+local.rows = queries.targets.rows()              // plain values, safe to keep
+```
+
+Ids, values read from `data`, and rows are not reported, nor are variables of the run itself (`let best` in the system's body).
 
 ## Built-in rules that pair well
 

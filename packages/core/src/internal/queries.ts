@@ -519,5 +519,129 @@ export const makeQueryEngine = (world: World) => {
     return made
   }
 
-  return { each, get, data }
+  /**
+   * The query's `data` for a system of a debug runtime: each slot checks the
+   * entity it is given before using it. An entity that still holds the slot's
+   * component but matches none of the system's queries was kept from an
+   * earlier run and has left its query since (through `without`, `with`, or a
+   * relation filter): reading it would return a value the query no longer
+   * proves, so it throws. A despawned entity, one that lost the component, and
+   * one from another runtime go on to the slot, whose own error names the cause.
+   */
+  /**
+   * `matchesStructure` for one query, made once: the components it requires
+   * and excludes as bit masks over an entity's held bits, so a check is one
+   * test per word. A query with relation filters checks them too.
+   */
+  const structureMatcher = (state: QueryState): ((record: EntityRecord) => boolean) => {
+    const relational = state.withRelations.length + state.withoutRelations.length + state.withRelated.length + state.withoutRelated.length > 0
+    if (relational) return (record) => matchesStructure(state, record)
+    const words = Math.max(0, ...state.required.map((ordinal) => (ordinal >>> 5) + 1), ...state.without.map((ordinal) => (ordinal >>> 5) + 1))
+    const required = new Array<number>(words).fill(0)
+    const without = new Array<number>(words).fill(0)
+    for (const ordinal of state.required) required[ordinal >>> 5]! |= 1 << (ordinal & 31)
+    for (const ordinal of state.without) without[ordinal >>> 5]! |= 1 << (ordinal & 31)
+    return (record) => {
+      const held = record.heldBits
+      for (let word = 0; word < words; word++) {
+        const bits = held[word]! & -1
+        if ((bits & required[word]!) !== required[word]! || (bits & without[word]!) !== 0) return false
+      }
+      return true
+    }
+  }
+
+  const guardedData = (query: AnyQuery, made: Record<string, unknown>, systemQueries: ReadonlyArray<AnyQuery>, system: string): Record<string, unknown> => {
+    const own = stateOf(query)
+    const matchesOwn = structureMatcher(own)
+    const others = systemQueries.filter((other) => other !== query).map((other) => structureMatcher(stateOf(other)))
+    const guarded: Record<string, unknown> = {}
+    for (const plan of own.slots) {
+      const accessor = made[plan.slot] as Record<string, unknown>
+      const holds = plan.mode === "read" || plan.mode === "write"
+      // Off the hot path: the entity left the slot's own query, or is not one of this runtime's.
+      const recheck = (record: EntityRecord): void => {
+        if (!record.alive || (holds && !world.has(record, plan.ordinal))) return
+        for (const other of others) {
+          if (other(record)) return
+        }
+        if (world.records.get(record.id) !== record) return
+        const used = "relation" in plan ? plan.relation.name : record.nameAt(plan.ordinal)
+        throw new Error(
+          `${system} used ${used} of entity ${record.id}, which matches none of its queries: an entity kept from an earlier run is not checked against its query again. `
+          + "Keep entity.id and resolve it with queries.x.get(id) in each run, which is fallible"
+        )
+      }
+      const slot = new GuardedSlot(accessor, matchesOwn, recheck)
+      // Only the methods the slot has: a read slot stays without `set`.
+      for (const method of entityMethods) {
+        if (typeof accessor[method] !== "function") Object.defineProperty(slot, method, { value: undefined })
+      }
+      guarded[plan.slot] = slot
+    }
+    return guarded
+  }
+
+  return { each, get, data, guardedData }
+}
+
+/** The slot methods that take an entity first: what a debug runtime's `data` checks. */
+const entityMethods = ["get", "has", "set", "update", "setRaw", "updateRaw", "transition"] as const
+
+type SlotAccessor = Record<(typeof entityMethods)[number], (entity: unknown, argument?: unknown) => unknown>
+
+/**
+ * A slot of a debug runtime's `data`: checks the entity against the slot's own
+ * query (bit masks), and only when that fails against the system's other
+ * queries, then calls the slot. One class for every slot keeps the calls cheap.
+ */
+class GuardedSlot {
+  readonly accessor: SlotAccessor
+  readonly matches: (record: EntityRecord) => boolean
+  readonly recheck: (record: EntityRecord) => void
+
+  constructor(accessor: Record<string, unknown>, matches: (record: EntityRecord) => boolean, recheck: (record: EntityRecord) => void) {
+    this.accessor = accessor as SlotAccessor
+    this.matches = matches
+    this.recheck = recheck
+  }
+
+  check(entity: unknown): void {
+    if (typeof entity === "object" && entity !== null && !this.matches(entity as EntityRecord)) this.recheck(entity as EntityRecord)
+  }
+
+  get(entity: unknown): unknown {
+    this.check(entity)
+    return this.accessor.get(entity)
+  }
+
+  has(entity: unknown): unknown {
+    this.check(entity)
+    return this.accessor.has(entity)
+  }
+
+  set(entity: unknown, value: unknown): unknown {
+    this.check(entity)
+    return this.accessor.set(entity, value)
+  }
+
+  update(entity: unknown, f: unknown): unknown {
+    this.check(entity)
+    return this.accessor.update(entity, f)
+  }
+
+  setRaw(entity: unknown, raw: unknown): unknown {
+    this.check(entity)
+    return this.accessor.setRaw(entity, raw)
+  }
+
+  updateRaw(entity: unknown, f: unknown): unknown {
+    this.check(entity)
+    return this.accessor.updateRaw(entity, f)
+  }
+
+  transition(entity: unknown, move: unknown): unknown {
+    this.check(entity)
+    return this.accessor.transition(entity, move)
+  }
 }

@@ -5,8 +5,9 @@
  * the source patterns neither can see: simulation code that reads the wall
  * clock, `Math.random`, engine-dependent math, or the page, timers counted
  * in floats, data that cannot be saved, casts that skip a brand's check,
- * state values that keep a previous state's fields, and runtime results that
- * are dropped. Every report names the Ritmo API to use instead.
+ * state values that keep a previous state's fields, query entities and data
+ * kept past their run, and runtime results that are dropped. Every report
+ * names the Ritmo API to use instead.
  *
  * Register the plugin in `.oxlintrc.json` with `"jsPlugins":
  * ["@typeonce/oxlint-plugin-ritmo"]`. Its rules are named `ritmo/<rule>`.
@@ -19,7 +20,8 @@
  *   `ritmo/keep-simulation-headless`, `ritmo/no-infinity-in-simulation-data`,
  *   `ritmo/no-float-timers`, `ritmo/no-brand-cast`.
  * - Every file: `ritmo/handle-runtime-result`,
- *   `ritmo/prefix-descriptor-and-system-names`, `ritmo/no-state-spread`.
+ *   `ritmo/prefix-descriptor-and-system-names`, `ritmo/no-state-spread`,
+ *   `ritmo/no-kept-query-values`.
  *
  * @module oxlint-plugin-ritmo
  */
@@ -30,6 +32,7 @@ import keepSimulationHeadless from "./rules/keep-simulation-headless.ts"
 import noBrandCast from "./rules/no-brand-cast.ts"
 import noFloatTimers from "./rules/no-float-timers.ts"
 import noInfinityInSimulationData from "./rules/no-infinity-in-simulation-data.ts"
+import noKeptQueryValues from "./rules/no-kept-query-values.ts"
 import noStateSpread from "./rules/no-state-spread.ts"
 import prefixDescriptorAndSystemNames from "./rules/prefix-descriptor-and-system-names.ts"
 import useClockForTime from "./rules/use-clock-for-time.ts"
@@ -48,6 +51,7 @@ export default definePlugin({
     "no-brand-cast": noBrandCast,
     "handle-runtime-result": handleRuntimeResult,
     "prefix-descriptor-and-system-names": prefixDescriptorAndSystemNames,
-    "no-state-spread": noStateSpread
+    "no-state-spread": noStateSpread,
+    "no-kept-query-values": noKeptQueryValues
   }
 })
