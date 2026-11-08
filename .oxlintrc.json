@@ -29,7 +29,8 @@
       "rules": {
         "ritmo/handle-runtime-result": "error",
         "ritmo/prefix-descriptor-and-system-names": "error",
-        "ritmo/no-state-spread": "error"
+        "ritmo/no-state-spread": "error",
+        "ritmo/no-kept-query-values": "error"
       }
     },
     {

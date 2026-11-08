@@ -186,10 +186,12 @@ export type StagedComponent = readonly [Descriptor<"component", string, any>, un
  *
  * It keeps naming its entity in later runs, since ids are never reused: `data`
  * reads that entity's current value, or throws once the entity no longer holds
- * the component, so a kept entity never reads another one. It does not re-check
- * the query: an entity that left through `without` is still readable. To follow
- * an entity across runs and re-check the query, keep the `id` and resolve it
- * with `queries.x.get(id)`, which is fallible.
+ * the component, so a kept entity never reads another one. A runtime without
+ * `debug` does not re-check the query: an entity that left through `without`
+ * is still readable. A runtime made with `debug` checks every entity a slot is
+ * given against the system's queries, and throws for one that matches none of
+ * them. To follow an entity across runs, keep the `id` and resolve it with
+ * `queries.x.get(id)` in each run, which is fallible.
  */
 export interface EntityRef<S extends Schema.Any, Root = unknown, in Proves = never, in Lacks = never, in Relates = never> {
   /**
