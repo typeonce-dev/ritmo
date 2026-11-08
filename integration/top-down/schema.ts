@@ -43,33 +43,35 @@ export const ControlsInput = Descriptor.Service<InputCapture.SourceOf<ControlsVa
 export const InputState = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("TopDown/InputState")
 export const FrameContext = Descriptor.Service<FrameContextValue>()("TopDown/FrameContext")
 
-export const Game = Schema.bind(
-  Schema.fragment({
-    components: {
-      Position,
-      Velocity,
-      Collider,
-      Player,
-      Wall,
-      Collectable
-    },
-    // What each kind of entity always has: spawning a player without a
-    // collider does not compile, and Game.System.spawns(Player) allows them.
-    requires: [
-      Schema.requires(Player, Position, Velocity, Collider),
-      Schema.requires(Wall, Position, Collider),
-      Schema.requires(Collectable, Position, Collider)
-    ],
-    resources: {
-      DeltaTime,
-      InputState,
-      FocusedCollectable,
-      CollectedCount,
-      TotalCollectables
-    }
-  }),
-  Root
-)
+const fragment = Schema.fragment({
+  components: {
+    Position,
+    Velocity,
+    Collider,
+    Player,
+    Wall,
+    Collectable
+  },
+  // What each kind of entity always has: spawning a player without a
+  // collider does not compile, and Game.System.spawns(Player) allows them.
+  requires: [
+    Schema.requires(Player, Position, Velocity, Collider),
+    Schema.requires(Wall, Position, Collider),
+    Schema.requires(Collectable, Position, Collider)
+  ],
+  resources: {
+    DeltaTime,
+    InputState,
+    FocusedCollectable,
+    CollectedCount,
+    TotalCollectables
+  }
+})
+type FragmentOf = typeof fragment
+/** The game's schema by name: type errors print `GameSchema`, not every descriptor. */
+export interface GameSchema extends FragmentOf {}
+const named: GameSchema = fragment
+export const Game = Schema.bind(named, Root)
 
 export const schema = Game.schema
 

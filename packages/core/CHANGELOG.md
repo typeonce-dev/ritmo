@@ -60,6 +60,8 @@
   
   `single()`, `singleOptional()`, `get`, `getHandle`, `children`, and `descendants` return entities too. `ReadCell` and `WriteCell` remain for resources.
   
+  This replaces 0.17's optional-slot fix: `data.x?.get()` is now `data.x.get(entity)` and `data.x !== undefined` is now `data.x.has(entity)`. Coming from 0.16, rewrite `data.x.present` and `data.x.value()` straight to these.
+  
   `Entity.EntityRef` now takes `<S, Root, Proves, Lacks, Relates>`. `Entity.EntityMut`, `Entity.ref`, and `Entity.mut` are removed: only a query produces an entity.
   
   The type checks are the same or stricter: a read slot has no `set`, a slot rejects an id or an entity whose query does not prove its component, and entities carry their proofs to `commands`.

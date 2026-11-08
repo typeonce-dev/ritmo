@@ -13,7 +13,12 @@ export const Walls = Descriptor.Resource<ReadonlyArray<Box2.Box2>>()("Algorithms
 export const Hits = Descriptor.Resource<ReadonlyArray<{ readonly shot: number; readonly kind: "wall" | "chaser"; readonly time: number }>>()("Algorithms/Hits")
 export const Frame = Descriptor.Service<{ dt: number }>()("Algorithms/Frame")
 
-export const Game = Schema.bind(Schema.fragment({
+const fragment = Schema.fragment({
   components: { Position, Body, Chaser, Player, Shot },
   resources: { Rng, Walls, Hits }
-}))
+})
+type FragmentOf = typeof fragment
+/** The game's schema by name: type errors print `GameSchema`, not every descriptor. */
+export interface GameSchema extends FragmentOf {}
+const named: GameSchema = fragment
+export const Game = Schema.bind(named)

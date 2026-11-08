@@ -21,6 +21,14 @@ Follow these steps once in a new project, and for any step an existing project i
    ```
 3. Install the lint, `pnpm add -D @typeonce/oxlint-plugin-ritmo oxlint`, then set up `.oxlintrc.json` from the `@typeonce/oxlint-plugin-ritmo` README and a `ritmo-devtools lint` entry from the `@typeonce/ritmo-devtools` README. One check script runs the type check, `oxlint`, `ritmo-devtools lint`, and the tests.
    After every Ritmo upgrade, compare `.oxlintrc.json` with that README's config: a new rule is not on until the config lists it, so an existing project does not get it by upgrading.
+4. Name the schema's type where the game binds it, so type errors print `GameSchema` instead of every descriptor the game has:
+   ```ts
+   const schema = Schema.fragment({ components: { Position, Velocity } }) // or Schema.bind(Core, Combat).schema
+   type SchemaOf = typeof schema
+   export interface GameSchema extends SchemaOf {}
+   const named: GameSchema = schema
+   export const Game = Schema.bind(named, Root)
+   ```
 
 Add-ons, installed only when the game needs them:
 - `@typeonce/ritmo-math`: 2D helpers on plain data (vectors, angles, swept circle collision, a flow field).

@@ -907,7 +907,12 @@ export type QueryHandle<S extends Schema.Any, Q extends Query.Any> =
   & QueryIteration<S, Q>
   & (Q["filters"] extends readonly [] ? QueryLookups<S, Q> : FilteredQueryLookups)
 
-/** What every query handle has: iteration over its current entities, and their data. */
+/**
+ * What every query handle has: iteration over its current entities, and their
+ * data. Type a game helper that takes a query with this, from the game's
+ * schema and the query constant (`QueryIteration<GameSchema, typeof Walls>`),
+ * and pass it `queries.walls`.
+ */
 export interface QueryIteration<S extends Schema.Any, Q extends Query.Any> {
   /**
    * Returns the query's entities, in spawn order (ascending entity id), so

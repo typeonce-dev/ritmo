@@ -390,6 +390,25 @@ export const fragment = <
  * const Root = Schema.defineRoot("Game")
  * const Game = Schema.bind(Core, Combat, Root)
  * ```
+ *
+ * Name the schema's type with an interface before binding it under the
+ * root, so type errors print `GameSchema` instead of every component,
+ * resource, and event of the game (`QueryEntity<GameSchema, ...>`), and
+ * helpers type it as `GameSchema`. Bind the fragments once without a root
+ * to merge them, or name a single `Schema.fragment(...)` the same way.
+ *
+ * @example
+ * ```ts
+ * const Core = Schema.fragment({ components: { Position, Velocity } })
+ * const Combat = Schema.fragment({ components: { Health, Enemy }, events: { Hit } })
+ * const Root = Schema.defineRoot("Game")
+ * // ---cut---
+ * const schema = Schema.bind(Core, Combat).schema
+ * type SchemaOf = typeof schema
+ * export interface GameSchema extends SchemaOf {}
+ * const named: GameSchema = schema
+ * export const Game = Schema.bind(named, Root)
+ * ```
  */
 export function bind<
   S extends Schema.Any
