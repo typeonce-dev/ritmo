@@ -882,22 +882,26 @@ export type QueryData<T extends Query.Any> = {
  * The entity type of a query: what `queries.x.each()` holds. It goes to the
  * query's `data` and to `commands`.
  *
- * Type a game helper that takes entities with this type, from the bound game's
- * `schema` and the query constant, and pass it the slot it reads.
+ * Type a game helper that takes one entity with this type, from the game's
+ * schema (named as in `Schema.bind`) and the query constant, and pass it the
+ * slot it reads. A helper that takes the query's entities and its `data` takes
+ * the handle instead, typed `QueryIteration` (from `@typeonce/ritmo/System`).
  *
  * @example
  * ```ts
  * import type { QueryData, QueryEntity } from "@typeonce/ritmo/Query"
+ * import type { QueryIteration } from "@typeonce/ritmo/System"
  *
  * const PlayerRead = Game.Query({ selection: { position: Game.Query.read(Position) } })
  *
- * const leftmost = (
- *   players: ReadonlyArray<QueryEntity<typeof Game.schema, typeof PlayerRead>>,
- *   data: QueryData<typeof PlayerRead>
- * ) => players.reduce((min, player) => Math.min(min, data.position.get(player).x), Infinity)
+ * const leftOf = (player: QueryEntity<typeof Game.schema, typeof PlayerRead>, data: QueryData<typeof PlayerRead>, x: number) =>
+ *   data.position.get(player).x < x
+ * const leftmost = (players: QueryIteration<typeof Game.schema, typeof PlayerRead>) =>
+ *   players.each().reduce((min, player) => Math.min(min, players.data.position.get(player).x), Infinity)
  *
  * Game.System("Game/Leftmost", { queries: { players: PlayerRead } }, ({ queries }) => {
- *   console.log(leftmost(queries.players.each(), queries.players.data))
+ *   const x = leftmost(queries.players)
+ *   console.log(queries.players.each().filter((player) => !leftOf(player, queries.players.data, x)).length)
  * })
  * ```
  */

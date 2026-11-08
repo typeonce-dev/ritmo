@@ -2,6 +2,11 @@
 
 Every change to a published package needs a changeset (`pnpm changeset`). All `@typeonce/ritmo*` packages are one fixed group and always share a version. A breaking entry carries its fix (a short diff or the exact replacement): the shipped `CHANGELOG.md` is the upgrade guide.
 
+The changelog is read across many releases at once (a game going from 0.16 to 0.22 reads every entry in between), so two more rules keep it a guide:
+
+- **A breaking entry names the earlier fix it replaces.** When a change rewrites code that an earlier entry told games to write, say so in the new entry: "This replaces 0.17's optional-slot fix: `data.x?.get()` is now `data.x.get(entity)`." A game following the entries in order then knows to skip the old step.
+- **Each package's changelog holds only its own changes.** A change to `@typeonce/ritmo-tools` goes in a changeset for `@typeonce/ritmo-tools` alone, breaking notes included. When it also changes a skill that ships with `@typeonce/ritmo`, give `@typeonce/ritmo` its own changeset with one entry about the skill, so a search of core's changelog for "Breaking" finds only core changes.
+
 On merge to `main`, the release workflow opens a "Version Packages" pull request. Merging it publishes to npm with trusted publishing and provenance. The workflow runs only while the repository variable `RITMO_RELEASES_ENABLED` is `true`.
 
 If a publish fails, start a fresh run (`gh workflow run release.yml --ref main`) instead of re-running the job: a re-run fails with `TLOG_CREATE_ENTRY_ERROR (409)` because the first attempt already logged its provenance.
