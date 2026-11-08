@@ -160,7 +160,7 @@ describe("data and entities from an earlier run", () => {
     runtime.tick(Game.Schedule(Aim))
     expect(outcomes).toEqual([
       "0",
-      "The data of Pages/Health was used after the run that handed it out: read queries.x.data again in each run"
+      "The data of Pages/Health was used after the run that handed it out: read queries.x.data again in each run, or keep plain values from queries.x.rows()"
     ])
   })
 

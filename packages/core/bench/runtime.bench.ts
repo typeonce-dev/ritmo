@@ -177,6 +177,25 @@ const iterateOptional: BenchCase = {
   }
 }
 
+const rows: BenchCase = {
+  name: "query/rows-10k",
+  description: "Read 10k entities into plain rows (a required and an optional slot each), as a view layer does once a frame",
+  setup: () => {
+    const runtime = makeRuntime()
+    populate(runtime, N, N)
+    const Rows = Game.System("Bench/Rows", {
+      queries: { movers: Game.Query({ selection: { position: Game.Query.read(Position), velocity: Game.Query.optional(Velocity) }, without: [Static] }) },
+      resources: { sum: Game.System.writeResource(Sum) }
+    }, ({ queries, resources }) => {
+      let total = 0
+      for (const row of queries.movers.rows()) total += row.values.position.x + (row.values.velocity?.x ?? 0)
+      resources.sum.set(total)
+    })
+    const schedule = Game.Schedule(Rows)
+    return { run: () => runtime.tick(schedule) }
+  }
+}
+
 const iterateWrite: BenchCase = {
   name: "query/iterate-write-10k",
   description: "Integrate velocity into position on 10k entities",
@@ -749,6 +768,7 @@ export const cases: ReadonlyArray<BenchCase> = [
   despawn,
   iterateRead,
   iterateOptional,
+  rows,
   iterateWrite,
   numberWrite,
   setRaw,
