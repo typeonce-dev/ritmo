@@ -37,11 +37,11 @@
     "@typeonce/ritmo-pixi": "workspace:*",
     "@typeonce/ritmo-render": "workspace:*",
     "@types/node": "^26.6.6",
-    "@vitest/coverage-v8": "5.0.5",
-    "@vitest/expect": "5.0.5",
+    "@vitest/coverage-v8": "5.1.0",
+    "@vitest/expect": "5.1.0",
     "arktype": "^2.2.9",
     "effect": "catalog:",
-    "oxlint": "1.90.0",
+    "oxlint": "1.91.0",
     "oxlint-tsgolint": "7.0.2005",
     "pixi.js": "catalog:",
     "tstyche": "7.2.5",
@@ -51,7 +51,7 @@
     "valibot": "^1.5.0",
     "vite": "catalog:",
     "vite-tsconfig-paths": "6.1.1",
-    "vitest": "5.0.5",
+    "vitest": "5.1.0",
     "zod": "^4.6.7"
   }
 }
