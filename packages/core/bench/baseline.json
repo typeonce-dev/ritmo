@@ -60,6 +60,12 @@
         "score": 0.0719,
         "bytesPerRun": 1628
       },
+      "query/rows-10k": {
+        "minMs": 0.4902,
+        "medianMs": 0.5025,
+        "score": 0.1638,
+        "bytesPerRun": 1041966
+      },
       "query/iterate-write-10k": {
         "minMs": 0.1777,
         "medianMs": 0.1815,

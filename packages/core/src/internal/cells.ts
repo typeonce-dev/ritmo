@@ -77,7 +77,7 @@ export interface Stamp {
 /** A slot used in a later run than the one that handed it out. */
 const staleRun = (name: string): never => {
   throw new Error(
-    `The data of ${name} was used after the run that handed it out: read queries.x.data again in each run`
+    `The data of ${name} was used after the run that handed it out: read queries.x.data again in each run, or keep plain values from queries.x.rows()`
   )
 }
 

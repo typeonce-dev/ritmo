@@ -864,7 +864,8 @@ export type WriteSlotOf<D extends ComponentDescriptor> =
  *
  * Valid during the run that handed it out: a slot kept in `local` state, a
  * closure, or an inspector's result throws when used later. Read
- * `queries.x.data` again in each run.
+ * `queries.x.data` again in each run; to keep the values past the run, read
+ * them into plain rows with `queries.x.rows()`.
  */
 export type QueryData<T extends Query.Any> = {
   readonly [K in keyof T["selection"]]:
@@ -903,6 +904,32 @@ export type QueryData<T extends Query.Any> = {
  */
 export type QueryEntity<S extends Schema.Any, Q extends Query.Any> =
   EntityRef<S, Query.Root<Q>, Query.Proven<Q>, Query.Excluded<Q>, Query.ProvenRelations<Q>>
+
+/**
+ * The plain values of one entity of a query: one field per entry of its
+ * `selection`, each what that slot's `get` returns (`undefined` for an
+ * optional slot whose entity lacks the component). What `queries.x.rows()`
+ * holds in `values`.
+ *
+ * Plain values, not slots: they stay readable after the run that read them,
+ * so a view, an inspector's result, or a memoized helper can keep them.
+ */
+export type QueryValues<T extends Query.Any> = {
+  readonly [K in keyof QueryData<T>]: QueryData<T>[K] extends { get(entity: never): infer V } ? V : never
+}
+
+/**
+ * One entity of a query read into plain values: its id and its
+ * {@link QueryValues}. What `queries.x.rows()` returns.
+ *
+ * It carries the `id`, not the entity: a row kept past its run cannot be read
+ * through a query's `data`. To act on the entity again, resolve the id with
+ * `queries.x.get(id)`, which is fallible.
+ */
+export interface QueryRow<S extends Schema.Any, Q extends Query.Any> {
+  readonly id: EntityId<S, Query.Root<Q>>
+  readonly values: QueryValues<Q>
+}
 
 /**
  * Creates a typed missing-entity error.

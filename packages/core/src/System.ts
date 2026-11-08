@@ -60,7 +60,7 @@ import type { Descriptor } from "./Descriptor.ts"
 import type * as Entity from "./Entity.ts"
 import * as Machine from "./Machine.ts"
 import type * as Relation from "./Relation.ts"
-import type { Query, QueryData, QueryEntity } from "./Query.ts"
+import type { Query, QueryData, QueryEntity, QueryRow } from "./Query.ts"
 import type { ConstructedWriteCell, ReadCell, ReadonlyValue, StateExactFields, StateUpdateResult, WriteCell } from "./Query.ts"
 import * as Requirement from "./Requirement.ts"
 import type * as Result from "./Result.ts"
@@ -958,6 +958,29 @@ export interface QueryIteration<S extends Schema.Any, Q extends Query.Any> {
    * ```
    */
   singleOptional(): Result.Result<QueryEntity<S, Q> | undefined, Query.MultipleEntitiesError>
+  /**
+   * Reads every entity of the query into plain values, in the order of
+   * {@link each}: each row's `id` and `values`, one field per slot of the
+   * `selection` (`undefined` for an optional slot whose entity lacks the
+   * component). See {@link QueryRow}.
+   *
+   * Use it to hand the world to code that runs after the system: a view or
+   * UI layer, an inspector's result, a memoized helper, a test's assertion.
+   * It reads every slot of every entity and makes an object per row, so a
+   * system that acts on entities reads {@link data} instead.
+   *
+   * @example
+   * ```ts
+   * const Enemies = Game.Query({ selection: { position: Game.Query.read(Position), health: Game.Query.read(Health) }, with: [Enemy] })
+   *
+   * const EnemyView = Game.Inspector("Game/EnemyView", { queries: { enemies: Enemies } }, ({ queries }) =>
+   *   queries.enemies.rows())
+   *
+   * // On the host, after a tick: plain values, safe to keep.
+   * for (const { id, values } of runtime.inspect(EnemyView)) console.log(id, values.position.x, values.health)
+   * ```
+   */
+  rows(): ReadonlyArray<QueryRow<S, Q>>
 }
 
 type FilteredLookupMessage = "lookups need a query without added/changed filters: declare a second query for resolving entities"
