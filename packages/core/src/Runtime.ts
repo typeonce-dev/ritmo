@@ -3410,7 +3410,7 @@ export const make = <
   readonly machineDefinitions?: ReadonlyArray<Machine.StateMachine.Any>
   /** Scopes whose members a committed state change despawns; `Game.Runtime.make` passes every `Game.EntityScope`. */
   readonly scopeDefinitions?: ReadonlyArray<EntityScopeModule.EntityScope.Any>
-  /** Attaches a `debug` handle to the runtime, timed by `hostClock`; see the `Debug` module. */
+  /** Attaches a `debug` handle to the runtime, timed by `hostClock`, and freezes every value written to the world; see the `Debug` module. */
   readonly debug?: Enabled
   /** The game's save migrations (`Snapshot.migrations`), applied by `restore`. */
   readonly saves?: Snapshot.Migrations
