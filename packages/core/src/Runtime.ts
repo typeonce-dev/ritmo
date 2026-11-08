@@ -84,7 +84,7 @@ import { makeWorld } from "./internal/world.ts"
 import type { WorldHooks, WorldMark, WorldRewind } from "./internal/world.ts"
 import type * as Machine from "./Machine.ts"
 import * as Query from "./Query.ts"
-import type { QueryData, QueryEntity, ReadonlyValue } from "./Query.ts"
+import type { QueryData, QueryEntity, QueryRow, QueryValues, ReadonlyValue } from "./Query.ts"
 import * as Relation from "./Relation.ts"
 import * as RelationErrors from "./internal/relations.ts"
 import type * as Requirement from "./Requirement.ts"
@@ -1391,6 +1391,20 @@ const makeValidatedRuntime = <
           return Result.failure(Query.multipleEntitiesError(entities.length))
         }
         return Result.success(entities[0])
+      },
+      rows() {
+        const entities = each()
+        const data = queries.data(query) as Record<string, { get(entity: unknown): unknown }>
+        const names = Object.keys(data)
+        const slots = names.map((name) => data[name]!)
+        const rows: Array<QueryRow<S, Q>> = new Array(entities.length)
+        for (let index = 0; index < entities.length; index++) {
+          const entity = entities[index]!
+          const values: Record<string, unknown> = {}
+          for (let slot = 0; slot < slots.length; slot++) values[names[slot]!] = slots[slot]!.get(entity)
+          rows[index] = { id: entity.id, values: values as QueryValues<Q> }
+        }
+        return rows
       }
     }
   }
