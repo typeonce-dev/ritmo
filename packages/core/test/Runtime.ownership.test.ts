@@ -125,6 +125,29 @@ describe("values handed to the world", () => {
     expect(() => { sent.x = 0 }).toThrow(TypeError)
   })
 
+  it("freeze nested arrays, Map and Set contents, and symbol-keyed values", () => {
+    const tag = Symbol("tag")
+    const grid = [[{ x: 1 }], [{ x: 2 }]]
+    const byName = new Map([["a", { x: 3 }]])
+    const seen = new Set([{ x: 4 }])
+    const tagged = { [tag]: { x: 5 } }
+    const runtime = makeRuntime(true, { speed: 1 })
+    const Write = Game.System("Ownership/WriteNested", {
+      events: { hit: Game.System.writeEvent(Hit) }
+    }, ({ events }) => {
+      events.hit.emit({ x: 0, grid, byName, seen, tagged } as { x: number })
+    })
+    runtime.tick(Game.Schedule(Write))
+
+    expect(() => { grid[1]!.push({ x: 0 }) }).toThrow(TypeError)
+    expect(() => { grid[0]![0]!.x = 0 }).toThrow(TypeError)
+    expect(() => { byName.get("a")!.x = 0 }).toThrow(TypeError)
+    expect(() => { [...seen][0]!.x = 0 }).toThrow(TypeError)
+    expect(() => { tagged[tag].x = 0 }).toThrow(TypeError)
+    byName.set("b", { x: 6 })
+    expect(byName.size).toBe(2)
+  })
+
   it("skip typed arrays, which cannot be frozen", () => {
     const runtime = makeRuntime(true)
     const samples = new Float32Array([1, 2])

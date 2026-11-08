@@ -5,6 +5,12 @@
  * without it have no handle at all, so production code cannot reach into
  * internals by accident and pays nothing for them.
  *
+ * A debug runtime costs more each frame than one without, even with no
+ * listener attached, because it freezes every value it is handed (see below).
+ * Turn it on for tests, devtools sessions, and development builds; leave it
+ * off in what ships and in long headless runs that use no devtools (a
+ * balance bot playing thousands of steps).
+ *
  * The handle is read-only: it describes the schema and schedules, dumps the
  * current world as plain data, reports stream retention, and streams trace
  * events while schedules run. Nothing it returns can change the world.
@@ -834,9 +840,15 @@ export type TraceEvent =
 
 /**
  * The `debug` runtime option: `{ hostClock }` attaches a handle, timing
- * traces with that clock. A value that may be `undefined`
- * (`import.meta.env.DEV ? { hostClock } : undefined`) attaches it when
- * present and types `debug` as optional, so code checks it before use.
+ * traces with that clock, and freezes every value written to the world. A
+ * value that may be `undefined` (`import.meta.env.DEV ? { hostClock } :
+ * undefined`) attaches it when present and types `debug` as optional, so code
+ * checks it before use.
+ *
+ * The clock times trace events only: a runtime without `debug` reads no
+ * clock. A headless runtime shared by tests and long bot runs takes `debug`
+ * as a choice, so the tests and devtools sessions get the handle and the bot
+ * runs without the cost of freezing.
  */
 export interface Option {
   /** Times trace events (`ms`); see `HostClock`. */
