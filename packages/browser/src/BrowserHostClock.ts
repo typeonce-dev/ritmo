@@ -6,7 +6,11 @@
  *
  * @example
  * ```ts
- * const runtime = Game.Runtime.make({ services, debug: { hostClock: BrowserHostClock.make(window) } }).value
+ * // The handle in development only: a debug runtime freezes every value it is handed, so it costs each frame.
+ * const runtime = Game.Runtime.make({
+ *   services,
+ *   debug: import.meta.env.DEV ? { hostClock: BrowserHostClock.make(window) } : undefined
+ * }).value
  * ```
  *
  * @module BrowserHostClock

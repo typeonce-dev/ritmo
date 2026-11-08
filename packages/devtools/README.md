@@ -16,7 +16,8 @@ and `rolldown` and `oxlint` for `ritmo-devtools scan`.
 
 The package reads the core `Debug` handle, which exists only on runtimes made
 with `debug: { hostClock }`. Production runtimes carry no handle and pay
-nothing. The modules read no platform globals: give the runtime and the
+nothing; a debug runtime freezes every value it is handed, so leave `debug`
+off in what ships and in long headless runs that use no devtools. The modules read no platform globals: give the runtime and the
 session the same `HostClock` (`HostClock.test()` headless, so every timing is
 0 and text output is identical across runs; `BrowserHostClock.make(window)`
 in the browser).
