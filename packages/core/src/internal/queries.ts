@@ -29,12 +29,14 @@ type AnyQuery = Query.Query.Any<any>
 /**
  * What a rewind changed for one reader that did not rewind, per component
  * ordinal: the entities whose component it should see as added, and as
- * changed, on top of what their change ticks say. Only entities that hold
- * the component when the reader runs count.
+ * changed, on top of what their change ticks say, and those whose component
+ * it had seen before the rewind took it away, which it never sees as added
+ * again. Only entities that hold the component when the reader runs count.
  */
 export interface Reverts {
   readonly added: Map<number, Set<number>>
   readonly changed: Map<number, Set<number>>
+  readonly seen: Map<number, Set<number>>
 }
 
 type SlotPlan =
@@ -236,9 +238,17 @@ export const makeQueryEngine = (world: World) => {
     return true
   }
 
-  const reverted = (reverts: Reverts, member: LifecycleFilterPlan, record: EntityRecord): boolean =>
-    (member.kind === "added" ? reverts.added : reverts.changed).get(member.ordinal)?.has(record.id) === true
-      && world.has(record, member.ordinal)
+  /**
+   * Whether a filter member matches for a reader with changes from a rewind,
+   * given whether the change ticks say it does (`ticked`). A component the
+   * reader had seen before a rewind took it away is not added when it is
+   * brought back.
+   */
+  const reverted = (reverts: Reverts, member: LifecycleFilterPlan, record: EntityRecord, ticked: boolean): boolean => {
+    if (member.kind === "added" && reverts.seen.get(member.ordinal)?.has(record.id) === true) return false
+    return ticked || ((member.kind === "added" ? reverts.added : reverts.changed).get(member.ordinal)?.has(record.id) === true
+      && world.has(record, member.ordinal))
+  }
 
   const matchesFilters = (state: QueryState, record: EntityRecord, since: number, reverts: Reverts | undefined): boolean => {
     for (const filter of state.filters) {
@@ -247,7 +257,7 @@ export const makeQueryEngine = (world: World) => {
         matched = member.kind === "added"
           ? world.addedSince(record, member.ordinal, since)
           : world.changedSince(record, member.ordinal, since)
-        if (!matched && reverts !== undefined) matched = reverted(reverts, member, record)
+        if (reverts !== undefined) matched = reverted(reverts, member, record, matched)
         if (matched) break
       }
       if (!matched) return false

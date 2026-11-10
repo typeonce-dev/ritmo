@@ -1245,10 +1245,11 @@ const makeValidatedRuntime = <
     reverts: Reverts | undefined
   }
 
-  /** {@link QueryReverts}, and per component ordinal the removals (and the despawns) a rewind made. */
+  /** {@link QueryReverts}, per component ordinal the removals (and the despawns) a rewind made, and the resources it put back. */
   interface Reverts extends QueryReverts {
     readonly removed: Map<number, Set<number>>
     readonly despawned: Set<number>
+    readonly resources: Set<symbol>
   }
 
   const resolve = <Q extends Query.Query.Any<Root>>(id: number, query: Q, reader: ReaderState) =>
@@ -1610,7 +1611,7 @@ const makeValidatedRuntime = <
     return {
       get: () => read.get(),
       // `since` is the previous completed run; 0 before the first one.
-      changed: () => reader.since === 0 || (resourceChangedAt.get(key) ?? 0) > reader.since
+      changed: () => reader.since === 0 || (resourceChangedAt.get(key) ?? 0) > reader.since || reader.reverts?.resources.has(key) === true
     }
   }
 
@@ -3045,13 +3046,25 @@ const makeValidatedRuntime = <
   }
 
   /** Gives a reader outside the rewound schedule what the rewind changed, for its next run. */
-  const revert = (reader: ReaderState, rewound: WorldRewind): void => {
-    const reverts = reader.reverts ??= { added: new Map(), changed: new Map(), removed: new Map(), despawned: new Set() }
+  const revert = (reader: ReaderState, rewound: WorldRewind, putBack: ReadonlySet<symbol>): void => {
+    const reverts = reader.reverts ??= { added: new Map(), changed: new Map(), seen: new Map(), removed: new Map(), despawned: new Set(), resources: new Set() }
     addAll(reverts.added, rewound.back)
     addAll(reverts.changed, rewound.back)
     addAll(reverts.changed, rewound.written)
-    addAll(reverts.removed, rewound.gone)
+    for (const [ordinal, ids] of rewound.gone) {
+      let removed = reverts.removed.get(ordinal)
+      if (removed === undefined) reverts.removed.set(ordinal, removed = new Set<number>())
+      let seen = reverts.seen.get(ordinal)
+      for (const [id, addedAt] of ids) {
+        removed.add(id)
+        // Present when the reader last ran: brought back by its next run, it is changed, not added.
+        if (addedAt > reader.lastRun) continue
+        if (seen === undefined) reverts.seen.set(ordinal, seen = new Set<number>())
+        seen.add(id)
+      }
+    }
     for (const id of rewound.despawned) reverts.despawned.add(id)
+    for (const key of putBack) reverts.resources.add(key)
     // Removals made after the checkpoint that the reader had not read yet: the rewind took them back.
     for (const [ordinal, id, at] of rewound.removedAfter) {
       if (at <= reader.lastRun) continue
@@ -3081,6 +3094,9 @@ const makeValidatedRuntime = <
       if (failed !== undefined) return Result.failure({ _tag: "RestoreFailed", service: failed.service, error: failed.error })
     }
     const index = runtimeMarks.indexOf(mark)
+    // Resources written after the checkpoint: the rewind puts each back.
+    const putBack = new Set<symbol>()
+    for (const [key, at] of resourceChangedAt) if (at > mark.world.tick) putBack.add(key)
     const rewound = world.rewindToMark(mark.world)
     for (let newer = index + 1; newer < runtimeMarks.length; newer++) runtimeMarks[newer]!.released = "rewound"
     runtimeMarks.length = index + 1
@@ -3120,7 +3136,7 @@ const makeValidatedRuntime = <
     }
     for (const reader of allReaders) {
       // A reader that has not run since the checkpoint never saw what the rewind undid.
-      if (!inside.has(reader) && reader.lastRun > mark.world.tick) revert(reader, rewound)
+      if (!inside.has(reader) && reader.lastRun > mark.world.tick) revert(reader, rewound, putBack)
     }
     return succeeded
   }

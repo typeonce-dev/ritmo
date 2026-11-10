@@ -308,15 +308,15 @@ export interface WorldMark {
 /**
  * What a rewind changed, for readers that did not rewind: per component
  * ordinal, the entities whose value was written after the mark, gained the
- * component back, or lost it; entities that stopped existing; and the
- * removed and despawned records made after the mark, which the rewind took
- * back, with their ticks.
+ * component back, or lost it (with the tick it had been added at); entities
+ * that stopped existing; and the removed and despawned records made after
+ * the mark, which the rewind took back, with their ticks.
  */
 export interface WorldRewind {
   readonly tick: number
   readonly written: ReadonlyMap<number, ReadonlySet<number>>
   readonly back: ReadonlyMap<number, ReadonlySet<number>>
-  readonly gone: ReadonlyMap<number, ReadonlySet<number>>
+  readonly gone: ReadonlyMap<number, ReadonlyMap<number, number>>
   readonly despawned: ReadonlySet<number>
   readonly removedAfter: ReadonlyArray<readonly [ordinal: number, id: number, tick: number]>
   readonly despawnedAfter: ReadonlyArray<readonly [id: number, tick: number]>
@@ -1181,7 +1181,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
 
     const written = new Map<number, Set<number>>()
     const back = new Map<number, Set<number>>()
-    const gone = new Map<number, Set<number>>()
+    const gone = new Map<number, Map<number, number>>()
     const despawned = new Set<number>()
     for (const [page, copy] of pages) {
       const ordinal = page.ordinal
@@ -1190,7 +1190,11 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
         const after = copy.values[slot] !== ABSENT
         const id = page.base + slot
         if (before && page.changed[slot]! > mark.tick) addTo(written, ordinal, id)
-        if (before && !after) addTo(gone, ordinal, id)
+        if (before && !after) {
+          let ids = gone.get(ordinal)
+          if (ids === undefined) gone.set(ordinal, ids = new Map())
+          ids.set(id, page.added[slot]!)
+        }
         else if (!before && after) addTo(back, ordinal, id)
       }
       page.values = copy.values

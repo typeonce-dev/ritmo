@@ -46,12 +46,15 @@
  *
  * Systems and inspectors outside `simulate` (rendering, a HUD, a host's
  * inspector) do not rewind. Their next run sees the rewind as ordinary
- * changes: a value written after the checkpoint as changed, a component or
- * entity that is gone as removed or despawned, one that came back as added.
- * A removal is reported only for what is still gone when the reader runs, so
- * an entity the rewind took away and the ticks after it brought back (the
- * same id: ids are exact) is seen as changed, never as despawned and spawned
- * again. They may see a value as changed that ended up equal. Events they
+ * changes: a value or resource written after the checkpoint as changed, a
+ * component or entity that is gone as removed or despawned, one that came
+ * back as added. A removal is reported only for what is still gone when the
+ * reader runs, and a component the reader had seen, which the rewind took
+ * away and the ticks after it brought back before the reader's next run, is
+ * changed, not added. So an entity the rewind took away and the ticks after
+ * it brought back (the same id: ids are exact) is seen as changed, never as
+ * despawned and spawned again. They may see a value as changed that ended
+ * up equal. Events they
  * read during ticks that are ticked again are published again. A networked
  * game reads them through its session instead (`session.events(...)` in
  * `@typeonce/ritmo-netcode`), which hands each event out once, when its tick
