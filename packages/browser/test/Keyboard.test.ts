@@ -27,9 +27,14 @@ const makeHost = () => {
       listener(event)
     }
   }
+  /** A key event with every field a browser sends, modifiers included. */
+  const fire = (type: "keydown" | "keyup", event: Omit<Keyboard.KeyEvent, "preventDefault" | "repeat"> & { readonly repeat?: boolean }) => {
+    for (const listener of listeners.get(type) ?? []) listener({ repeat: false, ...event, preventDefault: () => prevented.push(event.key) })
+  }
   return {
     host,
     prevented,
+    fire,
     down: (key: string, repeat = false) => dispatch("keydown", key, repeat),
     up: (key: string) => dispatch("keyup", key),
     /** A key event with its physical `code`, as browsers send it. */
@@ -106,6 +111,169 @@ describe("Keyboard.actions", () => {
 
     input.dispose()
     expect(fake.listenerCount()).toBe(0)
+  })
+})
+
+describe("Keyboard browser shortcuts", () => {
+  const bindings = { restart: ["r"], left: ["a"], run: ["Shift"] } as const
+  const idle = { held: false, pressed: false, released: false }
+  const meta = { key: "Meta", code: "MetaLeft" } as const
+  const control = { key: "Control", code: "ControlLeft" } as const
+
+  it("leaves Cmd+R and Ctrl+R to the browser: no preventDefault, no action", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, bindings)
+    fake.fire("keydown", { ...meta, metaKey: true })
+    fake.fire("keydown", { key: "r", code: "KeyR", metaKey: true })
+    expect(fake.prevented).toEqual([])
+    expect(keyboard.snapshot().actions.restart).toEqual(idle)
+    fake.fire("keyup", { ...meta })
+
+    fake.fire("keydown", { ...control, ctrlKey: true })
+    fake.fire("keydown", { key: "r", code: "KeyR", ctrlKey: true })
+    fake.fire("keyup", { key: "r", code: "KeyR", ctrlKey: true })
+    expect(fake.prevented).toEqual([])
+    expect(keyboard.snapshot().actions.restart).toEqual(idle)
+  })
+
+  it("still presses a modifier key itself with Ctrl down", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, bindings)
+    fake.fire("keydown", { ...control, ctrlKey: true })
+    fake.fire("keydown", { key: "Shift", code: "ShiftLeft", ctrlKey: true })
+    expect(keyboard.snapshot().actions.run).toEqual({ held: true, pressed: true, released: false })
+    expect(fake.prevented).toEqual(["Shift"])
+  })
+
+  it("presses a key typed with AltGr, which reports Ctrl and Alt together", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { at: ["@"] })
+    fake.fire("keydown", { key: "AltGraph", code: "AltRight", ctrlKey: true, altKey: true })
+    fake.fire("keydown", { key: "@", code: "KeyQ", ctrlKey: true, altKey: true })
+    expect(keyboard.snapshot().actions.at).toEqual({ held: true, pressed: true, released: false })
+    expect(fake.prevented).toEqual(["@"])
+  })
+
+  it("keeps every key pressed with Ctrl when the game binds Control itself", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { crouch: ["Control"], left: ["a"] })
+    fake.fire("keydown", { ...control, ctrlKey: true })
+    fake.fire("keydown", { key: "a", code: "KeyA", ctrlKey: true })
+    const both = keyboard.snapshot().actions
+    expect(both.crouch).toEqual({ held: true, pressed: true, released: false })
+    expect(both.left).toEqual({ held: true, pressed: true, released: false })
+    expect(fake.prevented).toEqual(["Control", "a"])
+  })
+
+  it("follows a rebinding: binding Control in keeps Ctrl+A, binding it out leaves it to the browser again", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { crouch: ["c"], left: ["a"] })
+    const ctrlA = () => {
+      fake.fire("keydown", { ...control, ctrlKey: true })
+      fake.fire("keydown", { key: "a", code: "KeyA", ctrlKey: true })
+      fake.fire("keyup", { key: "a", code: "KeyA", ctrlKey: true })
+      fake.fire("keyup", { ...control })
+      return keyboard.snapshot().actions.left.pressed
+    }
+    expect(ctrlA()).toBe(false)
+    keyboard.rebind({ crouch: [Keyboard.code("ControlRight")], left: ["a"] })
+    expect(ctrlA()).toBe(true)
+    keyboard.rebind({ crouch: ["c"], left: ["a"] })
+    expect(ctrlA()).toBe(false)
+    keyboard.rebind({ crouch: ["c"], left: ["a", "Meta"] })
+    expect(ctrlA()).toBe(true)
+  })
+
+  it("lets go of the keys held under Cmd when Cmd comes up, as macOS sends them no keyup", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, bindings)
+    fake.fire("keydown", { key: "a", code: "KeyA" })
+    fake.fire("keydown", { key: "Shift", code: "ShiftLeft" })
+    fake.fire("keydown", { ...meta, metaKey: true })
+    keyboard.snapshot()
+    // A comes up while Cmd is down: macOS sends no keyup for it.
+    fake.fire("keyup", { ...meta })
+    const after = keyboard.snapshot().actions
+    expect(after.left).toEqual({ held: false, pressed: false, released: true })
+    // Modifiers do get their keyup, so Shift stays held.
+    expect(after.run).toEqual({ held: true, pressed: false, released: false })
+  })
+
+  it("does not offer a shortcut to bind on a settings screen, but does offer the modifier", () => {
+    const fake = makeHost()
+    const presses = Keyboard.presses(fake.host)
+    fake.fire("keydown", { ...control, ctrlKey: true })
+    fake.fire("keydown", { key: "r", code: "KeyR", ctrlKey: true })
+    fake.fire("keydown", { key: "@", code: "KeyQ", ctrlKey: true, altKey: true })
+    expect(presses.snapshot()).toEqual([{ key: "Control", code: "ControlLeft" }, { key: "@", code: "KeyQ" }])
+  })
+})
+
+describe("Keyboard auto-repeat", () => {
+  it("presses a key still down after a blur again at its next repeat", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { left: ["a"] })
+    fake.fire("keydown", { key: "a", code: "KeyA" })
+    keyboard.snapshot()
+    fake.blur()
+    expect(keyboard.snapshot().actions.left.released).toBe(true)
+    fake.fire("keydown", { key: "a", code: "KeyA", repeat: true })
+    expect(keyboard.snapshot().actions.left).toEqual({ held: true, pressed: true, released: false })
+    fake.fire("keyup", { key: "a", code: "KeyA" })
+    expect(keyboard.snapshot().actions.left.released).toBe(true)
+  })
+
+  it("presses a key still down after Cmd came up again at its next repeat, once", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { left: ["a"] })
+    fake.fire("keydown", { key: "a", code: "KeyA" })
+    fake.fire("keydown", { key: "Meta", code: "MetaLeft", metaKey: true })
+    fake.fire("keyup", { key: "Meta", code: "MetaLeft" })
+    keyboard.snapshot()
+    fake.fire("keydown", { key: "a", code: "KeyA", repeat: true })
+    fake.fire("keydown", { key: "a", code: "KeyA", repeat: true })
+    expect(keyboard.snapshot().actions.left).toEqual({ held: true, pressed: true, released: false })
+    fake.fire("keydown", { key: "a", code: "KeyA", repeat: true })
+    expect(keyboard.snapshot().actions.left).toEqual({ held: true, pressed: false, released: false })
+    expect(fake.prevented).toEqual(["a", "a", "a", "a"])
+  })
+
+  it("adds no second press for a repeat of a held key", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { left: ["a"] })
+    fake.fire("keydown", { key: "a", code: "KeyA" })
+    keyboard.snapshot()
+    fake.fire("keydown", { key: "a", code: "KeyA", repeat: true })
+    expect(keyboard.snapshot().actions.left).toEqual({ held: true, pressed: false, released: false })
+  })
+
+  it("leaves a repeat with Cmd or Ctrl to the browser", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { left: ["a"] })
+    fake.fire("keydown", { key: "a", code: "KeyA", ctrlKey: true, repeat: true })
+    expect(keyboard.snapshot().actions.left.pressed).toBe(false)
+    expect(fake.prevented).toEqual([])
+  })
+
+  it("does not press a key held across a rebind that binds it at its next repeat", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { jump: ["w"] })
+    fake.fire("keydown", { key: " ", code: "Space" })
+    keyboard.rebind({ jump: [" "] })
+    fake.fire("keydown", { key: " ", code: "Space", repeat: true })
+    expect(keyboard.snapshot().actions.jump).toEqual({ held: false, pressed: false, released: false })
+    fake.fire("keyup", { key: " ", code: "Space" })
+    fake.fire("keydown", { key: " ", code: "Space" })
+    expect(keyboard.snapshot().actions.jump.pressed).toBe(true)
+  })
+
+  it("does not press a key that went down in a form field at its repeats outside it", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { confirm: ["Enter"] })
+    fake.fire("keydown", { key: "Enter", code: "Enter", target: { tagName: "INPUT" } })
+    // The field submitted and lost focus; Enter is still down.
+    fake.fire("keydown", { key: "Enter", code: "Enter", repeat: true, target: { tagName: "BODY" } })
+    expect(keyboard.snapshot().actions.confirm).toEqual({ held: false, pressed: false, released: false })
   })
 })
 

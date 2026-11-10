@@ -9,9 +9,10 @@
  * as one device for `lastUsed` and `available`). Games that aim with the
  * mouse read `position`. The module owns the browser plumbing:
  * element-relative coordinates, press/release edges that survive clicks
- * shorter than one frame, pointer capture so a release outside the element
- * is still seen, suppressing the context menu, clearing buttons on window
- * blur, and listener cleanup. It does not know about the ECS;
+ * shorter than one frame, buttons pressed and released while another is
+ * held (which browsers report as pointer moves), pointer capture so a
+ * release outside the element is still seen, suppressing the context menu,
+ * clearing buttons on window blur, and listener cleanup. It does not know about the ECS;
  * `InputCapture.system(...)` copies snapshots into a resource.
  *
  * Positions are in CSS pixels relative to the element's top-left corner.
@@ -96,6 +97,14 @@ export type Button = (typeof buttonNames)[number]
 export const wheelStep = 100
 
 const buttonOf = (code: number): Button | undefined => physicalButtons[code]
+
+/**
+ * Each physical button's bit in `PointerEvent.buttons`, in `PointerEvent.button`
+ * order: the two encodings swap the middle and secondary buttons.
+ */
+const buttonBits = [1, 4, 2, 8, 16] as const
+
+const bitOf = (code: number): number => buttonBits[code] ?? 0
 
 const buttonSet: ReadonlySet<string> = new Set(buttonNames)
 
@@ -203,7 +212,17 @@ export interface PointerEventLike {
   /** Raw motion since the previous event; events without it count as 0. */
   readonly movementX?: number
   readonly movementY?: number
+  /** The button that changed: 0 primary, 1 middle, 2 secondary, 3 back, 4 forward. */
   readonly button: number
+  /**
+   * Every button down after this event, as a bitmask: 1 primary, 2
+   * secondary, 4 middle, 8 back, 16 forward. Browsers send `pointerdown`
+   * only for the first button down and `pointerup` only for the last one up;
+   * the buttons in between arrive as `pointermove`, so the module holds what
+   * this reports on every down, up, and move. Events without it are read by
+   * `button` alone, which misses those.
+   */
+  readonly buttons?: number
   readonly pointerId: number
   /** `"mouse"`, `"pen"`, or `"touch"`; events without it count as mouse. */
   readonly pointerType?: string
@@ -379,6 +398,39 @@ export const actions = <const B extends Bindings>(
   const state = tracker(bindings, { x: 0, y: 0 })
   let over = false
   const isLocked = (): boolean => lock !== undefined && lock.pointerLockElement === target
+  const awaitingLock = (): boolean => lock !== undefined && !isLocked()
+  // Buttons that went down while the pointer was not locked, ignored until they
+  // come up: the click that locks is not a press, even once the lock is taken.
+  let ignored = 0
+
+  const heldMask = (): number => {
+    let mask = 0
+    for (let code = 0; code < physicalButtons.length; code++) {
+      if (state.buttons.held.has(physicalButtons[code]!)) mask |= buttonBits[code]!
+    }
+    return mask
+  }
+
+  /**
+   * Holds exactly the buttons of `mask` (a `buttons` bitmask), pressing and
+   * releasing those that changed, and captures the pointer while any is held.
+   */
+  const hold = (mask: number, pointerId: number, unlocked: boolean): void => {
+    const wasHeld = state.buttons.held.size > 0
+    ignored &= mask
+    for (let code = 0; code < physicalButtons.length; code++) {
+      const button = physicalButtons[code]!
+      const bit = buttonBits[code]!
+      if ((mask & bit) === 0) state.buttons.up(button)
+      else if ((ignored & bit) === 0 && !state.buttons.held.has(button)) {
+        if (unlocked) ignored |= bit
+        else state.buttons.down(button)
+      }
+    }
+    const isHeld = state.buttons.held.size > 0
+    if (!wasHeld && isHeld) target.setPointerCapture?.(pointerId)
+    else if (wasHeld && !isHeld) target.releasePointerCapture?.(pointerId)
+  }
 
   const locate = (event: PointerEventLike): void => {
     const rect = target.getBoundingClientRect()
@@ -391,30 +443,30 @@ export const actions = <const B extends Bindings>(
     locate(event)
     over = true
     const button = buttonOf(event.button)
-    if (button === undefined) return
-    event.preventDefault()
-    if (lock !== undefined && !isLocked()) {
+    const unlocked = awaitingLock()
+    if (button !== undefined) {
+      event.preventDefault()
       // The click that locks is not a press: "click to resume" does not also fire.
-      target.requestPointerLock?.()
-      return
+      if (unlocked) target.requestPointerLock?.()
     }
-    target.setPointerCapture?.(event.pointerId)
-    state.buttons.down(button)
+    if (event.buttons !== undefined) hold(event.buttons, event.pointerId, unlocked)
+    else if (button !== undefined && !unlocked) hold(heldMask() | bitOf(event.button), event.pointerId, false)
   }
 
   const onUp = (event: PointerEventLike): void => {
     if (!tracked(event)) return
     locate(event)
     const button = buttonOf(event.button)
-    if (button === undefined || !state.buttons.held.has(button)) return
-    state.buttons.up(button)
-    if (state.buttons.held.size === 0) target.releasePointerCapture?.(event.pointerId)
+    if (event.buttons !== undefined) hold(event.buttons, event.pointerId, awaitingLock())
+    else if (button !== undefined && state.buttons.held.has(button)) hold(heldMask() & ~bitOf(event.button), event.pointerId, false)
   }
 
   const onMove = (event: PointerEventLike): void => {
     if (!tracked(event)) return
     locate(event)
     over = true
+    // A button pressed or released while another is held arrives as a move.
+    if (event.buttons !== undefined) hold(event.buttons, event.pointerId, awaitingLock())
   }
 
   const onLeave = (event: PointerEventLike): void => {
