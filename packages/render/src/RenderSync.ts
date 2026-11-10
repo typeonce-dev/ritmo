@@ -9,8 +9,11 @@
  * in a safe order (destroy, create, update), for one bound `Game`. What a
  * node looks like and how state is applied stay caller-defined. The registry
  * belongs to the system: when removals were dropped before it read them
- * (`lagged()`, after it did not run for long), it destroys every node whose
- * entity no longer matches, so give each `RenderSync.system` its own registry.
+ * (`lagged()`, after it did not run for long or after a `runtime.restore`),
+ * it destroys every node whose entity no longer matches, and the node of
+ * every entity added since, which a load may have given to another entity
+ * under the same id: that entity gets a new node. So give each
+ * `RenderSync.system` its own registry.
  *
  * Change detection is per system, so the system sees every addition, change,
  * and removal exactly once, wherever it sits in the schedule, and applies each
@@ -313,6 +316,8 @@ export const system = <
     selection: { __renderable: Game.Query.read(options.renderable) },
     with: required.filter((descriptor) => descriptor !== options.renderable)
   })
+  // Every entity added since the last run: read only after removals were lost.
+  queries["added"] = Query({ selection: { __renderable: Game.Query.read(options.renderable) }, filters: [Game.Query.added(options.renderable)] })
   // Every renderable entity with a parent: checked each run against where
   // its node is attached. There is no per-reader filter for relation edges.
   if (hierarchy !== undefined) {
@@ -336,14 +341,17 @@ export const system = <
       if (stream.lagged()) lagged = true
     }
     // Removals were dropped before this system read them (it did not run
-    // for longer than the stream keeps them): destroy every node whose
-    // entity no longer has one, so none stays on screen.
+    // for longer than the stream keeps them, or a restore replaced the
+    // world): destroy every node whose entity no longer has one, so none
+    // stays on screen, and every node of an entity added since, which may
+    // be another entity under the same id.
     if (lagged) {
       const members = new Set<number>()
       for (const entity of queries["members"].each()) members.add(entity.id)
       for (const [entity] of [...registry.entries()]) {
         if (!members.has(entity)) registry.remove(entity)
       }
+      for (const entity of queries["added"].each()) registry.remove(entity.id)
     }
 
     const data = queries["sync"].data
