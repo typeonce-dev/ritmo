@@ -61,7 +61,7 @@ import type * as Entity from "./Entity.ts"
 import * as Machine from "./Machine.ts"
 import type * as Relation from "./Relation.ts"
 import type { Query, QueryData, QueryEntity, QueryRow } from "./Query.ts"
-import type { ConstructedWriteCell, ReadCell, ReadonlyValue, StateExactFields, StateUpdateResult, WriteCell } from "./Query.ts"
+import type { ConstructedWriteCell, ReadCell, ReadonlyValue, StateExactFields, StateMoveData, StateTargets, StateUpdateResult, WriteCell } from "./Query.ts"
 import * as Requirement from "./Requirement.ts"
 import type * as Result from "./Result.ts"
 import type { Schema } from "./Schema.ts"
@@ -460,7 +460,7 @@ export const thisTick = <
  */
 export const machine = <M extends Machine.StateMachine.Any>(
   stateMachine: M
-): Machine.MachineRead<M> => Machine.read(stateMachine)
+): Machine.MachineRead<M> => ({ machine: stateMachine, mode: "read" })
 
 /**
  * Declares access that reads a machine and changes the fields of its current
@@ -473,7 +473,7 @@ export const machine = <M extends Machine.StateMachine.Any>(
  */
 export const updateMachine = <M extends Machine.StateMachine.Any>(
   stateMachine: M
-): Machine.MachineUpdate<M> => Machine.update(stateMachine)
+): Machine.MachineUpdate<M> => ({ machine: stateMachine, mode: "update" })
 
 /**
  * Declares queued write access to the next value of a finite-state machine.
@@ -488,7 +488,7 @@ export const updateMachine = <M extends Machine.StateMachine.Any>(
  */
 export const nextState = <M extends Machine.StateMachine.Any>(
   stateMachine: M
-): Machine.NextMachineWrite<M> => Machine.write(stateMachine)
+): Machine.NextMachineWrite<M> => ({ machine: stateMachine })
 
 /**
  * Declares read access to the transition being applied to a machine, for
@@ -496,9 +496,9 @@ export const nextState = <M extends Machine.StateMachine.Any>(
  * `get()` is `undefined`: from a regular schedule, use
  * {@link readTransitionEvent}.
  */
-export const transition = <M extends Machine.StateMachine.Any>(
+export const readTransition = <M extends Machine.StateMachine.Any>(
   stateMachine: M
-): Machine.TransitionRead<M> => Machine.transition(stateMachine)
+): Machine.TransitionRead<M> => ({ machine: stateMachine })
 
 /**
  * Declares read access to committed transition events for one machine.
@@ -511,7 +511,7 @@ export const transition = <M extends Machine.StateMachine.Any>(
  */
 export const readTransitionEvent = <M extends Machine.StateMachine.Any>(
   stateMachine: M
-): Machine.TransitionEventRead<M> => Machine.readTransitionEvent(stateMachine)
+): Machine.TransitionEventRead<M> => ({ machine: stateMachine })
 
 /**
  * Internal union for all supported resource access declarations.
@@ -599,8 +599,8 @@ export interface MachineUpdateView<M extends Machine.StateMachine.Any = Machine.
    * change immediately. The write is visible to later systems in the same
    * run, rolled back with a failed system, and runs no enter or exit
    * schedules and publishes no transition event. Move to another state with
-   * `nextMachines.x.set(...)`; a move queued before the commit replaces
-   * these fields with the target's.
+   * `nextMachines.x.transition(...)`; a move queued before the commit
+   * replaces these fields with the target's.
    *
    * @example
    * ```ts
@@ -615,22 +615,86 @@ export interface MachineUpdateView<M extends Machine.StateMachine.Any = Machine.
     change: {
       readonly state: State
       readonly data: (current: ReadonlyValue<Machine.StateOf<M, State>>) => Next
-    } & StateExactFields<M["states"], State, Next, "nextMachines.x.set(...)">
-  ): Machine.UpdateResult<M>
+    } & StateExactFields<M["states"], State, Next, "nextMachines.x.transition(...)">
+  ): Machine.CompareAndSetResult<M>
 }
 
 /**
+ * The type of `nextMachines.x.set` and `setIfChanged`: the unchecked write,
+ * for a machine declared without `transitions`. For a machine declared with
+ * them it is a message naming `transition`, so calling it does not compile
+ * and no write gets around the graph.
+ */
+export type UncheckedMachineWrite<M extends Machine.StateMachine.Any> =
+  Machine.DeclaresTransitions<M> extends true
+    ? { readonly __fixMove__: "this machine declares `transitions`: move it with nextMachines.x.transition({ from, to, data }), which checks the graph and the current state" }
+    : (value: ReadonlyValue<Machine.StateOf<M>>) => Machine.SetResult<M>
+
+/**
  * A queued write view over one finite-state-machine transition target.
+ *
+ * `transition` queues a move the machine's graph allows, if the machine is
+ * in the state the move starts from. `set` and `setIfChanged` queue any
+ * value without checking either, and exist only on a machine declared
+ * without `transitions`.
  */
 export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machine.StateMachine.Any> {
   /** The value queued for the next `applyStateTransitions(...)`, if any. */
   getPending(): ReadonlyValue<Machine.StateOf<M>> | undefined
   /**
+   * Queues a move from `from` to `to` if the machine's committed state is
+   * `from`, with `to`'s fields from `data`: nothing carries over from
+   * `from`. A state without fields takes no `data`. With a `transitions`
+   * graph, `to` must be one of the moves it allows from `from`; without
+   * one, any pair of states is accepted. Use it for every move a system
+   * makes itself. For a move from whatever state the machine is in (back to
+   * a menu), pass the state read from `machines.x.get()._tag` as `from`:
+   * with a union `from`, `to` must be a move every one of them allows.
+   *
+   * Otherwise it queues nothing and returns `MachineStateMismatch` (or, for
+   * a sub-state whose parent is in another state, `SubStateInactive`). The
+   * check reads the committed state when it is called, not a value queued
+   * earlier. The move is queued exactly as `set` queues it: committed at
+   * the next `applyStateTransitions(...)`, replacing a value queued before,
+   * and a `to` equal to `from` re-enters the state. The marker commits it
+   * only while the machine is still in `from`: a move queued from a
+   * transition schedule (`onExit`, `onTransition`, another machine's
+   * `onEnter`) while the machine is leaving `from` returns ok and is dropped
+   * at the following marker, so no move the graph forbids ever commits.
+   *
+   * @example
+   * ```ts
+   * const Round = Game.StateMachine("Game/Round", {
+   *   Lobby: {},
+   *   Playing: z.object({ round: z.int() }),
+   *   Over: z.object({ winner: z.int() })
+   * }, { transitions: { Lobby: ["Playing"], Playing: ["Over"], Over: ["Lobby"] } })
+   * // ---cut---
+   * Game.System("Game/Start", { nextMachines: { round: Game.System.nextState(Round) } }, ({ nextMachines }) => {
+   *   const started = nextMachines.round.transition({ from: "Lobby", to: "Playing", data: { round: 1 } })
+   *   if (!started.ok) {
+   *     // started.error.actual is the state the round is in
+   *   }
+   * })
+   * ```
+   */
+  transition<
+    const From extends Machine.StateMachine.State<M> & keyof Machine.StateMachine.Transitions<M>,
+    const To extends StateTargets<Machine.StateMachine.Transitions<M>, From> & Machine.StateMachine.State<M>
+  >(
+    move: { readonly from: From; readonly to: To } & StateMoveData<M["states"], To>
+  ): Machine.CompareAndSetResult<M>
+  /**
    * Queues `value`: the target state's name in `_tag` and all of its fields
-   * (nothing carries over from the current state). The state and its fields
-   * commit together at the next `applyStateTransitions(...)`. For a
-   * sub-state it returns a `Result` that fails with `SubStateInactive` (and
-   * queues nothing) while the parent is in another state.
+   * (nothing carries over from the current state), without checking the
+   * transition graph or the current state: a reset, or the value a pure
+   * function computed. Use `transition` for the moves a system makes
+   * itself, so the current state is checked. On a machine declared with
+   * `transitions` it does not compile: `transition` is the only way to
+   * move it, so every move is one the graph lists. The state and
+   * its fields commit together at the next `applyStateTransitions(...)`.
+   * For a sub-state it returns a `Result` that fails with `SubStateInactive`
+   * (and queues nothing) while the parent is in another state.
    *
    * One value is queued per machine: a later `set` before the marker
    * replaces an earlier one. A `set` from a transition schedule (`onEnter`,
@@ -642,25 +706,28 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
    * Setting the current state again re-runs its exit and enter schedules, so
    * its sub-states restart. Use `setIfChanged` when that is not wanted.
    */
-  set(value: ReadonlyValue<Machine.StateOf<M>>): Machine.SetResult<M>
+  readonly set: UncheckedMachineWrite<M>
   /**
    * Like `set`, but committing a value equal to the current one (the same
    * state with equal fields) is skipped: no exit or enter schedules. The
-   * same state with other fields re-enters, like `set`.
+   * same state with other fields re-enters, like `set`. Unchecked like
+   * `set`, and like it does not compile on a machine declared with
+   * `transitions`: there, `transition` to another state always changes it,
+   * and `machines.x.update(...)` changes fields without re-entering.
    */
-  setIfChanged(value: ReadonlyValue<Machine.StateOf<M>>): Machine.SetResult<M>
+  readonly setIfChanged: UncheckedMachineWrite<M>
   /**
    * Drops the queued value, if any, so the next `applyStateTransitions(...)`
    * commits nothing for this machine. Called from a transition schedule, it
    * cancels a value queued before the current marker that the marker has not
    * applied yet.
    */
-  reset(): void
+  cancelPending(): void
 }
 
 /**
  * A read-only view over the transition being applied for one machine, given
- * to systems that declare `transitions: { x: Game.System.transition(M) }`.
+ * to systems that declare `transitions: { x: Game.System.readTransition(M) }`.
  *
  * `get()` returns the transition only while one is applied: inside the
  * machine's transition schedules (`onEnter` / `onExit` / `onTransition`).

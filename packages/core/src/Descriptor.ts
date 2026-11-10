@@ -603,11 +603,20 @@ export type StateEncodedOf<States extends StateDefinitions> = {
 }[StateName<States>]
 
 /**
- * The allowed moves of a {@link EntityState} component: for every state, the
- * states it may move to (`[]` for a state with no way out).
+ * The allowed moves of an {@link EntityState} component or a
+ * `Game.StateMachine(...)`: for every state, the states it may move to (`[]`
+ * for a state with no way out). Given as their `transitions` option.
  */
-export type EntityStateTransitions<States extends StateDefinitions> = {
+export type StateTransitions<States extends StateDefinitions> = {
   readonly [From in keyof States & string]: ReadonlyArray<keyof States & string>
+}
+
+/**
+ * The `transitions` argument of an entity state or a state machine, with each
+ * key that is not one of `States` rejected by a message naming the fix.
+ */
+export type CheckedTransitions<States extends StateDefinitions, Transitions> = Transitions & {
+  readonly [Key in Exclude<keyof Transitions, keyof States>]: { readonly __fixTransitions__: "this key is not a state: `transitions` lists the moves of the declared states only" }
 }
 
 /**
@@ -617,7 +626,7 @@ export type EntityStateTransitions<States extends StateDefinitions> = {
 export interface EntityStateDescriptor<
   out Name extends string,
   in out States extends StateDefinitions,
-  in out Transitions extends EntityStateTransitions<States> | undefined
+  in out Transitions extends StateTransitions<States> | undefined
 > extends ConstructedDescriptor<
   "component",
   Name,
@@ -687,7 +696,8 @@ type StateRejection<Definition> = Definition extends StandardSchema<infer _Encod
  * a compare-and-set: they write only while the entity is still in `from` (or
  * `state`), and otherwise return an `EntityStateMismatch` failure. With
  * `transitions`, `to` is checked against the graph at compile time; the graph
- * lists every state (`[]` for one with no way out). Writes are ordinary
+ * lists every state (`[]` for one with no way out), and the slot's unchecked
+ * `set` does not compile, so a system's moves are ones the graph lists. Writes are ordinary
  * component writes: immediate, visible to later systems, rolled back with a
  * failed system. There are no per-state schedules: branch on `get()._tag` in
  * the system that owns the component, and emit an event on a transition
@@ -720,12 +730,12 @@ type StateRejection<Definition> = Definition extends StandardSchema<infer _Encod
 export const EntityState = <
   const Name extends string,
   const States extends StateDefinitions,
-  const Transitions extends EntityStateTransitions<States> | undefined = undefined
+  const Transitions extends StateTransitions<States> | undefined = undefined
 >(
   name: Name,
   states: States & CheckedStates<States, "an entity state needs at least one state">,
   options?: {
-    readonly transitions: Transitions & { readonly [Key in Exclude<keyof Transitions, keyof States>]: never }
+    readonly transitions: CheckedTransitions<States, Transitions>
   }
 ): EntityStateDescriptor<Name, States, Transitions> => ({
   ...makeConstructedDescriptor("component", name, stateCodec(states)),
@@ -736,7 +746,7 @@ export const EntityState = <
 /** Whether a descriptor was built with {@link EntityState}. */
 export const isEntityState = (
   descriptor: Descriptor.Any
-): descriptor is EntityStateDescriptor<string, StateDefinitions, EntityStateTransitions<StateDefinitions> | undefined> =>
+): descriptor is EntityStateDescriptor<string, StateDefinitions, StateTransitions<StateDefinitions> | undefined> =>
   "states" in descriptor
 
 /**

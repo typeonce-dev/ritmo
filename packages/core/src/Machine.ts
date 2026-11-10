@@ -11,7 +11,11 @@
  *
  * A machine holds one value for the whole game. A state that each entity has
  * on its own (an enemy's attack windup, a door's open/closed) is not a
- * machine: use a `Descriptor.EntityState(...)` component instead.
+ * machine: use a `Descriptor.EntityState(...)` component instead. Both are
+ * written one way: an optional `transitions` graph of allowed moves, checked
+ * at compile time, and a compare-and-set `transition({ from, to, data })`;
+ * a machine's move is queued and commits at `applyStateTransitions(...)`.
+ * A machine that declares the graph moves only with `transition`.
  *
  * @example
  * ```ts
@@ -37,7 +41,7 @@
  * @groupDescription Functions
  * Public constructors for machines, conditions, and explicit transition bundles.
  */
-import type { StateDefinitions, StateValueOf } from "./Descriptor.ts"
+import type { StateDefinitions, StateTransitions, StateValueOf } from "./Descriptor.ts"
 import type { AnyScheduleOrder, Schedule } from "./Schedule.ts"
 import * as Requirement from "./Requirement.ts"
 import type * as Result from "./Result.ts"
@@ -46,18 +50,23 @@ import type { SystemFailure } from "./System.ts"
 
 /**
  * One schema-bound finite state machine definition: its states, each with its
- * own fields (`{}` for a state without data).
+ * own fields (`{}` for a state without data), and the moves between them that
+ * `nextMachines.x.transition(...)` accepts (every move, for a machine
+ * declared without `transitions`).
  */
 export interface StateMachineDefinition<
   out Name extends string = string,
   out States extends StateDefinitions = StateDefinitions,
   out Root = unknown,
-  out Parent = unknown
+  out Parent = unknown,
+  out Transitions = StateTransitions<States>
 > {
   readonly kind: "stateMachine"
   readonly name: Name
   readonly key: symbol
   readonly states: States
+  /** The `transitions` graph the machine was declared with; `undefined` when it declares none. */
+  readonly transitions?: Transitions | undefined
   /** For a sub-state: the machine and the state it exists in. */
   readonly within?: SubStateParent | undefined
   readonly __schemaRoot?: Root | undefined
@@ -119,7 +128,7 @@ export type CurrentState<M extends StateMachine.Any> =
  * Why queuing or updating a sub-state failed: its parent machine is not in
  * the state the sub-state exists in, so there is nothing to change.
  */
-export interface SubStateInactive {
+export interface SubStateInactiveError {
   readonly _tag: "SubStateInactive"
   /** The sub-state's name. */
   readonly machine: string
@@ -130,17 +139,26 @@ export interface SubStateInactive {
 }
 
 /**
- * An `update` found the machine in another state, so nothing was written.
+ * An `update` or a `transition` found the machine in another state, so
+ * nothing was written or queued.
  */
-export interface MachineStateMismatch<State extends string = string> {
+export interface MachineStateMismatchError<State extends string = string> {
   readonly _tag: "MachineStateMismatch"
   /** The machine's name. */
   readonly machine: string
-  /** The state `update` was given. */
+  /** The state the write expected (`update`'s `state`, or `transition`'s `from`). */
   readonly expected: State
   /** The state the machine was actually in. */
   readonly actual: State
 }
+
+/**
+ * Whether `M` was declared with a `transitions` graph. Such a machine moves
+ * only with `nextMachines.x.transition(...)`: its `set` and `setIfChanged`
+ * do not compile, so no write gets around the graph.
+ */
+export type DeclaresTransitions<M extends StateMachine.Any> =
+  StateTransitions<M["states"]> extends StateMachine.Transitions<M> ? false : true
 
 /**
  * What `nextMachines.x.set(...)` returns: nothing for a top-level machine,
@@ -148,16 +166,17 @@ export interface MachineStateMismatch<State extends string = string> {
  * parent is in another state.
  */
 export type SetResult<M extends StateMachine.Any> =
-  IsSubState<M> extends true ? Result.Result<void, SubStateInactive> : void
+  IsSubState<M> extends true ? Result.Result<void, SubStateInactiveError> : void
 
 /**
- * What `machines.x.update(...)` returns: a failure with
- * `MachineStateMismatch` when the machine is in another state, and for a
- * sub-state with `SubStateInactive` when it has no value.
+ * What the compare-and-set writes `machines.x.update(...)` and
+ * `nextMachines.x.transition(...)` return: a failure with
+ * `MachineStateMismatch` when the machine is in another state than the one
+ * expected, and for a sub-state with `SubStateInactive` when it has no value.
  */
-export type UpdateResult<M extends StateMachine.Any> = Result.Result<
+export type CompareAndSetResult<M extends StateMachine.Any> = Result.Result<
   void,
-  MachineStateMismatch<StateMachine.State<M>> | (IsSubState<M> extends true ? SubStateInactive : never)
+  MachineStateMismatchError<StateMachine.State<M>> | (IsSubState<M> extends true ? SubStateInactiveError : never)
 >
 
 /**
@@ -348,6 +367,11 @@ export namespace StateMachine {
   export type State<M extends Any> = keyof M["states"] & string
   /** The game root a machine belongs to (the `Game` whose `Game.StateMachine` made it). */
   export type Root<M extends Any> = M extends StateMachineDefinition<string, StateDefinitions, infer R> ? R : never
+  /**
+   * The moves `nextMachines.x.transition(...)` accepts for `M`: its
+   * `transitions` graph, or every pair of states when it declares none.
+   */
+  export type Transitions<M extends Any> = M extends StateMachineDefinition<string, StateDefinitions, unknown, unknown, infer T> ? T : never
   /** Any run condition of the game rooted at `Root` (`Game.Condition.inState(...)`, `not`, `or`). */
   export type AnyCondition<Root = unknown> = Condition<Root>
   /** Any transition schedule (`Game.Schedule.onEnter` / `onExit` / `onTransition`) of the game rooted at `Root`. */
@@ -399,78 +423,6 @@ export type MachineNeedsFromRecord<R extends Record<string, unknown>> =
 /** Extracts the machine-token union carried by a condition list. */
 export type MachineNeedsFromConditions<C extends ReadonlyArray<Condition>> =
   MachineNeedsFromCondition<C[number]>
-
-/**
- * Creates a schema-bound finite-state machine definition: one game-wide mode.
- * Games declare machines with `Game.StateMachine(...)`, whose JSDoc describes
- * the states and their data.
- *
- * Use `Descriptor.EntityState(...)` instead when every entity carries its own
- * state (per-entity, written immediately, no enter/exit schedules).
- */
-export const StateMachine = <
-  const Name extends string,
-  const States extends StateDefinitions,
-  Root = unknown
->(
-  name: Name,
-  states: States,
-  within?: SubStateParent
-): StateMachineDefinition<Name, States, Root> => ({
-  kind: "stateMachine",
-  name,
-  key: Symbol.for(`ritmo/stateMachine/${name}`),
-  states,
-  ...(within === undefined ? {} : { within })
-})
-
-/**
- * Declares that a system wants to read the current committed state.
- *
- * Use this for the current committed phase value. Queued updates remain hidden
- * until the schedule reaches `applyStateTransitions(...)`.
- */
-export const read = <M extends StateMachine.Any>(machine: M): MachineRead<M> => ({
-  machine,
-  mode: "read"
-})
-
-/**
- * Declares that a system wants to change the fields of the current state
- * immediately, without leaving it. The state name changes only at the commit;
- * the current state's fields change immediately.
- */
-export const update = <M extends StateMachine.Any>(machine: M): MachineUpdate<M> => ({
-  machine,
-  mode: "update"
-})
-
-/**
- * Declares that a system wants to queue the next state.
- *
- * This is the machine equivalent of "request a phase change later". The change
- * becomes committed only at `applyStateTransitions(...)`.
- */
-export const write = <M extends StateMachine.Any>(machine: M): NextMachineWrite<M> => ({
-  machine
-})
-
-/**
- * Declares that a system wants access to the last applied transition payload.
- */
-export const transition = <M extends StateMachine.Any>(machine: M): TransitionRead<M> => ({
-  machine
-})
-
-/**
- * Declares that a system wants to read committed transition events for one machine.
- *
- * Use this when later systems need to observe that a transition happened after
- * the schedule has already committed it.
- */
-export const readTransitionEvent = <M extends StateMachine.Any>(machine: M): TransitionEventRead<M> => ({
-  machine
-})
 
 /**
  * Creates a condition that only passes in one machine state, whatever its

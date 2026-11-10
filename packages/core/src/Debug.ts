@@ -779,9 +779,11 @@ export interface TransitionEvent {
   /**
    * `applied` committed the new value; `unchanged` was a `setIfChanged` to the
    * current value; `failed` stopped in an exit or transition schedule and was
-   * queued again; `enterFailed` committed but an enter schedule failed.
+   * queued again; `enterFailed` committed but an enter schedule failed;
+   * `stale` was a `transition` whose `from` the machine had left by the
+   * marker, so it was dropped.
    */
-  readonly outcome: "applied" | "unchanged" | "failed" | "enterFailed"
+  readonly outcome: "applied" | "unchanged" | "failed" | "enterFailed" | "stale"
 }
 
 /** A `restore` of a snapshot; `ok` is `false` when it was rejected. */

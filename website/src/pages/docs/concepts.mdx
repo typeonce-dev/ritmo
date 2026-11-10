@@ -222,19 +222,20 @@ const codec = <T extends S.Top & { readonly DecodingServices: never; readonly En
 const Health = Descriptor.Component<number>()("Arena/Health")
 const Game = Schema.bind(Schema.fragment({ components: { Health } }))
 // ---cut---
-// A closed list of states, each with the data only it has
+// A closed list of states, each with the data only it has,
+// and which states may follow which
 const Flow = Game.StateMachine("Arena/Flow", {
   Menu: {},
   Playing: {},
   GameOver: codec(S.Struct({ winner: S.String }))
-})
+}, { transitions: { Menu: ["Playing"], Playing: ["GameOver"], GameOver: ["Menu"] } })
 
 // Asks for the next state, with its data...
 const EndRound = Game.System(
   "Arena/EndRound",
   { nextMachines: { flow: Game.System.nextState(Flow) } },
   ({ nextMachines }) =>
-    nextMachines.flow.set({ _tag: "GameOver", winner: "Red" }) // [!code highlight]
+    nextMachines.flow.transition({ from: "Playing", to: "GameOver", data: { winner: "Red" } }) // [!code highlight]
 )
 
 // ...and this one runs only while playing
@@ -246,7 +247,9 @@ const Simulate = Game.System(
 ```
 
 The change applies at `applyStateTransitions()`, the state and its data
-together. A game over always has a winner, and nothing else does. See
+together. A game over always has a winner, and nothing else does. A move the
+list does not allow, like `Menu` to `GameOver`, does not compile, and a move
+from `Playing` asked for after the game left it returns a failure instead. See
 [States that can't go wrong](/features/states/).
 
 ## Validating and saving values

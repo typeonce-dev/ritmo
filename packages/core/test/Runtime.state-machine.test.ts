@@ -164,7 +164,7 @@ describe("Runtime state machine", () => {
       "StateMachineRuntime/OnExitMenu",
       {
         transitions: {
-          app: System.transition(AppState)
+          app: System.readTransition(AppState)
         },
         resources: {
           log: System.writeResource(Log)
@@ -181,7 +181,7 @@ describe("Runtime state machine", () => {
       "StateMachineRuntime/OnTransitionMenuToPlaying",
       {
         transitions: {
-          app: System.transition(AppState)
+          app: System.readTransition(AppState)
         },
         resources: {
           log: System.writeResource(Log)
@@ -198,7 +198,7 @@ describe("Runtime state machine", () => {
       "StateMachineRuntime/OnEnterPlaying",
       {
         transitions: {
-          app: System.transition(AppState)
+          app: System.readTransition(AppState)
         },
         machines: {
           app: System.machine(AppState)
@@ -246,7 +246,7 @@ describe("Runtime state machine", () => {
       "StateMachineRuntime/TransitionOutside",
       {
         transitions: {
-          app: System.transition(AppState)
+          app: System.readTransition(AppState)
         },
         resources: {
           log: System.writeResource(Log)
@@ -466,7 +466,7 @@ describe("Runtime state machine", () => {
       "StateMachineRuntime/AppEnterPlaying",
       {
         transitions: {
-          app: System.transition(LocalAppState)
+          app: System.readTransition(LocalAppState)
         },
         resources: {
           log: System.writeResource(Log)
@@ -483,7 +483,7 @@ describe("Runtime state machine", () => {
       "StateMachineRuntime/RoundEnterLive",
       {
         transitions: {
-          round: System.transition(LocalRoundState)
+          round: System.readTransition(LocalRoundState)
         },
         resources: {
           log: System.writeResource(Log)
@@ -543,7 +543,7 @@ describe("Runtime state machine", () => {
       "StateMachineRuntime/QueueRoundDuringEnter",
       {
         transitions: {
-          app: System.transition(LocalAppState)
+          app: System.readTransition(LocalAppState)
         },
         nextMachines: {
           round: System.nextState(LocalRoundState)
@@ -682,7 +682,7 @@ describe("Runtime state machine", () => {
     const resetRoundDuringEnter = LocalGame.System("StateMachineRuntime/ResetRoundDuringEnter", {
       nextMachines: { round: System.nextState(LocalRoundState) }
     }, ({ nextMachines }) => {
-      nextMachines.round.reset()
+      nextMachines.round.cancelPending()
     })
     const observe = LocalGame.System("StateMachineRuntime/ObserveResetRound", {
       machines: { round: System.machine(LocalRoundState) },
@@ -741,7 +741,7 @@ describe("Runtime state machine", () => {
       "StateMachineRuntime/ExplicitBundleOnly",
       {
         transitions: {
-          app: System.transition(AppState)
+          app: System.readTransition(AppState)
         },
         resources: {
           log: System.writeResource(Log)
@@ -968,7 +968,7 @@ describe("Runtime state machine", () => {
       "StateMachineRuntime/FlattenedBundleEnterPlaying",
       {
         transitions: {
-          app: System.transition(AppState)
+          app: System.readTransition(AppState)
         },
         resources: {
           log: System.writeResource(Log)
@@ -1010,7 +1010,7 @@ describe("Runtime state machine", () => {
       "StateMachineRuntime/TransitionFragmentEnterPlaying",
       {
         transitions: {
-          app: System.transition(AppState)
+          app: System.readTransition(AppState)
         },
         resources: {
           log: System.writeResource(Log)
@@ -1052,7 +1052,7 @@ describe("Runtime state machine", () => {
       "StateMachineRuntime/TransitionPhaseEnterPlaying",
       {
         transitions: {
-          app: System.transition(AppState)
+          app: System.readTransition(AppState)
         },
         resources: {
           log: System.writeResource(Log)
