@@ -140,7 +140,9 @@ export interface InvalidOptions {
 /**
  * The players of a networked game: `count` seats whose input is decoded
  * with `codec` (a Standard Schema the game brings, like a constructed
- * component's) when it arrives from another peer. `idle` must decode.
+ * component's). Every peer simulates an input as it decodes from its
+ * message, the local seat's own too, so a schema that normalizes (a clamp,
+ * a default) gives every peer the same value. `idle` must encode and decode.
  */
 export const seats = <const S extends Descriptor.Codec<any, any>>(
   codec: S & Descriptor.CheckedCodec<S>,
@@ -351,6 +353,13 @@ export interface Session<Input, TickError, Events extends Descriptor.Descriptor<
    * a guess (rollback), records `local` as this seat's input for the tick
    * `status().inputDelay` ticks ahead, ticks the simulation, and sends what
    * the other peers need. Call it once per fixed step, from `FixedLoop`'s `update`.
+   *
+   * `local` goes through the seats' input schema as it will on the other
+   * peers (encoded, written as JSON, decoded), and this peer simulates the
+   * decoded value. An input the schema rejects throws: it is a defect in
+   * the game, since the other peers could never decode it. Make the input
+   * the schema's output type before `advance` (round an analog axis the
+   * schema wants whole, for example).
    */
   readonly advance: (local: Input) => Result.Result<Advanced, SessionError<TickError>>
   /**
@@ -601,7 +610,9 @@ export interface SyncTest<Input, TickError> {
    * Runs the next tick with `local` as seat 0's input and every other
    * seat's predicted one, then rewinds `rewind` ticks and runs them again,
    * comparing the world's checksum at the start of every tick with the
-   * first run's. Call it once per frame of the test.
+   * first run's. Call it once per frame of the test. `local` goes through
+   * the input schema as in a session's `advance`, and one the schema
+   * rejects throws.
    */
   readonly advance: (local: Input) => Result.Result<Extract<Advanced, { readonly _tag: "Ran" }>, SyncTestError<TickError>>
   readonly status: () => SyncTestStatus

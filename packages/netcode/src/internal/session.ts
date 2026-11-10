@@ -43,7 +43,7 @@ import * as Events from "./events.ts"
 import { isHalted } from "./halted.ts"
 import * as Hidden from "./hidden.ts"
 import type { NetworkLink } from "../NetworkLink.ts"
-import { canonical, decode, encode, stateOf } from "./seats.ts"
+import { canonical, decode, encode, send, stateOf, type Sent } from "./seats.ts"
 import * as Wire from "./wire.ts"
 
 /** What a session calls on its runtime. The public constructors check the real types. */
@@ -137,7 +137,9 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   seatsState.owner = {}
 
   const { codec } = seatsState
-  const idle = options.seats.idle
+  // Idle as the other peers decode it, like every local input.
+  const idleSent = seatsState.idle
+  const idle = idleSent.value
   const predict = options.predict ?? ((previous: unknown) => previous)
   const clock = options.hostClock
   const stepMS = options.step.dt * 1000
@@ -147,11 +149,6 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     return encoded.ok ? canonical(encoded.value) : `unencodable:${canonical(value)}`
   }
   const idleKey = keyOf(idle)
-  const encodeLocal = (value: unknown): unknown => {
-    const encoded = encode(codec, value)
-    if (!encoded.ok) throw new Error(`Netcode: the local input does not encode with the input schema: ${encoded.error}`)
-    return encoded.value
-  }
 
   // Match state.
   let epoch = 0
@@ -400,7 +397,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       extend(other)
       lastHeard[other] = now
     }
-    for (let at = tick; at < floorTick; at++) sent.set(at, encodeLocal(idle))
+    for (let at = tick; at < floorTick; at++) sent.set(at, idleSent.wire)
     localNext = Math.max(localNext, floorTick)
     Hidden.synced(tracker, returned, floorTick)
     for (let other = 0; other < count; other++) wasAway[other] = playedAround(other)
@@ -615,7 +612,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   }
 
   /** Records `local` for the tick `inputDelay` ahead, and returns that tick (`undefined`: already that far ahead). */
-  const record = (local: unknown): number | undefined => {
+  const record = (local: Sent): number | undefined => {
     const delay = policy.delay()
     if (localNext > next + delay) return undefined
     // After a rise, the ticks between the old delay and the new one get no input from this seat: idle, as after a save.
@@ -623,12 +620,12 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     raised = 0
     for (let index = 0; index < skipped; index++) {
       inputs[seat]!.set(localNext, idle)
-      sent.set(localNext, encodeLocal(idle))
+      sent.set(localNext, idleSent.wire)
       localNext += 1
     }
     const tick = localNext
-    inputs[seat]!.set(tick, local)
-    sent.set(tick, encodeLocal(local))
+    inputs[seat]!.set(tick, local.value)
+    sent.set(tick, local.wire)
     extend(seat)
     localNext += 1
     return tick
@@ -647,8 +644,12 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     return slowest === Infinity ? 0 : next - slowest
   }
 
-  const advance = (local: unknown): Result.Result<Advanced, SessionError<unknown>> => {
+  const advance = (pressed: unknown): Result.Result<Advanced, SessionError<unknown>> => {
     if (ended !== undefined) return Result.failure(ended)
+    // This peer simulates what every other peer will: the input as it decodes from its message.
+    const sentInput = send(codec, pressed)
+    if (!sentInput.ok) throw new Error(`Netcode: the local input ${sentInput.error}`)
+    const local = sentInput.value
     // Read before correct() and performSync(): the ticks they run again are this advance's too
     const before = again
     readLinks()
