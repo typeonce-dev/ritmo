@@ -178,14 +178,45 @@ interface TickLog {
   droppedThrough: number
   /** How many entries were ever dropped from the front: the position of `ids[0]` among all entries. */
   base: number
-  /**
-   * While a checkpoint is held: the entries dropped since the oldest one was
-   * taken, from position `grave.base`, so a rewind can put them back.
-   */
-  grave: { readonly ids: Array<number>; readonly ticks: Array<number>; base: number } | undefined
+  /** While a checkpoint is held: the dropped entries a rewind can put back. */
+  grave: Grave | undefined
+}
+
+/**
+ * Entries dropped since the oldest held mark was taken, with their
+ * positions, oldest first. Only those before `end`, where the log stood when
+ * the newest mark was taken, are kept: no rewind brings back an entry made
+ * after every held mark, so one mark held for long keeps no more than the
+ * log held when it was taken. (A reader outside the rewound schedule had
+ * read every such entry before it was dropped, or lagged.)
+ */
+interface Grave {
+  readonly positions: Array<number>
+  readonly ids: Array<number>
+  readonly ticks: Array<number>
+  end: number
 }
 
 const makeLog = (): TickLog => ({ ids: [], ticks: [], droppedThrough: 0, base: 0, grave: undefined })
+
+/** Forgets the entries of `grave` from `index` on. */
+const truncateGrave = (grave: Grave, index: number): void => {
+  grave.positions.length = index
+  grave.ids.length = index
+  grave.ticks.length = index
+}
+
+/** Index of the first entry of `grave` at or past `position`. */
+const graveIndexOf = (grave: Grave, position: number): number => {
+  let low = 0
+  let high = grave.positions.length
+  while (low < high) {
+    const middle = (low + high) >>> 1
+    if (grave.positions[middle]! >= position) high = middle
+    else low = middle + 1
+  }
+  return low
+}
 
 const appendLog = (log: TickLog, id: number, tick: number): void => {
   log.ids.push(id)
@@ -211,7 +242,8 @@ const dropFront = (log: TickLog, count: number): void => {
     log.droppedThrough = Math.max(log.droppedThrough, log.ticks[count - 1]!)
     const grave = log.grave
     if (grave !== undefined) {
-      for (let index = 0; index < count; index++) {
+      for (let index = 0; index < count && log.base + index < grave.end; index++) {
+        grave.positions.push(log.base + index)
         grave.ids.push(log.ids[index]!)
         grave.ticks.push(log.ticks[index]!)
       }
@@ -325,8 +357,10 @@ export interface WorldRewind {
 const absentRecord: KeptRecord = { record: undefined, held: [], heldBits: [] }
 
 const keptLog = (log: TickLog): KeptLog => {
-  log.grave ??= { ids: [], ticks: [], base: log.base }
-  return { base: log.base, end: log.base + log.ids.length, droppedThrough: log.droppedThrough }
+  const end = log.base + log.ids.length
+  log.grave ??= { positions: [], ids: [], ticks: [], end }
+  log.grave.end = end
+  return { base: log.base, end, droppedThrough: log.droppedThrough }
 }
 
 /**
@@ -342,7 +376,7 @@ const rewindLog = (log: TickLog, kept: KeptLog | undefined): Array<readonly [id:
   const ticks: Array<number> = []
   if (grave !== undefined) {
     for (let index = 0; index < grave.ids.length; index++) {
-      const position = grave.base + index
+      const position = grave.positions[index]!
       if (kept !== undefined && position >= kept.base && position < end) {
         ids.push(grave.ids[index]!)
         ticks.push(grave.ticks[index]!)
@@ -359,15 +393,14 @@ const rewindLog = (log: TickLog, kept: KeptLog | undefined): Array<readonly [id:
   if (kept === undefined) {
     log.base += log.ids.length
     if (grave !== undefined) {
-      grave.ids.length = 0
-      grave.ticks.length = 0
-      grave.base = log.base
+      truncateGrave(grave, 0)
+      grave.end = log.base
     }
   } else {
     if (grave !== undefined) {
-      const keep = Math.max(0, kept.base - grave.base)
-      grave.ids.length = Math.min(keep, grave.ids.length)
-      grave.ticks.length = grave.ids.length
+      // What comes back is in the log again, and the mark is the newest held.
+      truncateGrave(grave, graveIndexOf(grave, kept.base))
+      grave.end = kept.end
     }
     log.base = kept.base
     log.droppedThrough = kept.droppedThrough
@@ -390,11 +423,19 @@ const releaseLog = (log: TickLog, kept: ReadonlyArray<KeptLog | undefined>, held
     return
   }
   let from = log.base
-  for (const entry of kept) if (entry !== undefined) from = Math.min(from, entry.base)
-  const drop = Math.min(grave.ids.length, Math.max(0, from - grave.base))
+  let end = 0
+  for (const entry of kept) {
+    if (entry === undefined) continue
+    from = Math.min(from, entry.base)
+    end = Math.max(end, entry.end)
+  }
+  // Past the newest mark still held: released with the newer ones.
+  truncateGrave(grave, graveIndexOf(grave, end))
+  grave.end = end
+  const drop = graveIndexOf(grave, from)
+  grave.positions.splice(0, drop)
   grave.ids.splice(0, drop)
   grave.ticks.splice(0, drop)
-  grave.base += drop
 }
 
 const addTo = (map: Map<number, Set<number>>, ordinal: number, id: number): void => {
@@ -1739,6 +1780,9 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     dropMarks,
     /** How many marks are held. */
     markCount: (): number => marks.length,
+    /** How many dropped removal and despawn records are kept for a rewind to a held mark. */
+    keptLifecycleEntries: (): number =>
+      removedLogs.reduce((count, log) => count + (log?.grave?.positions.length ?? 0), despawnedLog.grave?.positions.length ?? 0),
     tryRelate,
     unrelate,
     reorderChildren,

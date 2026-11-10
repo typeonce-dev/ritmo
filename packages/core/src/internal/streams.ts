@@ -26,11 +26,45 @@ interface Log<T> {
   droppedThrough: number
   /** How many batches were ever dropped from the front: the position of `batches[0]` among all batches. */
   base: number
-  /**
-   * While a checkpoint is held: the batches dropped since the oldest one was
-   * taken, from position `grave.base`, so a rewind can put them back.
-   */
-  grave: { readonly ticks: Array<number>; readonly batches: Array<ReadonlyArray<T>>; readonly surviveRestore: Array<boolean>; base: number } | undefined
+  /** While a checkpoint is held: the dropped batches a rewind can put back. */
+  grave: Grave<T> | undefined
+}
+
+/**
+ * Batches dropped since the oldest held checkpoint was taken, with their
+ * positions, oldest first. Only those before `end`, where the log stood when
+ * the newest one was taken, are kept: no rewind brings back a batch
+ * published after every held checkpoint, so one checkpoint held for long
+ * keeps no more than the log held when it was taken.
+ */
+interface Grave<T> {
+  readonly positions: Array<number>
+  readonly ticks: Array<number>
+  readonly batches: Array<ReadonlyArray<T>>
+  readonly surviveRestore: Array<boolean>
+  end: number
+}
+
+const makeGrave = <T>(end: number): Grave<T> => ({ positions: [], ticks: [], batches: [], surviveRestore: [], end })
+
+/** Forgets the entries of `grave` from `index` on. */
+const truncateGrave = (grave: Grave<unknown>, index: number): void => {
+  grave.positions.length = index
+  grave.ticks.length = index
+  grave.batches.length = index
+  grave.surviveRestore.length = index
+}
+
+/** Index of the first entry of `grave` at or past `position`. */
+const graveIndexOf = (grave: Grave<unknown>, position: number): number => {
+  let low = 0
+  let high = grave.positions.length
+  while (low < high) {
+    const middle = (low + high) >>> 1
+    if (grave.positions[middle]! >= position) high = middle
+    else low = middle + 1
+  }
+  return low
 }
 
 /** Where each stream's log stood when a checkpoint was taken. */
@@ -91,6 +125,8 @@ export interface Streams<T> {
   release(held: ReadonlyArray<StreamMark>): void
   /** Every key with retained entries or registered readers. */
   inspect(): ReadonlyArray<StreamInspection>
+  /** How many dropped batches of `key` are kept for a rewind to a held mark. */
+  kept(key: symbol): number
   readonly capacity: number
 }
 
@@ -124,7 +160,8 @@ export const make = <T>(capacity: number): Streams<T> => {
     log.droppedThrough = Math.max(log.droppedThrough, log.ticks[count - 1]!)
     const grave = log.grave
     if (grave !== undefined) {
-      for (let index = 0; index < count; index++) {
+      for (let index = 0; index < count && log.base + index < grave.end; index++) {
+        grave.positions.push(log.base + index)
         grave.ticks.push(log.ticks[index]!)
         grave.batches.push(log.batches[index]!)
         grave.surviveRestore.push(log.surviveRestore[index]!)
@@ -230,8 +267,10 @@ export const make = <T>(capacity: number): Streams<T> => {
     mark() {
       const marked = new Map<symbol, { readonly base: number; readonly end: number; readonly droppedThrough: number }>()
       for (const [key, log] of logs) {
-        log.grave ??= { ticks: [], batches: [], surviveRestore: [], base: log.base }
-        marked.set(key, { base: log.base, end: log.base + log.batches.length, droppedThrough: log.droppedThrough })
+        const end = log.base + log.batches.length
+        log.grave ??= makeGrave(end)
+        log.grave.end = end
+        marked.set(key, { base: log.base, end, droppedThrough: log.droppedThrough })
       }
       return { logs: marked }
     },
@@ -244,9 +283,8 @@ export const make = <T>(capacity: number): Streams<T> => {
         if (kept !== undefined) {
           const grave = log.grave
           // Batches dropped since the mark come back from the grave, the rest from the log.
-          if (grave !== undefined && kept.base < log.base) {
-            const to = Math.min(kept.end, log.base) - grave.base
-            for (let index = kept.base - grave.base; index < to; index++) {
+          if (grave !== undefined) {
+            for (let index = graveIndexOf(grave, kept.base); index < grave.positions.length && grave.positions[index]! < kept.end; index++) {
               ticks.push(grave.ticks[index]!)
               batches.push(grave.batches[index]!)
               surviveRestore.push(grave.surviveRestore[index]!)
@@ -266,11 +304,9 @@ export const make = <T>(capacity: number): Streams<T> => {
           surviveRestore.push(true)
         }
         if (log.grave !== undefined && kept !== undefined) {
-          // What came back is in the log again.
-          const keep = Math.max(0, kept.base - log.grave.base)
-          log.grave.ticks.length = keep
-          log.grave.batches.length = keep
-          log.grave.surviveRestore.length = keep
+          // What came back is in the log again, and the mark is the newest held.
+          truncateGrave(log.grave, graveIndexOf(log.grave, kept.base))
+          log.grave.end = kept.end
         }
         log.ticks.length = 0
         log.batches.length = 0
@@ -288,10 +324,8 @@ export const make = <T>(capacity: number): Streams<T> => {
           // Every batch of a log made after the mark was published after it.
           log.base += log.batches.length
           if (log.grave !== undefined) {
-            log.grave.ticks.length = 0
-            log.grave.batches.length = 0
-            log.grave.surviveRestore.length = 0
-            log.grave.base = log.base
+            truncateGrave(log.grave, 0)
+            log.grave.end = log.base
           }
         }
       }
@@ -301,22 +335,27 @@ export const make = <T>(capacity: number): Streams<T> => {
         const grave = log.grave
         if (grave === undefined) continue
         let from = log.base
+        let end = 0
         let marked = false
         for (const mark of held) {
           const kept = mark.logs.get(key)
           if (kept === undefined) continue
           marked = true
           from = Math.min(from, kept.base)
+          end = Math.max(end, kept.end)
         }
         if (!marked) {
-          log.grave = held.length === 0 ? undefined : { ticks: [], batches: [], surviveRestore: [], base: log.base }
+          log.grave = held.length === 0 ? undefined : makeGrave(log.base)
           continue
         }
-        const drop = Math.min(grave.ticks.length, Math.max(0, from - grave.base))
+        // Past the newest mark still held: released with the newer ones.
+        truncateGrave(grave, graveIndexOf(grave, end))
+        grave.end = end
+        const drop = graveIndexOf(grave, from)
+        grave.positions.splice(0, drop)
         grave.ticks.splice(0, drop)
         grave.batches.splice(0, drop)
         grave.surviveRestore.splice(0, drop)
-        grave.base += drop
       }
     },
     inspect() {
@@ -330,6 +369,9 @@ export const make = <T>(capacity: number): Streams<T> => {
           readers: [...(readers.get(key) ?? [])]
         }
       })
+    },
+    kept(key) {
+      return logs.get(key)?.grave?.positions.length ?? 0
     },
     capacity
   }
