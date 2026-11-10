@@ -4,7 +4,7 @@
 
 Ritmo's types reject wrong calls, and its devtools lints reject wrong runs. These rules catch the source patterns neither can see:
 
-- simulation code that reads the wall clock, `Math.random`, engine-dependent math, or the page;
+- simulation code that reads the wall clock, `Math.random`, engine-dependent math, or the page, or plays sound;
 - timers counted in floats;
 - data that cannot be saved;
 - casts that claim a brand's check without running it;
@@ -62,10 +62,10 @@ const started = performance.now()
 
 | Rule | Where | Catches | Use instead |
 |---|---|---|---|
-| [`use-clock-for-time`](#ritmouse-clock-for-time) | simulation | `Date.now()`, `performance.now()`, `new Date()`, timers | `Clock` |
+| [`use-clock-for-time`](#ritmouse-clock-for-time) | simulation | `Date.now()`, `performance.now()`, `new Date()`, `Temporal.Now`, timers | `Clock` |
 | [`use-random-for-randomness`](#ritmouse-random-for-randomness) | simulation | `Math.random()`, `crypto` randomness | `Random.draw(resources.rng)` |
 | [`use-ops-for-math`](#ritmouse-ops-for-math) | simulation | `Math.sin`, `Math.hypot`, `a ** b`, `const { sin } = Math`, ... | `Ops` |
-| [`keep-simulation-headless`](#ritmokeep-simulation-headless) | simulation | page globals, host I/O, renderer imports | input and data from the host, drawing in a render schedule |
+| [`keep-simulation-headless`](#ritmokeep-simulation-headless) | simulation | page globals, host I/O, audio, renderer imports | input and data from the host, drawing and sound in a render schedule |
 | [`no-infinity-in-simulation-data`](#ritmono-infinity-in-simulation-data) | simulation | `Infinity` / `NaN` in object literals | `null` |
 | [`no-float-timers`](#ritmono-float-timers) | simulation | `timer -= dt`, `cooldown - time.dt` | `Clock.deadline` / `Clock.reached` |
 | [`no-brand-cast`](#ritmono-brand-cast) | simulation | `raw as UserId`, `1 as Random.State` | the schema or constructor that brands it |
@@ -75,6 +75,8 @@ const started = performance.now()
 | [`no-kept-query-values`](#ritmono-kept-query-values) | everywhere | `local.target = queries.x.each()[0]`, `local.slots = queries.x.data` | `entity.id` and `queries.x.get(id)`, or plain values from `queries.x.rows()` |
 
 ## Simulation rules
+
+The four rules that read globals (`use-clock-for-time`, `use-random-for-randomness`, `use-ops-for-math`, `keep-simulation-headless`) find a global however the file reaches it: by name, as a member of `globalThis`, `self`, or `window` (`globalThis.Date.now()`, `self.Math.sin(x)`), through a `const` that holds it (`const M = Math; M.random()`), or destructured (`const { now } = Date`, `const { Math: { random } } = globalThis`), reported once where the global is read. A local, parameter, or import of the same name, a field of another object (`config.Date.now()`), and a type (`let at: Date`) are not the global. A value passed through a function or another module is not followed.
 
 ### `ritmo/use-clock-for-time`
 
@@ -91,7 +93,7 @@ const due = Clock.deadline(time, Clock.duration(step, 0.5))             // store
 if (Clock.every(time, waveEvery)) spawnWave()                           // repeats
 ```
 
-Catches `Date.now()`, `performance.now()`, `new Date()` with no arguments (`new Date(timestamp)` only formats a value it was given), and `setTimeout`, `setInterval`, `requestAnimationFrame`, `requestIdleCallback`, and `queueMicrotask`. When a rule needs today's date (a daily reward), read it in host code and pass it in with `runtime.send(...)` or a resource, so the replay records it.
+Catches `Date.now()`, `performance.now()`, `performance.timeOrigin`, `performance.mark()`, `process.hrtime()` (and `.bigint()`), `Temporal.Now`, `new Date()` with no arguments (`new Date(timestamp)` only formats a value it was given), `Date()` called without `new` (the current time as a string, whatever its arguments), `getTimezoneOffset()` on any date (the host's time zone), and `setTimeout`, `setInterval`, `setImmediate`, `requestAnimationFrame`, `requestIdleCallback`, and `queueMicrotask`. When a rule needs today's date (a daily reward), read it in host code and pass it in with `runtime.send(...)` or a resource, so the replay records it.
 
 ### `ritmo/use-random-for-randomness`
 
@@ -106,7 +108,7 @@ const crit = random.next() < 0.1
 const kind = random.pick(kinds)
 ```
 
-Catches `Math.random()`, `crypto.getRandomValues()`, and `crypto.randomUUID()`. For an id, the world already has one: use the entity's id (`entity.id`, kept as `Game.Entity.handle(...)`) or a counter in a resource. An id that must be unique across devices or runs (an account item, a save slot) is made in host code, where `crypto.randomUUID()` is fine, and passed in with `runtime.send(...)`.
+Catches `Math.random()`, `crypto.getRandomValues()`, and `crypto.randomUUID()`, also destructured (`const { random } = Math`). For an id, the world already has one: use the entity's id (`entity.id`, kept as `Game.Entity.handle(...)`) or a counter in a resource. An id that must be unique across devices or runs (an account item, a save slot) is made in host code, where `crypto.randomUUID()` is fine, and passed in with `runtime.send(...)`.
 
 ### `ritmo/use-ops-for-math`
 
@@ -129,7 +131,7 @@ Before porting a formula to `Ops`, look for the helper that names it: `Angle.wra
 
 `oxlint --fix` does the whole change in one run: it rewrites `Math.sin(x)` to `Ops.sin(x)`, `a ** b` to `Ops.pow(a, b)`, and `x **= y` to `x = Ops.pow(x, y)`, and adds `import { Ops } from "@typeonce/ritmo"` once, after the last import (`const { Ops } = require("@typeonce/ritmo")` in a CommonJS file). It uses `Ops` where the file already imports it, under any name (`import { Ops as M }`, `import * as Ops from "@typeonce/ritmo/Ops"`). It leaves the report unfixed where a rewrite could change the code: `body.speed **= y` (the rewrite would evaluate `body` twice), and a file or function where the name `Ops` already means something else (a type-only import included).
 
-The global Math handed on as a value hides the calls made through it from the rule, so it is reported too (without a fix): an alias (`const M = Math`), a destructured function or rest element (`const { sin } = Math`), an argument (`apply(Math, "sin", x)`), a computed key (`Math[name]`), and `globalThis.Math` used the same ways. Call `Ops.sin` directly, and read exact members by name. A local named `Math` is not the global and is not reported.
+The global Math handed on as a value hides the calls made through it from the rule, so it is reported too (without a fix): an alias (`const M = Math`), a destructured function or rest element (`const { sin } = Math`), an argument (`apply(Math, "sin", x)`), a computed key (`Math[name]`), and `globalThis.Math` or `self.Math` used the same ways (`const { Math: M } = globalThis` too). `self.Math.sin(x)` is reported and fixed like `Math.sin(x)`. Call `Ops.sin` directly, and read exact members by name. A local named `Math` is not the global and is not reported.
 
 ### `ritmo/keep-simulation-headless`
 
@@ -139,6 +141,7 @@ The simulation runs in tests, bots, replays, and on servers, where there is no p
 |---|---|
 | Page globals: `window`, `document`, `navigator`, `matchMedia`, ... | Capture input in the host with `Keyboard`, `Gamepad`, `Pointer`, or `Touch` (merged with `Controls`) from `@typeonce/ritmo-browser` and `InputCapture` into a resource that systems read. Pass page state (size, settings) in with `runtime.send(...)` or a resource. |
 | Host I/O: `localStorage`, `fetch`, `location`, ... | Do the I/O in host code and pass the result in with `runtime.send(...)` or a resource. Save and load the world in the host with `runtime.snapshot()` and `runtime.restore(...)`. |
+| Sound: `Audio`, `AudioContext` | Publish what happened as an event (`Game.System.writeEvent(Hit)`), and play the sound from a render or host system that reads it (`Game.System.readEvent(Hit)`) and requests the game's audio as a service (`Game.System.service(Audio)`), so a headless test can provide one that records. Under a netcode session, play it from `session.events(Hit)`, so a rolled-back tick does not play it twice. |
 | Connections to other peers: `WebSocket`, `RTCPeerConnection`, `RTCDataChannel` | For online play, run the simulation under a [`@typeonce/ritmo-netcode`](https://github.com/typeonce-dev/ritmo/blob/main/packages/netcode/README.md) session: host code opens the connection and wraps it in a link, and remote input reaches the simulation through `Netcode.seats`, never `runtime.send(...)`. |
 | Renderer and UI imports, types included: `pixi.js`, `three`, `@typeonce/ritmo-render`, `react`, `preact`, ... | Draw from a render schedule in render code: mirror entities into nodes with `RenderSync` and a `NodeRegistry` from `@typeonce/ritmo-render`, and declare renderer services (a node registry) and their types there; renderer nodes stay in the registry, never in components. The schema and simulation systems name no renderer type, so another renderer can replace this one. |
 
@@ -202,11 +205,12 @@ A branded type (`UserId`, `Random.State`, `Clock.Deadline<60>`) stands for a che
 const UserId = z.string().uuid().brand("UserId")
 type UserId = z.infer<typeof UserId>
 const id = raw as UserId                                       // reported
-const rng = Random.resource("Game/Rng", 1 as Random.State)     // reported
+const Rng = Descriptor.ConstructedResource(Random.codec)("Game/Rng")
+const made = Game.Runtime.make({ services, resources: { Rng: 1 as Random.State } })   // reported
 
 // instead
 const id = UserId.parse(raw)                                   // Effect: Schema.decodeUnknownSync(UserId)(raw)
-const rng = Random.resource("Game/Rng", Random.seed(1))
+const made = Game.Runtime.make({ services, resources: { Rng: Random.seed(1) } })
 ```
 
 Oxlint has no type information, so the rule reads the brand from the code: a cast (`x as T` or `<T>x`) to

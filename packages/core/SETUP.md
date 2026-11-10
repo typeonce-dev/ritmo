@@ -1,5 +1,7 @@
 # Set up Ritmo in a project
 
+Requires Node 22.19 or newer, the highest floor of the commands these steps and the skills run (`ritmo-tools`; `ritmo-devtools lint` needs 22.15), and TypeScript 5.9 or newer with `strict` on. Leave `noErrorTruncation` off: errors name the fix near their start, and an untruncated one can print a whole schema.
+
 Follow these steps once in a new project, and for any step an existing project is missing. Use the project's package manager.
 
 1. Install the runtime and the debug sessions:

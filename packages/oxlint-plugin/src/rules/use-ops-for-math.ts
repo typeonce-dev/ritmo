@@ -1,7 +1,7 @@
 import { defineRule } from "@oxlint/plugins"
 import type { Context, ESTree, Fixer, Fix } from "@oxlint/plugins"
 
-import { docsUrl, globalMember, isGlobalReference, propertyName, stringValue } from "../internal/ast.ts"
+import { docsUrl, globalRead, isGlobalReference, propertyKey, propertyName, stringValue, typePositions } from "../internal/ast.ts"
 
 /** The Math functions engines may approximate; each has an `Ops` counterpart. */
 const approximated = new Set([
@@ -9,9 +9,6 @@ const approximated = new Set([
   "exp", "expm1", "log", "log2", "log10", "log1p", "cbrt", "pow", "hypot",
   "sinh", "cosh", "tanh", "asinh", "acosh", "atanh"
 ])
-
-/** Where the type checker reads `Math` as a type: these never run. */
-const typePositions = new Set(["TSTypeQuery", "TSQualifiedName", "TSTypeReference", "TSClassImplements", "TSInterfaceHeritage"])
 
 /** The value `require("<source>")` loads, if `node` is that call. */
 const requireOf = (node: ESTree.Node | null | undefined): string | undefined =>
@@ -47,10 +44,6 @@ const opsBinding = (program: ESTree.Program): ESTree.BindingIdentifier | undefin
   }
   return undefined
 }
-
-/** The static name of an object pattern or literal property (`a`, `"a"`), if it has one. */
-const propertyKey = (node: ESTree.ObjectProperty | ESTree.AssignmentTargetProperty | ESTree.BindingProperty): string | undefined =>
-  !node.computed && node.key.type === "Identifier" ? node.key.name : stringValue(node.key)
 
 /** The variable `name` resolves to from `scope`, if any declaration in the file binds it. */
 const resolve = (scope: ReturnType<Context["sourceCode"]["getScope"]>, name: string) => {
@@ -109,11 +102,14 @@ export default defineRule({
   create(context) {
     const pending: Array<Pending> = []
 
-    /** Whether `node` is the global Math: `Math` or `globalThis.Math` (not a local named Math). */
+    /**
+     * Whether `node` is the global Math: `Math`, or a member of a global
+     * object (`globalThis.Math`, `self.Math`), not a local named Math.
+     */
     const isMath = (node: ESTree.Node): boolean =>
       node.type === "Identifier"
         ? node.name === "Math" && isGlobalReference(context, node)
-        : node.type === "MemberExpression" && globalMember(context, node, "globalThis") === "Math"
+        : node.type === "MemberExpression" && globalRead(context, node)?.path === "Math"
 
     /** Whether destructuring Math with `pattern` pulls only exact members by name. */
     const pullsOnlyExact = (pattern: ESTree.Node): boolean =>
@@ -149,6 +145,10 @@ export default defineRule({
       },
       MemberExpression(node) {
         if (isMath(node)) checkMath(node)
+      },
+      // `const { Math: M } = globalThis` is an alias too.
+      Property(node) {
+        if (globalRead(context, node)?.path === "Math" && !pullsOnlyExact(node.value)) pending.push({ node, messageId: "alias" })
       },
       BinaryExpression(node) {
         if (node.operator !== "**") return

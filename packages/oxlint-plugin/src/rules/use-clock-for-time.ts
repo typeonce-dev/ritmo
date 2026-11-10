@@ -1,8 +1,19 @@
 import { defineRule } from "@oxlint/plugins"
+import type { ESTree } from "@oxlint/plugins"
 
-import { docsUrl, globalMember, isGlobalIdentifier, isGlobalReference } from "../internal/ast.ts"
+import { calledMethod, docsUrl, globalPath, globalRead } from "../internal/ast.ts"
 
-const timers = ["setTimeout", "setInterval", "requestAnimationFrame", "requestIdleCallback", "queueMicrotask"]
+const timers = new Set(["setTimeout", "setInterval", "setImmediate", "requestAnimationFrame", "requestIdleCallback", "queueMicrotask"])
+
+/** The globals that read the wall clock, by path, with the call named in the report. */
+const wallClocks = new Map([
+  ["Date.now", "Date.now()"],
+  ["performance.now", "performance.now()"],
+  ["performance.timeOrigin", "performance.timeOrigin"],
+  ["performance.mark", "performance.mark()"],
+  ["process.hrtime", "process.hrtime()"],
+  ["Temporal.Now", "Temporal.Now"]
+])
 
 /**
  * Simulation code reads time from the world's Clock, never from the wall
@@ -24,24 +35,30 @@ export default defineRule({
     schema: []
   },
   create(context) {
+    /** Reports a read of a wall clock: a member (`globalThis.Date.now`) or a destructured property (`const { now } = Date`). */
+    const check = (node: ESTree.Node): void => {
+      const path = globalRead(context, node)?.path
+      const call = path === undefined ? undefined : wallClocks.get(path)
+      if (call !== undefined) context.report({ node, messageId: "wallClock", data: { call } })
+    }
     return {
-      MemberExpression(node) {
-        for (const object of ["Date", "performance"]) {
-          if (globalMember(context, node, object) === "now") {
-            context.report({ node, messageId: "wallClock", data: { call: `${object}.now()` } })
-          }
-        }
-      },
+      MemberExpression: check,
+      Property: check,
       NewExpression(node) {
-        if (node.arguments.length === 0 && isGlobalIdentifier(context, node.callee, "Date")) {
+        if (node.arguments.length === 0 && globalPath(context, node.callee) === "Date") {
           context.report({ node, messageId: "wallClock", data: { call: "new Date()" } })
         }
       },
       CallExpression(node) {
-        const callee = node.callee
-        if (callee.type !== "Identifier" || !timers.includes(callee.name)) return
-        if (!isGlobalReference(context, callee)) return
-        context.report({ node, messageId: "timer", data: { call: callee.name } })
+        // The host's time zone, which a replay on another device does not share.
+        if (calledMethod(node) === "getTimezoneOffset") {
+          context.report({ node, messageId: "wallClock", data: { call: "getTimezoneOffset()" } })
+          return
+        }
+        const callee = globalPath(context, node.callee)
+        // `Date()` without `new` returns the current time as a string, whatever its arguments.
+        if (callee === "Date") context.report({ node, messageId: "wallClock", data: { call: "Date()" } })
+        if (callee !== undefined && timers.has(callee)) context.report({ node, messageId: "timer", data: { call: callee } })
       }
     }
   }
