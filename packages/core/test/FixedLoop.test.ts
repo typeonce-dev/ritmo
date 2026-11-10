@@ -167,4 +167,76 @@ describe("ignored tick failures through FixedLoop", () => {
     expect(failures).toEqual([{ kind: "InvalidRate", rate: 0.5 }])
     expect(updates).toBe(9)
   })
+
+  describe("a driver called from update or render", () => {
+    /** A 100 Hz loop whose `update` and `render` can call into their own driver. */
+    const makeLoop = (calls: {
+      readonly onUpdate?: (driver: FixedLoop.Driver, update: number) => void
+      readonly onRender?: (driver: FixedLoop.Driver, frame: number) => void
+    }) => {
+      let tick: ((value: FixedLoop.Tick) => void) | undefined
+      const frames: Array<FixedLoop.Frame> = []
+      let updates = 0
+      let hostStops = 0
+      const started = FixedLoop.start({
+        source: FixedLoop.source((onTick) => {
+          tick = onTick
+          return { stop: () => { hostStops += 1 } }
+        }),
+        step: Clock.hz(100),
+        maxFrameSeconds: 0.25,
+        maxStepsPerFrame: 5,
+        update: () => {
+          updates += 1
+          calls.onUpdate?.(driver, updates)
+          return Result.success(undefined)
+        },
+        render: (frame) => {
+          frames.push(frame)
+          calls.onRender?.(driver, frames.length)
+        },
+        onFailure: () => {
+          throw new Error("unexpected loop failure")
+        }
+      })
+      if (!started.ok) throw new Error("invalid fixture")
+      const driver = started.value
+      return { tick: (deltaMS: number) => tick?.({ deltaMS }), frames, updates: () => updates, hostStops: () => hostStops }
+    }
+
+    it("reset() from update ends the frame's stepping at alpha 0 and loses no step on the next frame", () => {
+      // A level loaded in the first update resets the loop.
+      const loop = makeLoop({ onUpdate: (driver, update) => { if (update === 1) driver.reset() } })
+      loop.tick(35)
+      expect(loop.updates()).toBe(1)
+      expect(loop.frames[0]).toMatchObject({ fixedSteps: 1, alpha: 0, droppedSeconds: 0 })
+      loop.tick(10)
+      expect(loop.updates()).toBe(2)
+      expect(loop.frames[1]).toMatchObject({ fixedSteps: 1 })
+      expect(loop.frames[1]!.alpha).toBeCloseTo(0)
+    })
+
+    it("stop() from update runs no further update and no render", () => {
+      const loop = makeLoop({ onUpdate: (driver, update) => { if (update === 1) driver.stop() } })
+      loop.tick(45)
+      loop.tick(45)
+      expect(loop.updates()).toBe(1)
+      expect(loop.frames).toEqual([])
+      expect(loop.hostStops()).toBe(1)
+    })
+
+    it("reset() and stop() from render apply from the next frame", () => {
+      const reset = makeLoop({ onRender: (driver, frame) => { if (frame === 1) driver.reset() } })
+      reset.tick(15)
+      reset.tick(10)
+      expect(reset.frames.map((frame) => frame.fixedSteps)).toEqual([1, 1])
+      expect(reset.frames[1]!.alpha).toBeCloseTo(0)
+      const stopped = makeLoop({ onRender: (driver) => driver.stop() })
+      stopped.tick(15)
+      stopped.tick(15)
+      expect(stopped.updates()).toBe(1)
+      expect(stopped.frames).toHaveLength(1)
+      expect(stopped.hostStops()).toBe(1)
+    })
+  })
 })

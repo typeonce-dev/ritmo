@@ -6,7 +6,8 @@
  * - every component ordinal has a store: its values in pages of
  *   `PAGE_SIZE` entities indexed by entity id (`ABSENT` marks an entity
  *   without it), next to the tick each value was added and last changed at.
- *   A page exists while one of its entities holds the component
+ *   A page exists while one of its entities holds the component: one left
+ *   empty leaves its store, so ids no entity holds any more cost nothing
  * - every live entity is one `EntityRecord`: its id, the ordinals it holds,
  *   and its cached query matches
  * - every component ordinal keeps the set of records that currently have it,
@@ -45,10 +46,12 @@ export const PAGE_SIZE = 1 << PAGE_BITS
 export const PAGE_MASK = PAGE_SIZE - 1
 
 /**
- * `PAGE_SIZE` consecutive entity ids of one component's store. A page object
- * is never replaced, so cells hold it directly; while none of its entities
- * holds the component, its arrays are the shared empty ones (every slot
- * `ABSENT`), which nothing writes to.
+ * `PAGE_SIZE` consecutive entity ids of one component's store. Once none of
+ * its entities holds the component, its arrays become the shared empty ones
+ * (every slot `ABSENT`), which nothing writes to, and it leaves the store.
+ * Cells look a page up in the store when they enter it and forget it with the
+ * end of their run, so none holds a page that left; a checkpoint mark that
+ * kept one puts it back when rewound to.
  */
 export interface Page {
   readonly ordinal: number
@@ -671,9 +674,25 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   }
 
   /**
+   * Lets go of an empty page: its storage, and its place in the store. Ids are
+   * never given out twice, so a page of ids no entity holds any more would
+   * otherwise stay for good. A mark that kept the page puts it back on rewind.
+   */
+  const releasePage = (page: Page): void => {
+    page.values = emptyValues
+    page.numbers = emptyNumbers
+    page.added = emptyTicks
+    page.changed = emptyTicks
+    page.before = undefined
+    page.beforeNumbers = undefined
+    const pages = stores[page.ordinal]!.pages
+    const index = page.base >>> PAGE_BITS
+    if (pages[index] === page) pages[index] = undefined
+  }
+
+  /**
    * Clears one slot, leaving `record.held` to the caller; a page left empty
-   * lets go of its storage, except while a transaction or phase may still
-   * restore it.
+   * is released, except while a transaction or phase may still restore it.
    */
   const clearSlot = (record: EntityRecord, ordinal: number): void => {
     const page = pageAt(ordinal, record.id)!
@@ -682,14 +701,8 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     page.values[slot] = ABSENT
     if (page.numbers !== emptyNumbers) page.numbers[slot] = NaN
     page.count -= 1
-    if (page.count === 0 && !inTransaction && !inPhase) {
-      page.values = emptyValues
-      page.numbers = emptyNumbers
-      page.added = emptyTicks
-      page.changed = emptyTicks
-      page.before = undefined
-      page.beforeNumbers = undefined
-    }
+    // Structural changes apply at markers, never inside a transaction or phase: this only guards that.
+    if (page.count === 0 && !inTransaction && !inPhase) releasePage(page)
   }
 
   /**
@@ -1244,6 +1257,12 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       page.changed = copy.changed
       page.count = copy.count
       page.keptIn = 0
+      // A page released after the mark comes back to its store; one made after
+      // it (empty then) leaves. Either order leaves the page the mark knew.
+      const store = stores[ordinal]!.pages
+      const at = page.base >>> PAGE_BITS
+      if (copy.count > 0) store[at] = page
+      else if (store[at] === page) store[at] = undefined
     }
 
     for (const [id, then] of kept) {

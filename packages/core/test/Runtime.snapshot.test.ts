@@ -154,6 +154,24 @@ describe("Runtime snapshots", () => {
     expect(worldOf(busy.snapshot()).nextEntity).toBe(save.nextEntity + 1)
   })
 
+  it("restores a world too large to spread into one call", () => {
+    // 200,000 arguments overflow the stack: the restore threw after it had emptied the world.
+    const count = 200_000
+    const SpawnCrowd = Game.System("Snapshot/SpawnCrowd", {
+      commands: Game.System.commands(Game.System.spawns(Name))
+    }, ({ commands }) => {
+      for (let index = 0; index < count; index++) commands.spawn(Game.Command.spawn([Name, "crowd"]))
+    })
+    const source = makeRuntime(0)
+    source.tick(Game.Schedule(SpawnCrowd, Game.Schedule.applyDeferred()))
+    const save = JSON.parse(JSON.stringify(worldOf(source.snapshot())))
+    const target = makeRuntime(0)
+    expect(target.restore(save).ok).toBe(true)
+    const Count = Game.Inspector("Snapshot/CountCrowd", { queries: { named: Named } }, ({ queries }) => queries.named.each().length)
+    expect(target.inspect(Count)).toBe(count)
+    expect(worldOf(target.snapshot()).nextEntity).toBe(save.nextEntity)
+  }, 30_000)
+
   it("rejects invalid data and leaves the world unchanged", () => {
     const runtime = makeRuntime(5)
     populate(runtime)

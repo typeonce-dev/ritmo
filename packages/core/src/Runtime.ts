@@ -639,6 +639,9 @@ export interface Runtime<
    * The first expected system failure stops the tick and is returned; that
    * system's ECS writes are rolled back and earlier systems stay committed.
    *
+   * Calling `tick` or `tryTick` while one is running (from a system, a
+   * service, or a trace or host listener) throws.
+   *
    * To tick at a fixed rate from a frame loop, use `FixedLoop.start`
    * instead of an accumulator of your own.
    */
@@ -654,7 +657,8 @@ export interface Runtime<
    *
    * Requirements are checked against current provisioning first and missing
    * ones are returned as data, then `Game.System.thisTick` reads are checked
-   * against the schedule's order (`TickOrderViolation`).
+   * against the schedule's order (`TickOrderViolation`). Like `tick`, it
+   * throws while a `tick` or `tryTick` is running.
    */
   readonly tryTick: <const Selected extends ExecutableScheduleDefinition<S, any, any, any, any>>(
     schedule: Selected
@@ -2285,8 +2289,11 @@ const makeValidatedRuntime = <
         // Discarded earlier in this marker: its parent left the state it exists in.
         continue
       }
-      // A transition schedule earlier in this marker may have queued a newer
-      // value for this machine: that one waits for the next marker.
+      // A transition schedule earlier in this marker may have reset this
+      // request: it is not applied.
+      if (!pendingMachines.has(machineKey)) continue
+      // It may also have queued a newer value for this machine: that one
+      // waits for the next marker.
       if (pendingMachines.get(machineKey) === pending) pendingMachines.delete(machineKey)
       /** Keeps this request queued after a failure, unless a newer one replaced it. */
       const requeue = () => {
@@ -2480,7 +2487,11 @@ const makeValidatedRuntime = <
     return succeeded
   }
 
-  /** Whether `runtime.tick` is on the stack: a nested `tick` is a defect. */
+  /**
+   * Whether `runtime.tick` or `runtime.tryTick` is on the stack, from its
+   * first check to its return: a nested `tick` or `tryTick` is a defect, since
+   * the nested run would commit the outer system's rollback journal.
+   */
   let ticking = false
   /**
    * Whether a tick is advancing its frame or running its schedules (in
@@ -2650,6 +2661,7 @@ const makeValidatedRuntime = <
     schedule: Selected
   ): Result.Result<void, MissingRuntimeRequirements | TickOrderViolation | Schedule.FailureOf<Selected>> => {
     if (frameOpen) throw openFrameDefect("runtime.tryTick")
+    if (ticking) throw new Error("runtime.tryTick cannot run inside another tick")
     if (debugEnabled) reportUnread("next-tick")
     const missing = schedule.requirements
       .filter((requirement) => !hasRequirement(requirement))
@@ -2667,12 +2679,13 @@ const makeValidatedRuntime = <
       return watchResult(Result.failure({ kind: "TickOrderViolation" as const, issues }), [schedule])
     }
 
-    if (inTick) throw new Error("runtime.tryTick cannot run inside another tick")
+    ticking = true
     inTick = true
     try {
       advanceFrame()
       return watchResult(observedTick([schedule], () => runScheduleUnsafe(schedule)), [schedule]) as Result.Result<void, Schedule.FailureOf<Selected>>
     } finally {
+      ticking = false
       inTick = false
     }
   }
@@ -2798,9 +2811,13 @@ const makeValidatedRuntime = <
     // Validate everything before touching the world.
     const ids = new Set<number>()
     const entities: Array<{ readonly id: number; readonly components: Array<Entity.StagedComponent> }> = []
+    // Exactly the save's: ids allocated after a restore do not depend on the world it replaced.
+    // A loop, not a spread: a spread of every id overflows the stack on a large world.
+    let nextEntity = saved.nextEntity
     for (const entity of saved.entities) {
       if (ids.has(entity.id)) return Result.failure({ _tag: "DuplicateEntity", entityId: entity.id })
       ids.add(entity.id)
+      if (entity.id >= nextEntity) nextEntity = entity.id + 1
       const components: Array<Entity.StagedComponent> = []
       for (const [name, raw] of Object.entries(entity.components)) {
         const descriptor = componentsByName.get(name)
@@ -2905,8 +2922,7 @@ const makeValidatedRuntime = <
     droppedRelations.clear()
     world.advanceTick()
     world.despawnAll()
-    // Exactly the save's: ids allocated after a restore do not depend on the world it replaced.
-    world.setNextEntity(Math.max(saved.nextEntity, ...entities.map((entity) => entity.id + 1)))
+    world.setNextEntity(nextEntity)
     for (const entity of entities) {
       world.spawnEntity(world.entityIdOf(entity.id), entity.components)
     }
@@ -3292,7 +3308,7 @@ const makeValidatedRuntime = <
     schedule: ExecutableScheduleDefinition<S, any, any, any, any>
   ): Result.Result<Debug.FrameCursor<SystemFailure>, MissingRuntimeRequirements | TickOrderViolation> => {
     if (frameOpen) throw openFrameDefect("debug.beginFrame")
-    if (inTick) throw new Error("debug.beginFrame was called while a schedule is running: begin a frame between ticks")
+    if (inTick || ticking) throw new Error("debug.beginFrame was called while a schedule is running: begin a frame between ticks")
     reportUnread("next-tick")
     const missing = schedule.requirements
       .filter((requirement) => !hasRequirement(requirement))
@@ -3346,6 +3362,7 @@ const makeValidatedRuntime = <
       remaining: () => ended ? [] : steps.slice(index).map(DebugInternal.describeStep),
       next: () => {
         if (ended) throw new Error("FrameCursor.next was called after the frame ended: begin another frame")
+        if (inTick) throw new Error("FrameCursor.next was called while a step is running: step the frame from the host, between steps")
         const at = index
         const step = steps[at]!
         index += 1
