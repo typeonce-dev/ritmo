@@ -2785,9 +2785,13 @@ const makeValidatedRuntime = <
     // Validate everything before touching the world.
     const ids = new Set<number>()
     const entities: Array<{ readonly id: number; readonly components: Array<Entity.StagedComponent> }> = []
+    // Exactly the save's: ids allocated after a restore do not depend on the world it replaced.
+    // A loop, not a spread: a spread of every id overflows the stack on a large world.
+    let nextEntity = saved.nextEntity
     for (const entity of saved.entities) {
       if (ids.has(entity.id)) return Result.failure({ _tag: "DuplicateEntity", entityId: entity.id })
       ids.add(entity.id)
+      if (entity.id >= nextEntity) nextEntity = entity.id + 1
       const components: Array<Entity.StagedComponent> = []
       for (const [name, raw] of Object.entries(entity.components)) {
         const descriptor = componentsByName.get(name)
@@ -2892,8 +2896,7 @@ const makeValidatedRuntime = <
     droppedRelations.clear()
     world.advanceTick()
     world.despawnAll()
-    // Exactly the save's: ids allocated after a restore do not depend on the world it replaced.
-    world.setNextEntity(Math.max(saved.nextEntity, ...entities.map((entity) => entity.id + 1)))
+    world.setNextEntity(nextEntity)
     for (const entity of entities) {
       world.spawnEntity(world.entityIdOf(entity.id), entity.components)
     }
