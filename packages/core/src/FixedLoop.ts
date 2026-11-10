@@ -127,7 +127,12 @@ export const rateRange = { min: 0.9, max: 1.1 } as const
 
 /** A running fixed-step driver. */
 export interface Driver extends Subscription {
-  /** Clears accumulated partial time without removing the host subscription. */
+  /**
+   * Clears accumulated partial time without removing the host subscription.
+   * Called from `update`, it also ends that frame's stepping: the frame
+   * renders with `alpha` 0. `stop()` called from `update` runs no further
+   * update and no render.
+   */
   reset(): void
 }
 
@@ -192,6 +197,8 @@ export const start = <TTick extends Tick, UpdateError>(
   }
 
   let accumulator = 0
+  /** Counts `reset()` calls, so the loop sees one made from `update`. */
+  let resets = 0
   let stopped = false
   let hostSubscription: Subscription | undefined
 
@@ -230,14 +237,24 @@ export const start = <TTick extends Tick, UpdateError>(
 
     let fixedSteps = 0
     while (accumulator >= options.step.dt && fixedSteps < options.maxStepsPerFrame) {
+      const resetsBefore = resets
       const update = options.update(options.step.dt)
       if (!update.ok) {
         fail({ kind: "UpdateFailure", error: update.error })
         return
       }
+      fixedSteps += 1
+      // A stop from `update` ends the frame: no further update, no render.
+      if (stopped) {
+        return
+      }
+      // A reset from `update` (after a level load) ends the frame's stepping
+      // with nothing accumulated: the step it ran is not charged again.
+      if (resets !== resetsBefore) {
+        break
+      }
       // oxlint-disable-next-line ritmo/no-float-timers -- the host loop's accumulator of wall time, drained in fixed steps; systems read Clock.
       accumulator -= options.step.dt
-      fixedSteps += 1
     }
 
     if (accumulator >= options.step.dt) {
@@ -263,6 +280,7 @@ export const start = <TTick extends Tick, UpdateError>(
     stop,
     reset() {
       accumulator = 0
+      resets += 1
     }
   })
 }
