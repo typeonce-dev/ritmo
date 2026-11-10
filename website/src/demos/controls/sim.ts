@@ -108,9 +108,9 @@ const SpawnBall = Game.System(
   { commands: Game.System.commands(Game.System.spawns(Ball)) },
   ({ commands }) => {
     commands.spawn(Game.Command.spawn(
-      Game.Command.entry(Ball, { heading: 0, cooldown: 0 }),
-      Game.Command.entry(Position, { x: ARENA.width / 2, y: ARENA.height / 2 }),
-      Game.Command.entry(Velocity, { x: 0, y: 0 })
+      [Ball, { heading: 0, cooldown: 0 }],
+      [Position, { x: ARENA.width / 2, y: ARENA.height / 2 }],
+      [Velocity, { x: 0, y: 0 }]
     ))
   }
 )

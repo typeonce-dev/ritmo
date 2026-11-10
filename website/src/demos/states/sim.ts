@@ -63,8 +63,8 @@ const Spawn = Game.System(
   { commands: Game.System.commands(Game.System.spawns(Height, Contact)) },
   ({ commands }) => {
     commands.spawn(Game.Command.spawn(
-      Game.Command.entry(Height, 0),
-      Game.Command.entry(Contact, { _tag: "ground", platform: null })
+      [Height, 0],
+      [Contact, { _tag: "ground", platform: null }]
     ))
   }
 )

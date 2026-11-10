@@ -83,7 +83,7 @@ const Damager = Game.System("Checkpoint/Damager", {
   for (const entity of queries.hurt.each()) {
     if ((entity.id + input) % 4 === 0) {
       if (data.shield.get(entity) !== undefined) commands.remove(entity, Shield)
-      else commands.insert(entity, Game.Command.entry(Shield, {}))
+      else commands.insert(entity, [Shield, {}])
       continue
     }
     if (data.shield.get(entity) !== undefined) continue

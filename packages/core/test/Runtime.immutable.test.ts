@@ -24,7 +24,7 @@ describe("immutable components", () => {
 
   it("rejects a write slot built through an erased type", () => {
     const write = Game.Query.write as (descriptor: unknown) => unknown
-    expect(() => write(Kind)).toThrow("Immutable/Kind is immutable: replace it with commands.insert(entity, Game.Command.entry(Immutable/Kind, ...))")
+    expect(() => write(Kind)).toThrow("Immutable/Kind is immutable: replace it with commands.insert(entity, [Immutable/Kind, value])")
   })
 
   it("is replaced by insert, which changed(...) sees", () => {
@@ -40,7 +40,7 @@ describe("immutable components", () => {
     }, ({ queries, commands }) => {
       const { data } = queries.kinds
       for (const entity of queries.kinds.each()) {
-        if (data.position.get(entity).x === 1) commands.insert(entity.id, Game.Command.entry(Kind, "pickup"))
+        if (data.position.get(entity).x === 1) commands.insert(entity.id, [Kind, "pickup"])
       }
     })
     const runtime = makeRuntime()

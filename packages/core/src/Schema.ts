@@ -808,20 +808,21 @@ export namespace Schema {
       optionalRelated: <R extends RelationDescriptor<S>>(descriptor: R) => Relation.OptionalRelatedReadAccess<R, S, Root>
     }
     readonly Command: {
-      /** Starts an entity draft from `[Descriptor, value]` entries and entry results. */
-      spawn: <const Entries extends ReadonlyArray<Command.SpawnEntry<S>> = readonly []>(
-        ...entries: Entries
+      /**
+       * Starts an entity draft from `[Descriptor, value]` entries, each
+       * checked against its own component, and `entryRaw` results.
+       */
+      spawn: <const Entries extends ReadonlyArray<Command.SpawnEntry<S> | Command.UncheckedEntry> = readonly []>(
+        ...entries: Command.ExactEntries<S, Entries>
       ) => Command.DraftFor<S, Entries, {}, Root>
       /**
        * Adds entries to a draft (a value not yet spawned). Use
        * `commands.insert` for an entity that already exists.
        */
-      extend: <P extends Entity.ComponentProof, const Entries extends ReadonlyArray<Command.SpawnEntry<S>>, Relates = never>(
+      extend: <P extends Entity.ComponentProof, const Entries extends ReadonlyArray<Command.SpawnEntry<S> | Command.UncheckedEntry>, Relates = never>(
         draft: Entity.EntityDraft<S, P, Root, Relates>,
-        ...entries: Entries
+        ...entries: Command.ExactEntries<S, Entries>
       ) => Command.DraftFor<S, Entries, P, Root, Relates>
-      /** A typed `[Descriptor, value]` entry for an already valid value. */
-      entry: <D extends ComponentDescriptor<S>>(descriptor: D, value: QueryModule.ReadonlyValue<Descriptor.Value<D>>) => Command.Entry<D>
       /** Decodes raw input through a constructed descriptor's schema; check the result before spawning. See `Command.entryRaw`. */
       entryRaw: <D extends Extract<ComponentDescriptor<S>, ConstructedDescriptor<"component", string, any, any, any>>>(
         descriptor: D,

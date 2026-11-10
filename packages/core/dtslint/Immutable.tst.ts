@@ -30,7 +30,7 @@ describe("immutable components", () => {
   })
 
   it("rejects a write slot, naming commands.insert", () => {
-    // @ts-expect-error ImmutableTypes/Kind is immutable: replace it with commands.insert(entity, Game.Command.entry(ImmutableTypes/Kind, ...))
+    // @ts-expect-error ImmutableTypes/Kind is immutable: replace it with commands.insert(entity, [ImmutableTypes/Kind, value])
     Game.Query.write(Kind)
     // @ts-expect-error ImmutableTypes/Team is immutable: replace it with commands.insert
     Game.Query.write(Team)
@@ -44,7 +44,7 @@ describe("immutable components", () => {
       commands: Game.System.commands(Game.System.inserts(Kind))
     }, ({ queries, commands }) => {
       for (const entity of queries.kinds.each()) {
-        commands.insert(entity, Game.Command.entry(Kind, "pickup"))
+        commands.insert(entity, [Kind, "pickup"])
       }
     })
   })

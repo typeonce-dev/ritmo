@@ -868,7 +868,7 @@ describe("optional slots", () => {
     }, ({ queries, commands }) => {
       const { data } = queries.named
       for (const entity of queries.named.each()) {
-        if (data.hp.get(entity) === undefined) commands.insert(entity, Local.Command.entry(Hp, 5))
+        if (data.hp.get(entity) === undefined) commands.insert(entity, [Hp, 5])
         else commands.remove(entity, Hp)
       }
     })
