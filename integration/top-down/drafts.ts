@@ -13,7 +13,7 @@ export const makeWallDraft = (x: number, y: number, width: number, height: numbe
   return Game.Command.spawn(
     Game.Command.entryRaw(Position, { x, y }),
     Game.Command.entryRaw(Collider, { width, height }),
-    Game.Command.entry(Wall, {})
+    [Wall, {}]
   )
 }
 
@@ -21,10 +21,10 @@ export const makePickupDraft = (x: number, y: number, label: string) => {
   return Game.Command.spawn(
     Game.Command.entryRaw(Position, { x, y }),
     Game.Command.entryRaw(Collider, { width: 28, height: 28 }),
-    Game.Command.entry(Collectable, {
+    [Collectable, {
       label,
       radius: PLAYER_INTERACT_RADIUS
-    })
+    }]
   )
 }
 
@@ -36,5 +36,5 @@ export const playerDraft = Game.Command.spawn(
   Game.Command.entryRaw(Position, { x: 640, y: 260 }),
   Game.Command.entryRaw(Velocity, { x: 0, y: 0 }),
   Game.Command.entryRaw(Collider, { width: PLAYER_SIZE, height: PLAYER_SIZE }),
-  Game.Command.entry(Player, {})
+  [Player, {}]
 )

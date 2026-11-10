@@ -47,19 +47,19 @@ export const SpawnTown = Game.System(
   ({ commands }) => {
     for (const villager of villagers) {
       const draft = Game.Command.spawn(
-        Game.Command.entry(Villager, {}),
-        Game.Command.entry(Tile, villager.cell),
-        Game.Command.entry(Position, cellPosition(villager.cell)),
-        Game.Command.entry(Facing, villager.facing),
-        Game.Command.entry(Look, { character: villager.character }),
-        Game.Command.entry(Talkable, { speaker: villager.speaker, pages: villager.pages }),
-        Game.Command.entry(Solid, {})
+        [Villager, {}],
+        [Tile, villager.cell],
+        [Position, cellPosition(villager.cell)],
+        [Facing, villager.facing],
+        [Look, { character: villager.character }],
+        [Talkable, { speaker: villager.speaker, pages: villager.pages }],
+        [Solid, {}]
       )
       if ("route" in villager) {
         commands.spawn(Game.Command.extend(
           draft,
-          Game.Command.entry(Patrol, { ends: villager.route, heading: 1, rest: 0 }),
-          Game.Command.entry(Stride, standing)
+          [Patrol, { ends: villager.route, heading: 1, rest: 0 }],
+          [Stride, standing]
         ))
       } else {
         commands.spawn(draft)
@@ -67,11 +67,11 @@ export const SpawnTown = Game.System(
     }
     for (const sign of signs) {
       commands.spawn(Game.Command.spawn(
-        Game.Command.entry(Signpost, {}),
-        Game.Command.entry(Tile, sign.cell),
-        Game.Command.entry(Position, cellPosition(sign.cell)),
-        Game.Command.entry(Talkable, { speaker: "Sign", pages: sign.pages }),
-        Game.Command.entry(Solid, {})
+        [Signpost, {}],
+        [Tile, sign.cell],
+        [Position, cellPosition(sign.cell)],
+        [Talkable, { speaker: "Sign", pages: sign.pages }],
+        [Solid, {}]
       ))
     }
   }
@@ -144,14 +144,14 @@ export const JoinPlayers = Game.System(
       if (cell === undefined) continue
       const tint = tints[seat]
       commands.spawn(Game.Command.spawn(
-        Game.Command.entry(Player, {}),
-        Game.Command.entry(Seat, seat),
-        Game.Command.entry(Tile, cell),
-        Game.Command.entry(Position, cellPosition(cell)),
-        Game.Command.entry(Facing, other === undefined ? playerStart.facing : queries.players.data.facing.get(other)),
-        Game.Command.entry(Look, tint === undefined ? { character: playerStart.character } : { character: playerStart.character, tint }),
-        Game.Command.entry(Stride, standing),
-        Game.Command.entry(Solid, {})
+        [Player, {}],
+        [Seat, seat],
+        [Tile, cell],
+        [Position, cellPosition(cell)],
+        [Facing, other === undefined ? playerStart.facing : queries.players.data.facing.get(other)],
+        [Look, tint === undefined ? { character: playerStart.character } : { character: playerStart.character, tint }],
+        [Stride, standing],
+        [Solid, {}]
       ))
     }
   }

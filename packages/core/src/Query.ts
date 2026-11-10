@@ -73,6 +73,7 @@ import type { EntityId, EntityRef, ProvenKey } from "./Entity.ts"
 import type * as Result from "./Result.ts"
 import type * as Relation from "./Relation.ts"
 import type { Schema } from "./Schema.ts"
+import type { ExtraFields } from "./internal/exact.ts"
 
 type ComponentDescriptor = Descriptor<"component", string, any>
 
@@ -231,7 +232,7 @@ export const write = <D extends ComponentDescriptor>(descriptor: D & Writable<D>
 }
 
 const immutableMessage = (name: string) =>
-  `${name} is immutable: replace it with commands.insert(entity, Game.Command.entry(${name}, ...))`
+  `${name} is immutable: replace it with commands.insert(entity, [${name}, value])`
 
 type NameOf<D> = D extends { readonly name: infer Name extends string } ? Name : never
 
@@ -240,7 +241,7 @@ type NameOf<D> = D extends { readonly name: infer Name extends string } ? Name :
  * `immutable: true`, an argument error naming the fix.
  */
 export type Writable<D> = D extends DescriptorModule.Immutable
-  ? { readonly __immutable__: `${NameOf<D>} is immutable: replace it with commands.insert(entity, Game.Command.entry(${NameOf<D>}, ...))` }
+  ? { readonly __immutable__: `${NameOf<D>} is immutable: replace it with commands.insert(entity, [${NameOf<D>}, value])` }
   : unknown
 
 /**
@@ -634,21 +635,6 @@ export interface ConstructedWriteCell<T, Raw, Error, Name extends string = strin
    */
   updateRaw<Next extends Raw>(f: ((current: ReadonlyValue<T>) => Next) & ExactUpdate<Raw, Next, Name>): Result.Result<void, Error>
 }
-
-/** Every key of every member of a union (a union of shapes has only their shared keys). */
-type KeysOfAny<T> = T extends unknown ? keyof T : never
-
-/**
- * The fields of `Next` that no shape of `T` has: `never` unless `Next` is a
- * plain object and `T` has fixed keys (no index signature).
- */
-type ExtraFields<T, Next> =
-  0 extends 1 & Next ? never
-  : unknown extends T ? never
-  : Next extends ReadonlyArray<unknown> | ((...args: ReadonlyArray<any>) => unknown) | ReadonlyMap<unknown, unknown> | ReadonlySet<unknown> ? never
-  : Next extends object
-    ? string extends KeysOfAny<T> ? never : Exclude<keyof Next, KeysOfAny<T>>
-  : never
 
 /**
  * Rejects an `update` (or `updateRaw`) callback of a component or resource

@@ -13,6 +13,7 @@ const Game = Schema.bind(Schema.fragment({ events: { Ping }, resources: { Ready,
 const Flow = Game.StateMachine("Host/Flow", { Playing: {}, Menu: {} })
 const ready = Game.Condition.check("Host/Ready", { resources: { ready: Game.System.readResource(Ready) } }, ({ resources }) => resources.ready.get())
 const playing = Game.Condition.inState(Flow, "Playing")
+const notReady = Game.Condition.not(ready)
 const make = () => {
   const made = Game.Runtime.make({
     services: Game.Runtime.services(),
@@ -33,8 +34,8 @@ describe("host events and pause gates", () => {
     const seen: Array<ReadonlyArray<number>> = []
     const reader = read("Host/Read", seen)
     const gated = order === "when-outside"
-      ? Game.Schedule.when([playing], Game.Schedule.pauseWhen([ready], reader))
-      : Game.Schedule.pauseWhen([ready], Game.Schedule.when([playing], reader))
+      ? Game.Schedule.when([playing], Game.Schedule.pauseWhile([notReady], reader))
+      : Game.Schedule.pauseWhile([notReady], Game.Schedule.when([playing], reader))
     runtime.tick(gated)
     runtime.tick(Game.Schedule(setReady(false)))
     runtime.send(Ping, 1)
@@ -47,6 +48,24 @@ describe("host events and pause gates", () => {
     runtime.tick(Game.Schedule(setFlow("Menu"), Game.Schedule.applyStateTransitions(), gated))
     runtime.tick(Game.Schedule(setFlow("Playing"), Game.Schedule.applyStateTransitions(), setReady(true), gated))
     expect(seen).toEqual([[], [1], []])
+  })
+
+  it("pauses while any of its pauseWhile conditions holds, holding the events published meanwhile", () => {
+    const runtime = make()
+    const seen: Array<ReadonlyArray<number>> = []
+    const reader = Game.System("Host/PausedWhileEither", {
+      events: { ping: Game.System.readEvent(Ping) },
+      pauseWhile: [notReady, Game.Condition.inState(Flow, "Menu")]
+    }, ({ events }) => { seen.push(events.ping.all()) })
+    const update = Game.Schedule(reader)
+    runtime.tick(update)
+    runtime.tick(Game.Schedule(setReady(false)))
+    runtime.send(Ping, 1)
+    runtime.tick(update)
+    runtime.tick(Game.Schedule(setReady(true), setFlow("Menu"), Game.Schedule.applyStateTransitions(), reader))
+    runtime.send(Ping, 2)
+    runtime.tick(Game.Schedule(setFlow("Playing"), Game.Schedule.applyStateTransitions(), reader))
+    expect(seen).toEqual([[], [1, 2]])
   })
 
   it("discards events even when the first run is skipped", () => {
@@ -64,7 +83,7 @@ describe("host events and pause gates", () => {
     const seen: Array<ReadonlyArray<number>> = []
     const traces: Array<boolean> = []
     runtime.debug.observe((event) => { if (event.type === "system.skipped") traces.push(event.held) })
-    const gated = Game.Schedule.pauseWhen([ready], read("Host/InitiallyPaused", seen))
+    const gated = Game.Schedule.pauseWhile([notReady], read("Host/InitiallyPaused", seen))
     runtime.tick(Game.Schedule(setReady(false), gated))
     runtime.send(Ping, 4)
     for (let index = 0; index < 4; index++) runtime.tick(gated)
@@ -77,7 +96,7 @@ describe("host events and pause gates", () => {
     const runtime = make()
     const seen: Array<{ count: number; lagged: boolean }> = []
     const reader = Game.System("Host/Lagged", { events: { ping: Game.System.readEvent(Ping) } }, ({ events }) => { seen.push({ count: events.ping.all().length, lagged: events.ping.lagged() }) })
-    const gated = Game.Schedule.pauseWhen([ready], reader)
+    const gated = Game.Schedule.pauseWhile([notReady], reader)
     runtime.tick(Game.Schedule(setReady(false), gated))
     for (let value = 0; value <= Runtime.streamCapacity; value++) runtime.send(Ping, value)
     runtime.tick(Game.Schedule(setReady(true), gated))
@@ -260,7 +279,7 @@ describe("system local state", () => {
     const seen: Array<number> = []
     const system = Game.System("Host/GatedLocal", { local: () => { factories++; return { runs: 0 } } }, ({ local }) => { seen.push(++local.runs) })
     const runtime = make()
-    const gated = Game.Schedule.when([playing], Game.Schedule.pauseWhen([ready], system))
+    const gated = Game.Schedule.when([playing], Game.Schedule.pauseWhile([notReady], system))
     runtime.tick(Game.Schedule(setReady(false), gated))
     expect(factories).toBe(1)
     expect(seen).toEqual([])
@@ -300,7 +319,7 @@ describe("system local state", () => {
     const first = make()
     const second = make()
     first.tick(Game.Schedule(system))
-    first.tick(Game.Schedule.when([ready], Game.Schedule.pauseWhen([playing], system)))
+    first.tick(Game.Schedule.when([ready], Game.Schedule.pauseWhile([Game.Condition.not(playing)], system)))
     second.tick(Game.Schedule(system))
     expect(seen).toEqual([1, 2, 1])
     expect(factories).toBe(2)

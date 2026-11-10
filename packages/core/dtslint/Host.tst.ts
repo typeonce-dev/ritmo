@@ -38,7 +38,7 @@ describe("host APIs", () => {
 
   it("carries pause requirements through nesting and rejects foreign conditions", () => {
     const system = Game.System("Types/Run", {}, () => {})
-    const gated = Game.Schedule.when([ready], Game.Schedule.pauseWhen([ready], system))
+    const gated = Game.Schedule.when([ready], Game.Schedule.pauseWhile([Game.Condition.not(ready)], system))
     const missing = Game.Runtime.make({ services: Game.Runtime.services() }).value
     // @ts-expect-error the runtime is missing resource
     missing.tick(gated)
@@ -47,7 +47,7 @@ describe("host APIs", () => {
     const Other = Schema.bind(Schema.fragment({ resources: { Ready } }), Schema.defineRoot("Other"))
     const mode = Other.StateMachine("Other/Mode", { Playing: {} })
     // @ts-expect-error Type '"Other"' is not assignable to type '"HostTypes"'.
-    Game.Schedule.pauseWhen([Other.Condition.inState(mode, "Playing")], system)
+    Game.Schedule.pauseWhile([Other.Condition.inState(mode, "Playing")], system)
   })
 
   it("accepts only schema events and their payloads", () => {

@@ -73,6 +73,7 @@ import * as Cells from "./internal/cells.ts"
 import { sameValue } from "./internal/equal.ts"
 import { construction, constructionOf } from "./internal/schema.ts"
 import type { Construction } from "./internal/schema.ts"
+import type { ExtraFields } from "./internal/exact.ts"
 import { emptyStates, stateCodec } from "./internal/states.ts"
 import * as DebugInternal from "./internal/debug.ts"
 import { makeQueryEngine } from "./internal/queries.ts"
@@ -168,21 +169,34 @@ const runtimeMachinesEntries = Symbol("RuntimeMachinesEntries")
  * of their constructor and are validated when the runtime is made.
  */
 export type RuntimeResources<S extends Schema.Any> = Partial<{
-  readonly [K in keyof Schema.Resources<S>]:
-    Schema.Resources<S>[K] extends DescriptorModule.ConstructedDescriptor<"resource", string, any, infer Raw, any>
-      ? Raw
-      : Schema.ResourceValue<S, K>
+  readonly [K in keyof Schema.Resources<S>]: InitialValue<S, K>
 }>
 
+/** What `Game.Runtime.make` takes for one resource: the raw input of a constructed descriptor, or the value. */
+type InitialValue<S extends Schema.Any, K extends keyof Schema.Resources<S>> =
+  Schema.Resources<S>[K] extends DescriptorModule.ConstructedDescriptor<"resource", string, any, infer Raw, any>
+    ? Raw
+    : Schema.ResourceValue<S, K>
+
+/** The fields of a provided resource value that the resource does not have. */
+type ExtraResourceFields<S extends Schema.Any, Provided, K extends keyof Provided & keyof Schema.Resources<S>> =
+  ExtraFields<InitialValue<S, K>, Provided[K]>
+
 /**
- * Rejects keys of `Provided` that are not resource keys of the schema, naming
- * each one. A misspelled key next to known ones would otherwise compile and
- * be dropped.
+ * Rejects keys of `Provided` that are not resource keys of the schema, and
+ * fields of a provided value that its resource does not have, naming each
+ * one. A misspelled key next to known ones would otherwise compile and be
+ * dropped, and a stray field would be stored and then fail to restore from
+ * a save against a strict schema (the value is inferred, so TypeScript's own
+ * excess property check never reaches it).
  */
 export type ExactResources<S extends Schema.Any, Provided> = {
   readonly [K in Exclude<keyof Provided, keyof Schema.Resources<S>>]: {
     readonly __fixResources__: `${K & string} is not a resource key of this schema: use a key of the fragment's resources: { ... }`
   }
+} & {
+  readonly [K in keyof Provided & keyof Schema.Resources<S> as [ExtraResourceFields<S, Provided, K>] extends [never] ? never : K]:
+    `${Schema.Resources<S>[K]["name"]} has no field ${ExtraResourceFields<S, Provided, K> & string}: pass only its own fields`
 }
 
 type ConstructedKeys<S extends Schema.Any, Provided> = {
@@ -1925,7 +1939,7 @@ const makeValidatedRuntime = <
   const makeContext = (system: SystemDefinition<any, any, any>, reader: ReaderState, queue: Command.CommandQueue<S, Root>): SystemContext<any> => {
     const spec = system.spec
     const lookup = makeLookup()
-    const paused = (spec.pauseWhen as ReadonlyArray<unknown>).length > 0
+    const paused = (spec.pauseWhile as ReadonlyArray<unknown>).length > 0
     /** On a debug runtime, records reads after a loss and calls of `lagged()`, for the `stream-loss-unread` lint. */
     const watch = <V extends { all(): unknown; lagged(): boolean }>(view: V, stream: string): V =>
       debugEnabled ? watchStreamLoss(view, system.name, stream, paused) : view
@@ -2177,8 +2191,8 @@ const makeValidatedRuntime = <
         return succeeded
       }
     }
-    for (const condition of system.spec.pauseWhen as ReadonlyArray<Machine.Condition>) {
-      if (!evaluateCondition(condition)) {
+    for (const condition of system.spec.pauseWhile as ReadonlyArray<Machine.Condition>) {
+      if (evaluateCondition(condition)) {
         // A paused system keeps its stream cursor, so it holds the messages
         // published meanwhile and reads them when the pause ends. The slot is
         // made now, so entries published before its first run are held too.

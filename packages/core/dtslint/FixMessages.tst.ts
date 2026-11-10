@@ -62,11 +62,22 @@ describe("spec keys", () => {
     Game.System("Fix/Spelled", { queries: {}, resources: { score: Game.System.readResource(Score) } }, () => {})
   })
 
+  it("name pauseWhile, which takes the conditions that pause, for pauseWhen", () => {
+    const playing = Game.Condition.inState(Flow, "Playing")
+    const Read = Game.System("Fix/Read", { resources: { score: Game.System.readResource(Score) } }, () => {})
+    // @ts-expect-error pauseWhen is not a system spec key: use pauseWhile, which takes the conditions that pause the system, not the ones it runs under
+    Game.System("Fix/PauseWhen", { resources: { score: Game.System.readResource(Score) }, pauseWhen: [playing] }, () => {})
+    Game.System("Fix/PauseWhile", { resources: { score: Game.System.readResource(Score) }, pauseWhile: [Game.Condition.not(playing)] }, () => {})
+    // @ts-expect-error Did you mean 'pauseWhile'?
+    Game.Schedule.pauseWhen([playing], Read)
+    Game.Schedule.pauseWhile([Game.Condition.not(playing)], Read)
+  })
+
   it("list every category of SystemAccessSpec", () => {
     // The message of an unknown key lists these: a new category updates it in `System.ts`.
     expect<keyof SystemAccessSpec>().type.toBe<
       | "queries" | "resources" | "events" | "services" | "machines" | "nextMachines" | "transitionEvents" | "removed"
-      | "despawned" | "relationFailures" | "droppedRelations" | "commands" | "when" | "pauseWhen" | "transitions" | "local"
+      | "despawned" | "relationFailures" | "droppedRelations" | "commands" | "when" | "pauseWhile" | "transitions" | "local"
     >()
   })
 })

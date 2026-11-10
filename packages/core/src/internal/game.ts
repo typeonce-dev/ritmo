@@ -124,7 +124,6 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
     Command: {
       spawn: Command.spawn,
       extend: Command.extend,
-      entry: Command.entry,
       entryRaw: Command.entryRaw,
       relate: Command.relate
     },
@@ -186,8 +185,8 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
         ) => transitionSchedule({ machine, phase: "transition", from, to }, plan),
         when: (conditions: ReadonlyArray<Machine.Condition>, ...entries: ReadonlyArray<Schedule.ScheduleEntry>) =>
           Schedule.when(schema, conditions, entries),
-        pauseWhen: (conditions: ReadonlyArray<Machine.Condition>, ...entries: ReadonlyArray<Schedule.ScheduleEntry>) =>
-          Schedule.pauseWhen(schema, conditions, entries),
+        pauseWhile: (conditions: ReadonlyArray<Machine.Condition>, ...entries: ReadonlyArray<Schedule.ScheduleEntry>) =>
+          Schedule.pauseWhile(schema, conditions, entries),
         applyDeferred: Schedule.applyDeferred,
         applyStateTransitions: Schedule.applyStateTransitions
       }

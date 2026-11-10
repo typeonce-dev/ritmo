@@ -58,15 +58,17 @@ describe("Command", () => {
   })
 
   it("rejects non-component descriptors", () => {
-    // @ts-expect-error Type '"resource"' is not assignable to type '"component"'.
-    Command.entry(Time, 1)
+    // @ts-expect-error Time is not a component of this game's schema
+    Game.Command.spawn([Time, 1])
+    // @ts-expect-error Time is not a component of this game's schema
+    Command.spawn([Time, 1])
   })
 
   it("spawn with plain and raw entries preserves proof typing and plain entry slots", () => {
     const Game = Schema.bind(schema)
 
     const draft = Game.Command.spawn(
-      Game.Command.entry(Position, { x: 0, y: 0 }),
+      [Position, { x: 0, y: 0 }],
       Game.Command.entryRaw(SafePosition, { x: 1, y: 1 })
     )
 

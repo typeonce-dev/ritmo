@@ -5,8 +5,8 @@
  * normalized steps, systems, and nominal requirement union.
  *
  * Steps run in authored order. `when(conditions, ...entries)` gates a whole
- * group of systems on run conditions at once, and `pauseWhen(...)` pauses a
- * group without losing the events published meanwhile. Marker steps are the only way queued
+ * group of systems on run conditions at once, and `pauseWhile(...)` pauses a
+ * group while a condition holds without losing the events published meanwhile. Marker steps are the only way queued
  * structural work is applied, and nothing is flushed implicitly when a
  * schedule ends:
  *
@@ -25,7 +25,7 @@
  * transition events, and relation failures published meanwhile, but keeps
  * its change-detection position: when it runs again, `added`/`changed`
  * filters and removed/despawned reads still show everything since its
- * previous completed run. Use `pauseWhen` to keep the messages too.
+ * previous completed run. Use `pauseWhile` to keep the messages too.
  *
  * @module Schedule
  * @docGroup runtime
@@ -743,9 +743,11 @@ export const make = <S extends Schema.Any, const Entries extends ReadonlyArray<S
  * a hit-stop) without repeating it on each.
  *
  * Use this when the gated systems should drop the events published while
- * they were gated (a mode change makes them stale). Use `pauseWhen` instead
- * when they must read that backlog on resume (hit-stop, pause menu). For one
- * system, put the same conditions in its spec's `when` / `pauseWhen`.
+ * they were gated (a mode change makes them stale). Use `pauseWhile` instead
+ * when they must read that backlog on resume (hit-stop, pause menu); it takes
+ * the conditions that pause, not the ones that run (`when([playing])`,
+ * `pauseWhile([frozen])`). For one system, put the same conditions in its
+ * spec's `when`.
  *
  * Conditions gate every system in `entries`, nested schedules included.
  * Marker steps (`applyDeferred`, `applyStateTransitions`) in the group still
@@ -776,15 +778,17 @@ export const when = <
 }
 
 /**
- * A schedule whose systems are paused while any of `conditions` fails: like
- * `when`, except that a paused system keeps its place in the event streams it
- * reads (and in transition events and relation failures), so it sees
- * everything published during the pause once it runs again. `when` discards
- * those messages, which is right for a mode change (menu, game over) but
- * loses the last hit of a step that started a hit-stop, or the kill that
- * fired a passive. Use `pauseWhen` for a freeze whose events stay valid, and
- * `when` for a mode after which they are stale; nest them to combine both.
- * Marker steps in the group still run.
+ * A schedule whose systems are paused while any of `conditions` holds:
+ * `pauseWhile([frozen, cutscene])` pauses during either. This is the opposite
+ * polarity of `when`, which runs its systems while all of its conditions
+ * hold, and a paused system keeps its place in the event streams it reads
+ * (and in transition events and relation failures), so it sees everything
+ * published during the pause once it runs again. `when` discards those
+ * messages, which is right for a mode change (menu, game over) but loses the
+ * last hit of a step that started a hit-stop, or the kill that fired a
+ * passive. Use `pauseWhile` for a freeze whose events stay valid, and `when`
+ * for a mode after which they are stale; nest them to combine both (runs when
+ * playing, pauses while frozen). Marker steps in the group still run.
  *
  * A paused reader holds its stream entries, so a long pause can reach
  * `Runtime.streamCapacity`; past it the oldest are dropped and the reader
@@ -799,11 +803,11 @@ export const when = <
  * // ---cut---
  * const frozen = Game.Condition.inState(HitStop, "Frozen")
  * const gameplay = Game.Schedule.when([Game.Condition.inState(GameFlow, "Playing")],
- *   Game.Schedule.pauseWhen([Game.Condition.not(frozen)], Move, ApplyHits)
+ *   Game.Schedule.pauseWhile([frozen], Move, ApplyHits)
  * )
  * ```
  */
-export const pauseWhen = <
+export const pauseWhile = <
   S extends Schema.Any,
   const Conditions extends ReadonlyArray<Condition>,
   const Entries extends ReadonlyArray<ScheduleEntry>
@@ -823,11 +827,11 @@ export const pauseWhen = <
   } as unknown as ConditionalScheduleBuildFor<S, Conditions, Entries>
 }
 
-/** A copy of `system` that also requires `when` (skipping) and `pauseWhen` (pausing) conditions, sharing runtime state with the original. */
-const gate = (system: AnySystem, when: ReadonlyArray<Condition>, pauseWhen: ReadonlyArray<Condition>): AnySystem => ({
+/** A copy of `system` with extra `when` (skipping) and `pauseWhile` (pausing) conditions, sharing runtime state with the original. */
+const gate = (system: AnySystem, when: ReadonlyArray<Condition>, pauseWhile: ReadonlyArray<Condition>): AnySystem => ({
   ...system,
-  spec: { ...system.spec, when: [...when, ...system.spec.when], pauseWhen: [...pauseWhen, ...system.spec.pauseWhen] },
-  requirements: Requirement.collect([...system.requirements, ...[...when, ...pauseWhen].flatMap((condition) => condition.requirements)]),
+  spec: { ...system.spec, when: [...when, ...system.spec.when], pauseWhile: [...pauseWhile, ...system.spec.pauseWhile] },
+  requirements: Requirement.collect([...system.requirements, ...[...when, ...pauseWhile].flatMap((condition) => condition.requirements)]),
   base: system.base ?? system
 })
 

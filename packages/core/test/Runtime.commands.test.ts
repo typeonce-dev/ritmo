@@ -315,14 +315,14 @@ describe("Runtime commands", () => {
       ({ commands, resources }) =>
         {
           const invalidDraft = Game.Command.spawn(
-            Game.Command.entry(Position, { x: 1, y: 2 }),
+            [Position, { x: 1, y: 2 }],
             Game.Command.entryRaw(SafeVelocity, { x: Number.NaN, y: 0 })
           )
 
           expect(invalidDraft).toEqual(Result.failure([null, badVelocity]))
 
           const validDraft = Game.Command.spawn(
-            Game.Command.entry(Position, { x: 4, y: 5 }),
+            [Position, { x: 4, y: 5 }],
             Game.Command.entryRaw(SafeVelocity, { x: 6, y: 7 })
           )
 
@@ -384,14 +384,14 @@ describe("Runtime commands", () => {
       ({ commands, resources }) =>
         {
           const invalidDraft = Game.Command.spawn(
-            Game.Command.entry(Position, { x: 1, y: 2 }),
+            [Position, { x: 1, y: 2 }],
             Game.Command.entryRaw(SafeVelocity, { x: Number.NaN, y: 0 })
           )
 
           expect(invalidDraft).toEqual(Result.failure([null, badVelocity]))
 
           const validDraft = Game.Command.spawn(
-            Game.Command.entry(Position, { x: 4, y: 5 }),
+            [Position, { x: 4, y: 5 }],
             Game.Command.entryRaw(SafeVelocity, { x: 6, y: 7 })
           )
 

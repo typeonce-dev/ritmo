@@ -29,7 +29,7 @@
  * // Rules
  * const player = Game.Query({ selection: { position: Game.Query.write(Position) } })
  * const Spawn = Game.System("Toy/Spawn", { commands: Game.System.commands(Game.System.spawns(Position)) }, ({ commands }) => {
- *   commands.spawn(Game.Command.spawn(Game.Command.entry(Position, { x: 100, y: 100 })))
+ *   commands.spawn(Game.Command.spawn([Position, { x: 100, y: 100 }]))
  * })
  * const Move = Game.System("Toy/Move", {
  *   queries: { player },

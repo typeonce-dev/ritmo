@@ -306,12 +306,12 @@ export interface SystemDescription {
   readonly commands: CommandPermissions
   /**
    * Run conditions, rendered, for example `stateChanged(Game/Flow)`. A system
-   * placed under several `Schedule.when` / `pauseWhen` groups is described
+   * placed under several `Schedule.when` / `pauseWhile` groups is described
    * once, with the conditions of every placement.
    */
   readonly when: ReadonlyArray<string>
-  /** Pause conditions, rendered: while one fails the system waits and holds its stream entries. */
-  readonly pauseWhen: ReadonlyArray<string>
+  /** Pause conditions, rendered: while one holds the system waits and holds its stream entries. */
+  readonly pauseWhile: ReadonlyArray<string>
   /** Whether the system declares `local` scratch state. */
   readonly local: boolean
 }
@@ -373,7 +373,7 @@ export interface ScheduleDescription {
  * - `stale-target`: `despawn` / `remove` commands given a `SpawnedId` kept
  *   from an earlier run (skipped).
  * - `stream-loss-unread`: a stream reader that never checks `lagged()` and
- *   lost entries (`info` when it only reads under `pauseWhen`).
+ *   lost entries (`info` when it only reads under `pauseWhile`).
  * - `service-lint`: a finding a provided service reports through
  *   {@link serviceLints}, with the service's severity.
  */
@@ -666,7 +666,7 @@ export interface StreamLoss {
   readonly lostRuns: number
   /** Whether the system called `lagged()` on it. */
   readonly checksLagged: boolean
-  /** Whether the system has `pauseWhen` conditions (a long pause can drop entries). */
+  /** Whether the system has `pauseWhile` conditions (a long pause can drop entries). */
   readonly paused: boolean
 }
 
@@ -727,17 +727,17 @@ export interface SystemEvent {
   readonly missed: ReadonlyArray<MissedRead>
 }
 
-/** A system not run because a `when` or `pauseWhen` condition did not hold. */
+/** A system not run because a `when` condition did not hold or a `pauseWhile` condition held. */
 export interface SystemSkippedEvent {
   readonly type: "system.skipped"
   readonly frame: number
   readonly tick: number
   readonly schedule: string
   readonly system: string
-  /** The run condition that did not hold, rendered. */
+  /** The condition that stopped it, rendered: the `when` condition that did not hold, or the `pauseWhile` condition that held. */
   readonly condition: string
   /**
-   * `true` when a `pauseWhen` condition failed: the system is paused and
+   * `true` when a `pauseWhile` condition held: the system is paused and
    * keeps its stream entries. `false` when a `when`
    * condition failed: the entries are discarded for it.
    */

@@ -73,6 +73,7 @@ import * as Result from "./Result.ts"
 import { constructionOf } from "./internal/schema.ts"
 import { makeDraft, makeEntityId } from "./internal/entity.ts"
 import type { ReadonlyValue } from "./Query.ts"
+import type { CheckedKeys, ExtraFields } from "./internal/exact.ts"
 import type { RequirementPair, Schema } from "./Schema.ts"
 
 /**
@@ -101,14 +102,18 @@ export namespace Draft {
    */
   export type InsertEntry<
     P extends Entity.ComponentProof,
-    Entry extends readonly [Descriptor<"component", string, any>, unknown]
+    Entry extends readonly [unknown, unknown]
   > = Entry extends readonly [infer D extends Descriptor<"component", string, any>, infer _Value]
     ? Insert<P, Descriptor.Name<D>, Descriptor.Value<D>>
     : P
 }
 
 /**
- * A typed descriptor/value pair used by the flat command authoring APIs.
+ * One component of a draft or an insert: a `[Descriptor, value]` tuple, as
+ * `Game.Command.spawn(...)`, `extend(...)`, and `commands.insert(...)` take
+ * it. Each tuple is checked against its own descriptor
+ * ({@link ExactEntries}). `Game.Command.entryRaw(...)` returns one in a
+ * `Result` for raw input.
  */
 export type Entry<D extends Descriptor<"component", string, any>> = readonly [D, ReadonlyValue<Descriptor.Value<D>>]
 
@@ -137,6 +142,88 @@ export type SchemaEntry<S extends Schema.Any> = EntryOf<SchemaComponentDescripto
  */
 export type SpawnEntry<S extends Schema.Any> = SchemaEntry<S> | Result.Result<SchemaEntry<S>, any>
 
+/**
+ * Any descriptor with any value: what `spawn(...)`, `extend(...)`, and
+ * `insert(...)` infer an entry as, next to the schema's own entries, before
+ * {@link ExactEntries} checks it. A wrong entry is then reported on itself,
+ * naming its component, instead of against every component of the schema;
+ * the schema's entries still type a value written in place (a callback,
+ * `new Set()`, `[]`).
+ */
+export type UncheckedEntry = readonly [{ readonly kind: string; readonly name: string }, {} | null | undefined]
+
+/**
+ * Checks each entry against its own descriptor: the descriptor is a
+ * component of the schema, and the value is that component's, with no field
+ * it does not have. A tuple's value is inferred, so TypeScript's own excess
+ * property check never reaches it. `Entries` when every entry passes;
+ * otherwise the entries with each failing one replaced by what it should
+ * be, so the error is reported on that entry:
+ *
+ * - `Game/Position has no field z: pass only its own fields`
+ * - `Game/Outside is not a component of this game's schema: ...`
+ * - a missing field or a value of another type: TypeScript's message
+ *   against the component's own value
+ */
+export type ExactEntries<S extends Schema.Any, Entries extends ReadonlyArray<unknown>> =
+  // The cheap test of the common case first: every entry is one of the schema's, and no value
+  // has a key its component lacks. When it fails, `CheckedEntry` decides (an `any` value fails
+  // here and passes there). Spawns are the most frequent call in a game, so this stays inline.
+  [Entries[number]] extends [SpawnEntry<S>]
+    ? [HasForeignKeys<FieldKeys<S>, Entries[number]>] extends [never] ? Entries : CheckedEntries<SchemaComponentDescriptor<S>, Entries>
+    : CheckedEntries<SchemaComponentDescriptor<S>, Entries>
+
+/** `true` when an entry's value has a key outside its component's {@link FieldKeys}. */
+type HasForeignKeys<Keys, E> =
+  E extends readonly [{ readonly name: keyof Keys }, unknown] ? [keyof E[1]] extends [Keys[E[0]["name"]]] ? never : true : never
+
+/** The keys a value may have ({@link CheckedKeys}), by component name. Computed once per schema. */
+type FieldKeys<S extends Schema.Any> = {
+  readonly [D in SchemaComponentDescriptor<S> as D["name"]]: CheckedKeys<ComponentValue<D>>
+}
+
+type CheckedEntries<C, Entries extends ReadonlyArray<unknown>> = { readonly [K in keyof Entries]: CheckedEntry<C, Entries[K]> }
+
+type NotInSchema<D> =
+  `${Names<D>} is not a component of this game's schema: spawn and insert take components registered in Schema.fragment({ components: { ... } })`
+
+/** Names the component in the message for a value that does not fit it: `{ readonly x: number; readonly y: number; } & ValueOf<"Game/Position">`. */
+interface ValueOf<in out Component extends string> { readonly "~component"?: Component }
+
+/** Names the component and the field in the message for a field of another type: `number & FieldOf<"Game/Position", "y">`. */
+interface FieldOf<in out Component extends string, in out Field> { readonly "~field"?: readonly [Component, Field] }
+
+/** The fields of a value `V` whose type does not fit the same field of `T`. */
+type WrongFields<T, V> = { readonly [F in keyof T & keyof V]-?: [V[F]] extends [ReadonlyValue<T[F]>] ? never : F }[keyof T & keyof V]
+
+/**
+ * What a value that does not fit its component is checked against: for a
+ * plain object, its fields with each one of another type named; otherwise
+ * the component's value, named.
+ */
+type ExpectedValue<Name extends string, T, V> =
+  [T] extends [object]
+    ? [T] extends [ReadonlyArray<unknown> | ((...args: ReadonlyArray<any>) => unknown) | ReadonlyMap<unknown, unknown> | ReadonlySet<unknown>] ? ReadonlyValue<T> & ValueOf<Name>
+      : [WrongFields<T, V>] extends [never] ? ReadonlyValue<T> & ValueOf<Name>
+      : { readonly [F in keyof T]: F extends WrongFields<T, V> ? ReadonlyValue<T[F]> & FieldOf<Name, F> : ReadonlyValue<T[F]> }
+    : ReadonlyValue<T> & ValueOf<Name>
+
+type ComponentValue<D> = D extends Descriptor<"component", string, infer T> ? T : never
+
+/** One entry as it should be: itself when it is valid (a `Result` from `entryRaw` is valid when its descriptor is in the schema). */
+type CheckedEntry<C, E> =
+  E extends readonly [infer D, infer V]
+    ? [D] extends [C]
+      ? [V] extends [ReadonlyValue<ComponentValue<D>>]
+        ? [ExtraFields<ComponentValue<D>, V>] extends [never]
+          ? E
+          : readonly [D, `${Names<D>} has no field ${ExtraFields<ComponentValue<D>, V> & string}: pass only its own fields`]
+        : readonly [D, ExpectedValue<Names<D>, ComponentValue<D>, V>]
+      : readonly [NotInSchema<D>, V]
+    : E extends { readonly ok: true; readonly value: readonly [infer D, unknown] }
+      ? [D] extends [C] ? E : NotInSchema<D>
+      : E
+
 type EntryValue<T> =
   [T] extends [Result.Result<infer Value extends readonly [Descriptor<"component", string, any>, unknown], any>]
     ? Value
@@ -148,17 +235,17 @@ type EntryValue<T> =
  * Folds entries into the component proof of the resulting draft.
  */
 export type FoldEntries<
-  Entries extends ReadonlyArray<SpawnEntry<any>>,
+  Entries extends ReadonlyArray<unknown>,
   P extends Entity.ComponentProof = {}
 > = Entries extends readonly [
-    infer Head extends SpawnEntry<any>,
-    ...infer Tail extends ReadonlyArray<SpawnEntry<any>>
+    infer Head,
+    ...infer Tail extends ReadonlyArray<unknown>
   ]
   ? FoldEntries<Tail, Draft.InsertEntry<P, EntryValue<Head>>>
   // Fixed entries after a spread are there too.
   : Entries extends readonly [
-      ...infer Init extends ReadonlyArray<SpawnEntry<any>>,
-      infer Last extends SpawnEntry<any>
+      ...infer Init extends ReadonlyArray<unknown>,
+      infer Last
     ]
     ? FoldEntries<Init, Draft.InsertEntry<P, EntryValue<Last>>>
     : number extends Entries["length"]
@@ -176,7 +263,7 @@ type MaybeEntries<Entry> = {
  * Per-entry failures, aligned with the entries: `null` for entries that
  * succeeded or could not fail.
  */
-export type EntryErrors<Entries extends ReadonlyArray<SpawnEntry<any>>> = {
+export type EntryErrors<Entries extends ReadonlyArray<unknown>> = {
   readonly [K in keyof Entries]:
     Entries[K] extends Result.Result<any, infer Error> ? Error | null : null
 }
@@ -187,7 +274,7 @@ export type EntryErrors<Entries extends ReadonlyArray<SpawnEntry<any>>> = {
  */
 export type DraftFor<
   S extends Schema.Any,
-  Entries extends ReadonlyArray<SpawnEntry<S>>,
+  Entries extends ReadonlyArray<unknown>,
   P extends Entity.ComponentProof,
   Root,
   Relates = never
@@ -287,17 +374,6 @@ export interface InternalWorld<S extends Schema.Any> {
 const unspawnedId = makeEntityId<any, any>(-1)
 
 /**
- * Creates a typed component entry, the same as a `[Descriptor, value]`
- * tuple. Use {@link entryRaw} for unvalidated input to a constructed
- * descriptor. Once queued, the world owns `value`: never mutate it
- * afterwards (a runtime made with `debug` freezes it).
- */
-export const entry = <D extends Descriptor<"component", string, any>>(
-  descriptor: D,
-  value: ReadonlyValue<Descriptor.Value<D>>
-): Entry<D> => [descriptor, value]
-
-/**
  * Decodes raw input (the schema's saved form) through a constructed descriptor's schema and
  * returns an entry result for `Game.Command.spawn(...)` / `extend(...)`.
  * `commands.insert` takes valid entries only: check the result first.
@@ -345,11 +421,11 @@ export const extend = <
   S extends Schema.Any,
   P extends Entity.ComponentProof,
   Root,
-  const Entries extends ReadonlyArray<SpawnEntry<S>>,
+  const Entries extends ReadonlyArray<SpawnEntry<S> | UncheckedEntry>,
   Relates = never
 >(
   draft: Entity.EntityDraft<S, P, Root, Relates>,
-  ...entries: Entries
+  ...entries: ExactEntries<S, Entries>
 ): DraftFor<S, Entries, P, Root, Relates> =>
   build(draft.id, { ...draft.proof }, [...draft.components], draft.relations, entries) as DraftFor<S, Entries, P, Root, Relates>
 
@@ -416,9 +492,9 @@ const build = (
 export const spawn = <
   S extends Schema.Any,
   Root = unknown,
-  const Entries extends ReadonlyArray<SpawnEntry<S>> = readonly []
+  const Entries extends ReadonlyArray<SpawnEntry<S> | UncheckedEntry> = readonly []
 >(
-  ...entries: Entries
+  ...entries: ExactEntries<S, Entries>
 ): DraftFor<S, Entries, {}, Root> =>
   build(unspawnedId, {}, [], noRelations, entries) as DraftFor<S, Entries, {}, Root>
 
@@ -559,10 +635,25 @@ type DraftAllowed<P, Spawns> =
     ? unknown
     : Fix<`${Exclude<AllKeys<P>, Names<Spawns>>} is not declared in this system's commands: add it to Game.System.spawns(...)`>
 
-type EntriesAllowed<Entries extends ReadonlyArray<readonly [ComponentDescriptor, unknown]>, Inserts> =
+type EntriesAllowed<Entries extends ReadonlyArray<readonly [unknown, unknown]>, Inserts> =
   [Exclude<Entries[number][0], Inserts>] extends [never]
     ? unknown
     : Fix<`${Names<Exclude<Entries[number][0], Inserts>>} is not declared in this system's commands: add it to Game.System.inserts(...)`>
+
+/** The entries of an insert: each checked on its own first, then together against the permission and the requirements. */
+type InsertEntries<S extends Schema.Any, E, Entries extends ReadonlyArray<readonly [unknown, unknown]>, Inserts> =
+  // The same cheap test as `ExactEntries`, against the entries `insert` takes (no `Result`s).
+  [Entries[number]] extends [SchemaEntry<S>]
+    ? [HasForeignKeys<FieldKeys<S>, Entries[number]>] extends [never]
+      ? Entries & EntriesAllowed<Entries, Inserts> & InsertRequirementsMet<S, E, Entries>
+      : CheckedInsertEntries<S, E, Entries, Inserts>
+    : CheckedInsertEntries<S, E, Entries, Inserts>
+
+/** An insert the cheap test could not pass: valid entries still go through the permission and the requirements. */
+type CheckedInsertEntries<S extends Schema.Any, E, Entries extends ReadonlyArray<readonly [unknown, unknown]>, Inserts> =
+  Entries extends CheckedEntries<SchemaComponentDescriptor<S>, Entries>
+    ? Entries & EntriesAllowed<Entries, Inserts> & InsertRequirementsMet<S, E, Entries>
+    : CheckedEntries<SchemaComponentDescriptor<S>, Entries>
 
 type RemoveAllowed<D, Removes> =
   [D] extends [Removes] ? unknown : Fix<`${Names<D>} is not declared in this system's commands: add it to Game.System.removes(...)`>
@@ -655,7 +746,7 @@ type TargetHolds<E> = Exclude<HeldBy<E>, MissingFromHeld<E, HeldBy<E>>>
 /** What a remove target is known to lack: its query's `without` (for several queries, what all of them exclude). */
 type TargetLacks<E> = Exclude<LackedBy<E>, MissingFromLacked<E, LackedBy<E>>>
 
-type EntryNames<Entries extends ReadonlyArray<readonly [ComponentDescriptor, unknown]>> = Names<Entries[number][0]>
+type EntryNames<Entries extends ReadonlyArray<readonly [unknown, unknown]>> = Names<Entries[number][0]>
 
 /** The names one entry surely holds: none when it is conditional between descriptors. */
 type SureEntryNames<Entry, All extends string = EntryNamesOf<Entry>> =
@@ -674,10 +765,10 @@ type SurelyInserted<Entries> =
  * Inserted components (any entry may be one) with requirements neither
  * surely inserted alongside nor proven held by the target.
  */
-type InsertViolations<S extends Schema.Any, E, Entries extends ReadonlyArray<readonly [ComponentDescriptor, unknown]>> =
+type InsertViolations<S extends Schema.Any, E, Entries extends ReadonlyArray<readonly [unknown, unknown]>> =
   MissingPairsFrom<S, EntryNames<Entries>, SurelyInserted<Entries> | TargetHolds<E>>
 
-type InsertRequirementsMet<S extends Schema.Any, E, Entries extends ReadonlyArray<readonly [ComponentDescriptor, unknown]>> =
+type InsertRequirementsMet<S extends Schema.Any, E, Entries extends ReadonlyArray<readonly [unknown, unknown]>> =
   [InsertViolations<S, E, Entries>] extends [never]
     ? unknown
     : Fix<`${MissingMessages<InsertViolations<S, E, Entries>>}: insert it in the same call, or pass an entity from a query that proves it`>
@@ -811,9 +902,9 @@ export interface CommandsApi<
    */
   readonly insert: [Inserts] extends [never]
     ? MethodNotDeclared<"insert", "inserts">
-    : <const E extends Entity.EntityId<S, Root> | EntityTarget<S, Root>, const Entries extends ReadonlyArray<SchemaEntry<S>>>(
+    : <const E extends Entity.EntityId<S, Root> | EntityTarget<S, Root>, const Entries extends ReadonlyArray<SchemaEntry<S> | UncheckedEntry>>(
         entity: E,
-        ...entries: Entries & EntriesAllowed<Entries, Inserts> & InsertRequirementsMet<S, E, Entries>
+        ...entries: InsertEntries<S, E, Entries, Inserts>
       ) => Entity.EntityId<S, Root>
   /**
    * Queues an entity removal. A despawned entity stays visible to queries

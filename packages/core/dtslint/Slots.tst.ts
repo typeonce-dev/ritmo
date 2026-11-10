@@ -155,7 +155,7 @@ describe("writes take what reads return", () => {
       data.bag.set(second, read)
       data.bag.update(second, (current) => current)
       commands.spawn(Game.Command.spawn([Bag, read]))
-      commands.spawn(Game.Command.spawn(Game.Command.entry(Bag, read)))
+      commands.spawn(Game.Command.spawn([Bag, read]))
       for (const hit of events.read.all()) events.write.emit(hit)
       // @ts-expect-error Type 'string' is not assignable to type 'number'
       data.bag.set(second, { items: ["a"] })
