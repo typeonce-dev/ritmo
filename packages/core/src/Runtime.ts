@@ -348,6 +348,20 @@ type RuntimeMachinesOf<Provided extends RuntimeMachines<any>> =
   [Provided] extends [RuntimeMachines<infer Machines>] ? Machines : {}
 
 /**
+ * A queued next value. `first` is the oldest request this one replaced
+ * without a `cancelPending()` in between, absent when nothing was queued:
+ * the marker compares it to tell a `set` over a request from one made
+ * after the request was cancelled.
+ */
+interface PendingMachine {
+  readonly value: unknown
+  readonly skipIfSame: boolean
+  readonly by?: string
+  readonly from?: string
+  readonly first?: PendingMachine
+}
+
+/**
  * Flattens an inferred object type for clearer diagnostics.
  */
 type Simplify<A> = {
@@ -708,9 +722,12 @@ export interface Runtime<
   ) => Result.Result<void, MissingRuntimeRequirements | TickOrderViolation | Schedule.FailureOf<Selected>>
   /**
    * Captures the world as plain data: entities with their ids, components,
-   * relation edges, resources, and committed machine values, each in its
-   * schema's saved form (encoded by the schema's `"~encode"` when it has one).
-   * Fails with the value a `"~encode"` rejected.
+   * relation edges, resources, committed machine values, and queued next
+   * states, each in its schema's saved form (encoded by the schema's
+   * `"~encode"` when it has one). Fails with the value a `"~encode"`
+   * rejected, and with `QueuedCommands` while commands wait for a marker (a
+   * command cannot be saved): end the tick with
+   * `Game.Schedule.applyDeferred()`.
    *
    * Values without a `"~encode"` are shared with the world, not copied;
    * serialize the snapshot (for example with `JSON.stringify`) to detach it.
@@ -728,8 +745,9 @@ export interface Runtime<
    * order components were added or object keys written does not count).
    * For spotting desyncs: peers of a rollback or lockstep game compare the
    * checksums of confirmed ticks, and a replay compares them with the ones
-   * it recorded. Like `snapshot`, it skips transient components and
-   * resources, fails with the value a `"~encode"` rejected, is callable only
+   * it recorded. Like `snapshot`, it covers queued next states, skips
+   * transient components and resources, fails with the value a `"~encode"`
+   * rejected and with `QueuedCommands`, is callable only
    * when every component and resource is constructed or transient, and
    * throws while a schedule is running.
    */
@@ -737,9 +755,15 @@ export interface Runtime<
   /**
    * Replaces the world with a snapshot after validating it against the
    * schema. On failure nothing changes. See the `Snapshot` module. Restore
-   * between ticks: calling it while a schedule is running throws. A current
-   * resource the save lacks keeps its value. Every checkpoint taken before
-   * it is released (`rewind` fails with `Released`).
+   * between ticks: calling it while a schedule is running throws.
+   *
+   * Nothing of the replaced world is left: every transient resource, and
+   * every resource and machine the save does not hold, takes the value the
+   * runtime was made with; the save's queued next states replace the queued
+   * ones, and queued commands are dropped; no removal, despawn, or event of
+   * the replaced world reaches a reader, and every reader that ran before
+   * reports `lagged()` on its next read. Every checkpoint taken before it is
+   * released (`rewind` fails with `Released`).
    */
   readonly restore: Snapshot.Gate<S, (data: unknown) => Result.Result<void, Snapshot.RestoreError>>
   /**
@@ -845,6 +869,8 @@ const makeValidatedRuntime = <
    */
   const resources = new Map<symbol, unknown>()
   seedRegistryStore(options.schema.resources, options.resources as InitialRegistryValues<Registry>, resources)
+  /** The values the runtime was made with: what `restore` gives every resource the save does not hold, and every transient one. */
+  const initialResources: ReadonlyMap<symbol, unknown> = new Map(resources)
 
   /**
    * Machine-keyed committed, pending, and previous values.
@@ -852,7 +878,7 @@ const makeValidatedRuntime = <
   const currentMachines = new Map<symbol, unknown>()
   /** Queued next values; with `debug`, `by` is the system that queued it, for the `next-state-replaced` lint. */
   /** Next values by machine. `from` is set by `transition`: the state the move must still start from at the marker. */
-  const pendingMachines = new Map<symbol, { value: unknown; skipIfSame: boolean; by?: string; from?: string }>()
+  const pendingMachines = new Map<symbol, PendingMachine>()
   /** Requests dropped because their sub-state stopped existing: skipped by the marker that queued them. */
   const discardedPending = new WeakSet()
   const previousMachines = new Map<symbol, unknown>()
@@ -984,6 +1010,8 @@ const makeValidatedRuntime = <
       currentMachines.delete(machine.key)
     }
   }
+  /** The committed values the runtime was made with: what `restore` gives every machine the save does not hold. */
+  const initialMachines: ReadonlyMap<symbol, unknown> = new Map(currentMachines)
 
   /**
    * Scope despawn triggers by machine key, in scope definition order
@@ -1349,7 +1377,9 @@ const makeValidatedRuntime = <
         for (let index = 0; index < pending.length; index++) {
           const nextId = pending[index]!
           descendants.push(entityId(nextId))
-          pending.push(...world.relatedSourceIds(relation, nextId))
+          // A loop, not `push(...children)`: a spread passes each child as an argument, which overflows the stack past ~100k.
+          const children = world.relatedSourceIds(relation, nextId)
+          for (let child = 0; child < children.length; child++) pending.push(children[child]!)
         }
       } else {
         const pending = [...world.relatedSourceIds(relation, target)].reverse()
@@ -1803,9 +1833,10 @@ const makeValidatedRuntime = <
     }
     journalMachine(stateMachine.key)
     value = sharedValue(stateMachine, value)
+    const previous = pendingMachines.get(stateMachine.key)
+    const first = previous === undefined ? undefined : previous.first ?? previous
     if (debugEnabled) {
       deepFreeze(value)
-      const previous = pendingMachines.get(stateMachine.key)
       // A set from a transition schedule waits for the next marker: it replaces nothing queued for this one.
       if (previous?.by !== undefined && previous.by !== runningSystem && !sameValue(previous.value, value) && activeTransitions.size === 0) {
         const key = `${stateMachine.name}/${previous.by}/${runningSystem}/${JSON.stringify(previous.value)}/${JSON.stringify(value)}`
@@ -1817,9 +1848,9 @@ const makeValidatedRuntime = <
           count: (seen?.count ?? 0) + 1
         })
       }
-      pendingMachines.set(stateMachine.key, { value, skipIfSame, by: runningSystem, ...(from === undefined ? {} : { from }) })
+      pendingMachines.set(stateMachine.key, { value, skipIfSame, by: runningSystem, ...(from === undefined ? {} : { from }), ...(first === undefined ? {} : { first }) })
     } else {
-      pendingMachines.set(stateMachine.key, { value, skipIfSame, ...(from === undefined ? {} : { from }) })
+      pendingMachines.set(stateMachine.key, { value, skipIfSame, ...(from === undefined ? {} : { from }), ...(first === undefined ? {} : { first }) })
     }
     return (within === undefined ? undefined : succeeded) as Machine.SetResult<M>
   }
@@ -2339,17 +2370,21 @@ const makeValidatedRuntime = <
       )
 
     const schedules = bundle?.entries ?? []
-    for (const [machineKey, pending] of scheduledTransitions) {
-      if (discardedPending.has(pending)) {
+    for (const [machineKey, scheduled] of scheduledTransitions) {
+      if (discardedPending.has(scheduled)) {
         // Discarded earlier in this marker: its parent left the state it exists in.
         continue
       }
       // A transition schedule earlier in this marker may have cancelled this
       // request (`cancelPending`): it is not applied.
-      if (!pendingMachines.has(machineKey)) continue
-      // It may also have queued a newer value for this machine: that one
-      // waits for the next marker.
-      if (pendingMachines.get(machineKey) === pending) pendingMachines.delete(machineKey)
+      const queued = pendingMachines.get(machineKey)
+      if (queued === undefined) continue
+      // It may also have queued a newer value for this machine. One queued
+      // over this request (a plain `set`) waits for the next marker; one
+      // queued after a `cancelPending()` started a new run of requests, and
+      // the first of that run takes the cancelled request's place here.
+      const pending = (queued.first ?? queued) === (scheduled.first ?? scheduled) ? scheduled : queued.first ?? queued
+      if (queued === pending) pendingMachines.delete(machineKey)
       /** Keeps this request queued after a failure, unless a newer one replaced it. */
       const requeue = () => {
         if (!pendingMachines.has(machineKey)) pendingMachines.set(machineKey, pending)
@@ -2417,18 +2452,13 @@ const makeValidatedRuntime = <
       // triggers fire before what the onEnter schedules spawn.
       const entered = commitSubStates(machineKey, snapshot.to)
 
-      for (const schedule of schedules) {
-        const transition = schedule.transition
-        if (transition.phase === "enter" && transition.machine.key === machineKey && transition.state === snapshot.to) {
-          const result = runTransitionSchedule(schedule, snapshot)
-          if (!result.ok) {
-            if (tracing) traceTransition(machineKey, snapshot, "enterFailed")
-            return result
-          }
-        }
-      }
-      const enteredSchedules = runSubStateEnters(entered, schedules)
-      if (!enteredSchedules.ok) return enteredSchedules
+      // Each enter schedule runs even when one before it failed: the state is
+      // committed, and a failing setup must not skip the rest of it. The
+      // marker then stops with the first failure.
+      const enteredState = runEnters(machineKey, snapshot.to, snapshot, schedules)
+      const enteredSubStates = runSubStateEnters(entered, schedules)
+      if (!enteredState.ok) return enteredState
+      if (!enteredSubStates.ok) return enteredSubStates
     }
     return succeeded
   }
@@ -2457,7 +2487,7 @@ const makeValidatedRuntime = <
 
   type TransitionSchedules = ReadonlyArray<Machine.StateMachine.AnyTransitionSchedule<S, Root>>
 
-  /** Runs every schedule of `phase` for `machineKey` in `state`, in bundle order. */
+  /** Runs every schedule of `phase` for `machineKey` in `state`, in bundle order, stopping at the first failure. */
   const runPhase = (
     machineKey: symbol,
     phase: "enter" | "exit",
@@ -2501,17 +2531,40 @@ const makeValidatedRuntime = <
     return entered
   }
 
-  /** Runs the onEnter schedules of sub-states entered by {@link commitSubStates}, in that order. */
-  const runSubStateEnters = (entered: ReadonlyArray<readonly [symbol, unknown]>, schedules: TransitionSchedules): Result.Result<void, SystemFailure> => {
-    for (const [key, value] of entered) {
-      const snapshot = { from: undefined, to: stateOf(value) } as unknown as Machine.TransitionSnapshot
-      const result = runPhase(key, "enter", stateOf(value), snapshot, schedules)
-      if (!result.ok) {
-        if (tracing) traceTransition(key, snapshot, "enterFailed")
-        return result
+  /**
+   * Runs every onEnter schedule of `machineKey` in `state`, in bundle order,
+   * each even when one before it failed. Returns the first failure, traced
+   * once as `enterFailed`.
+   */
+  const runEnters = (
+    machineKey: symbol,
+    state: string | undefined,
+    snapshot: Machine.TransitionSnapshot,
+    schedules: TransitionSchedules
+  ): Result.Result<void, SystemFailure> => {
+    let first: Result.Result<void, SystemFailure> = succeeded
+    for (const schedule of schedules) {
+      const transition = schedule.transition
+      if (transition.phase === "enter" && transition.machine.key === machineKey && transition.state === state) {
+        const result = runTransitionSchedule(schedule, snapshot)
+        if (!result.ok && first.ok) {
+          first = result
+          if (tracing) traceTransition(machineKey, snapshot, "enterFailed")
+        }
       }
     }
-    return succeeded
+    return first
+  }
+
+  /** Runs the onEnter schedules of sub-states entered by {@link commitSubStates}, in that order, all of them; returns the first failure. */
+  const runSubStateEnters = (entered: ReadonlyArray<readonly [symbol, unknown]>, schedules: TransitionSchedules): Result.Result<void, SystemFailure> => {
+    let first: Result.Result<void, SystemFailure> = succeeded
+    for (const [key, value] of entered) {
+      const snapshot = { from: undefined, to: stateOf(value) } as unknown as Machine.TransitionSnapshot
+      const result = runEnters(key, stateOf(value), snapshot, schedules)
+      if (!result.ok && first.ok) first = result
+    }
+    return first
   }
 
   /**
@@ -2810,6 +2863,7 @@ const makeValidatedRuntime = <
   const snapshot = (): Result.Result<Snapshot.WorldSnapshot, Snapshot.SnapshotError> => {
     if (frameOpen) throw openFrameDefect("runtime.snapshot")
     if (inTick) throw new Error("runtime.snapshot was called while a schedule is running: it would capture writes a failing system rolls back; take it between ticks")
+    if (pendingCommands.length > 0) return Result.failure({ _tag: "QueuedCommands", count: pendingCommands.length })
     const savedEntities = world.exportEntities(DescriptorModule.isTransient)
     for (const entity of savedEntities) {
       for (const [name, value] of Object.entries(entity.components)) {
@@ -2834,6 +2888,16 @@ const makeValidatedRuntime = <
       if (!saved.ok) return Result.failure({ _tag: "UnencodableMachineState", name, error: saved.error })
       savedMachines[name] = saved.value
     }
+    const savedNextStates: Record<string, Snapshot.NextStateSnapshot> = {}
+    for (const [name, machine] of machinesByName) {
+      const pending = pendingMachines.get(machine.key)
+      if (pending === undefined) continue
+      const saved = encoded(machineSchema(machine), pending.value)
+      if (!saved.ok) return Result.failure({ _tag: "UnencodableNextState", name, error: saved.error })
+      savedNextStates[name] = pending.from === undefined
+        ? { state: saved.value, ifChanged: pending.skipIfSame }
+        : { state: saved.value, ifChanged: pending.skipIfSame, from: pending.from }
+    }
     const savedScopes: Record<string, ReadonlyArray<number>> = {}
     for (const [key, members] of world.exportScopes()) {
       const name = EntityScopeModule.nameOf(key)
@@ -2847,6 +2911,7 @@ const makeValidatedRuntime = <
       relations: world.exportRelations(),
       resources: savedResources,
       machines: savedMachines,
+      nextStates: savedNextStates,
       scopes: savedScopes
     })
   }
@@ -2855,13 +2920,50 @@ const makeValidatedRuntime = <
     if (frameOpen) throw openFrameDefect("runtime.checksum")
     if (inTick) throw new Error("runtime.checksum was called while a schedule is running: it would hash writes a failing system rolls back; take it between ticks")
     const saved = snapshot()
-    return saved.ok ? Result.success(Checksum.checksum(saved.value)) : saved
+    if (!saved.ok) return saved
+    // Without queued next states, the hash of a save written before they
+    // were saved: replays recorded then still verify.
+    const { nextStates, ...rest } = saved.value
+    return Result.success(Checksum.checksum(Object.keys(nextStates).length === 0 ? rest : saved.value))
   }
 
   // The public type only exposes `restore` when every saved descriptor has a
   // schema; a descriptor without one still fails closed here.
   const validate = (value: unknown, descriptor: Descriptor.Any): Result.Result<unknown, DescriptorModule.SchemaIssues> | undefined =>
     constructionOf(descriptor)?.decode(value)
+
+  const invalidNextState = (name: string, path: ReadonlyArray<string>, message: string) =>
+    Result.failure<Snapshot.RestoreError>({ _tag: "InvalidNextState", name, error: { _tag: "SchemaIssues", issues: [{ message, path }] } })
+
+  /**
+   * A saved next state, decoded and checked against the restored machines as
+   * queueing it would have been: a sub-state queues only while it has a
+   * value, and a machine with a `transitions` graph only moves it allows.
+   */
+  const restoreNextState = (
+    machine: Machine.StateMachine.Any,
+    next: Snapshot.NextStateSnapshot,
+    restoredMachines: ReadonlyMap<symbol, unknown>
+  ): Result.Result<{ value: unknown; skipIfSame: boolean; from?: string }, Snapshot.RestoreError> => {
+    const name = machine.name
+    const decoded = machineSchema(machine).decode(next.state)
+    if (!decoded.ok) return Result.failure({ _tag: "InvalidNextState", name, error: decoded.error })
+    const within = machine.within
+    if (within !== undefined && !restoredMachines.has(machine.key)) {
+      return Result.failure({ _tag: "InactiveSubState", name, parent: within.machine.name, requires: within.state })
+    }
+    const from = next.from
+    if (from !== undefined && !Object.hasOwn(machine.states, from)) return invalidNextState(name, ["from"], `${from} is not a state of ${name}`)
+    const graph = machine.transitions
+    if (graph !== undefined) {
+      const to = stateOf(decoded.value)!
+      if (from === undefined) return invalidNextState(name, ["from"], `${name} declares transitions, so a queued state moves from a state: from is missing`)
+      if (!graph[from]!.includes(to)) return invalidNextState(name, ["state", "_tag"], `${name} has no transition from ${from} to ${to}`)
+    }
+    const value = sharedValue(machine, decoded.value)
+    if (debugEnabled) deepFreeze(value)
+    return Result.success(from === undefined ? { value, skipIfSame: next.ifChanged } : { value, skipIfSame: next.ifChanged, from })
+  }
 
   const restore = (data: unknown): Result.Result<void, Snapshot.RestoreError> => {
     const parsed = Snapshot.parse(data)
@@ -2932,7 +3034,8 @@ const makeValidatedRuntime = <
         }
       }
     }
-    const restoredMachines = new Map(currentMachines)
+    // A machine the save does not hold starts from the value the runtime was made with.
+    const restoredMachines = new Map(initialMachines)
     for (const [name, raw] of Object.entries(saved.machines)) {
       const machine = machinesByName.get(name)
       if (!machine) return Result.failure({ _tag: "UnknownMachine", name })
@@ -2957,6 +3060,14 @@ const makeValidatedRuntime = <
         restoredMachines.delete(machine.key)
       }
     }
+    const restoredNextStates: Array<readonly [symbol, { value: unknown; skipIfSame: boolean; from?: string }]> = []
+    for (const [name, next] of Object.entries(saved.nextStates)) {
+      const machine = machinesByName.get(name)
+      if (!machine) return Result.failure({ _tag: "UnknownMachine", name })
+      const queued = restoreNextState(machine, next, restoredMachines)
+      if (!queued.ok) return queued
+      restoredNextStates.push([machine.key, queued.value])
+    }
 
     const scoped = new Set<number>()
     const memberships: Array<readonly [number, symbol]> = []
@@ -2971,19 +3082,23 @@ const makeValidatedRuntime = <
 
     const rebuiltLocals = localSlots.map(({ make }) => make())
 
-    // Apply: the old world is despawned and the saved one spawned, so change
-    // detection and renderer sync observe the restore like any other change.
-    // Checkpoints taken before it stand for a world that no longer leads here.
+    // Apply. Nothing of the replaced world is published: every reader that
+    // ran before the load finds no record from before it and is lagged, and
+    // the saved entities show as added. Checkpoints taken before it stand
+    // for a world that no longer leads here.
     releaseMarks(0, "restored")
     pendingCommands.length = 0
     pendingOrigins.length = 0
     pendingMachines.clear()
-    events.clear()
-    transitionEvents.clear()
-    relationFailures.clear()
-    droppedRelations.clear()
-    world.advanceTick()
-    world.despawnAll()
+    for (const [key, value] of restoredNextStates) pendingMachines.set(key, value)
+    previousMachines.clear()
+    const loadedAt = world.advanceTick()
+    events.clear(loadedAt)
+    transitionEvents.clear(loadedAt)
+    relationFailures.clear(loadedAt)
+    droppedRelations.clear(loadedAt)
+    for (const reader of allReaders) reader.reverts = undefined
+    world.replaceAll()
     world.setNextEntity(nextEntity)
     for (const entity of entities) {
       world.spawnEntity(world.entityIdOf(entity.id), entity.components)
@@ -2992,10 +3107,12 @@ const makeValidatedRuntime = <
       world.tryRelate(source, relation, target)
     }
     for (const [id, key] of memberships) world.assignEntityScope(id, key)
-    for (const [key, value] of validatedResources) {
-      resources.set(key, value)
-      resourceChangedAt.set(key, world.currentTick())
-    }
+    // A resource the save does not hold, and every transient one, takes the
+    // value the runtime was made with.
+    resources.clear()
+    for (const [key, value] of initialResources) resources.set(key, value)
+    for (const [key, value] of validatedResources) resources.set(key, value)
+    for (const descriptor of resourcesByName.values()) resourceChangedAt.set(descriptor.key, loadedAt)
     currentMachines.clear()
     for (const [key, value] of restoredMachines) currentMachines.set(key, value)
     // Locals are not saved: each system starts over from its factory.
@@ -3018,7 +3135,7 @@ const makeValidatedRuntime = <
     readonly resources: ReadonlyMap<symbol, unknown>
     readonly resourceChangedAt: ReadonlyMap<symbol, number>
     readonly currentMachines: ReadonlyMap<symbol, unknown>
-    readonly pendingMachines: ReadonlyMap<symbol, { value: unknown; skipIfSame: boolean; by?: string; from?: string }>
+    readonly pendingMachines: ReadonlyMap<symbol, PendingMachine>
     readonly previousMachines: ReadonlyMap<symbol, unknown>
     readonly pendingCommands: ReadonlyArray<Command.DeferredCommand<S>>
     readonly pendingOrigins: ReadonlyArray<string>

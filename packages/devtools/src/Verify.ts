@@ -7,7 +7,9 @@
  *
  * - `acrossEngines(make, file, { engines })` plays the replay twice here
  *   (the reference, and a repeat of it), compares the reference with the
- *   recording's checkpoints, then with each engine's per-tick checksums. On
+ *   recording's checkpoints (when the replay starts at tick 0: a rolling
+ *   window's later start is a save, which does not hold events in flight,
+ *   see `Replay.Checkpoints`), then with each engine's per-tick checksums. On
  *   the first tick an engine differs, it loads both worlds at that tick and
  *   names every differing value, as `Desync.compare` does.
  * - An `Engine` is any place that can run the game: `PlaywrightEngine`
@@ -43,6 +45,7 @@ import type * as Snapshot from "@typeonce/ritmo/Snapshot"
 
 import * as Desync from "./Desync.ts"
 import * as Format from "./Format.ts"
+import { savedStart } from "./internal/replayStart.ts"
 import * as Rendered from "./Rendered.ts"
 import * as Replay from "./Replay.ts"
 
@@ -135,9 +138,16 @@ export interface Diverged {
 /** What one engine's check found. */
 export type Outcome = Agreed | Diverged | EngineError
 
-/** Every engine agreed: the replay is deterministic here, matches its recording, and plays the same everywhere. */
+/** Every engine agreed: the replay is deterministic here, matches its recording (or says why it was not compared), and plays the same everywhere. */
 export interface Verified {
   readonly schedule: string
+  /**
+   * `matched`: the reference run reached every checkpoint of the recording.
+   * `notCompared`: the replay starts from a save of a later tick (a rolling
+   * window), which does not hold events in flight, so the recording's
+   * checkpoints were not compared; the runs here and in each engine were.
+   */
+  readonly recording: "matched" | "notCompared"
   /** Ticks compared, the start's tick not counted. */
   readonly ticks: number
   /** `node` first, then each engine. */
@@ -201,7 +211,8 @@ export const acrossEngines = async <S extends Schema.Any, Root>(
   const repeat = trace(make, file)
   const repeated = repeat.ok ? firstDifference(reference.value, repeat.value) : undefined
   // As `Replay.session` does, the recording is compared on the replayed ticks, not on the start it restores.
-  const checkpoints = file.checkpoints.filter(({ tick }) => tick > file.start.tick)
+  const notCompared = savedStart(file)
+  const checkpoints = notCompared === undefined ? file.checkpoints.filter(({ tick }) => tick > file.start.tick) : []
   const recorded = firstDifference(reference.value.filter(({ tick }) => checkpoints.some((checkpoint) => checkpoint.tick === tick)), checkpoints)
   if (!repeat.ok) {
     outcomes.push({ _tag: "EngineFailed", engine: "node", message: `a second run did not open: ${JSON.stringify(repeat.error)}` })
@@ -224,11 +235,12 @@ export const acrossEngines = async <S extends Schema.Any, Root>(
   if (outcomes.every((outcome) => outcome._tag === "Agreed")) {
     const engines = outcomes.map((outcome) => outcome.engine)
     return Result.success(Rendered.make(
-      { schedule: file.schedule, ticks, engines },
-      `verified ${ticks} ticks of ${file.schedule} on ${engines.join(", ")}: every engine reaches the same world as node after every tick, and node matches the recording`
+      { schedule: file.schedule, recording: notCompared === undefined ? "matched" : "notCompared", ticks, engines },
+      `verified ${ticks} ticks of ${file.schedule} on ${engines.join(", ")}: every engine reaches the same world as node after every tick, ${notCompared === undefined ? "and node matches the recording" : `and the recording ${notCompared}`}`
     ))
   }
-  return Result.failure({ _tag: "NotVerified", outcomes, text: [`NOT verified: ${ticks} ticks of ${file.schedule}`, ...outcomes.map(describe)].join("\n") })
+  const lines = [`NOT verified: ${ticks} ticks of ${file.schedule}`, ...outcomes.map((outcome) => describe(outcome, notCompared))]
+  return Result.failure({ _tag: "NotVerified", outcomes, text: [...lines, ...notCompared === undefined ? [] : [`the recording ${notCompared}`]].join("\n") })
 }
 
 /** Loads both worlds at `tick` and lists what differs. */
@@ -255,11 +267,11 @@ const explain = async (
 const where = ({ path, entity }: Desync.Difference): string =>
   entity === undefined ? path : `${Format.entity(entity)}${path.slice(`entity ${entity}`.length)}`
 
-/** One outcome as text: the first line names the engine, the tick, and the first difference. */
-const describe = (outcome: Outcome): string => {
+/** One outcome as text: the first line names the engine, the tick, and the first difference. `notCompared`: why the recording was not compared. */
+const describe = (outcome: Outcome, notCompared: string | undefined): string => {
   switch (outcome._tag) {
     case "Agreed":
-      return `${outcome.engine}: agrees with ${outcome.engine === "node" ? "a second node run and the recording" : "node"} over ${outcome.ticks} ticks`
+      return `${outcome.engine}: agrees with ${outcome.engine !== "node" ? "node" : notCompared === undefined ? "a second node run and the recording" : "a second node run"} over ${outcome.ticks} ticks`
     case "EngineMissing":
       return `${outcome.engine}: not installed (${outcome.reason}): ${outcome.install}`
     case "EngineFailed":

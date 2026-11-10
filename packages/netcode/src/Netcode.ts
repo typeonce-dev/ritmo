@@ -207,10 +207,11 @@ export interface TickFailed<TickError> {
 }
 
 /**
- * Seat 0 could not save its world, or this peer could not restore the save:
- * the peers run different versions of the game, or a value does not encode.
- * Ends the session. A {@link syncTest} fails with it when the world does
- * not checksum.
+ * Seat 0 could not save its world, or this peer could not restore the save
+ * or take a checksum: the peers run different versions of the game, a value
+ * does not encode, or commands were still queued (`QueuedCommands`: end
+ * `simulate` with `Game.Schedule.applyDeferred()`). Ends the session. A
+ * {@link syncTest} fails with it when the world does not checksum.
  */
 export interface SyncFailed {
   readonly _tag: "SyncFailed"

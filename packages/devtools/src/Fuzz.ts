@@ -170,7 +170,11 @@ export interface Options<
 > {
   /** The schedule to fuzz: the one ticked once per simulation step. Its name in the replay. */
   readonly schedule: Name
-  /** Ticked once before the fuzzed frames, with every input neutral: the replay starts after it. */
+  /**
+   * Ticked once before the fuzzed frames, with every input neutral. Each run
+   * then loads its own save of that world, as its replay does, so what setup
+   * left in flight (an event no system read yet) is not there in either.
+   */
   readonly setup?: Names
   /** The fuzzed sources, each from `input`. */
   readonly inputs: readonly [Input, ...Array<Input>]
@@ -216,8 +220,10 @@ export interface Found {
   readonly replay: Replay.ReplayFile
   /**
    * Whether the replay, opened with `Replay.session`, hits the violation
-   * again. `false` means restoring the start lost state the bug needs
-   * (transient components): reproduce it with `seed` instead.
+   * again. The run started from the replay's start, so `false` means the
+   * simulation read something besides its input and the world (run
+   * `Determinism.check`), or over a `network`, a failure that needs two
+   * peers: reproduce it with `seed` instead.
    */
   readonly reproduces: boolean
   /**
@@ -241,7 +247,7 @@ export interface InvalidOptions {
   readonly message: string
 }
 
-/** The world after setup cannot be saved (a `"~encode"` rejected it), so no replay could start there. */
+/** The world after setup cannot be saved (a `"~encode"` rejected it, or setup left commands queued: end it with `applyDeferred()`), so no replay could start there. */
 export interface Unreplayable {
   readonly _tag: "Unreplayable"
   readonly error: Snapshot.SnapshotError
@@ -341,7 +347,8 @@ type NetworkChecks<Net, S extends Schema.Any, Fuzzed> =
 /**
  * Fuzzes `options.schedule` of the simulation `make` builds. Each run makes
  * a fresh runtime with `make(playback)` (the `Replay.session` factory),
- * ticks `setup` once, then ticks the schedule up to `frames` times with
+ * ticks `setup` once and loads its save of the world (where the replay
+ * starts), then ticks the schedule up to `frames` times with
  * every input's `generate`d value, checking `invariants` after each frame.
  * The first run that fails is shrunk and returned as a `Found` with a
  * replay; a schedule name that `make` does not return, an invariant that
@@ -439,6 +446,11 @@ export const run = <
     }
     const start = runtime.snapshot()
     if (!start.ok) return { kind: "invalid", error: { _tag: "Unreplayable", error: start.error } }
+    // The run starts from what its replay starts from: the save, loaded. What
+    // setup left in flight (an event no system read yet) is in neither, so a
+    // bug the run finds is a bug the replay plays to.
+    const restored = target.runtime.restore(start.value)
+    if (!restored.ok) return { kind: "invalid", error: { _tag: "InvalidOptions", message: `the world after setup does not load again: ${JSON.stringify(restored.error)}` } }
 
     const sink = Replay.memorySink()
     // One window over the whole timeline, with its only snapshot at the start.

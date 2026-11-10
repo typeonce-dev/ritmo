@@ -124,8 +124,9 @@ const session = Session.make(runtime, {
 session.run("setup")
 const run = session.run("update", { frames: 300, until: (frame) => frame === 120 })
 run.data.ok                               // true when completed or `until` returned true
-run.data.stop                             // { reason: "completed" | "until" | "failure" | "defect"
-                                          //   | "invariant" | "missingRequirements" | "tickOrder", frame, ... }
+run.data.stop                             // Session.Stop: { reason: "completed" | "until" | "failure" | "defect"
+                                          //   | "invariant" | "invariant-threw" | "labels-threw" | "ignored-failure"
+                                          //   | "missingRequirements" | "tickOrder", frame, ... }
 
 const frame = session.step("update")      // one frame, a step at a time; refuses run/tick until finished
 frame.until(ApplyDamage)                  // runs the steps before the system value; Result: reached, or
@@ -278,10 +279,15 @@ modules imported inside `lintTarget` or later (render schedules passed to
 `extends`, or one that never turns the rule on prints why the check was
 skipped and does not fail. The check needs Node 22.15 or later.
 
+Last, it checks the install from the working directory: that every Ritmo
+package is one version, and that the project links each skill
+`@typeonce/ritmo` ships.
+
 | Code | Meaning |
 |---|---|
 | `uncovered-simulation-module` | The simulation loads this file, but no simulation override in `.oxlintrc.json` covers it, so oxlint never checks it for platform, time, randomness, or math calls. Add it to the override's `files`, or stop importing values from it. Exits with 1. |
-| `skill-not-linked` | For each skill `@typeonce/ritmo` ships (`ritmo`, `ritmo-prototype`, `ritmo-onboarding`, `ritmo-polish`): neither `.agents/skills/<skill>` nor `.claude/skills/<skill>` links it from `node_modules/@typeonce/ritmo/skills/<skill>`, so the game's agent does not read it for this Ritmo version. Link it (`SETUP.md` step 2). A note: the exit code is unchanged. |
+| `mismatched-versions` | The Ritmo packages installed for the game are not all one version. From the working directory, every `@typeonce` package it resolves and every copy those resolve in turn (an npm or yarn copy nested under another package, pnpm's store folders) is listed with its version: `@typeonce/ritmo-browser 0.22.0 is installed with @typeonce/ritmo 0.23.0 (and a second @typeonce/ritmo 0.22.0 under @typeonce/ritmo-browser)`. Each package depends on core at its own minor, so the older one gets its own hidden copy of core, and the game gets type errors between the two that name neither. Install the same version of every `@typeonce` package. Exits with 1. |
+| `skill-not-linked` | For each skill `@typeonce/ritmo` ships (every folder in its installed `skills`: `ritmo`, `ritmo-prototype`, `ritmo-onboarding`, `ritmo-polish`, `ritmo-pixel-art`, `ritmo-fx`, `ritmo-sounds`, `ritmo-music`): neither `.agents/skills/<skill>` nor `.claude/skills/<skill>` links it from `node_modules/@typeonce/ritmo/skills/<skill>`, so the game's agent does not read it for this Ritmo version. Link it (`SETUP.md` step 2). A note: the exit code is unchanged. |
 | `skill-copied` | The folder holds a copy of the skill (or links somewhere else), which goes stale on the next upgrade. Replace it with the link. A note: the exit code is unchanged. |
 
 The trace shows what systems wrote, not what they read. When a system writes
@@ -338,17 +344,26 @@ to open headless, explain, and turn into a test, then delete.
 
 ```ts
 // In the game's dev build: record the simulation schedule.
+import { HostClock } from "@typeonce/ritmo"
+import { Replay } from "@typeonce/ritmo-devtools"
+import * as ReplayViteSink from "@typeonce/ritmo-devtools/ReplayViteSink"
+
 const recorder = Replay.recorder(runtime, {
   schedule: simulate, name: "simulate",
   keep: 30, step: STEP,                      // seconds kept, the fixed step (Clock.hz)
   sink: ReplayViteSink.make({ fetch: (url, init) => fetch(url, init) }),
-  hostClock: BrowserHostClock.make(window),  // for savedAt
+  hostClock: HostClock.standard,             // wall time, for savedAt and the file's name
   saveOn: { failure: true, invariants: [DeadAreGone] } // saves by itself
 })
 recorder.save("player stuck")              // on demand, e.g. from a dev-only key
+```
 
+```ts
 // vite.config.ts: writes posted replays to .replays/<time>.json and logs them.
-plugins: [ReplayVitePlugin.plugin()]
+import * as ReplayVitePlugin from "@typeonce/ritmo-devtools/ReplayVitePlugin"
+import { defineConfig } from "vite"
+
+export default defineConfig({ plugins: [ReplayVitePlugin.plugin()] })
 ```
 
 - The recorded schedule's services must be `snapshot()` sources of plain
@@ -372,7 +387,7 @@ const make = (playback: Replay.Playback) => {
 }
 const file = Replay.parse(JSON.parse(readFileSync(".replays/....json", "utf8")))
 const replay = file.ok ? Replay.session(make, file.value) : file
-replay.value.play()                       // run the ticks; reports checkpoint divergence
+replay.value.play()                       // run the ticks; compares checkpoints from tick 0 (below)
 replay.value.session.why(12, Position)    // a normal Session over the replayed frames
 Replay.session(make, file.value, { labels: Labels }) // names entities, as in Session.make
 await Verify.acrossEngines(make, file.value) // replays twice here and against the recording
@@ -381,6 +396,27 @@ Replay.extract(make, file.value, { from: 1400, to: 1412 }) // a small replay for
 
 `Replay.session(make, file, { invariants })` checks invariants after every
 replayed tick, so `play()` stops where one breaks, as a `Session` run does.
+
+A replay is for reproducing and inspecting a bug. Whether `play()` also
+checks determinism depends on where the file starts (`play().data.checkpoints`):
+
+- `{ _tag: "Compared", diverged }`: the file starts at tick 0, the world
+  when the recorder started, so the replay starts where the recorded run
+  did. Each checkpoint hash in `diverged` differs (`DIVERGED at tick 16`):
+  the simulation is not deterministic, the code changed since recording, or
+  the recorder started after a schedule left an event in flight. Empty
+  prints `checkpoints match`.
+- `{ _tag: "NotCompared", reason }`: the window rolled past tick 0 (a run
+  longer than `keep`, or a `Replay.extract`), so it starts from a save. A
+  save does not hold events in flight or what each `added()` / `changed()`
+  reader had already seen, so an ordinary game replays to other checksums
+  from it, and none are compared: `starts from a save at tick 14: checksums
+  are not compared (...)`. The replay still plays; stepping, `why`, and
+  invariants work as in any session.
+
+Determinism is verified by `Determinism.check`, by `ritmo-devtools verify`
+and `Verify.acrossEngines` (Node twice, and browser engines, compared run
+against run), and by a replay recorded from tick 0.
 
 `playback.source(descriptor)` takes any `snapshot()`-only source service:
 `Schedule.Source<T>`, `Netcode.Source<T>`, or browser input declared as
@@ -427,8 +463,10 @@ export const replayTarget = (playback: Replay.Playback) => {
 ```
 
 - Node always runs, as the reference: twice (a difference is
-  nondeterminism here) and against the recording's checkpoints (a
-  difference is a code change since recording, or the recording engine).
+  nondeterminism here) and against the recording's checkpoints when the
+  replay starts at tick 0 (a difference is a code change since recording,
+  or the recording engine). A replay from a later save says the recording
+  was not compared, and why (`recording: "notCompared"` in the result).
   `--engines node`, the default, needs no other dependency.
 - Browser engines run headless through Playwright, with the entry served by
   a bare Vite dev server (the game's `vite.config` is not read). Install
@@ -532,6 +570,10 @@ if (!found.ok && found.error._tag === "Found") {
 - Shrinking drops ranges of frames, then moves each remaining value to
   `neutral` (whole, then one field at a time), re-running the simulation for
   every candidate. `shrinkAttempts` (500) bounds it.
+- After `setup`, each run loads its own save of the world before the first
+  fuzzed frame, because that save is where its replay starts: what setup
+  left in flight (an event no system has read yet) is in neither, and
+  transient components setup added are gone from both.
 - The error side is `Found` (with the shrunk `replay`, `seed`, `frame`, and
   `reproduces`: whether `Replay.session` replays it to the same violation),
   `Flaky` (the same input did not fail again: run `Determinism.check`),

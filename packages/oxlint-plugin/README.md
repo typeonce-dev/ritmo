@@ -234,7 +234,7 @@ Make the value through its check: decode at the boundary with the game's schema,
 
 ### `ritmo/handle-runtime-result`
 
-`runtime.tick(...)` returns a `Result`: a system that fails stops the tick, and the failure comes back here. `runtime.restore(...)` returns one too: an invalid save leaves the previous world in place. So does `runtime.rewind(...)`: a checkpoint the runtime let go of changes nothing, and the ticks meant to run again run on top of the present. `runtime.snapshot()` and `runtime.checksum()` return one because a schema's `encode` may reject a value. Dropping any of them hides the failure, and so does passing one on where any value is accepted: a save function that takes `unknown` stores the `{ ok, value }` wrapper, not the world.
+`runtime.tick(...)` returns a `Result`: a system that fails stops the tick, and the failure comes back here. `runtime.restore(...)` returns one too: an invalid save leaves the previous world in place. So does `runtime.rewind(...)`: a checkpoint the runtime let go of changes nothing, and the ticks meant to run again run on top of the present. `runtime.snapshot()` and `runtime.checksum()` return one because a schema's `encode` may reject a value, and a save cannot hold commands still queued. Dropping any of them hides the failure, and so does passing one on where any value is accepted: a save function that takes `unknown` stores the `{ ok, value }` wrapper, not the world.
 
 ```ts
 runtime.tick(update)                                             // reported

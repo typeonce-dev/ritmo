@@ -21,10 +21,18 @@
  * A missing or unreadable config, one with `extends`, or one that never turns
  * the rule on prints why the check was skipped and does not fail.
  *
- * Last, it notes each Ritmo skill (`ritmo`, `ritmo-prototype`, `ritmo-onboarding`, `ritmo-polish`) the project
- * does not link from the installed package (`.agents/skills/<skill>` or
- * `.claude/skills/<skill>`, see `SETUP.md`), or holds a copy of it that goes
- * stale on upgrade. The note never fails the lint.
+ * It checks that every Ritmo package the game installs is one version: from
+ * the working directory, each `@typeonce` package it resolves, and every copy
+ * those resolve in turn (npm, yarn, and pnpm layouts). Copies at different
+ * versions (`@typeonce/ritmo-browser` 0.22 beside `@typeonce/ritmo` 0.23
+ * installs a second core under browser) print one `mismatched-versions`
+ * warning naming each copy, and exit with 1.
+ *
+ * Last, it notes each skill `@typeonce/ritmo` ships (every folder in its
+ * installed `skills`) that the project does not link from the installed
+ * package (`.agents/skills/<skill>` or `.claude/skills/<skill>`, see
+ * `SETUP.md`), or holds a copy of that goes stale on upgrade. The note never
+ * fails the lint.
  *
  * `verify` imports `<entry>` (a module exporting `replayTarget`, the
  * `make(playback)` factory `Replay.session` takes), plays the replay file in
@@ -47,7 +55,7 @@
  * is printed with its install command and exits with 2.
  *
  * Exit codes: 0 ok (and every `scan` that ran), 1 lint warning, uncovered
- * module, or an engine that differs or did not run, 2 usage error (for `scan`
+ * module, mismatched versions, or an engine that differs or did not run, 2 usage error (for `scan`
  * also an unreadable entry, an import that does not resolve, or a missing tool).
  * Requires Node 22.15 or later for `module.registerHooks`; on older Node it
  * prints that coverage was not checked.
@@ -60,6 +68,7 @@ import { resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import * as DependencyScan from "./internal/dependencyScan.ts"
+import * as PackageVersions from "./internal/packageVersions.ts"
 import * as SimulationCoverage from "./internal/simulationCoverage.ts"
 import * as SkillLink from "./internal/skillLink.ts"
 import * as Lint from "./Lint.ts"
@@ -123,10 +132,13 @@ const lint = async (entry: string): Promise<number> => {
     if (text !== "") console.log(text)
     return report.data.ok && (!coverage.checked || coverage.uncovered.length === 0) ? 0 : 1
   })()
+  const versions = PackageVersions.check(process.cwd())
+  const mismatch = PackageVersions.format(versions)
+  if (mismatch !== "") console.log(mismatch)
   // A note only: it never changes the exit code.
   const skill = SkillLink.format(SkillLink.check(process.cwd()))
   if (skill !== "") console.log(skill)
-  return status
+  return versions._tag === "Mismatched" ? 1 : status
 }
 
 const engineNames = ["node", "chromium", "webkit", "firefox"] as const

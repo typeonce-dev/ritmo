@@ -81,7 +81,8 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
     if (options?.despawnOnEnter !== undefined) {
       triggers.push({ phase: "enter", machine: options.despawnOnEnter[0], state: options.despawnOnEnter[1] })
     }
-    const scope = EntityScope.make(name, triggers)
+    // The name is erased here; Game.EntityScope's signature carries it.
+    const scope = EntityScope.make(name, triggers) as unknown as EntityScope.EntityScope
     definedScopes.push(scope)
     definedScopeNames.add(name)
     return scope

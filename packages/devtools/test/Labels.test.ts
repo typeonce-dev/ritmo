@@ -162,7 +162,7 @@ describe("Session labels", () => {
 describe("labels in diffs", () => {
   it("Desync.compare names entities with the labels it is given", () => {
     const save = (x: number): Snapshot.WorldSnapshot => ({
-      version: 3, gameVersion: 0, nextEntity: 3, relations: {}, resources: {}, machines: {}, scopes: {},
+      version: 3, gameVersion: 0, nextEntity: 3, relations: {}, resources: {}, machines: {}, nextStates: {}, scopes: {},
       entities: [{ id: 1, components: { "Labels/Position": { x } } }, { id: 2, components: { "Labels/Position": { x } } }]
     })
     const runtime = makeRuntime()

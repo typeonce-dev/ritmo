@@ -16,9 +16,17 @@
  *   playtester's "save replay" button, call `recorder.save(reason)` from a
  *   key or button handler in the host.
  * - `session(make, file, { invariants })` restores the start and replays
- *   the ticks in a normal devtools `Session`; `verify` replays twice and compares the
- *   checkpoint hashes to find nondeterminism; `extract` cuts a range of
+ *   the ticks in a normal devtools `Session`; `extract` cuts a range of
  *   ticks into a small replay with its own start, for a test.
+ *   `Verify.acrossEngines` replays twice and compares the checksums to find
+ *   nondeterminism.
+ *
+ * A window that starts at tick 0, the world when the recorder started, is
+ * compared with the recording's checksums. Once it rolls past tick 0 it
+ * starts from a save, which does not hold what the game still had in flight
+ * (events not yet read, what each `added()` / `changed()` reader had already
+ * seen), so its checksums are not compared: such a replay is for reproducing
+ * and inspecting a bug. `Determinism.check` verifies determinism.
  *
  * Every service the recorded schedule needs must be a `snapshot()` source of
  * plain data (input) or plain data itself (rules, config); anything else is
@@ -64,6 +72,7 @@ import type * as Snapshot from "@typeonce/ritmo/Snapshot"
 
 import * as Format from "./Format.ts"
 import type { Invariant } from "./Invariant.ts"
+import { savedStart } from "./internal/replayStart.ts"
 import { libraryVersion } from "./internal/version.ts"
 import * as Rendered from "./Rendered.ts"
 import * as Session from "./Session.ts"
@@ -119,7 +128,11 @@ export interface ReplayFile {
   readonly savedAt: number
   /** Services that are plain data, as they were (rules, config). */
   readonly constants: Readonly<Record<string, unknown>>
-  /** The world at the end of tick `start.tick`; replay starts with the tick after it. */
+  /**
+   * The world at the end of tick `start.tick`; replay starts with the tick after it.
+   * Tick 0 is the world when the recorder started; a later tick is a save the
+   * rolling window moved to, and a replay from it does not compare checksums.
+   */
   readonly start: {
     readonly tick: number
     readonly snapshot: Snapshot.WorldSnapshot
@@ -157,7 +170,10 @@ export interface RecorderOptions<S extends Schema.Any, Root, Recorded extends An
   readonly schedule: Recorded
   /** Its name in the file and in the replay's session. */
   readonly name: string
-  /** Seconds of play to keep. */
+  /**
+   * Seconds of play to keep. Once a run is longer, the window starts from a
+   * later save, and a replay of it does not compare checksums (see `PlayResult`).
+   */
   readonly keep: number
   /** The schedule's fixed step (`Clock.hz(...)`), the same the game's clock runs at. */
   readonly step: Clock.Step
@@ -335,7 +351,7 @@ export const recorder = <S extends Schema.Any, Root, const Recorded extends AnyS
 
   const save = (reason: string): ReplayFile => {
     const point = points[0]
-    if (point === undefined) throw new Error("no tick of this run could be saved: a `~encode` rejected the world every time (see runtime.snapshot())")
+    if (point === undefined) throw new Error("no tick of this run could be saved: a `~encode` rejected the world, or commands were queued (end the schedule with applyDeferred()), every time (see runtime.snapshot())")
     const start = { tick: point.tick, snapshot: point.snapshot, pendingCommands: point.pendingCommands }
     const file: ReplayFile = {
       format: "ritmo-replay",
@@ -516,12 +532,36 @@ export interface SessionOptions<
   readonly labels?: Labels
 }
 
-/** What one `ReplaySession.play` did: the session run, and the checkpoints that differ. */
+/** A recorded checkpoint whose hash differs in the replay. */
+export interface Divergence {
+  readonly tick: number
+  readonly recorded: string
+  readonly replayed: string
+}
+
+/**
+ * Whether `play` compared the replay's checksums with the recording's.
+ *
+ * - `Compared`: the replay starts at tick 0, where the recorded run did.
+ *   `diverged` lists the checkpoints whose hash differs, empty when every one
+ *   matches. A difference is nondeterminism, a code change since recording,
+ *   or something in flight when the recorder started (an event emitted by a
+ *   schedule ticked before it).
+ * - `NotCompared`: the replay starts from a save of a later tick (a rolling
+ *   window). A save does not hold events in flight or what each reader had
+ *   already seen, so an ordinary game replays to other checksums from it;
+ *   `reason` says so. The replay still plays and its session explains it.
+ *   Check determinism with `Determinism.check`, or a replay recorded from tick 0.
+ */
+export type Checkpoints =
+  | { readonly _tag: "Compared"; readonly diverged: ReadonlyArray<Divergence> }
+  | { readonly _tag: "NotCompared"; readonly reason: string }
+
+/** What one `ReplaySession.play` did: the session run, and how its checksums compare with the recording's. */
 export interface PlayResult {
   /** The session's run of the replayed ticks. */
   readonly run: Session.RunResult
-  /** Recorded checkpoints whose hash differs in this replay: the simulation is not deterministic, or the code changed. */
-  readonly diverged: ReadonlyArray<{ readonly tick: number; readonly recorded: string; readonly replayed: string }>
+  readonly checkpoints: Checkpoints
 }
 
 /** An opened replay, from `session`, restored to its start and ready to `play`. */
@@ -529,7 +569,7 @@ export interface ReplaySession<S extends Schema.Any, Names extends string> {
   /** The devtools session the ticks run in: `why`, `journal`, `report` work as in any run. */
   readonly session: Session.Session<S, Names>
   readonly file: ReplayFile
-  /** Replays the recorded ticks (up to `to`, the recorder's tick number) and compares checkpoints. */
+  /** Replays the recorded ticks (up to `to`, the recorder's tick number) and compares checkpoints when the replay starts at tick 0. */
   readonly play: (options?: { readonly to?: number }) => Rendered.Rendered<PlayResult>
   /** Hashes of the world at the end of each replayed tick so far. */
   readonly hashes: () => ReadonlyMap<number, string>
@@ -604,12 +644,13 @@ export const session = <
   const startChecksum = target.runtime.checksum()
   const hashes = new Map<number, string>([[ran, worldHash(startChecksum)]])
   const recorded = new Map(file.checkpoints.map(({ tick, hash }) => [tick, hash] as const))
+  const notCompared = savedStart(file)
   const last = file.ticks.at(-1)?.tick ?? file.start.tick
 
   const play = (options: { readonly to?: number } = {}): Rendered.Rendered<PlayResult> => {
     const to = Math.min(options.to ?? last, last)
     const frames = Math.max(0, to - ran)
-    const diverged: Array<{ readonly tick: number; readonly recorded: string; readonly replayed: string }> = []
+    const diverged: Array<Divergence> = []
     const run = replay.run(file.schedule, {
       frames,
       // `until` runs after each frame: the tick is checked, and the next one's input set up before it runs.
@@ -619,14 +660,15 @@ export const session = <
         const hash = worldHash(checksum)
         hashes.set(ran, hash)
         const expected = recorded.get(ran)
-        if (expected !== undefined && expected !== hash) diverged.push({ tick: ran, recorded: expected, replayed: hash })
+        if (notCompared === undefined && expected !== undefined && expected !== hash) diverged.push({ tick: ran, recorded: expected, replayed: hash })
         prepare(ran + 1)
         return false
       }
     })
-    return Rendered.make({ run: run.data, diverged }, diverged.length === 0
+    if (notCompared !== undefined) return Rendered.make({ run: run.data, checkpoints: { _tag: "NotCompared", reason: notCompared } }, `${run.text}\n${notCompared}`)
+    return Rendered.make({ run: run.data, checkpoints: { _tag: "Compared", diverged } }, diverged.length === 0
       ? `${run.text}\ncheckpoints match`
-      : `${run.text}\nDIVERGED at ${diverged.map((entry) => `tick ${entry.tick}`).join(", ")}: the simulation is not deterministic, or the code changed since recording`)
+      : `${run.text}\nDIVERGED at ${diverged.map((entry) => `tick ${entry.tick}`).join(", ")}: the simulation is not deterministic, the code changed since recording, or something was in flight when the recorder started (an event a schedule ticked before it emitted)`)
   }
 
   /** Sets up tick `next`: its sends, and its sources' values. */

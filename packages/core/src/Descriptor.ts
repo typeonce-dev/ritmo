@@ -462,6 +462,21 @@ type CheckedValue<Kind extends string, Value, Make> = [ValueRejection<Kind, Valu
   : (name: ValueRejection<Kind, Value>) => never
 
 /**
+ * The fix a descriptor names when its name is typed `string` rather than a
+ * literal (see {@link Named}).
+ */
+export type NameFix = "a descriptor's name is a literal type: pass the name as a literal or `as const`, or make the helper generic over it, <const Name extends string>(name: Name)"
+
+/**
+ * `D`, or, when `Name` is `string` (a helper typed `(name: string) => ...`),
+ * a value no API takes, whose only field names the fix. Two descriptors with
+ * a `string` name would have one type, so the compiler could not tell them
+ * apart: every descriptor constructor that takes a name returns this, and
+ * the first place the value is used fails with the message.
+ */
+export type Named<Name extends string, D> = string extends Name ? { readonly __fixName__: NameFix } : D
+
+/**
  * The first call of `Descriptor.Component<Value>()` and its siblings takes no
  * argument: the name goes in the second call. No value has this type; it
  * names the fix when the name is passed to the first call.
@@ -492,7 +507,7 @@ type NameInSecondCall<Constructor extends string> =
 export const Component = <Value>(_name?: NameInSecondCall<"Component">): CheckedValue<"component", Value, <const Name extends string, const Options extends ComponentOptions = {}>(
   name: Name,
   options?: Options & CheckedOptions<Value, Options>
-) => WithComponentOptions<Descriptor<"component", Name, Value>, Options>> =>
+) => Named<Name, WithComponentOptions<Descriptor<"component", Name, Value>, Options>>> =>
   ((name: string, options?: ComponentOptions) => applyComponentOptions(makeDescriptor("component", name), options)) as never
 
 /**
@@ -523,8 +538,8 @@ export const ConstructedComponent = <const S extends Codec<any, any>>(
 ) => <const Name extends string, const Options extends ComponentOptions = {}>(
   name: Name,
   options?: Options & CheckedOptions<CodecType<S>, Options>
-): WithComponentOptions<ConstructedDescriptor<"component", Name, CodecType<S>, CodecEncoded<S>, SchemaIssues>, Options> =>
-  applyComponentOptions(makeConstructedDescriptor("component", name, schema), options) as WithComponentOptions<ConstructedDescriptor<"component", Name, CodecType<S>, CodecEncoded<S>, SchemaIssues>, Options>
+): Named<Name, WithComponentOptions<ConstructedDescriptor<"component", Name, CodecType<S>, CodecEncoded<S>, SchemaIssues>, Options>> =>
+  applyComponentOptions(makeConstructedDescriptor("component", name, schema), options) as never
 
 /**
  * Defines a component descriptor that snapshots skip.
@@ -540,7 +555,7 @@ export const ConstructedComponent = <const S extends Codec<any, any>>(
 export const TransientComponent = <Value>(_name?: NameInSecondCall<"TransientComponent">): CheckedValue<"component", Value, <const Name extends string, const Options extends ComponentOptions = {}>(
   name: Name,
   options?: Options & CheckedOptions<Value, Options>
-) => WithComponentOptions<TransientDescriptor<"component", Name, Value>, Options>> =>
+) => Named<Name, WithComponentOptions<TransientDescriptor<"component", Name, Value>, Options>>> =>
   ((name: string, options?: ComponentOptions) => applyComponentOptions(makeTransientDescriptor("component", name), options)) as never
 
 /**
@@ -557,8 +572,8 @@ export const TransientComponent = <Value>(_name?: NameInSecondCall<"TransientCom
  */
 export const Tag = <const Name extends string>(
   name: Name
-): ConstructedDescriptor<"component", Name, {}, {}, SchemaIssues> =>
-  makeConstructedDescriptor("component", name, tagSchema)
+): Named<Name, ConstructedDescriptor<"component", Name, {}, {}, SchemaIssues>> =>
+  makeConstructedDescriptor("component", name, tagSchema) as never
 
 const tagSchema = standard<{}>((raw) =>
   typeof raw === "object" && raw !== null && !Array.isArray(raw) ? ResultModule.success({}) : ResultModule.failure("Expected an object")
@@ -737,11 +752,11 @@ export const EntityState = <
   options?: {
     readonly transitions: CheckedTransitions<States, Transitions>
   }
-): EntityStateDescriptor<Name, States, Transitions> => ({
+): Named<Name, EntityStateDescriptor<Name, States, Transitions>> => ({
   ...makeConstructedDescriptor("component", name, stateCodec(states)),
   states,
   transitions: options?.transitions
-}) as unknown as EntityStateDescriptor<Name, States, Transitions>
+}) as never
 
 /** Whether a descriptor was built with {@link EntityState}. */
 export const isEntityState = (
@@ -771,7 +786,7 @@ export const isEntityState = (
 export const Resource = <Value>(_name?: NameInSecondCall<"Resource">): CheckedValue<"resource", Value, <const Name extends string, const Options extends ResourceOptions = {}>(
   name: Name,
   options?: Options & CheckedOptions<Value, Options>
-) => Descriptor<"resource", Name, Value>> =>
+) => Named<Name, Descriptor<"resource", Name, Value>>> =>
   ((name: string, options?: ResourceOptions) => withMeta(makeDescriptor("resource", name), options?.meta)) as never
 
 /**
@@ -790,8 +805,8 @@ export const ConstructedResource = <const S extends Codec<any, any>>(
 ) => <const Name extends string, const Options extends ResourceOptions = {}>(
   name: Name,
   options?: Options & CheckedOptions<CodecType<S>, Options>
-): ConstructedDescriptor<"resource", Name, CodecType<S>, CodecEncoded<S>, SchemaIssues> =>
-  withMeta(makeConstructedDescriptor("resource", name, schema), options?.meta)
+): Named<Name, ConstructedDescriptor<"resource", Name, CodecType<S>, CodecEncoded<S>, SchemaIssues>> =>
+  withMeta(makeConstructedDescriptor("resource", name, schema), options?.meta) as never
 
 /**
  * Defines a resource descriptor that snapshots skip. Restoring keeps its
@@ -805,7 +820,7 @@ export const ConstructedResource = <const S extends Codec<any, any>>(
 export const TransientResource = <Value>(_name?: NameInSecondCall<"TransientResource">): CheckedValue<"resource", Value, <const Name extends string, const Options extends ResourceOptions = {}>(
   name: Name,
   options?: Options & CheckedOptions<Value, Options>
-) => TransientDescriptor<"resource", Name, Value>> =>
+) => Named<Name, TransientDescriptor<"resource", Name, Value>>> =>
   ((name: string, options?: ResourceOptions) => withMeta(makeTransientDescriptor("resource", name), options?.meta)) as never
 
 /**
@@ -828,7 +843,7 @@ export const TransientResource = <Value>(_name?: NameInSecondCall<"TransientReso
  */
 export const Event = <Value>(_name?: NameInSecondCall<"Event">): CheckedValue<"event", Value, <const Name extends string>(
   name: Name
-) => Descriptor<"event", Name, Value>> => ((name: string) => makeDescriptor("event", name)) as never
+) => Named<Name, Descriptor<"event", Name, Value>>> => ((name: string) => makeDescriptor("event", name)) as never
 
 /**
  * Defines a service descriptor.
@@ -852,7 +867,7 @@ export const Event = <Value>(_name?: NameInSecondCall<"Event">): CheckedValue<"e
  */
 export const Service = <Value>(_name?: NameInSecondCall<"Service">): CheckedValue<"service", Value, <const Name extends string>(
   name: Name
-) => Descriptor<"service", Name, Value>> => ((name: string) => makeDescriptor("service", name)) as never
+) => Named<Name, Descriptor<"service", Name, Value>>> => ((name: string) => makeDescriptor("service", name)) as never
 
 /**
  * Checks whether one descriptor is transient (skipped by snapshots).
@@ -865,6 +880,12 @@ export const isTransient = (descriptor: Descriptor.Any): descriptor is Descripto
  */
 export const hasConstructor = (descriptor: Descriptor.Any): descriptor is Descriptor.AnyConstructed =>
   constructionKey in descriptor
+
+/** What {@link Hierarchy} and {@link Relation} return: the edge `relation`, and `related`, its reverse. */
+type RelationPair<Name extends string, RelatedName extends string, Kind extends RelationKind> = {
+  readonly relation: RelationDefinition<Name, RelatedName, Kind, PairBrand<Name, RelatedName, Kind>>
+  readonly related: RelatedDefinition<RelatedName, Name, Kind, PairBrand<Name, RelatedName, Kind>>
+}
 
 /**
  * Defines the canonical parent/children relationship pair.
@@ -881,7 +902,7 @@ export const hasConstructor = (descriptor: Descriptor.Any): descriptor is Descri
 export const Hierarchy = <const Name extends string, const RelatedName extends string>(
   name: Name,
   relatedName: RelatedName
-) => makePair("hierarchy", name, relatedName)
+): Named<Name | RelatedName, RelationPair<Name, RelatedName, "hierarchy">> => makePair("hierarchy", name, relatedName) as never
 
 /**
  * Defines a general relationship pair with direct edges and reverse lookups.
@@ -897,8 +918,9 @@ export const Hierarchy = <const Name extends string, const RelatedName extends s
 export const Relation = <const Name extends string, const RelatedName extends string>(
   name: Name,
   relatedName: RelatedName
-) => makePair("relation", name, relatedName)
+): Named<Name | RelatedName, RelationPair<Name, RelatedName, "relation">> => makePair("relation", name, relatedName) as never
 import type { Construction } from "./internal/schema.ts"
+import type { PairBrand, RelatedDefinition, RelationDefinition, RelationKind } from "./Relation.ts"
 import { construction, constructionKey, standard } from "./internal/schema.ts"
 import { withMeta } from "./internal/meta.ts"
 import { makePair } from "./internal/relations.ts"

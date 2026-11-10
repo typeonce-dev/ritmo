@@ -51,9 +51,18 @@ export interface Random {
   readonly state: number
   /** Uniform in [0, 1). */
   next(): number
-  /** Uniform in [min, max), or `min` when they are equal. Throws when `min > max` or a bound is not finite. */
+  /**
+   * Uniform in [min, max), or `min` when they are equal. Throws when `min > max` or a bound is not finite.
+   * Any two finite bounds work, even when `max - min` is beyond the largest number. Where
+   * the bounds are only a few doubles apart (`range(1e16, 1e16 + 2)`), the result rounds to
+   * one of those doubles, `max` included.
+   */
   range(min: number, max: number): number
-  /** A uniform integer in [min, maxExclusive). Throws unless both bounds are integers with min < maxExclusive. */
+  /**
+   * A uniform integer in [min, maxExclusive). Throws unless both bounds are safe integers with
+   * min < maxExclusive and a span (`maxExclusive - min`) of at most `Number.MAX_SAFE_INTEGER`.
+   * A span up to 2**32 takes one draw; a wider one takes two draws, or more now and then.
+   */
   integer(min: number, maxExclusive: number): number
   /** A uniform element of `items`, or `undefined` when it is empty (no draw is made then). */
   pick<A>(items: ReadonlyArray<A>): A | undefined
@@ -63,12 +72,20 @@ export interface Random {
    * An element of `items` chosen with probability proportional to `weight`,
    * or `undefined` when no element has a positive finite weight (no draw is
    * made then). Elements with zero, negative, or non-finite weight are never
-   * chosen. `weight` is called once per element.
+   * chosen. Throws when the usable weights add up to more than the largest
+   * number. `weight` is called once per element.
    */
   weighted<A>(items: ReadonlyArray<A>, weight: (item: A) => number): A | undefined
 }
 
 const usable = (weight: number): boolean => weight > 0 && weight < Infinity
+
+// 2**32 and 2**53 (one draw's words, and the integers a double holds exactly).
+const word = 4294967296
+const exact = 9007199254740992
+
+// A span `max - min` that overflows: halve both bounds, so neither the span nor the sum can.
+const wideRange = (min: number, max: number, unit: number): number => (min / 2 + (max / 2 - min / 2) * unit) * 2
 
 class Mulberry32 implements Random {
   state: number
@@ -89,14 +106,31 @@ class Mulberry32 implements Random {
     if (!(Number.isFinite(min) && Number.isFinite(max) && min <= max)) {
       throw new Error(`Random.range needs finite bounds with min <= max, got [${min}, ${max})`)
     }
-    return min + (max - min) * this.next()
+    const span = max - min
+    return span === Infinity ? wideRange(min, max, this.next()) : min + span * this.next()
   }
 
   integer(min: number, maxExclusive: number): number {
     if (!(Number.isSafeInteger(min) && Number.isSafeInteger(maxExclusive) && min < maxExclusive)) {
       throw new Error(`Random.integer needs whole bounds with min below maxExclusive, got [${min}, ${maxExclusive})`)
     }
-    return min + Math.floor(this.next() * (maxExclusive - min))
+    const span = maxExclusive - min
+    return span <= word ? min + Math.floor(this.next() * span) : min + this.#wide(min, maxExclusive, span)
+  }
+
+  // A span wider than one draw's 32 bits: 53 bits from two draws, drawn again in the rare case
+  // that lands past the last whole multiple of the span, so every offset is equally likely.
+  #wide(min: number, maxExclusive: number, span: number): number {
+    if (!Number.isSafeInteger(span)) {
+      throw new Error(`Random.integer needs a span of at most Number.MAX_SAFE_INTEGER, got [${min}, ${maxExclusive})`)
+    }
+    const limit = exact - (exact % span)
+    for (;;) {
+      const high = this.next() * word
+      const low = (this.next() * word) >>> 11
+      const bits = high * 2097152 + low
+      if (bits < limit) return bits % span
+    }
   }
 
   pick<A>(items: ReadonlyArray<A>): A | undefined {
@@ -121,7 +155,7 @@ class Mulberry32 implements Random {
     for (const value of weights) {
       if (usable(value)) total += value
     }
-    if (!usable(total)) return undefined
+    if (!usable(total)) return unusableTotal(total)
     let roll = this.next() * total
     let last: A | undefined
     for (let index = 0; index < items.length; index++) {
@@ -134,6 +168,12 @@ class Mulberry32 implements Random {
     // Rounding can leave a sliver of the roll past the last bucket.
     return last
   }
+}
+
+// No usable weight, or usable weights whose sum overflows (which no draw could split fairly).
+const unusableTotal = (total: number): undefined => {
+  if (total === Infinity) throw new Error("Random.weighted needs usable weights that add up to a finite total, got Infinity")
+  return undefined
 }
 
 /**
