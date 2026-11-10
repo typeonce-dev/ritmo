@@ -58,13 +58,19 @@ export interface FlowField {
   /**
    * Makes `goal` the place every way leads to, searching again only when it
    * is in another cell than last time (or the walls changed). The goal's own
-   * cell may be blocked (a target standing against a wall).
+   * cell may be blocked (a target standing against a wall, or backed into a
+   * corner): the ways then lead to the nearest open cells around it that it
+   * can see in a straight line, however many blocked cells deep it stands.
    */
   setGoal(goal: Vec2): void
   /**
    * The unit direction from `at` toward the center of the neighboring cell
    * closest to the goal, or `undefined` when there is none: outside the grid,
-   * walled off from the goal, or already in the goal's cell.
+   * walled off from the goal, or already there (in the goal's cell, or in an
+   * open cell next to a goal in a blocked one, where the straight line to the
+   * goal is the way). From a blocked cell with no open neighbor to step to (a
+   * body pressed into a corner) it leads to the nearest open cells it can see
+   * in a straight line, to the one closest to the goal.
    */
   way(at: Vec2): Vec2 | undefined
   /** The path distance from the cell holding `at` to the goal, or `undefined` outside the grid or when walled off. */
@@ -76,6 +82,12 @@ export interface FlowField {
 const stepX = Int8Array.of(1, -1, 0, 0, 1, 1, -1, -1)
 const stepY = Int8Array.of(0, 0, 1, -1, 1, -1, 1, -1)
 const stepCost = Float64Array.of(1, 1, 1, 1, Math.SQRT2, Math.SQRT2, Math.SQRT2, Math.SQRT2)
+
+/** The length of the shortest path of steps over (`dx`, `dy`) cells: diagonal ones first, then straight. */
+const pathLength = (dx: number, dy: number): number => {
+  const shorter = Math.min(Math.abs(dx), Math.abs(dy))
+  return Math.max(Math.abs(dx), Math.abs(dy)) - shorter + shorter * Math.SQRT2
+}
 
 class Field implements FlowField {
   readonly cellSize: number
@@ -178,7 +190,28 @@ class Field implements FlowField {
     const columns = this.columns
     this.queued = 0
     distances[start] = 0
-    this.push(start, 0)
+    const goalColumn = start % columns
+    const goalRow = (start - goalColumn) / columns
+    if (this.blocked[start] === 0 || this.stepsOut(goalColumn, goalRow)) this.push(start, 0)
+    else {
+      // A goal with no open neighbor to step to (backed into a corner, or
+      // more than a cell from the open ones) is reached from the nearest
+      // open cells it can see in a straight line: the corner rule keeps
+      // bodies from cutting past a wall, not from reaching a goal at one.
+      for (let ring = 1, found = false, rings = this.rings(); !found && ring <= rings; ring++) {
+        // Around the ring: all of its top and bottom rows, the ends of the others.
+        for (let dy = -ring; dy <= ring; dy++) {
+          for (let dx = -ring; dx <= ring; dx += dy === -ring || dy === ring ? 1 : 2 * ring) {
+            const cell = this.openCell(goalColumn + dx, goalRow + dy)
+            if (cell < 0 || !this.sees(goal, goalColumn + dx, goalRow + dy)) continue
+            found = true
+            const distance = pathLength(dx, dy)
+            distances[cell] = distance
+            this.push(cell, distance)
+          }
+        }
+      }
+    }
     while (this.queued > 0) {
       const queued = this.keys[0]!
       const cell = this.pop()
@@ -221,9 +254,97 @@ class Field implements FlowField {
       targetY = this.originY + (row + dy + 0.5) * this.cellSize
       found = true
     }
+    if (!found && this.blocked[cell] === 1 && cell !== this.goal) {
+      // A body in a blocked cell with no neighbor to step to (pressed into a
+      // corner) heads for the nearest open cells, to the one it can see in a
+      // straight line that leaves it closest to the goal.
+      for (let ring = 1, near = false, rings = this.rings(); !near && ring <= rings; ring++) {
+        // Around the ring, as in `setGoal`.
+        for (let dy = -ring; dy <= ring; dy++) {
+          for (let dx = -ring; dx <= ring; dx += dy === -ring || dy === ring ? 1 : 2 * ring) {
+            const next = this.openCell(column + dx, row + dy)
+            if (next < 0) continue
+            near = true
+            const through = pathLength(dx, dy) + distances[next]!
+            if (through >= best || !this.sees(at, column + dx, row + dy)) continue
+            best = through
+            targetX = this.originX + (column + dx + 0.5) * this.cellSize
+            targetY = this.originY + (row + dy + 0.5) * this.cellSize
+            found = true
+          }
+        }
+      }
+    }
     if (!found) return undefined
     const length = Ops.hypot(targetX - at.x, targetY - at.y)
     return length > 1e-6 ? { x: (targetX - at.x) / length, y: (targetY - at.y) / length } : undefined
+  }
+
+  /**
+   * How many rings of cells around a blocked cell to look through for open
+   * ones: enough to reach out of the clearance of any wall a body stands
+   * against (deeper is inside a wall, or where no body fits).
+   */
+  private rings(): number {
+    const clearance = this.walls![0]!
+    return Math.min(Math.max(this.columns, this.rows) - 1, Math.ceil(clearance / this.cellSize) + 2)
+  }
+
+  /** The cell at (`column`, `row`) when it is in the grid and open, or -1. */
+  private openCell(column: number, row: number): number {
+    if (column < 0 || row < 0 || column >= this.columns || row >= this.rows) return -1
+    const cell = row * this.columns + column
+    return this.blocked[cell] === 1 ? -1 : cell
+  }
+
+  /** Whether any step from the cell at (`column`, `row`) is {@link open}. */
+  private stepsOut(column: number, row: number): boolean {
+    for (let step = 0; step < 8; step++) if (this.open(column, row, stepX[step]!, stepY[step]!)) return true
+    return false
+  }
+
+  /**
+   * Whether the straight line from `from` to the center of the cell at
+   * (`column`, `row`) crosses no wall (touching one is fine). As in
+   * `Collide2.sweepCircle`, a wall that holds `from` is not in the way, so a
+   * body inside a wall sees out of it.
+   */
+  private sees(from: Vec2, column: number, row: number): boolean {
+    const walls = this.walls!
+    const toX = this.originX + (column + 0.5) * this.cellSize
+    const toY = this.originY + (row + 0.5) * this.cellSize
+    const dx = toX - from.x
+    const dy = toY - from.y
+    for (let at = 1; at < walls.length; at += 4) {
+      const minX = walls[at]!
+      const minY = walls[at + 1]!
+      const maxX = walls[at + 2]!
+      const maxY = walls[at + 3]!
+      // A wall beside the line, or holding its start, is not in the way.
+      if (minX >= Math.max(from.x, toX) || maxX <= Math.min(from.x, toX) || minY >= Math.max(from.y, toY) || maxY <= Math.min(from.y, toY)) continue
+      if (from.x > minX && from.x < maxX && from.y > minY && from.y < maxY) continue
+      // The part of the line inside the wall's slabs, x and y.
+      let enter = 0
+      let exit = 1
+      if (dx === 0) {
+        if (from.x <= minX || from.x >= maxX) continue
+      } else {
+        const t1 = (minX - from.x) / dx
+        const t2 = (maxX - from.x) / dx
+        enter = Math.max(enter, Math.min(t1, t2))
+        exit = Math.min(exit, Math.max(t1, t2))
+      }
+      if (dy === 0) {
+        if (from.y <= minY || from.y >= maxY) continue
+      } else {
+        const t1 = (minY - from.y) / dy
+        const t2 = (maxY - from.y) / dy
+        enter = Math.max(enter, Math.min(t1, t2))
+        exit = Math.min(exit, Math.max(t1, t2))
+      }
+      if (enter < exit) return false
+    }
+    return true
   }
 
   distance(at: Vec2): number | undefined {
