@@ -37,6 +37,19 @@ describe("Keyboard", () => {
     void typed
   })
 
+  it("reads the modifiers of a real KeyboardEvent, optional for hosts that send none", () => {
+    expect<KeyboardEvent>().type.toBeAssignableTo<Keyboard.KeyEvent>()
+    expect<Keyboard.KeyEvent["ctrlKey"]>().type.toBe<boolean | undefined>()
+    expect<Keyboard.KeyEvent["metaKey"]>().type.toBe<boolean | undefined>()
+    expect<Keyboard.KeyEvent["altKey"]>().type.toBe<boolean | undefined>()
+    const shortcut: Keyboard.KeyEvent = { key: "r", code: "KeyR", metaKey: true, repeat: false, preventDefault() {} }
+    const plain: Keyboard.KeyEvent = { key: "r", repeat: false, preventDefault() {} }
+    void [shortcut, plain]
+    // @ts-expect-error Type 'number' is not assignable to type 'boolean'
+    const counted: Keyboard.KeyEvent = { key: "r", ctrlKey: 1, repeat: false, preventDefault() {} }
+    void counted
+  })
+
   it("requires at least one key per action", () => {
     // @ts-expect-error Type '[]' is not assignable to type 'readonly [KeyBinding, ...KeyBinding[]]'.
     Keyboard.actions(host, { jump: [] })
