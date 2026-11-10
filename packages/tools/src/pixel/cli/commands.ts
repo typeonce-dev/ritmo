@@ -34,6 +34,7 @@ import { pixelSummary, resolveComments, reviewSummary } from "../core/review.ts"
 import { artOfImage, formatSprite } from "../core/sprite.ts"
 import { CliFailure, CONFIG_FILE, decodeOrFail, loadConfig, loadPalette, starterConfig, type Config } from "./config.ts"
 import { intFlag, numberFlag } from "../../internal/flags.ts"
+import { untilStopped } from "../../internal/serve.ts"
 import type { RgbaImage } from "../core/grid.ts"
 import { decodePicture, MAX_PIXELS, MAX_SIDE } from "./png.ts"
 import { outputBase, printJson, readPicture, readProjectRecipeOf, readSource, readText, writeBytes, writePng, writeProject, writeText } from "./io.ts"
@@ -869,7 +870,7 @@ const review = Command.make(
       reviews: [...new Set(found.map((asset) => path.relative(process.cwd(), reviewPlace(asset.file).reviews)))],
       next: "Send the person the url. What they approve and comment is saved as they go; read it back with `ritmo-tools pixel notes`, with the same paths, and `pixel resolve` the comments you act on."
     })
-    return yield* Effect.never
+    return yield* untilStopped
   })
 ).pipe(
   Command.withDescription(

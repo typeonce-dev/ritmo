@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 
 import { approvalOf, changedSince } from "@typeonce/ritmo-tools/fx/core/approval.ts"
-import { decodeBank, decodeReview, encodeBank, encodeReview, resolveComments, reviewPath, reviewSummary, standInSpot, usedDraft, type Bank } from "@typeonce/ritmo-tools/fx/core/bank.ts"
+import { decodeBank, decodeReview, encodeBank, encodeReview, resolveComments, reviewPath, reviewSummary, standInSpot, unkept, usedDraft, type Bank } from "@typeonce/ritmo-tools/fx/core/bank.ts"
 import { checkEffect, OTHER_SEEDS, paletteIssues } from "@typeonce/ritmo-tools/fx/core/check.ts"
 import { doubles, faintOn, flicker, holes, jaggies } from "@typeonce/ritmo-tools/fx/core/craft.ts"
 import { decodeEffect, rampsFor, runEffect, tuned, type Effect, type Fx } from "@typeonce/ritmo-tools/fx/core/effect.ts"
@@ -366,12 +366,45 @@ describe("what the person approved", () => {
     expect(changedSince(approved, "a", moving(3, 4, 24), palette)).toBe("24 fps, 12 when approved")
   })
 
+  it("sees a moved anchor, a loop that no longer loops, and a new canvas size: what the game gets beside the frames", () => {
+    const at = (anchor: { x: number; y: number }, overrides: Partial<Effect> = {}) => runEffect(effect((fx) => fx.disc(4, 4, 2, "white"), { anchor, ...overrides }), palette)
+    const seen = approvalOf("a", at({ x: 4, y: 4 }), palette)
+    expect(seen).toMatchObject({ loop: false, size: [8, 8], anchor: [4, 4] })
+    expect(changedSince(seen, "a", at({ x: 0, y: 0 }), palette)).toBe("its anchor moved from 4,4 to 0,0")
+    expect(changedSince(seen, "a", at({ x: 4, y: 4 }, { loop: true }), palette)).toBe("it loops, it played once when approved")
+    expect(changedSince(approvalOf("a", at({ x: 4, y: 4 }, { loop: true }), palette), "a", at({ x: 4, y: 4 }), palette)).toBe("it plays once, it looped when approved")
+    expect(changedSince(seen, "a", at({ x: 4, y: 4 }, { width: 10 }), palette)).toBe("its canvas is 10×8, 8×8 when approved")
+  })
+
+  it("from before approvals kept the anchor and the loop: compares what it kept, and is unrecorded rather than approved", () => {
+    const old = { draft: "a", fps: approved.fps, frames: approved.frames }
+    const moved = runEffect(effect((fx) => fx.disc(fx.cx, fx.cy, fx.frame === 2 ? 3 : 2, "white"), { anchor: { x: 0, y: 0 }, loop: true }), palette)
+    // Not a change for what it did not keep...
+    expect(changedSince(old, "a", moved, palette)).toBeUndefined()
+    expect(unkept(old)).toEqual(["its anchor", "whether it loops"])
+    const bank: Bank = { palette, effects: { hit: { drafts: { a: { file: "a.js" } } } } }
+    const said = { effects: { hit: { status: "approved" as const, note: "", comments: [], approved: old } } }
+    // ...nor fully approved: the person is asked to look again, as for an approval with no record at all.
+    const summary = reviewSummary(bank, said)
+    expect(summary.effects[0]).toMatchObject({ unrecorded: true, next: "Approved, with no record of its anchor or whether it loops: ask the person to look again; only they approve it." })
+    expect(summary.summary).toContain("0 approved, 1 approved with no record of what was seen")
+    // A change in what it kept is said as a change, not as unrecorded.
+    const stale = reviewSummary(bank, said, { hit: "frame 2 looks different" })
+    expect(stale.effects[0]!.changedSinceApproved).toBe("frame 2 looks different")
+    expect(stale.effects[0]!.unrecorded).toBeUndefined()
+    // A full approval is neither.
+    expect(reviewSummary(bank, { effects: { hit: { ...said.effects.hit, approved } } }).effects[0]!.unrecorded).toBeUndefined()
+    expect(decodeReview(encodeReview(said))).toEqual({ ok: true, value: said })
+  })
+
   it("round-trips through the review, and a review from before hashes still reads", () => {
     const review = { effects: { hit: { status: "approved" as const, note: "", comments: [], approved } } }
     expect(decodeReview(encodeReview(review))).toEqual({ ok: true, value: review })
     expect(decodeReview(JSON.stringify({ version: 1, effects: { hit: { status: "approved" } } }))).toEqual({ ok: true, value: { effects: { hit: { status: "approved", note: "", comments: [] } } } })
     const broken = decodeReview(JSON.stringify({ version: 1, effects: { hit: { status: "approved", approved: { draft: "a", fps: 12, frames: [1] } } } }))
     expect(broken.ok === false && broken.error).toContain("hit.approved")
+    const badAnchor = decodeReview(JSON.stringify({ version: 1, effects: { hit: { status: "approved", approved: { ...approved, anchor: [1.5, 2] } } } }))
+    expect(badAnchor.ok === false && badAnchor.error).toContain('"anchor": [x, y]')
   })
 
   it("shows in the agent's summary only while the effect is approved", () => {
@@ -491,6 +524,49 @@ describe("the CLI", () => {
     writeFileSync(join(folder, "hit.js"), "not a module")
     const broken = JSON.parse(run("notes", bank).stdout) as { effects: Array<{ changedSinceApproved?: string }> }
     expect(broken.effects[0]!.changedSinceApproved).toContain("no longer loads")
+  })
+
+  it("says an approved effect changed when only its anchor moved, as render hands the game the new one", async () => {
+    const folder = mkdtempSync(join(tmpdir(), "fx-"))
+    const bank = join(folder, "game.fx.json")
+    expect(run("init", bank).status).toBe(0)
+    const module = join(folder, "fx", "spark.a.js")
+    // What the person saw: the starter as it draws, approved as the page and the CLI store it.
+    const loaded = decodeEffect(await import(`data:text/javascript;base64,${Buffer.from(readFileSync(module, "utf8")).toString("base64")}`))
+    if (!loaded.ok) throw new Error(loaded.error)
+    const colors = (JSON.parse(readFileSync(bank, "utf8")) as { palette: Record<string, string> }).palette
+    const seen = runEffect(loaded.value, colors, { ramps: { fire: ["white", "yellow", "orange", "red"] } })
+    writeFileSync(reviewPath(bank), encodeReview({ effects: { spark: { status: "approved", note: "", comments: [], approved: approvalOf("a", seen, colors) } } }))
+    expect(JSON.parse(run("notes", bank).stdout)).toMatchObject({ effects: [{ name: "spark", status: "approved" }], summary: expect.stringContaining("1 approved,") })
+    writeFileSync(module, readFileSync(module, "utf8").replace("anchor: [12, 12]", "anchor: [0, 0]"))
+    const notes = JSON.parse(run("notes", bank).stdout) as { effects: Array<{ changedSinceApproved?: string }> }
+    expect(notes.effects[0]!.changedSinceApproved).toBe("its anchor moved from 12,12 to 0,0")
+    const rendered = run("render", bank, "-o", join(folder, "out"))
+    expect(JSON.parse(rendered.stdout)).toMatchObject({ effects: [{ anchor: [0, 0], changedSinceApproved: "its anchor moved from 12,12 to 0,0" }] })
+  })
+
+  it("exits 3 in look and render, as in check, for a draft that does not load or does not draw cleanly", () => {
+    const folder = mkdtempSync(join(tmpdir(), "fx-"))
+    const bank = join(folder, "game.fx.json")
+    writeFileSync(bank, encodeBank({ palette, effects: { hit: { drafts: { a: { file: "hit.js" } } } } }))
+    const drafts = {
+      throws: `export default { size: [8, 8], frames: 2, fps: 12, draw(fx) { throw new Error("boom") } }`,
+      color: `export default { size: [8, 8], frames: 2, fps: 12, draw(fx) { fx.px(1, 1, "pink") } }`,
+      ramp: `export default { size: [8, 8], frames: 2, fps: 12, draw(fx) { fx.px(1, 1, fx.ramp("ice", fx.t)) } }`,
+      loads: "export default {",
+      module: "export default { size: [8, 8] }"
+    }
+    for (const [what, source] of Object.entries(drafts)) {
+      writeFileSync(join(folder, "hit.js"), source)
+      expect([what, run("check", bank).status]).toEqual([what, 3])
+      for (const command of [["look", bank, "hit", "-o", join(folder, "look")], ["render", bank, "-o", join(folder, "out")]]) {
+        const result = run(...command)
+        expect([what, command[0], result.status]).toEqual([what, command[0], 3])
+        expect(JSON.parse(result.stdout)).toMatchObject({ effect: "hit", draft: "a", next: expect.stringContaining("fx check") })
+        if (what === "ramp") expect(result.stderr).toContain('no ramp named "ice"')
+      }
+    }
+    expect(existsSync(join(folder, "out"))).toBe(false)
   })
 
   it("reads the project's pixel.config.json, and rings comments on the contact sheet", () => {

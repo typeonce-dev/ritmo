@@ -57,9 +57,9 @@ const makeTarget = (rect = { left: 10, top: 20 }) => {
     },
     prevented: () => prevented,
     /** A pointer event as browsers send it, with the `buttons` bitmask of what is down. */
-    chord: (type: "pointerdown" | "pointermove" | "pointerup", button: number, buttons: number, pointerType = "mouse") => {
+    chord: (type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel", button: number, buttons: number, pointerType = "mouse", pointerId = 1) => {
       for (const listener of listeners.get(type) ?? []) {
-        listener({ clientX: 10, clientY: 20, button, buttons, pointerId: 1, pointerType, preventDefault: () => prevented++ })
+        listener({ clientX: 10, clientY: 20, button, buttons, pointerId, pointerType, preventDefault: () => prevented++ })
       }
     },
     move: (x: number, y: number) => dispatch("pointermove", x, y),
@@ -326,6 +326,83 @@ describe("Pointer chords", () => {
     fake.up(10, 20, 0)
     expect(mouse.snapshot().actions.fire.released).toBe(true)
     expect(fake.captured).toEqual([])
+  })
+})
+
+/**
+ * Pointer capture as browsers keep it: `releasePointerCapture` throws for a
+ * pointer that is not captured (a cancelled one is no longer active), and
+ * the next `pointerup` lets go of a capture nobody released.
+ */
+const strictCapture = (fake: ReturnType<typeof makeTarget>) => {
+  const captured = new Set<number>()
+  const calls: Array<string> = []
+  fake.target.setPointerCapture = (id) => {
+    calls.push(`set ${id}`)
+    captured.add(id)
+  }
+  fake.target.releasePointerCapture = (id) => {
+    calls.push(`release ${id}`)
+    if (!captured.delete(id)) throw new Error("NotFoundError: no active pointer with the given id is found")
+  }
+  return { captured, calls, cancel: (id: number) => captured.delete(id) }
+}
+
+describe("Pointer capture", () => {
+  it("releases the capture, for the pointer that took it, when a blur lets go of the buttons", () => {
+    const fake = makeTarget()
+    const capture = strictCapture(fake)
+    const pointer = Pointer.actions(fake.target, fake.blurHost, bindings)
+    fake.chord("pointerdown", 0, 1, "mouse", 7)
+    fake.chord("pointermove", 2, 3, "mouse", 7)
+    fake.blur()
+    expect(capture.calls).toEqual(["set 7", "release 7"])
+    expect(capture.captured.size).toBe(0)
+    expect(pointer.snapshot().actions.fire).toEqual({ held: false, pressed: true, released: true })
+    // The button still down comes back at the next event, with the capture taken again.
+    fake.chord("pointermove", -1, 1, "mouse", 7)
+    expect(capture.calls).toEqual(["set 7", "release 7", "set 7"])
+    fake.chord("pointerup", 0, 0, "mouse", 7)
+    expect(capture.calls).toEqual(["set 7", "release 7", "set 7", "release 7"])
+  })
+
+  it("releases it on a cancel, where the browser already dropped it", () => {
+    const fake = makeTarget()
+    const capture = strictCapture(fake)
+    const pointer = Pointer.actions(fake.target, fake.blurHost, bindings)
+    fake.chord("pointerdown", 0, 1, "pen", 3)
+    capture.cancel(3)
+    expect(() => fake.chord("pointercancel", -1, 0, "pen", 3)).not.toThrow()
+    expect(capture.calls).toEqual(["set 3", "release 3"])
+    expect(pointer.snapshot().actions.fire.held).toBe(false)
+    // Nothing is held, so the next press takes the capture again.
+    fake.chord("pointerdown", 0, 1, "pen", 4)
+    expect(capture.calls).toEqual(["set 3", "release 3", "set 4"])
+  })
+
+  it("releases it when the lock ends with a button held", () => {
+    const fake = makeTarget()
+    const capture = strictCapture(fake)
+    const pointer = Pointer.actions(fake.target, fake.blurHost, bindings, { lock: fake.lock })
+    fake.setLocked(true)
+    fake.chord("pointerdown", 2, 2)
+    fake.setLocked(false)
+    expect(capture.calls).toEqual(["set 1", "release 1"])
+    expect(pointer.snapshot().actions.aim.held).toBe(false)
+  })
+
+  it("releases it on dispose, and releases nothing it did not take", () => {
+    const fake = makeTarget()
+    const capture = strictCapture(fake)
+    const pointer = Pointer.actions(fake.target, fake.blurHost, bindings)
+    fake.blur()
+    fake.chord("pointerdown", 0, 1)
+    pointer.dispose()
+    expect(capture.calls).toEqual(["set 1", "release 1"])
+    const idle = Pointer.actions(fake.target, fake.blurHost, bindings)
+    fake.blur()
+    idle.dispose()
+    expect(capture.calls).toEqual(["set 1", "release 1"])
   })
 })
 

@@ -102,12 +102,28 @@ export interface Comment {
   readonly reply?: string | undefined
 }
 
-/** What the person saw when they approved an effect: the draft the game gets, how fast it plays, and each frame's pixels as a hash. */
+/**
+ * What the person saw when they approved an effect: everything `fx render`
+ * hands the game. The draft, how fast it plays, whether it loops, its canvas
+ * size, its anchor, and each frame's pixels as a hash. An approval from
+ * before approvals kept `loop`, `size`, and `anchor` has none of them (see
+ * `unkept`).
+ */
 export interface Approved {
   readonly draft: string
   readonly fps: number
+  readonly loop?: boolean | undefined
+  readonly size?: readonly [number, number] | undefined
+  readonly anchor?: readonly [number, number] | undefined
   readonly frames: ReadonlyArray<string>
 }
+
+/**
+ * What the game gets that an approval did not keep, so cannot be compared:
+ * from an approval stored before it was kept. The canvas size is not listed:
+ * each frame's hash holds it.
+ */
+export const unkept = (approved: Approved): ReadonlyArray<string> => [...(approved.anchor === undefined ? ["its anchor"] : []), ...(approved.loop === undefined ? ["whether it loops"] : [])]
 
 export interface EffectReview {
   readonly status: Status
@@ -286,10 +302,26 @@ export const encodeBank = (bank: Bank): string => {
   )
 }
 
+const pairOf = (value: unknown): readonly [number, number] | undefined =>
+  Array.isArray(value) && value.length === 2 && value.every((n) => Number.isInteger(n) && n >= 0) ? [value[0] as number, value[1] as number] : undefined
+
+/** An approval as stored; `loop`, `size`, and `anchor` are missing from an approval stored before they were kept, and are wrong only when present and malformed. */
 const approvedOf = (value: unknown): Approved | undefined => {
   if (!isRecord(value) || typeof value.draft !== "string" || typeof value.fps !== "number" || !Array.isArray(value.frames)) return undefined
   const frames = value.frames.filter((hash): hash is string => typeof hash === "string")
-  return frames.length === value.frames.length ? { draft: value.draft, fps: value.fps, frames } : undefined
+  if (frames.length !== value.frames.length) return undefined
+  if (value.loop !== undefined && typeof value.loop !== "boolean") return undefined
+  const size = pairOf(value.size)
+  const anchor = pairOf(value.anchor)
+  if ((value.size !== undefined && size === undefined) || (value.anchor !== undefined && anchor === undefined)) return undefined
+  return {
+    draft: value.draft,
+    fps: value.fps,
+    ...(value.loop === undefined ? {} : { loop: value.loop }),
+    ...(size === undefined ? {} : { size }),
+    ...(anchor === undefined ? {} : { anchor }),
+    frames
+  }
 }
 
 export const decodeReview = (text: string): Decoded<Review> => {
@@ -325,7 +357,7 @@ export const decodeReview = (text: string): Decoded<Review> => {
       })
     }
     const approved = approvedOf(value.approved)
-    if (value.approved !== undefined && approved === undefined) errors.push(`${name}.approved must be {"draft", "fps", "frames": ["hash", ...]}`)
+    if (value.approved !== undefined && approved === undefined) errors.push(`${name}.approved must be {"draft", "fps", "loop", "size": [w, h], "anchor": [x, y], "frames": ["hash", ...]}`)
     effects[name] = { status: status ?? "new", note: typeof value.note === "string" ? value.note : "", comments, ...(approved === undefined ? {} : { approved }) }
   }
   return errors.length > 0 ? { ok: false, error: errors.join("; ") } : { ok: true, value: { effects } }
@@ -379,7 +411,8 @@ export const reviewSummary = (bank: Bank, review: Review, changed: Readonly<Reco
       tune,
       drafts: Object.keys(entry.drafts).length,
       changedSinceApproved: said.status === "approved" ? changed[name] : undefined,
-      ...unrecordedOf(said.status, said.approved)
+      // A change already asks the person to look again; an approval that kept only part of what the game gets is not taken as approved either.
+      ...(said.status === "approved" && changed[name] !== undefined ? {} : unrecordedOf(said.status, said.approved, said.approved === undefined ? [] : unkept(said.approved)))
     }
   })
   const gone = Object.entries(review.effects)
