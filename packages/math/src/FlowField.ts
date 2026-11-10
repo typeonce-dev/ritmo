@@ -193,25 +193,7 @@ class Field implements FlowField {
     const goalColumn = start % columns
     const goalRow = (start - goalColumn) / columns
     if (this.blocked[start] === 0 || this.stepsOut(goalColumn, goalRow)) this.push(start, 0)
-    else {
-      // A goal with no open neighbor to step to (backed into a corner, or
-      // more than a cell from the open ones) is reached from the nearest
-      // open cells it can see in a straight line: the corner rule keeps
-      // bodies from cutting past a wall, not from reaching a goal at one.
-      for (let ring = 1, found = false, rings = this.rings(); !found && ring <= rings; ring++) {
-        // Around the ring: all of its top and bottom rows, the ends of the others.
-        for (let dy = -ring; dy <= ring; dy++) {
-          for (let dx = -ring; dx <= ring; dx += dy === -ring || dy === ring ? 1 : 2 * ring) {
-            const cell = this.openCell(goalColumn + dx, goalRow + dy)
-            if (cell < 0 || !this.sees(goal, goalColumn + dx, goalRow + dy)) continue
-            found = true
-            const distance = pathLength(dx, dy)
-            distances[cell] = distance
-            this.push(cell, distance)
-          }
-        }
-      }
-    }
+    else this.pushAround(goal, goalColumn, goalRow)
     while (this.queued > 0) {
       const queued = this.keys[0]!
       const cell = this.pop()
@@ -254,30 +236,69 @@ class Field implements FlowField {
       targetY = this.originY + (row + dy + 0.5) * this.cellSize
       found = true
     }
-    if (!found && this.blocked[cell] === 1 && cell !== this.goal) {
-      // A body in a blocked cell with no neighbor to step to (pressed into a
-      // corner) heads for the nearest open cells, to the one it can see in a
-      // straight line that leaves it closest to the goal.
-      for (let ring = 1, near = false, rings = this.rings(); !near && ring <= rings; ring++) {
-        // Around the ring, as in `setGoal`.
-        for (let dy = -ring; dy <= ring; dy++) {
-          for (let dx = -ring; dx <= ring; dx += dy === -ring || dy === ring ? 1 : 2 * ring) {
-            const next = this.openCell(column + dx, row + dy)
-            if (next < 0) continue
-            near = true
-            const through = pathLength(dx, dy) + distances[next]!
-            if (through >= best || !this.sees(at, column + dx, row + dy)) continue
-            best = through
-            targetX = this.originX + (column + dx + 0.5) * this.cellSize
-            targetY = this.originY + (row + dy + 0.5) * this.cellSize
-            found = true
-          }
+    if (!found) {
+      const out = this.blocked[cell] === 1 && cell !== this.goal ? this.cellOut(at, cell) : -1
+      if (out < 0) return undefined
+      const outColumn = out % columns
+      targetX = this.originX + (outColumn + 0.5) * this.cellSize
+      targetY = this.originY + ((out - outColumn) / columns + 0.5) * this.cellSize
+    }
+    const length = Ops.hypot(targetX - at.x, targetY - at.y)
+    return length > 1e-6 ? { x: (targetX - at.x) / length, y: (targetY - at.y) / length } : undefined
+  }
+
+  /**
+   * Starts the search of a goal with no open neighbor to step to (backed
+   * into a corner, or more than a cell from the open ones) from the nearest
+   * open cells it can see in a straight line: the corner rule keeps bodies
+   * from cutting past a wall, not from reaching a goal at one. Kept out of
+   * `setGoal`, like `cellOut` out of `way`, so the usual path stays small
+   * enough for the engine to optimize as before.
+   */
+  private pushAround(goal: Vec2, goalColumn: number, goalRow: number): void {
+    const distances = this.distances
+    for (let ring = 1, found = false, rings = this.rings(); !found && ring <= rings; ring++) {
+      // Around the ring: all of its top and bottom rows, the ends of the others.
+      for (let dy = -ring; dy <= ring; dy++) {
+        for (let dx = -ring; dx <= ring; dx += dy === -ring || dy === ring ? 1 : 2 * ring) {
+          const cell = this.openCell(goalColumn + dx, goalRow + dy)
+          if (cell < 0 || !this.sees(goal, goalColumn + dx, goalRow + dy)) continue
+          found = true
+          const distance = pathLength(dx, dy)
+          distances[cell] = distance
+          this.push(cell, distance)
         }
       }
     }
-    if (!found) return undefined
-    const length = Ops.hypot(targetX - at.x, targetY - at.y)
-    return length > 1e-6 ? { x: (targetX - at.x) / length, y: (targetY - at.y) / length } : undefined
+  }
+
+  /**
+   * The open cell a body in a blocked cell with no neighbor to step to
+   * (pressed into a corner) heads for: among the nearest open cells, the one
+   * it can see in a straight line that leaves it closest to the goal. -1
+   * when there is none.
+   */
+  private cellOut(at: Vec2, cell: number): number {
+    const distances = this.distances
+    const column = cell % this.columns
+    const row = (cell - column) / this.columns
+    let best = distances[cell]!
+    let out = -1
+    for (let ring = 1, near = false, rings = this.rings(); !near && ring <= rings; ring++) {
+      // Around the ring, as in `pushAround`.
+      for (let dy = -ring; dy <= ring; dy++) {
+        for (let dx = -ring; dx <= ring; dx += dy === -ring || dy === ring ? 1 : 2 * ring) {
+          const next = this.openCell(column + dx, row + dy)
+          if (next < 0) continue
+          near = true
+          const through = pathLength(dx, dy) + distances[next]!
+          if (through >= best || !this.sees(at, column + dx, row + dy)) continue
+          best = through
+          out = next
+        }
+      }
+    }
+    return out
   }
 
   /**
@@ -315,13 +336,22 @@ class Field implements FlowField {
     const toY = this.originY + (row + 0.5) * this.cellSize
     const dx = toX - from.x
     const dy = toY - from.y
+    const lowX = Math.min(from.x, toX)
+    const highX = Math.max(from.x, toX)
+    const lowY = Math.min(from.y, toY)
+    const highY = Math.max(from.y, toY)
     for (let at = 1; at < walls.length; at += 4) {
+      // A wall beside the line is not in the way: most are, so each side is
+      // read only once the ones before it did not rule the wall out.
       const minX = walls[at]!
-      const minY = walls[at + 1]!
+      if (minX >= highX) continue
       const maxX = walls[at + 2]!
+      if (maxX <= lowX) continue
+      const minY = walls[at + 1]!
+      if (minY >= highY) continue
       const maxY = walls[at + 3]!
-      // A wall beside the line, or holding its start, is not in the way.
-      if (minX >= Math.max(from.x, toX) || maxX <= Math.min(from.x, toX) || minY >= Math.max(from.y, toY) || maxY <= Math.min(from.y, toY)) continue
+      if (maxY <= lowY) continue
+      // Nor is a wall holding its start.
       if (from.x > minX && from.x < maxX && from.y > minY && from.y < maxY) continue
       // The part of the line inside the wall's slabs, x and y.
       let enter = 0
