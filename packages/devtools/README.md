@@ -124,8 +124,9 @@ const session = Session.make(runtime, {
 session.run("setup")
 const run = session.run("update", { frames: 300, until: (frame) => frame === 120 })
 run.data.ok                               // true when completed or `until` returned true
-run.data.stop                             // { reason: "completed" | "until" | "failure" | "defect"
-                                          //   | "invariant" | "missingRequirements" | "tickOrder", frame, ... }
+run.data.stop                             // Session.Stop: { reason: "completed" | "until" | "failure" | "defect"
+                                          //   | "invariant" | "invariant-threw" | "labels-threw" | "ignored-failure"
+                                          //   | "missingRequirements" | "tickOrder", frame, ... }
 
 const frame = session.step("update")      // one frame, a step at a time; refuses run/tick until finished
 frame.until(ApplyDamage)                  // runs the steps before the system value; Result: reached, or
@@ -278,10 +279,15 @@ modules imported inside `lintTarget` or later (render schedules passed to
 `extends`, or one that never turns the rule on prints why the check was
 skipped and does not fail. The check needs Node 22.15 or later.
 
+Last, it checks the install from the working directory: that every Ritmo
+package is one version, and that the project links each skill
+`@typeonce/ritmo` ships.
+
 | Code | Meaning |
 |---|---|
 | `uncovered-simulation-module` | The simulation loads this file, but no simulation override in `.oxlintrc.json` covers it, so oxlint never checks it for platform, time, randomness, or math calls. Add it to the override's `files`, or stop importing values from it. Exits with 1. |
-| `skill-not-linked` | For each skill `@typeonce/ritmo` ships (`ritmo`, `ritmo-prototype`, `ritmo-onboarding`, `ritmo-polish`): neither `.agents/skills/<skill>` nor `.claude/skills/<skill>` links it from `node_modules/@typeonce/ritmo/skills/<skill>`, so the game's agent does not read it for this Ritmo version. Link it (`SETUP.md` step 2). A note: the exit code is unchanged. |
+| `mismatched-versions` | The Ritmo packages installed for the game are not all one version. From the working directory, every `@typeonce` package it resolves and every copy those resolve in turn (an npm or yarn copy nested under another package, pnpm's store folders) is listed with its version: `@typeonce/ritmo-browser 0.22.0 is installed with @typeonce/ritmo 0.23.0 (and a second @typeonce/ritmo 0.22.0 under @typeonce/ritmo-browser)`. Each package depends on core at its own minor, so the older one gets its own hidden copy of core, and the game gets type errors between the two that name neither. Install the same version of every `@typeonce` package. Exits with 1. |
+| `skill-not-linked` | For each skill `@typeonce/ritmo` ships (every folder in its installed `skills`: `ritmo`, `ritmo-prototype`, `ritmo-onboarding`, `ritmo-polish`, `ritmo-pixel-art`, `ritmo-fx`, `ritmo-sounds`, `ritmo-music`): neither `.agents/skills/<skill>` nor `.claude/skills/<skill>` links it from `node_modules/@typeonce/ritmo/skills/<skill>`, so the game's agent does not read it for this Ritmo version. Link it (`SETUP.md` step 2). A note: the exit code is unchanged. |
 | `skill-copied` | The folder holds a copy of the skill (or links somewhere else), which goes stale on the next upgrade. Replace it with the link. A note: the exit code is unchanged. |
 
 The trace shows what systems wrote, not what they read. When a system writes
@@ -338,17 +344,26 @@ to open headless, explain, and turn into a test, then delete.
 
 ```ts
 // In the game's dev build: record the simulation schedule.
+import { HostClock } from "@typeonce/ritmo"
+import { Replay } from "@typeonce/ritmo-devtools"
+import * as ReplayViteSink from "@typeonce/ritmo-devtools/ReplayViteSink"
+
 const recorder = Replay.recorder(runtime, {
   schedule: simulate, name: "simulate",
   keep: 30, step: STEP,                      // seconds kept, the fixed step (Clock.hz)
   sink: ReplayViteSink.make({ fetch: (url, init) => fetch(url, init) }),
-  hostClock: BrowserHostClock.make(window),  // for savedAt
+  hostClock: HostClock.standard,             // wall time, for savedAt and the file's name
   saveOn: { failure: true, invariants: [DeadAreGone] } // saves by itself
 })
 recorder.save("player stuck")              // on demand, e.g. from a dev-only key
+```
 
+```ts
 // vite.config.ts: writes posted replays to .replays/<time>.json and logs them.
-plugins: [ReplayVitePlugin.plugin()]
+import * as ReplayVitePlugin from "@typeonce/ritmo-devtools/ReplayVitePlugin"
+import { defineConfig } from "vite"
+
+export default defineConfig({ plugins: [ReplayVitePlugin.plugin()] })
 ```
 
 - The recorded schedule's services must be `snapshot()` sources of plain
