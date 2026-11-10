@@ -1,5 +1,385 @@
 # @typeonce/ritmo
 
+## 0.23.0
+
+### Minor Changes
+
+- 4df0496: **Breaking: `Clock.durationOfSteps` takes a literal count only; a count from data goes through the new `Clock.durationOfStepsRaw`.** A computed count (a `number`) compiled and threw at runtime for 0, a negative, or a fraction ("Clock.durationOfSteps needs a positive whole number of steps, got 0"). It is now a compile error naming the fix (`Clock.durationOfSteps needs a literal count of steps: use Clock.durationOfStepsRaw for data`), as `Clock.duration` already did for seconds, and `Clock.durationOfStepsRaw(step, n)` returns a `Result` that fails with `InvalidDuration`, the error `Clock.durationRaw` returns (its `seconds` is the count divided by the rate):
+  
+  ```diff
+  -const reload = Clock.durationOfSteps(step, config.reloadSteps)
+  +const reload = Clock.durationOfStepsRaw(step, config.reloadSteps)
+  +if (!reload.ok) return reload
+  ```
+  
+  Literal counts (`Clock.durationOfSteps(step, 3)`) compile as before. A union of literals (`flag ? 3 : 0`) and a literal past `Number.MAX_SAFE_INTEGER` no longer compile either.
+  
+  **`Clock.duration` and `Clock.durationRaw` now round a half step up, as documented.** A number of seconds whose exact product with the rate is a whole step and a half often landed just below it in floating point and rounded down. These durations are now one step longer, which changes a game's timing where it uses one: `1.025s` at 60 Hz is 62 steps (was 61), `2.05s` at 30 Hz is 62 (was 61), `0.145s` at 100 Hz is 15 (was 14), and `0.29s`, `0.57s`, `1.13s` at 50 Hz are 15, 29, and 57 (were 14, 28, and 56). 57 durations of up to three decimals and 5 seconds moved across 20, 30, 50, 60, 100, 120, 144, and 240 Hz; every other duration is the same step count as before. Replays and fuzz cases recorded with one of these durations diverge: record them again.
+- 0dd0a84: **Breaking: `Entity.makeEntityId`, `Entity.makeHandle`, and `Entity.draft` are no longer exported.** They were the runtime's own constructors and checked nothing: `commands.spawn(Entity.draft(Entity.makeEntityId(7), { "Game/Position": { x: 1, y: 2 } }))` compiled under `spawns(Position)` and spawned an entity with no components while its type said it held `Position`. Use the checked ways instead:
+  
+  ```diff
+  -commands.spawn(Entity.draft(Entity.makeEntityId(7), { "Game/Position": { x: 1, y: 2 } }))
+  +commands.spawn(Game.Command.spawn([Position, { x: 1, y: 2 }]))
+  
+  -const handle = Entity.makeHandle(entity.id)
+  +const handle = Game.Entity.handle(entity)
+  
+  -// a number read from a save or a network message
+  -const id = Entity.makeEntityId(raw)
+  +if (Entity.isHandle(Root)(raw)) {
+  +  const id = Game.Entity.id(raw) // still proves nothing: resolve it with queries.x.get(id)
+  +}
+  ```
+- 51a0b7f: **Breaking: a `[Descriptor, value]` entry is checked against its own component, and `Game.Command.entry` is removed.** A tuple entry of `Game.Command.spawn(...)`, `Game.Command.extend(...)`, or `commands.insert(...)` has an inferred value, so TypeScript's excess property check never reached it: `commands.insert(entity, [Position, { x: 0, y: 0, zzz: 1 }])` compiled and stored `zzz`. Its other errors were checked against every component of the schema at once and named an unrelated one (`'"Game/Health"' is not assignable to type '"Game/Velocity"'`). Each entry is now checked on its own, and the error is on that entry:
+  
+  | Entry | Message now |
+  | --- | --- |
+  | `[Position, { x: 1, y: 2, z: 3 }]` | `Type '{ x: number; y: number; z: number; }' is not assignable to type '"Game/Position has no field z: pass only its own fields"'` |
+  | `[Position, { x: 1 }]` | `Type '{ x: number; }' is not assignable to type '{ readonly x: number; readonly y: number; } & ValueOf<"Game/Position">'` / `Property 'y' is missing ...` |
+  | `[Position, { x: 1, y: "2" }]` | `Type 'string' is not assignable to type 'number & FieldOf<"Game/Position", "y">'` |
+  | `[Outside, { x: 1 }]` (not in the schema) | `... is not assignable to type '"Game/Outside is not a component of this game's schema: spawn and insert take components registered in Schema.fragment({ components: { ... } })"'` |
+  
+  A tuple built outside the call (returned by a helper, pushed into an array) widens to an array and fails with `this entry widened to an array: ...`. Add `as const` where it is built, or annotate it with `Command.Entry` (from `@typeonce/ritmo/Command`):
+  
+  ```diff
+  -const wear = () => [[Risk, { fire: 0 }]]
+  +const wear = () => [[Risk, { fire: 0 }]] as const
+  -const roles = []
+  +const roles: Array<Command.Entry<typeof Hp>> = []
+   roles.push([Hp, 1])
+  ```
+  
+  Values with an index signature, arrays, tuples, primitives (branded too), `Map`s, `Set`s, functions, `unknown`, and unions of shapes (any field of any member) are accepted as before, and a value written in place is still typed by the schema (`[Ease, (t) => t * 2]`, `[Seen, new Set()]`). Fix the field, or drop it.
+  
+  `Game.Command.entry(Descriptor, value)` built the same tuple, a second way to do one job that was strict where the tuple was not: write the tuple. `Game.Command.entryRaw` stays, for raw input that returns a `Result`. The message for writing an immutable component through a query now reads `replace it with commands.insert(entity, [Game/Kind, value])`.
+  
+  ```diff
+  -commands.insert(entity, Game.Command.entry(Kind, "pickup"))
+  +commands.insert(entity, [Kind, "pickup"])
+   Game.Command.spawn(
+     Game.Command.entryRaw(Position, { x, y }),
+  -  Game.Command.entry(Wall, {})
+  +  [Wall, {}]
+   )
+  ```
+  
+  **Breaking: an initial resource in `Game.Runtime.make({ resources })` with a field the resource does not have no longer compiles.** `resources: { Config: { speed: 1, bogus: 2 } }` compiled and stored `bogus`, which then failed to restore from a save against a strict schema. It now fails with `Game/Config has no field bogus: pass only its own fields` (for a constructed resource, against its raw input). Drop the field.
+  
+  ```diff
+  -Game.Runtime.make({ services, resources: { Config: { speed: 1, bogus: 2 } } })
+  +Game.Runtime.make({ services, resources: { Config: { speed: 1 } } })
+  ```
+- dff932a: **Breaking: an `update` callback that returns a field the value does not have no longer compiles, spread or not.** A spread in a callback's result escapes TypeScript's excess property check, so `data.position.update(entity, (p) => ({ ...p, xx: p.x + 1 }))` compiled, stored `xx` next to `x` and `y`, and a save holding it then failed to restore against a strict schema (`InvalidComponent ... Unrecognized key: "xx"`). Component and resource `update`, and `updateRaw` on constructed descriptors, now fail with a message naming the descriptor and the field:
+  
+  ```
+  Game/Position has no field xx: return only its own fields
+  ```
+  
+  Fix the field name, or drop the field. Values with an index signature (`Record<string, number>`), arrays, tuples, primitives, `Map`s, `Set`s, and unions of object shapes (any field of any member) are accepted as before. `WriteCell` and `ConstructedWriteCell` take the resource's name as a last, optional type parameter. A helper generic over the value type (`<T, D>(slot: WriteSlot<T, D>) => slot.update(entity, (v) => v)`) cannot be checked and no longer compiles: write the result there with `slot.set(entity, next(slot.get(entity)))`.
+  
+  ```diff
+  -data.position.update(entity, (p) => ({ ...p, xx: p.x + 1 }))
+  +data.position.update(entity, (p) => ({ ...p, x: p.x + 1 }))
+  ```
+- 52d6a6f: Four more mistakes now fail with a message that names the cause and the fix. Programs that compiled before still compile.
+  
+  | Mistake | Message now |
+  | --- | --- |
+  | An entity where an id goes: `queries.x.get(entity)`, `queries.x.children`/`descendants`, `lookup.related(entity, R)` (and every `lookup` method), `commands.relate(entity, R, target)`, `unrelate`, `reorderChildren` | `this takes an entity id, not an entity: pass entity.id` |
+  | A transition schedule (`Game.Schedule.onEnter`, `onExit`, `onTransition`) passed to `runtime.tick`, `tryTick`, `checkpoint`, `debug.beginFrame`, or `Game.Schedule(...)` | `onEnter, onExit, and onTransition schedules run when their machine changes state: bundle them with Game.Schedule.transitions(...) and pass that to Game.Schedule.applyStateTransitions(...) in a schedule you tick` |
+  | A schedule needing resources, services, or machines the runtime was not made with, at `runtime.tick` (and `runtime.inspect`, `Netcode`'s `simulate`, devtools invariants and labels) | `the runtime is missing resource Game/Score, service Game/Audio, machine Game/Flow: add to Game.Runtime.make({ resources: { Key: value }, services: Game.Runtime.services(Game.Runtime.service(Descriptor, implementation)), machines: Game.Runtime.machines(Game.Runtime.machine(Machine, initial)) })`, every one named, with the fix for each kind that is missing |
+  | `services: {}` (or a hand-written object) in `Game.Runtime.make` | `services are built with Game.Runtime.services(Game.Runtime.service(Descriptor, implementation)), or Game.Runtime.services() when there are none` |
+  | `machines: {}` in `Game.Runtime.make` | `machines are started with Game.Runtime.machines(Game.Runtime.machine(Machine, initial)), or left out when there are none` |
+  
+  `insert`, `remove`, and `despawn` still take the entity, since they check what it proves. The id parameters have the new type `Entity.IdParameter`: an id, plus a member no value has, which carries the message.
+  
+  The requirements message used to be a union of `{ __runtimeRequirementError__, __requirement__ }` objects under `__fixRuntimeRequirements__`, which the compiler cut after two or three. It is now the name of the one property that `Runtime.ValidateScheduleArray` and `Runtime.ValidateInspector` add, since the compiler prints a missing property's name whole. A package that read `__fixRuntimeRequirements__` out of either type intersects with the type itself instead:
+  
+  ```diff
+  -type Errors = Runtime.ValidateInspector<I, Services, Resources, Machines> extends { readonly __fixRuntimeRequirements__: infer E } ? E : never
+  -export type Validate = [Errors] extends [never] ? unknown : { readonly __fixMine__: Errors }
+  +export type Validate = Runtime.ValidateInspector<I, Services, Resources, Machines>
+  ```
+- 02ca2a4: Eight common mistakes now fail with a message that names the cause and the fix, instead of a bare type mismatch. Programs that compiled before still compile.
+  
+  | Mistake | Message now |
+  | --- | --- |
+  | `({ commands }) => commands.spawn(draft)` or `async () => {}` as a system body | `a system returns nothing or Result.failure(...), and runs synchronously: wrap an expression body in braces, and drop async` |
+  | `Schema.fragment({ relations: { ChildOf } })` with the pair `Descriptor.Hierarchy(...)` returned | `ChildOf is the pair Descriptor.Hierarchy(...) returns: register its relation, ChildOf.relation` |
+  | `Game.System.relates(Targets)` with the pair | `Game/Targets is passed as the pair Descriptor.Hierarchy/Relation(...) returns: pass the relation itself, the pair's .relation` |
+  | `querys: {}` next to other keys of a system spec | `querys is not a system spec key: use queries, resources, events, ...` (every category) |
+  | `Game.Query.write(...)` in an inspector's query | `an inspector only reads: select with Game.Query.read (or optional) instead of Game.Query.write` |
+  | An entity of another query in a slot of `data` | `Property '"proves component Game/Position"' is missing in type '{ readonly "proves component Game/Health": true; }'` |
+  | `Schema.fragment({ components: [Position] })` | `components takes a record keyed by name, not an array: components: { Position, Health }` |
+  | `Descriptor.Component<T>("Game/Name")` (and `Resource`, `Event`, `Service`, `TransientComponent`, `TransientResource`) | `the name goes in the second call: Descriptor.Component<Value>()(name)` |
+  
+  `Game.System` takes its body as `System.SystemBody` (a `SystemRun` whose return type also carries the message); a system's `run` is still a `SystemRun`.
+- 7e416f5: **Breaking (debug runtimes only): a debug runtime checks each entity a query's `data` is given, and throws for one that matches none of the system's queries.** An entity kept from an earlier run (in `local` state or a closure) went on reading after it left its query (gained a `without` component, lost a `with` one, or a relation filter stopped matching), so a homing shot kept chasing a target that had died. Now, on a runtime made with `debug`, the read throws:
+  
+  ```
+  Game/Homing used Game/Position of entity 12, which matches none of its queries: an entity kept from an earlier run is not checked against its query again. Keep entity.id and resolve it with queries.x.get(id) in each run, which is fallible
+  ```
+  
+  An entity from another query of the same system still works, as before: the check passes when any of the system's queries matches. A despawned entity, and one that lost the slot's component, keep their own errors. Runtimes without `debug` read the entity as before. The check costs a few nanoseconds per slot call on a debug runtime (about 0.03 ms of a 0.30 ms debug step in a top-down shooter's crowd scene).
+  
+  If your tests or devtools sessions now throw, keep the entity's id and resolve it in each run:
+  
+  ```diff
+  -local.target ??= queries.targets.each()[0]
+  -aimAt(queries.targets.data.position.get(local.target))
+  +local.target ??= queries.targets.each()[0]?.id
+  +const found = local.target === undefined ? undefined : queries.targets.get(local.target)
+  +if (found?.ok) aimAt(queries.targets.data.position.get(found.value))
+  ```
+- 40f60e7: **Breaking: a descriptor made with a name typed `string` is no longer a descriptor.** A helper typed `(name: string) => Descriptor.Component<number>()(name)` gave every descriptor it made one type, so the compiler accepted one for another (an entity of a query over one in a slot of the other, a despawn under the other's permission), and the mix-up surfaced at runtime as "An entity was used with the data of ... of a runtime it does not belong to". Every constructor that takes a name (`Descriptor.Component`, `ConstructedComponent`, `TransientComponent`, `Tag`, `EntityState`, `Resource`, `ConstructedResource`, `TransientResource`, `Event`, `Service`, `Hierarchy`, `Relation`, `Game.StateMachine`, `Game.EntityScope`, `EntityScope.make`, and `Clock.resource`) now returns, for a `string` name, a value no API takes, and the first place it is used fails with:
+  
+  ```
+  a descriptor's name is a literal type: pass the name as a literal or `as const`, or make the helper generic over it, <const Name extends string>(name: Name)
+  ```
+  
+  Make the helper generic over the name:
+  
+  ```diff
+  -const counter = (name: string) => Descriptor.Component<number>()(name)
+  +const counter = <const Name extends string>(name: Name) => Descriptor.Component<number>()(name)
+  ```
+  
+  Literal names (`Descriptor.Component<number>()("Game/Health")`), names `as const`, and template literal types (`` `Game/${string}` ``) work as before.
+- 51efba5: State machines take the same transition graph and compare-and-set move as `Descriptor.EntityState`, so both kinds of state are written one way. `Game.StateMachine(name, states, { transitions })` declares, for every state, the states it may move to (`[]` for one with no way out), alone or next to `within`. `nextMachines.x.transition({ from, to, data })` queues the move with all of `to`'s fields only while the machine's committed state is `from`; otherwise it queues nothing and returns a `MachineStateMismatch` failure (`SubStateInactive` for a sub-state whose parent is elsewhere). A `to` the graph does not allow from `from`, an unknown state, and missing or extra fields do not compile. Without a graph any pair of states is accepted. The queued move commits at `applyStateTransitions(...)` like `set`, and only while the machine is still in `from`: a move queued from a transition schedule while the machine is leaving `from` is dropped at the following marker (traced as a `stale` transition, a new `Debug.TransitionEvent` outcome). A machine that declares `transitions` moves only with `transition`: `set` and `setIfChanged` do not compile on it, with an error naming `transition`, so every move it makes is one the graph lists. For a move from whatever state it is in, pass the state read from `machines.x.get()._tag` as `from`: with a union `from`, `to` must be a move every one of them allows. A machine without `transitions` keeps `set` and `setIfChanged` as they were.
+  
+  ```ts
+  const Round = Game.StateMachine("Game/Round", {
+    Lobby: {},
+    Playing: z.object({ round: z.int() }),
+    Over: z.object({ winner: z.int() })
+  }, { transitions: { Lobby: ["Playing"], Playing: ["Over"], Over: ["Lobby"] } })
+  ```
+  
+  ```diff
+  -nextMachines.round.set({ _tag: "Over", winner: 0 })
+  +nextMachines.round.transition({ from: "Playing", to: "Over", data: { winner: 0 } })
+  ```
+  
+  Breaking:
+  
+  - An entity state declared with `transitions` has no `set`, like a machine: move it with `data.x.transition(entity, { from, to, data })`, or change the current state's fields with `update`. `setRaw` stays, for data from outside the simulation. An entity state without `transitions` keeps `set`.
+  - `nextMachines.x.reset()` is `nextMachines.x.cancelPending()`: it drops the queued value, next to `getPending()`; it never reset the machine.
+  - `Game.System.transition(M)` is `Game.System.readTransition(M)` (and `System.transition` is `System.readTransition`), like `readTransitionEvent`: it declares read access to the transition being applied, and `transition` now names the move.
+  - `Machine.MachineStateMismatch` is `Machine.MachineStateMismatchError` and `Machine.SubStateInactive` is `Machine.SubStateInactiveError`, like `EntityStateMismatchError`. The `_tag` values are unchanged.
+  - `Machine.UpdateResult<M>` is `Machine.CompareAndSetResult<M>`: it is what both `machines.x.update(...)` and `nextMachines.x.transition(...)` return.
+  - `Descriptor.EntityStateTransitions<States>` is `Descriptor.StateTransitions<States>`: it is the graph of both kinds of state.
+  - `Machine.StateMachine(...)`, `Machine.read`, `Machine.update`, `Machine.write`, `Machine.transition`, and `Machine.readTransitionEvent` are removed: they duplicated `Game.StateMachine(...)` and `Game.System.machine` / `updateMachine` / `nextState` / `readTransition` / `readTransitionEvent` under other names, and nothing else called them.
+  
+  ```diff
+  -data.contact.set(entity, { _tag: "air", vy: 2, coyote: 0 })
+  +data.contact.transition(entity, { from: "ground", to: "air", data: { vy: 2, coyote: 0 } })
+  -nextMachines.round.reset()
+  +nextMachines.round.cancelPending()
+  -transitions: { round: Game.System.transition(Round) }
+  +transitions: { round: Game.System.readTransition(Round) }
+  -type Failed = Machine.MachineStateMismatch<"Lobby" | "Playing">
+  +type Failed = Machine.MachineStateMismatchError<"Lobby" | "Playing">
+  -type Updated = Machine.UpdateResult<typeof Mode>
+  +type Updated = Machine.CompareAndSetResult<typeof Mode>
+  -type Moves = Descriptor.EntityStateTransitions<typeof Contact["states"]>
+  +type Moves = Descriptor.StateTransitions<typeof Contact["states"]>
+  ```
+  
+  A `transitions` key that is not a state now fails with a message naming the fix (`this key is not a state: ...`) instead of `not assignable to type 'never'`, for entity states too, and `machines.x.update(...)`'s extra-field error names `nextMachines.x.transition(...)` as the way to move. The `ritmo` skill tells games to declare the graph and move with `transition`.
+- ca0544d: **Breaking: `lookup.parent`, `Result.isSuccess`, and `Result.isFailure` are removed; each had another name for the same job.** `lookup.parent(id, R)` was `lookup.related(id, R)` for a hierarchy, and `result.ok` already narrows a `Result`. `lookup`'s methods now say in their JSDoc what each one is for and which query slot or query handle method to use instead.
+  
+  ```diff
+  -const hand = lookup.parent(item.id, ChildOf)
+  +const hand = lookup.related(item.id, ChildOf)
+  
+  -if (Result.isSuccess(made)) use(made.value)
+  -if (Result.isFailure(made)) report(made.error)
+  +if (made.ok) use(made.value)
+  +if (!made.ok) report(made.error)
+  ```
+- 4a32ad1: **Breaking: `pauseWhen` is now `pauseWhile`, and it pauses while a condition holds.** `Game.Schedule.pauseWhen(conditions, ...)` and a system spec's `pauseWhen: conditions` paused the systems while a condition *failed*, the same polarity as `when`, so the name read backwards: `pauseWhen([Game.Condition.inState(HitStop, "Frozen")], Move)` ran `Move` only during the freeze, with no error. `Game.Schedule.pauseWhile(conditions, ...)` and the spec key `pauseWhile` pause while *any* of their conditions holds (`pauseWhile([frozen, cutscene])` pauses during either). `when` keeps its meaning (runs while all hold), so the two read together: `{ when: [playing], pauseWhile: [frozen] }` runs when playing and pauses while frozen. Everything else about pausing is unchanged: a paused reader holds its stream entries, marker steps in the group still run, and `when` and pauses nest as before.
+  
+  `pauseWhen` no longer compiles, so no call keeps its old meaning silently. Rename it and invert each condition: drop a `Game.Condition.not(...)` the old call needed, and add one where it had none. A list `pauseWhen([a, b])` (paused while `a` or `b` failed) becomes `pauseWhile([Game.Condition.not(a), Game.Condition.not(b)])`.
+  
+  ```diff
+   const frozen = Game.Condition.inState(HitStop, "Frozen")
+  -Game.Schedule.pauseWhen([Game.Condition.not(frozen)], Move, ApplyHits)
+  +Game.Schedule.pauseWhile([frozen], Move, ApplyHits)
+  -Game.System("Game/Read", { events, pauseWhen: [ready] }, run)
+  +Game.System("Game/Read", { events, pauseWhile: [Game.Condition.not(ready)] }, run)
+  ```
+  
+  Debug output follows the name: `SystemDescription.pauseWhen` is `pauseWhile`, the `stream-loss-unread` lint says `under pauseWhile`, and a `system.skipped` event with `held: true` carries the `pauseWhile` condition that held.
+- 0f4a5fe: `queries.x.rows()` reads every entity of a query into plain values: each row is `{ id, values }`, with one field per slot of the query's `selection` (`undefined` for an optional slot whose entity lacks the component), in `each()` order and with the query's filters applied. The values stay readable after the run, so a view layer, an inspector's result, a memoized helper, or a test can keep them, where a kept `queries.x.data` throws.
+  
+  ```ts
+  const BuildingView = Game.Inspector("Town/BuildingView", { queries: { buildings: BuildingRead } }, ({ queries }) =>
+    queries.buildings.rows())
+  
+  for (const { id, values } of runtime.inspect(BuildingView)) panel.show(id, values.tile, values.site?.progress)
+  ```
+  
+  `QueryValues<Q>` and `QueryRow<S, Q>` (from `@typeonce/ritmo/Query`) type them. A row carries the entity's `id`, not the entity, so it cannot be read through `data` later: resolve it with `queries.x.get(id)` to act on the entity again. `rows()` reads every slot of every entity and makes an object per row (about 50 ns per entity with two slots in the new `query/rows-10k` bench case, and about 110 ns with five, against about 20 ns for five slots read through `each()` and `data`), so systems keep reading `data`.
+  
+  A game that wrote its own rows helper can replace it:
+  
+  ```diff
+  -type Row<Q> = { readonly entity: QueryEntity<typeof Game.schema, Q>; readonly data: { readonly [K in keyof QueryData<Q>]: ReturnType<QueryData<Q>[K]["get"]> } }
+  -const rowsOf = (query) => query.each().map((entity) => ({ entity, data: /* every slot's get(entity), with casts */ }))
+  -const buildings = rowsOf(queries.buildings)
+  +const buildings = queries.buildings.rows() // ReadonlyArray<QueryRow<GameSchema, typeof BuildingRead>>
+  ```
+- 791517f: `runtime.rewind` is traced: `debug.observe` and `debug.observeHost` deliver a `Debug.RewindEvent` (`{ type: "rewind", frame, tick, toTick, ok }`, ticks being change ticks), so tools can tell a rollback's ticks run again from new ones. `observeHost`'s `tick.start` carries the change tick it starts at (`tick`): a rewind undid the ticks that started at or after its `toTick`.
+  
+  **Breaking for host listeners that narrow by elimination.** `Debug.HostEvent` gained a member with no `schedules`, so a listener that rules out `send` and `failure.ignored` and then reads `event.schedules` no longer compiles. Handle the rewind first:
+  
+  ```diff
+   runtime.debug.observeHost((event) => {
+     if (event.type === "send" || event.type === "failure.ignored") return
+  +  if (event.type === "rewind") return
+     if (!event.schedules.includes(simulate)) return
+  ```
+  
+  A `switch` over `Debug.TraceEvent` that checks it is exhaustive needs a `case "rewind"`.
+- 4fc0728: **Breaking: `Schema.bind` takes the game's root, always.** Without a root, a game was branded by its schema type, which is covariant: a game and a game whose schema is a superset were interchangeable, so a system, schedule, query, or entity id of one compiled in the other, and a system that spawned and queried `Velocity` ran inside a runtime with no `Velocity`. Declare the root with `Schema.defineRoot` and pass it last:
+  
+  ```diff
+  -const Game = Schema.bind(Schema.fragment({ components: { Position } }))
+  +const Root = Schema.defineRoot("Game")
+  +const Game = Schema.bind(Schema.fragment({ components: { Position } }), Root)
+  ```
+  
+  ```diff
+  -const Game = Schema.bind(Core, Combat)
+  +const Root = Schema.defineRoot("Game")
+  +const Game = Schema.bind(Core, Combat, Root)
+  ```
+  
+  This replaces 0.7's `Schema.merge` fix: `Schema.bind(A, B)` is now `Schema.bind(A, B, Root)`. A call without a root fails with `Schema.bind takes the game's root last: const Root = Schema.defineRoot('Game'), then Schema.bind(...fragments, Root)`. Values of games with different roots do not mix: the error names both, `Type 'RootToken<"Editor">' is not assignable to type 'RootToken<"Game">'`.
+  
+  The root's name is its identity: two `defineRoot("Game")` calls, in one module or in two, make the same type, and games bound under them mix as one game would. Declare one root per game, under a name no other game in the program uses, and import that constant where descriptors name it (`Entity.Handle<typeof Root>`).
+  
+  Types a game spelled with the schema in the root's place name the root instead:
+  
+  ```diff
+  -type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
+  +type Id = Entity.EntityId<typeof Game.schema, typeof Root>
+  ```
+  
+  The same goes for `Command.SpawnedId`, `Schema.Schema.BoundSchedule`, `Schema.Schema.BoundStateMachine`, `EntityScope.EntityScope`, and the other types that take a root. `Schema.Schema.Game<S, Root>` no longer defaults `Root` to `S`. `Entity.isHandle` takes the root, not the schema:
+  
+  ```diff
+  -const isHandle = Entity.isHandle(Game.schema)
+  +const isHandle = Entity.isHandle(Root)
+  ```
+- d2970e8: A load leaves nothing of the world it replaced, and a save holds the work still queued, so the same save gives the same world in every runtime that loads it (every peer of a netcode match).
+  
+  Breaking:
+  
+  - `runtime.restore(save)` gives every transient resource, and every resource and machine the save does not hold, the value the runtime was made with (`Game.Runtime.make({ resources, machines })`). Each used to keep its live value, so a load kept state of the replaced world: two peers that resync kept their own transient value and desynced again, and a player in `Over` who loaded a save from before that machine existed stayed in `Over`. A transient resource a capture system fills each tick (`InputCapture.system`) is filled again by its next run, so input needs nothing. The trap is a transient resource a system fills late in a step and another reads early in the next: in the first step after a load it reads the starting value (a town's stock read 0, so the first building after a load failed for lack of planks). `ritmo-devtools lint` notes it as `read-before-write` (info). Fill it in a system at the start of the schedule, or set it again after a successful `restore`; give a resource the game added after its saves were written its value with a `Snapshot.migration`.
+  
+  - `runtime.restore(save)` publishes nothing about the world it replaced. It used to report every entity of that world as despawned and each of its components as removed, so a system reading `readDespawned()` or `readRemoved(X)` saw entities that were never in the save, and saw them on one peer and not the other (seat 0 sets its world up before the first save). Now every system and inspector that read removed or despawned records, events, transition events, or relation failures before the load finds none from before it, and its next read reports `lagged()`; a reader whose first run comes after the load is not lagged. Restored entities still show as added. A system that mirrors entities (a node or a cache per entity) rebuilds from queries when its read is lagged:
+  
+    ```ts
+    if (despawned.entities.lagged()) rebuildFrom(queries.alive.each())
+    ```
+  
+  - `runtime.snapshot()` and `runtime.checksum()` fail with `{ _tag: "QueuedCommands", count }` while a command waits for a marker: a command is a function, which no save can hold, so the loaded world ran differently from the one that wrote it. End the schedule the save follows with its marker:
+  
+    ```diff
+    -const update = Game.Schedule(Input, Move, Spawn)
+    +const update = Game.Schedule(Input, Move, Spawn, Game.Schedule.applyDeferred())
+    ```
+  
+  - `Snapshot.WorldSnapshot` has a `nextStates` field: the next states queued for the following `applyStateTransitions`, by machine name (`{ state, ifChanged, from? }`, a `Snapshot.NextStateSnapshot`). `snapshot()` writes it, `checksum()` covers it, and `restore` validates it (`InvalidNextState`, or `InactiveSubState` for a queued sub-state whose parent is elsewhere) and queues it again, so the next marker applies it as in the runtime that wrote the save. A save written before has none and loads with nothing queued, so `Snapshot.version` stays 3. Code that builds a `WorldSnapshot` by hand (a test fixture, a migration that returns a new object) adds the field:
+  
+    ```diff
+    -const save: Snapshot.WorldSnapshot = { version: 3, gameVersion: 0, nextEntity: 1, entities: [], relations: {}, resources: {}, machines: {}, scopes: {} }
+    +const save: Snapshot.WorldSnapshot = { version: 3, gameVersion: 0, nextEntity: 1, entities: [], relations: {}, resources: {}, machines: {}, nextStates: {}, scopes: {} }
+    ```
+  
+    Every save now has the field, `{}` when nothing is queued. A world with nothing queued keeps the checksum it had, so replays recorded before still verify, but code that compares saves or fingerprints them itself sees the new field: record those fixtures again. `Snapshot.SnapshotError` adds `QueuedCommands` and `UnencodableNextState`, and `Snapshot.RestoreError` adds `InvalidNextState`: an exhaustive `switch` on either adds the cases.
+  
+  Fixed: `runtime.checksum()` hashes what a JSON save writes. An object key whose value is `undefined` is skipped and `undefined` in an array hashes as `null`, so a world read back from its JSON save has the checksum of the world that wrote it; a schema with optional fields that accepted `{ a: 1, b: undefined }` made a peer that joined from a save report a desync against the host forever.
+  
+  The `ritmo` skill's state playbook lists both breaking changes for an upgrade.
+- 08c0c91: A system body that returns failures of different shapes now compiles, and the system fails with their union. Only failures TypeScript could merge into one type compiled before (two string literals); a string in one branch and an object in another, or two objects with different fields, did not:
+  
+  ```ts
+  Game.System("Game/Buy", spec, ({ resources }) => {
+    if (resources.gold.get() < 5) return Result.failure("NotEnoughGold" as const)
+    if (resources.stock.get() === 0) return Result.failure({ _tag: "OutOfStock" as const })
+  })
+  // fails with "NotEnoughGold" | { _tag: "OutOfStock" }, and so does runtime.tryTick for its schedule
+  ```
+  
+  `System.SystemBody`'s second type parameter is now the body's whole return type, not its failure type; `System.BodyFailure<R>` gives the failure type of a return type, and `System.SystemReturnFix` is the message a body that returns a value or a promise names. Game code passes neither, so nothing in it changes.
+- 78683e7: Two changes to how `applyStateTransitions(...)` runs transition schedules:
+  
+  - **A request queued after `cancelPending()` in a transition schedule takes the cancelled one's place at this marker.** A system in one machine's `onEnter`/`onExit`/`onTransition` that cancelled another machine's request, queued before the marker, and then queued a new one, had the cancelled request commit anyway and the new one wait for the next marker. Now the first request queued after the cancel (`set`, `setIfChanged`, or `transition`) commits at this marker and the cancelled one never does, when the marker has not reached that machine yet:
+  
+    ```ts
+    // Flow's onEnter system, while Music -> Quiet is queued for this marker
+    nextMachines.music.cancelPending()
+    nextMachines.music.set({ _tag: "Off" }) // now: Off at this marker, never Quiet (was: Quiet now, Off at the next marker)
+    ```
+  
+    A `set` without the cancel keeps the old rule (the queued value commits now, the new one at the next marker), and so does any request for a machine the marker already applied. Game code that worked around this by ticking a second marker can drop it.
+  
+  - **A failing `onEnter` schedule no longer skips the others.** When one enter schedule of a state returned a failure, the other enter schedules of that state, and those of the sub-states that start existing with it, never ran, on that tick or any later one. Each enter schedule now runs in its usual order whatever the ones before it returned; the tick still returns the first failure, the transition is still committed, and it is still traced as `enterFailed`. Exit and `onTransition` schedules keep their rule: a failure there undoes the exit phase and queues the transition again.
+
+### Patch Changes
+
+- 5a16a40: The `Checkpoint` module doc names the one case where a reader outside the rewound schedule sees a component as `added` again (it saw the component, did not run while a later tick removed it, and a rewind brought it back), and what a host does about it: key what it creates per entity by entity id.
+- 148ec5f: A held checkpoint keeps only the events, removals, and despawns a rewind can bring back: those published before the newest held checkpoint was taken. A game that took one checkpoint and kept it (a level retry, an undo) kept every event batch and removal record published after it: about 160 MB after 2,000 ticks of one 10,000-number event, now about 0.5 MB. No API change.
+- 4df0496: `lookup.descendants(target, relation, { order: "breadth" })` (and a query's `descendants`) overflowed the stack below a parent with more than about 125,000 children; it now lists them.
+- dfe3432: A debug runtime freezes what it is handed about twice as fast. The freeze walks arrays by index and objects by their enumerable keys and own symbols, and no longer calls `Reflect.ownKeys` on every value: in a top-down shooter's crowd scene a debug step went from 0.40 ms to 0.25 ms (0.18 ms without `debug`), and in a stress scene of 2000 projectiles from 13.5 ms to 7.5 ms. What is frozen is unchanged for plain data; an own non-enumerable property is no longer walked.
+  
+  The docs say what `debug` costs: it freezes every value written to the world, with or without a listener. The `BrowserHostClock` example attaches the handle in development only (`import.meta.env.DEV ? { hostClock } : undefined`), and `Debug.Option` notes that the clock times trace events only, so a headless runtime shared by tests and long bot runs takes `debug` as a choice.
+- 5f9fe33: The docs show how to name a game's schema type, so type errors print `QueryEntity<GameSchema, ...>` instead of every component, resource, and event the game declares. In a game of 64 components an error used to start with `SchemaDefinition<{ readonly Position: Descriptor<...>; ... 62 more ...` and was cut off before it reached the query. `SETUP.md` (step 4) and `Schema.bind` show the pattern; a game that already binds works unchanged, and type-checking takes the same time:
+  
+  ```ts
+  const schema = Schema.fragment({ components: { Position, Velocity } }) // or Schema.bind(Core, Combat, Root).schema
+  type SchemaOf = typeof schema
+  export interface GameSchema extends SchemaOf {}
+  const named: GameSchema = schema
+  export const Game = Schema.bind(named, Root)
+  ```
+  
+  A helper that takes a query's entities and its `data` is typed with the existing `QueryIteration<GameSchema, typeof Walls>` (from `@typeonce/ritmo/System`) and passed `queries.walls`, as the `QueryEntity` and `QueryIteration` docs now say, instead of a hand-written `{ each(): ...; data: ... }` type.
+  
+  The 0.21.0 entry now says it replaces 0.17's optional-slot fix, so a game upgrading from 0.16 rewrites `data.x.present` straight to `data.x.has(entity)`.
+- 1b83e0c: The `ritmo` skill's netcode playbook says that a reloaded page ends the match (every peer ends with `Disconnected` `reason: "restarted"`, so `onFailure` offers a new match), that a HUD draws who everyone waits for from `status().waiting`, and that the rollback check looks for rollbacks on the peer ahead (the one behind may always have the input in time).
+- 917001b: The `ritmo` skill has a performance playbook (`playbooks/performance.md`, listed in `SKILL.md`): measure ticks on a real host clock without `debug`, name the system with `session.report()` on the same clock (a test clock makes every timing 0), fix the usual causes, and compare the same number before and after.
+  
+  `SETUP.md` starts with what a game needs: Node 22.19 or newer for the commands the setup and the skills run, and TypeScript 5.9 or newer with `strict` on and `noErrorTruncation` off.
+  
+  The spatial grid reference says where the grid lives in a schedule that rewinds, where `local` does not compile: in the system's body, made each run.
+- 4df0496: `Random` handles its edge cases, and every value a game drew before is drawn the same (replays and saves are unchanged):
+  
+  - `integer(min, maxExclusive)` with a span wider than 2**32 returned only some integers (`integer(0, 2 ** 40)` gave only even numbers): such a span now takes two draws (now and then more) and every integer in it is equally likely. A span up to 2**32 still takes one draw and gives the same sequence. A span past `Number.MAX_SAFE_INTEGER` throws (`Random.integer needs a span of at most Number.MAX_SAFE_INTEGER`), as bad bounds already did.
+  - `range(min, max)` returned `Infinity` when `max - min` overflowed (`range(-1e308, 1e308)`); it now stays in range.
+  - `weighted` returned `undefined` when the usable weights added up past the largest number; it now throws (`Random.weighted needs usable weights that add up to a finite total`).
+- 02b8683: `runtime.rewind` gives readers what a runtime that never rewound gives them:
+  
+  - A system of the rewound schedule whose first run came after the checkpoint (one in an `onEnter`/`onExit` schedule, or after a failing system) is back to never having run. It used to stay registered with its positions at zero, so it held every event, removal, and despawn published after the checkpoint and read them all on its next run, where a runtime that never rewound had dropped them. The frames ticked after a rewind also keep what the frames after the checkpoint kept the first time, so a reader's first run sees the same events either way.
+  - A system or inspector outside the schedule (a HUD, render sync) sees every resource the rewind put back as changed: `changedResource(...).changed()` was `false` for a value it had already drawn and the rewind undid.
+  - An entity the rewind took away and the ticks after it brought back (the same id) no longer matches `Game.Query.added(X)` a second time for a reader outside the schedule that had seen `X` on it: it matches `changed(X)`, as the `Checkpoint` module doc says. A component that reader never saw on that id is still `added`. A render system creating a node on `added` created two before.
+  
+  No code changes.
+- 207e611: Six runtime fixes:
+  
+  - **`runtime.restore` loads a large save.** A save of about 125,000 entities or more threw `RangeError: Maximum call stack size exceeded`, after the world had already been emptied and every checkpoint released, although `snapshot()` of the same world succeeded. It now restores, and a failed restore again changes nothing.
+  - **Storage no longer grows with every id ever given out.** Ids are never reused, so each 256 ids a component was ever stored on kept a small page for good: about 18 MB after 3 million spawned and despawned entities with 4 components, with 1,000 alive throughout. A page whose entities are all gone now leaves its store. Nothing changes for game code.
+  - **A debug runtime catches a kept entity whose id is used again.** After a `restore`, or a rewind followed by a spawn, an entity kept from an earlier run (in a closure or `local`) could read and write the new entity that got its id. On a runtime made with `debug`, it now throws `... was used for an entity that was despawned`, like any despawned entity. Runtimes without `debug` are unchanged. The fix is the one the error names: keep `entity.id` and resolve it with `queries.x.get(id)` in each run.
+  - **`runtime.tick` and `runtime.tryTick` throw when called while either is running.** A `tick` inside a system run by `tryTick` ran, and its commit cleared the outer system's rollback, so when the outer system then failed, its writes stayed. Both now throw `runtime.tick cannot run inside another tick` (or `runtime.tryTick ...`), from a system, a service, or a trace or host listener; so does `debug.beginFrame`, and `FrameCursor.next()` called while a step is running. Run the second schedule after the first returns: `runtime.tick(first); runtime.tick(second)`.
+  - **`nextMachines.x.cancelPending()` (named `reset()` before this release) from a transition schedule cancels a request queued before the marker.** When an `onEnter`, `onExit`, or `onTransition` system cancelled a machine's request, and that request was queued before the current `applyStateTransitions(...)` and not applied yet, the request was applied anyway, while `getPending()` already reported `undefined`. It is now dropped. A `set` from a transition schedule still waits for the next marker, as before.
+  - **`FixedLoop`: `reset()` and `stop()` called from `update` apply to the frame in progress.** A `reset()` from `update` (after a level load) rendered the frame with `alpha: -1` and cost the next frame a step; it now ends the frame's stepping with `alpha` 0. A `stop()` from `update` let the frame's remaining catch-up updates and its `render` run; now nothing more runs.
+- c99b968: `SETUP.md` step 4 declares the root it binds the game under (`const Root = Schema.defineRoot("Game")`), so the snippet compiles as written.
+- 04d2a9d: Two messages name the fix. A `[Descriptor, value]` tuple built outside the call (returned by a helper, pushed into an array) widened to an array and failed with `` `${string} is not a component of this game's schema` ``, though the component is in it; it now fails with `this entry widened to an array: write the [Descriptor, value] tuple in the call, add `as const` where it is built, or annotate it Command.Entry<typeof Descriptor>`. And `set` on an entity state declared with `transitions` names `data.x.setRaw(entity, raw)` for data from outside the simulation (a test, a level file), next to `transition`.
+  
+  The `ritmo` skill's upgrade playbook lists what 0.23 changes without a compile error: `RenderSync` nodes made again on each new renderable value, a transient resource read before its writer after a load, `Clock.duration`'s half step, `FlowField` and `Collide2` moves, Ctrl/Cmd keys and non-standard gamepads, and the debug check of kept entities.
+
 ## 0.22.0
 
 ### Patch Changes

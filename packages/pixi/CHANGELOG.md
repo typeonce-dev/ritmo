@@ -1,5 +1,15 @@
 # @typeonce/ritmo-pixi
 
+## 0.23.0
+
+### Patch Changes
+
+- Updated dependencies [3037822]
+- Updated dependencies [ca0544d]
+- Updated dependencies [d2970e8]
+- Updated dependencies [6704ce1]
+  - @typeonce/ritmo-render@0.23.0
+
 ## 0.22.0
 
 ### Patch Changes

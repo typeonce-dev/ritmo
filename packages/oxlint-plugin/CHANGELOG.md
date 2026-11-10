@@ -1,5 +1,75 @@
 # @typeonce/oxlint-plugin-ritmo
 
+## 0.23.0
+
+### Minor Changes
+
+- 7ac13e9: `ritmo/no-float-timers` knows more names and shapes of a step's length, and reports `x - dt` only where it is written back, so it counts across ticks.
+  
+  Newly reported, with the rule's message saying to store a `Clock.deadline` and check `Clock.reached`:
+  
+  - other names: `x -= fixedDt`, `x -= dtSeconds`, `x -= STEP_SECONDS` (any case, with or without `_`), `x -= time.delta`, `x = x - step.seconds`, and a bare `x -= delta`;
+  - other shapes: `x -= 1 / 60`, `x -= dt * 1`, `elapsedMs += dt * 1000`, `x -= Math.min(dt, 0.1)`, and a `const` that holds a step's length (`const tick = frame.dt; timer -= tick`).
+  
+  No longer reported: `x - dt` / `x + dt` whose value is not written back where `x` came from, such as a look-ahead (`const until = horizon + dt`) or a test (`if (accumulator - dt >= 0)`). Written back means a target of the same name (`x = x - dt`, `let cooldown = Math.max(0, state.cooldown - dt)`, `{ left: buff.left - dt }`, `resources.timer.set(timer - dt)`) or an `update` callback's result (`resources.timer.update((left) => left - dt)`); those are still reported.
+- 99008ef: `ritmo/use-clock-for-time`, `ritmo/use-random-for-randomness`, `ritmo/use-ops-for-math`, and `ritmo/keep-simulation-headless` find a global however the file reaches it, so simulation code that passed before can now be reported. Newly reported, with the rule's existing message saying what to write instead:
+  
+  - through a global object: `globalThis.Math.random()`, `globalThis.crypto.getRandomValues(bytes)`, `globalThis.Date.now()`, `globalThis.performance.now()`, `globalThis.setTimeout(...)`, `self.Math.sin(x)` (fixed to `Ops.sin(x)` like `Math.sin(x)`), `globalThis.localStorage`, `self.innerWidth`;
+  - through a `const` that holds the global: `const roll = Math; roll.random()`, `const wait = setTimeout; wait(f, 10)`, `const D = Date; new D()`;
+  - destructured: `const { random } = Math`, `const { randomUUID } = crypto`, `const { now } = Date`, `const { now } = performance`, `const { localStorage } = globalThis`, `const { Math: M } = globalThis` (an alias of Math, like `const M = Math`);
+  - by `use-clock-for-time`, globals it did not list: `setImmediate(...)`, `process.hrtime()` and `process.hrtime.bigint()`, `performance.timeOrigin`, `performance.mark(...)`, `Temporal.Now`, `Date()` called without `new`, and `getTimezoneOffset()`;
+  - by `keep-simulation-headless`, sound: `new Audio(...)` and `new AudioContext()`. Publish what happened as an event and play the sound from a render or host system that reads it (`Game.System.readEvent(Hit)`) and requests the game's audio as a service (`Game.System.service(Audio)`); under a netcode session, from `session.events(Hit)`.
+  
+  Locals, parameters, and imports with these names, fields of other objects (`config.Date.now()`), and types are still not reported. Host code inside a simulation folder that reads one on purpose takes a disable comment with its reason: `// oxlint-disable-next-line ritmo/use-clock-for-time -- this test is the host`.
+- 9baf436: `ritmo/no-infinity-in-simulation-data` reports Infinity and NaN in more of the data a world stores, and no longer reports local scratch.
+  
+  Newly reported, with the message saying to use `null` and a nullable number schema:
+  
+  - `1 / 0` and `Math.min()` / `Math.max()` of nothing: `{ since: 1 / 0 }`, `{ since: Math.min() }`;
+  - an element of an array literal: `data.range.set(entity, [0, Infinity])`;
+  - a call given one, whose result is stored: `{ dash: make(Infinity) }` (`Math.*` and `Number.*` calls are not reported);
+  - a `const` declared as one: `const LIMIT = Infinity`, then `{ max: LIMIT }`;
+  - a search seed stored unchecked: `{ distance: best }` after `let best = Infinity`. Store it checked: `{ distance: Number.isFinite(best) ? best : null }`. A comparison with `Infinity` or a `Number.isFinite(best)` anywhere in the file counts as the check.
+  
+  No longer reported: a literal search seed in a `let` (`let nearest = { distance: Infinity, id: -1 }`), a fallback in a function whose fields are only compared (`const hit = sweep ?? { time: Infinity }; if (hit.time < limit) ...`), and values a `for...of` tries (`for (const size of [0, Infinity])`).
+- 56d6c13: `ritmo/no-kept-query-values` follows entities and `data` through more forms. Newly reported, with the message saying to keep `entity.id` and resolve it with `queries.x.get(id)`, or to keep plain values from `queries.x.rows()`:
+  
+  - entities copied or picked into a kept value: `local.list = Array.from(queries.x.each())`, `.map((e) => e)` and `.reduce((best, e) => ...)` results kept in `local` or a module variable, `const [first] = queries.x.each()` then `local.target = first`;
+  - `Object.assign(local, { target: queries.x.each()[0] })`;
+  - a context destructured or renamed: `({ queries: q })` then `q.x.data`, `({ queries: { x } })` then `x.data`, `({ local: kept })` then `kept.target = ...`, and `(ctx) => { ctx.local.target = ctx.queries.x.each()[0] }`;
+  - a system function declared apart and passed to `Game.System(...)` or `Game.Inspector(...)` by name in the same file, keeping an entity in a module variable (`cache.set(1, entity)`).
+  
+  Ids stay unreported in each form (`Array.from(queries.x.each(), (e) => e.id)`, `first?.id`).
+- 7e416f5: New rule `ritmo/no-kept-query-values`: reports an entity from `queries.x.each()` or a query's `data` kept past its run, in `local` state (directly, in a literal, pushed or set into a collection there, or captured by a closure stored there) or in a variable outside the `Game.System` / `Game.Inspector` callback. Kept data throws in the next run, and a kept entity is not checked against its query again. The report says to keep `entity.id` and resolve it with `queries.x.get(id)`, or to keep plain values from `queries.x.rows()`. Add it to `.oxlintrc.json` for every file:
+  
+  ```jsonc
+  "ritmo/no-kept-query-values": "error"
+  ```
+- 107196f: `ritmo/handle-runtime-result` finds more dropped and misread results. Newly reported:
+  
+  - a result an arrow returns to a caller that drops it: `updates.forEach((u) => runtime.tick(u))`, `requestAnimationFrame(() => runtime.tick(update))`, also `addEventListener`, `requestIdleCallback`, `setTimeout`, `setInterval`, `setImmediate`, and `queueMicrotask`. Check it in a block body, or write `() => void runtime.tick(update)` to ignore it on purpose;
+  - a result left out of a sequence's value: `runtime.tick(update), draw()`;
+  - a result tested as a condition, which is always true since a `Result` is an object: `if (!runtime.tick(update))`, `if (runtime.restore(save))`, `runtime.rewind(checkpoint) ? a : b`, the left of `&&` / `||`. Test `.ok` instead: `if (!runtime.tick(update).ok)`;
+  - a method destructured from a runtime: `const { tick } = runtime`, then `tick(update)`;
+  - a runtime of any name made in the same file: `made.value.tick(update)` and `game.tick(update)` after `const made = Game.Runtime.make(...)` and `const game = made.value`.
+- c3bba11: `ritmo/no-state-spread` reports a `_tag` set over a spread only when the file shows the spread value is a state, and reads more ways of writing the same re-tag.
+  
+  A spread value is a state when it is read from a state machine (`machines.x.get()`, `nextMachines.x.getPending()`) or from an entity state's slot the same function moves (`data.contact.get(entity)` next to `data.contact.transition(...)` or `data.contact.update(entity, { state, data })`), directly or through the variable holding it, or when the same function reads its `_tag` (`if (body._tag === "ground")`, `switch (state._tag)`, `const { _tag } = previous`).
+  
+  Newly reported, with the message saying to move with `data.x.transition(entity, { from, to, data })` or `nextMachines.x.transition({ from, to, data })`, or to write the new state's fields out:
+  
+  - `Object.assign({}, ground, { _tag: "air" })`;
+  - `{ ...ground, ...{ _tag: "air" } }`;
+  - `const { _tag, ...rest } = ground`, then `{ _tag: "air", ...rest }`.
+  
+  No longer reported: a spread value nothing in the file shows to be a state, such as a plain value tagged for an event (`events.explosion.emit({ ...position, _tag: "Explosion" })`). The compiler already rejects an `update` callback that changes `_tag` and `set` on a state declared with `transitions`.
+
+### Patch Changes
+
+- 51efba5: `ritmo/no-state-spread` names `nextMachines.mode.transition({ from, to, data })` as the way to move a state machine, the compare-and-set move state machines now have.
+- d2970e8: The `handle-runtime-result` docs say why `runtime.snapshot()` and `runtime.checksum()` return a `Result`: a schema's `encode` may reject a value, and a save cannot hold commands still queued. No change for games.
+- 8db5972: The README's `ritmo/no-brand-cast` example compiles: the random resource is `Descriptor.ConstructedResource(Random.codec)("Game/Rng")`, given `Random.seed(1)` in `Game.Runtime.make`, and the reported line is the raw cast `1 as Random.State`. `Random.resource` never existed.
+
 ## 0.22.0
 
 No changes in this release.

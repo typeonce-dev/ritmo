@@ -1,5 +1,80 @@
 # @typeonce/ritmo-browser
 
+## 0.23.0
+
+### Minor Changes
+
+- 0b70fbc: **Breaking: a gamepad without the standard mapping is read by its buttons only.** Its axes cannot be mapped (many such pads report their triggers as axes resting at -1), so before, nobody touching an Xbox 360 pad on such a browser read as `lastUsed: "gamepad"` with the right stick pinned left, and `join: "any"` seated it by itself. For a pad whose `mapping` is not `"standard"`, the sticks and analog triggers now read as rest (`left`/`right` `{ x: 0, y: 0 }`, vector actions 0, `leftTrigger`/`rightTrigger` 0) and its axes never count toward `used`, `lastUsed`, or a join. Its buttons are read by index as before, a press still counts as use, and an action bound to `"rightTrigger"` follows the button at that index. The snapshot gains `standard: boolean`, `false` for such a pad (`true` for a standard pad, with no pad, and for `scripted` pads), so a game can tell the player the sticks are not supported and offer button bindings:
+  
+  ```ts
+  const pad = input.snapshot().devices.gamepad
+  if (pad.connected && !pad.standard) showNotice("This controller's sticks are not supported: bind its buttons in Controls")
+  ```
+  
+  A `Gamepad.Snapshot` built by hand needs the new field; `Gamepad.idle(bindings)` has it:
+  
+  ```diff
+  -const neutral = { ...rest, used: false, connected: false, id: null }
+  +const neutral = { ...rest, used: false, standard: true, connected: false, id: null }
+  ```
+  
+  `Pointer.actions` releases the pointer capture whenever it lets go of every button: a window blur, a `pointercancel`, leaving the pointer lock, and `dispose()` now call `releasePointerCapture` for the pointer the first press captured, where before only the last button's `pointerup` did. A pointer the browser no longer captures (after a cancel) is skipped instead of throwing.
+  
+  `Keyboard.actions` treats keys that type the same character as one key for a character binding. `run: ["Shift"]` stays held while either Shift key is down, with one press when the first goes down and one release when the last comes up; the same holds for both Ctrl and Alt keys and for a digit on the row and on the numpad. Before, letting go of left Shift released `run` while right Shift was still down. Bind `Keyboard.code("ShiftLeft")` to tell them apart. A host that sends no `code` behaves as before.
+  
+  A new press of a key whose keyup the page never saw (and no blur or Cmd release cleared) now matches its release by the character it types now, and lets go of the one it typed before. Before, W pressed again as "∑" with Option held kept the old "w" for its release, so an action bound to "∑" stayed held until a blur. Repeats are unchanged: a repeat presses a key only if it is neither held nor known to be down.
+- a05002e: **Breaking: `Keyboard.actions` leaves browser shortcuts to the browser.** A key pressed with Cmd, or with Ctrl, is no longer `preventDefault`-ed and presses no action, so Ctrl+R / Cmd+R reload the page instead of firing a `restart` bound to `"r"`, and Ctrl+F, Ctrl+L, and Cmd+A work on bound keys. AltGr reports Ctrl and Alt together and types characters on many layouts, so a key pressed with both still presses its action. A game that binds Control or Meta to an action (`"Control"`, `"Meta"`, `Keyboard.code("ControlLeft")`, ...) keeps every key pressed with them, as before, for as long as its bindings hold one. `Keyboard.presses(...)` skips shortcuts too, so Ctrl+R on a settings screen binds nothing; Control pressed alone is still offered.
+  
+  `KeyEvent` gains optional `ctrlKey`, `metaKey`, and `altKey`, which a real `KeyboardEvent` has. A test host that sends none behaves as before.
+  
+  Two fixes for keys whose release the page never sees. macOS sends no keyup for a key released while Cmd is down, so the action stayed held until a blur: Cmd's own keyup now lets go of every held key but the modifiers. And a key still down after that, or after a window blur, is pressed again at its next auto-repeat, where before it stayed released until pressed again. A repeat of a held key is still no new press, and neither is one of a key that went down in a form field, as a shortcut, or before a rebind bound it.
+  
+  A game whose players press bound keys with Ctrl held (a sneak or modifier key on Ctrl, read alongside other actions) binds Control as an action, which keeps every key pressed with it the game's:
+  
+  ```diff
+  -const keys = { jump: [" "], fire: ["f"] } as const
+  +const keys = { jump: [" "], fire: ["f"], sneak: ["Control"] } as const
+  ```
+
+### Patch Changes
+
+- 51a0b7f: The `BrowserTickSource` example writes its spawn entry as a `[Descriptor, value]` tuple, since core removed `Game.Command.entry`.
+- dfe3432: A debug runtime freezes what it is handed about twice as fast. The freeze walks arrays by index and objects by their enumerable keys and own symbols, and no longer calls `Reflect.ownKeys` on every value: in a top-down shooter's crowd scene a debug step went from 0.40 ms to 0.25 ms (0.18 ms without `debug`), and in a stress scene of 2000 projectiles from 13.5 ms to 7.5 ms. What is frozen is unchanged for plain data; an own non-enumerable property is no longer walked.
+  
+  The docs say what `debug` costs: it freezes every value written to the world, with or without a listener. The `BrowserHostClock` example attaches the handle in development only (`import.meta.env.DEV ? { hostClock } : undefined`), and `Debug.Option` notes that the clock times trace events only, so a headless runtime shared by tests and long bot runs takes `debug` as a choice.
+- 9ccc12b: `Pointer.actions` sees mouse chords. Browsers send `pointerdown` only for the first button down and `pointerup` only for the last one up; a button pressed or released while another is held arrives as a `pointermove`, which the pointer ignored. A left click while aiming with the right button was never seen, and the first button let go during a chord stayed held until a window blur. `PointerEventLike` now has an optional `buttons` (the `PointerEvent.buttons` bitmask), and every down, up, and move that carries it holds exactly those buttons, with the same press and release edges as a down or up (a tap of the second button shorter than a frame reports `pressed` and `released` once). The click that takes the pointer lock is still no press, and neither is any button that goes down while the pointer is not locked, until it comes up. A pen's barrel button is `secondary`, as before; its eraser presses nothing. Browsers always send `buttons`, so a game needs no change; a host that sends no `buttons` behaves as before. The pointer now takes capture on the first press only.
+- 6704ce1: The `Controls` and `InputCapture` examples declare their game's root and pass it to `Schema.bind`, which now takes one.
+- Updated dependencies [5a16a40]
+- Updated dependencies [148ec5f]
+- Updated dependencies [4df0496]
+- Updated dependencies [4df0496]
+- Updated dependencies [0dd0a84]
+- Updated dependencies [51a0b7f]
+- Updated dependencies [dff932a]
+- Updated dependencies [dfe3432]
+- Updated dependencies [52d6a6f]
+- Updated dependencies [02ca2a4]
+- Updated dependencies [7e416f5]
+- Updated dependencies [40f60e7]
+- Updated dependencies [51efba5]
+- Updated dependencies [5f9fe33]
+- Updated dependencies [1b83e0c]
+- Updated dependencies [ca0544d]
+- Updated dependencies [4a32ad1]
+- Updated dependencies [917001b]
+- Updated dependencies [0f4a5fe]
+- Updated dependencies [4df0496]
+- Updated dependencies [02b8683]
+- Updated dependencies [791517f]
+- Updated dependencies [4fc0728]
+- Updated dependencies [207e611]
+- Updated dependencies [d2970e8]
+- Updated dependencies [c99b968]
+- Updated dependencies [08c0c91]
+- Updated dependencies [78683e7]
+- Updated dependencies [04d2a9d]
+  - @typeonce/ritmo@0.23.0
+
 ## 0.22.0
 
 ### Patch Changes

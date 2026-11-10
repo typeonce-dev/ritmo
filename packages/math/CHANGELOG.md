@@ -1,5 +1,52 @@
 # @typeonce/ritmo-math
 
+## 0.23.0
+
+### Patch Changes
+
+- 84caa60: `Vec2.moveToward` and `Vec2.clampLength` count a limit below 0 as 0, as `Scalar.moveToward` and `Angle.turnToward` already did. A speed that went negative (a slow effect minus friction) moved the point away from its target, and a negative cap flipped the vector; now `moveToward` returns `current` unchanged and `clampLength` the zero vector. A `NaN` limit counts as 0 too, as in `Scalar.moveToward`.
+  
+  `FlowField.distance` gives a distance wherever `way` gives a direction. From a blocked cell (a body pressed against a wall or into a corner) it was `undefined` even where `way` led it out, so a chaser ranking targets by distance skipped it. It is now the distance out along the steps `way` takes: to the open cells it heads for, plus their distance. It is `undefined` exactly where `way` is, except where the body is already there. Every open cell's distance is unchanged.
+  
+  `FlowField`'s docs say which wall sizes the field can step through: a cell is blocked by its center alone, so a wall `width` by `height` can fall between open cells exactly when `hypot(max(0, cellSize - width), max(0, cellSize - height)) > 2 * clearance`. No step crosses a wall at least `cellSize - clearance * √2` thick both ways, and none crosses any wall when `cellSize <= clearance * √2`; with thinner walls, use smaller cells or a larger clearance. Behaviour is unchanged.
+- 30b6570: `Collide2.moveCircle` no longer passes through walls where they close in on a circle. Pushing off one wall by the skin could leave the circle a hair inside another, and a wall the circle started in was ignored for the rest of the move, so the slide went through it: a circle sliding between a crate and a wall left the room on the next move, and one pushed into an acute corner of segments came out the other side. Now a circle that starts outside every wall ends outside every wall, also in acute corners and gaps narrower than it, and stops there (`blocked`) when nothing is left to slide along. A wall it touches or is inside, while moving into it, is a contact at once; where the skin would push it into another wall, it stays touching instead.
+  
+  `Collide2.pushOut` leaves the deepest wall first, leaves both walls of an acute corner at once (pushing out of one alone pushed into the other), and takes a center inside a box out through the nearest side with room, so a circle spawned in a corner or in a crate against a wall comes out clear of every wall. Only walls with no room between them (a gap narrower than the circle) can leave it overlapping.
+  
+  `FlowField` finds the way to a goal backed into a corner. When the goal's cell and every cell it could step to are blocked (a player pushed into a room corner, or standing against a wall more than one blocked cell deep), the search starts from the nearest open cells the goal can see in a straight line, where every chaser used to get `undefined`. A body in such a blocked cell gets `way` out to the nearest open cell it can see. Every way the field gave before is unchanged.
+  
+  `moveCircle` is also faster: it skips walls outside the bounds of the swept circle before testing them.
+- Updated dependencies [5a16a40]
+- Updated dependencies [148ec5f]
+- Updated dependencies [4df0496]
+- Updated dependencies [4df0496]
+- Updated dependencies [0dd0a84]
+- Updated dependencies [51a0b7f]
+- Updated dependencies [dff932a]
+- Updated dependencies [dfe3432]
+- Updated dependencies [52d6a6f]
+- Updated dependencies [02ca2a4]
+- Updated dependencies [7e416f5]
+- Updated dependencies [40f60e7]
+- Updated dependencies [51efba5]
+- Updated dependencies [5f9fe33]
+- Updated dependencies [1b83e0c]
+- Updated dependencies [ca0544d]
+- Updated dependencies [4a32ad1]
+- Updated dependencies [917001b]
+- Updated dependencies [0f4a5fe]
+- Updated dependencies [4df0496]
+- Updated dependencies [02b8683]
+- Updated dependencies [791517f]
+- Updated dependencies [4fc0728]
+- Updated dependencies [207e611]
+- Updated dependencies [d2970e8]
+- Updated dependencies [c99b968]
+- Updated dependencies [08c0c91]
+- Updated dependencies [78683e7]
+- Updated dependencies [04d2a9d]
+  - @typeonce/ritmo@0.23.0
+
 ## 0.22.0
 
 ### Patch Changes

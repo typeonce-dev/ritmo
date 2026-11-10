@@ -1,5 +1,80 @@
 # @typeonce/ritmo-render
 
+## 0.23.0
+
+### Minor Changes
+
+- 3037822: **Breaking, and it still compiles: a renderable a system writes with a new value now destroys and makes its node again on every write.** Count your `create` calls after upgrading: a town whose houses, trees, and fields kept writing their renderables went from 142 nodes made in 5 minutes of play to 59,445, and every effect on those nodes restarted each time.
+  
+  **A `RenderSync` node follows its renderable.** A node used to be made once per entity id from the renderable's value at that time and only applied after, so an entity whose renderable a system changed (a relabel, an evolve) kept the node of its old value, and after a rewind an entity spawned under an id already drawn (an enemy where a predicted bullet was) was drawn with the other entity's node for its whole life. Now, when an entity's renderable value is no longer the one its node was made from, `RenderSync.system` destroys the node, calls `create` with the new value, and then `apply`. Writing an equal value keeps the node and runs no extra `apply`: values are compared as plain data (arrays and plain objects by their entries). Nothing changes for a renderable that is set at spawn and never written.
+  
+  What a game sees differently: a renderable written with a new value each tick now makes its node again each tick. Move data that changes while the node lives (an animation `frame`, a `tint`, a facing) out of the renderable into its own component, list it in `redrawOn`, and set it in `apply`:
+  
+  ```diff
+  -const Sprite = Descriptor.Component<{ texture: string; frame: number }>()("Game/Sprite")
+  +const Sprite = Descriptor.Component<{ texture: string }>()("Game/Sprite")
+  +const Frame = Descriptor.Component<number>()("Game/Frame")
+  
+   RenderSync.system(Game, {
+     renderable: Sprite,
+  +  select: { frame: Game.Query.read(Frame) },
+  +  redrawOn: [Frame],
+  -  apply: (node, { renderable }) => node.gotoAndStop(renderable.frame)
+  +  apply: (node, { data }) => node.gotoAndStop(data.frame.get())
+   })
+  ```
+  
+  Or key the sync on a component that never changes after spawn, and read the one systems write through a required `select` slot:
+  
+  ```diff
+   RenderSync.system(Game, {
+  -  renderable: House,
+  +  renderable: Tile,
+  +  select: { house: Game.Query.read(House) },
+  +  redrawOn: [House],
+  -  apply: (node, { renderable }) => node.update(renderable)
+  +  apply: (node, { data }) => node.update(data.house.get())
+   })
+  ```
+  
+  A game that listed its renderable in `redrawOn` and wrote an `apply` redoing what `create` did can drop both: a new value makes the node again.
+
+### Patch Changes
+
+- ca0544d: `RenderSync` finds a node's parent with `lookup.related`, since core removed `lookup.parent`. No change for games.
+- d2970e8: `RenderSync` stays correct across `runtime.restore`, which no longer reports the replaced world's entities as despawned: when its removal reads are lagged it destroys every node whose entity no longer matches, as before, and also the node of every entity added since, so an id the save gave to another entity gets a new node made from that entity's values. No change for games.
+- 6704ce1: The `RenderSync.interpolate` example declares its game's root and passes it to `Schema.bind`, which now takes one.
+- Updated dependencies [5a16a40]
+- Updated dependencies [148ec5f]
+- Updated dependencies [4df0496]
+- Updated dependencies [4df0496]
+- Updated dependencies [0dd0a84]
+- Updated dependencies [51a0b7f]
+- Updated dependencies [dff932a]
+- Updated dependencies [dfe3432]
+- Updated dependencies [52d6a6f]
+- Updated dependencies [02ca2a4]
+- Updated dependencies [7e416f5]
+- Updated dependencies [40f60e7]
+- Updated dependencies [51efba5]
+- Updated dependencies [5f9fe33]
+- Updated dependencies [1b83e0c]
+- Updated dependencies [ca0544d]
+- Updated dependencies [4a32ad1]
+- Updated dependencies [917001b]
+- Updated dependencies [0f4a5fe]
+- Updated dependencies [4df0496]
+- Updated dependencies [02b8683]
+- Updated dependencies [791517f]
+- Updated dependencies [4fc0728]
+- Updated dependencies [207e611]
+- Updated dependencies [d2970e8]
+- Updated dependencies [c99b968]
+- Updated dependencies [08c0c91]
+- Updated dependencies [78683e7]
+- Updated dependencies [04d2a9d]
+  - @typeonce/ritmo@0.23.0
+
 ## 0.22.0
 
 ### Patch Changes

@@ -1,5 +1,79 @@
 # @typeonce/ritmo-devtools
 
+## 0.23.0
+
+### Minor Changes
+
+- cb56a2f: `ritmo-devtools lint` fails on Ritmo packages installed at different versions. Every package depends on `@typeonce/ritmo` at its own minor, so a game with core 0.23 and browser 0.22 got a second, hidden copy of core 0.22 inside browser, and then type errors between the two copies that named neither. From the working directory, the lint now finds every `@typeonce` package the game resolves and every copy those resolve in turn (npm and yarn trees, nested or hoisted, and pnpm's store), and when they are not one version prints one warning naming each copy and the fix, and exits with 1:
+  
+  ```
+  warning mismatched-versions @typeonce packages: @typeonce/ritmo-browser 0.22.0 is installed with @typeonce/ritmo 0.23.0 (and a second @typeonce/ritmo 0.22.0 under @typeonce/ritmo-browser): ...
+    fix: install the same version of every @typeonce package
+  ```
+- f17f675: A replay whose window starts from a save no longer reports a false divergence. Once a recording outlasts `keep` (or after `Replay.extract`), the file starts from a save of a later tick, and a save does not hold events in flight or what each `added()` / `changed()` reader had already seen, so an ordinary game replayed to other checksums and `play()` said `DIVERGED ...: the simulation is not deterministic, or the code changed since recording`. Neither was true. Such a replay now plays as before (stepping, `why`, invariants) and says `starts from a save at tick 14: checksums are not compared (a save does not hold events in flight or what each reader had already seen)`. A file that starts at tick 0, where the recorder started, is compared as before. `Verify.acrossEngines` and `ritmo-devtools verify` skip the recording's checkpoints for such a file in the same way and say so; they still compare the two Node runs and every engine.
+  
+  Breaking: `play().data.diverged` is replaced by `play().data.checkpoints`, which is `{ _tag: "Compared", diverged }` or `{ _tag: "NotCompared", reason }`, so a test can tell "not compared" from "compared and equal":
+  
+  ```diff
+  - expect(played.data.diverged).toEqual([])
+  + expect(played.data.checkpoints).toEqual({ _tag: "Compared", diverged: [] })
+  ```
+  
+  `Verify.Verified` has `recording: "matched" | "notCompared"`.
+- 2e4d02d: Sessions and replays understand rewinds (rollback netcode, client prediction):
+  
+  - `why`, `whyResource`, `journal`, and `system` show each `runtime.rewind` as a line between the frames it separates, under every filter: `f20   -  rewind to tick 81, undoing f13-f20`. A change whose `before` is not the previous line's `after` has the rewind above it; before, undone ticks read as real history. A filter's `limit` counts the other lines and keeps the rewinds between and after them. `report()` counts them (`Report.rewinds`) and lists the count in its first line. `Format.LineKind` has `"rewind"`, and `Format.rewind(event, undid)` renders one.
+  - `Replay.recorder` forgets the ticks a rewind undid, so a file recorded on a rollback peer holds each tick as it last ran and replays without diverging. It used to record every run of a tick as a new tick.
+  
+  A `switch` over `Format.LineKind` that checks it is exhaustive needs a `case "rewind"`.
+
+### Patch Changes
+
+- d2970e8: `Desync.compare` lists the queued next states that differ between two saves (`next state Game/Round`), now that saves hold them. `Fuzz`'s `Unreplayable` and the recorder's "no tick could be saved" error name queued commands as a cause next to a rejected `"~encode"`. No change for games.
+- dfe3432: A debug runtime freezes what it is handed about twice as fast. The freeze walks arrays by index and objects by their enumerable keys and own symbols, and no longer calls `Reflect.ownKeys` on every value: in a top-down shooter's crowd scene a debug step went from 0.40 ms to 0.25 ms (0.18 ms without `debug`), and in a stress scene of 2000 projectiles from 13.5 ms to 7.5 ms. What is frozen is unchanged for plain data; an own non-enumerable property is no longer walked.
+  
+  The docs say what `debug` costs: it freezes every value written to the world, with or without a listener. The `BrowserHostClock` example attaches the handle in development only (`import.meta.env.DEV ? { hostClock } : undefined`), and `Debug.Option` notes that the clock times trace events only, so a headless runtime shared by tests and long bot runs takes `debug` as a choice.
+- 52d6a6f: An invariant or `labels` inspector that reads a resource, service, or machine the runtime does not provide fails with the same message as `runtime.tick`, naming every one and where to provide it: `the runtime is missing resource Game/Limit: add to Game.Runtime.make({ resources: { Key: value } })`. It used to be a cut union under `__fixInvariantRequirements__` or `__fixLabelsRequirements__`.
+- f17f675: `Fuzz.run` finds only bugs its replay reproduces. A run used to tick `setup` and carry on with the live world, while its replay starts from a save of that world, so a bug that needed what setup left in flight (an event emitted in setup and read on the first frame) came back with `reproduces: false` and a replay that passed. Each run now loads its own save after `setup`, before the first fuzzed frame, so the run and its replay start from the same world. A game whose setup emits events for the first frame no longer has them in fuzz runs, as it never had them in the replays.
+- cb56a2f: `ritmo-devtools lint` notes every skill `@typeonce/ritmo` ships that the project does not link, read from the installed package's `skills` folder. It checked only `ritmo`, `ritmo-prototype`, `ritmo-onboarding`, and `ritmo-polish`, so an unlinked or copied `ritmo-pixel-art`, `ritmo-fx`, `ritmo-sounds`, or `ritmo-music` went unnoticed. The README's replay recorder snippet now imports `ReplayViteSink` and `ReplayVitePlugin` from their subpaths and records with `HostClock.standard`, and its list of `run.data.stop` reasons is complete.
+- 4a32ad1: Follows core's `pauseWhile`: a system description lists `pauses while` conditions, and a paused run reads `paused: <condition> is true (holding its stream entries)`, since a pause now names the condition that holds.
+- Updated dependencies [5a16a40]
+- Updated dependencies [148ec5f]
+- Updated dependencies [4df0496]
+- Updated dependencies [4df0496]
+- Updated dependencies [0dd0a84]
+- Updated dependencies [51a0b7f]
+- Updated dependencies [dff932a]
+- Updated dependencies [dfe3432]
+- Updated dependencies [52d6a6f]
+- Updated dependencies [02ca2a4]
+- Updated dependencies [7e416f5]
+- Updated dependencies [40f60e7]
+- Updated dependencies [51efba5]
+- Updated dependencies [5f9fe33]
+- Updated dependencies [c07e93e]
+- Updated dependencies [c07e93e]
+- Updated dependencies [1b83e0c]
+- Updated dependencies [d2970e8]
+- Updated dependencies [c07e93e]
+- Updated dependencies [1b83e0c]
+- Updated dependencies [ca0544d]
+- Updated dependencies [4a32ad1]
+- Updated dependencies [917001b]
+- Updated dependencies [0f4a5fe]
+- Updated dependencies [4df0496]
+- Updated dependencies [02b8683]
+- Updated dependencies [791517f]
+- Updated dependencies [4fc0728]
+- Updated dependencies [207e611]
+- Updated dependencies [d2970e8]
+- Updated dependencies [c99b968]
+- Updated dependencies [08c0c91]
+- Updated dependencies [78683e7]
+- Updated dependencies [04d2a9d]
+  - @typeonce/ritmo@0.23.0
+  - @typeonce/ritmo-netcode@0.23.0
+
 ## 0.22.0
 
 ### Patch Changes

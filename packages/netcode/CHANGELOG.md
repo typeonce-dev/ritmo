@@ -1,5 +1,87 @@
 # @typeonce/ritmo-netcode
 
+## 0.23.0
+
+### Minor Changes
+
+- c07e93e: `EventsLost` has a `reason`: `"unread"` (the reader fell behind, as before) or `"resync"`. A peer one or two ticks ahead of seat 0 can confirm ticks that seat 0's next save makes idle; when the resync runs them again with other events, `lost()` now reports those ticks with `reason: "resync"`, where before the events it had handed out as confirmed stayed in the host's sound or score with no report. The new run's events are still not handed out a second time, and a tick that runs again with the same events (compared by value) reports nothing. `lost()` returns one report per call, a `"resync"` one first.
+  
+  Code that builds an `EventsLost` (a test double) adds the field:
+  
+  ```diff
+  -const lost: Netcode.EventsLost = { _tag: "EventsLost", from: 10, to: 12 }
+  +const lost: Netcode.EventsLost = { _tag: "EventsLost", from: 10, to: 12, reason: "unread" }
+  ```
+- c07e93e: **Breaking: the local input goes through the input schema, and one the schema rejects throws.** `advance(local)` (and `syncTest`'s `advance`) now encodes `local`, writes it as JSON, and decodes it with the seats' schema, as every other peer does with the message, and this peer simulates the decoded value. Before, the local peer simulated the raw value and the others its decoded form: a schema that normalizes (a clamp, a default, a strip) desynced the match on the first input it changed, and an input the schema rejects (an analog `dx` of `0.5` where the schema wants a whole number; it compiles as `number`) was dropped by every other peer, so the match stalled for good with no error.
+  
+  An input the schema rejects now throws from `advance` with `Netcode: the local input does not decode with the input schema: <issues>`, like one that does not encode already did. The fix is to hand `advance` the schema's output type, for example:
+  
+  ```diff
+  -session.advance({ dx: stick.x, fire })
+  +session.advance({ dx: Math.round(stick.x), fire })
+  ```
+  
+  `Netcode.seats` checks `idle` the same way, so an `idle` that does not survive JSON fails there with `InvalidOptions`.
+- 1b83e0c: **A seat whose page reloads ends the match instead of deadlocking it.** A new session for a seat already in the match restored seat 0's stored save and waited for inputs seat 0 had pruned, while seat 0 ignored the new session's inputs: both stayed `Stalled` with no timeout. Now every peer ends with `Disconnected` and the new reason `"restarted"`, naming the seat, and so does the new session (at once when seat 0's save reaches it, or after `timeoutMS` of hearing a match that runs without it). There is no way back into the match: `onFailure` shows that the match ended and offers a new one. Sessions are told apart by their `hostClock` reading when made, carried in hellos, pings, and saves.
+  
+  **`status().waiting`** names what a stalled session waits for: `{ seat, tick, forMS }` (the seat whose input for `tick` this peer cannot run past, and for how long by `hostClock`), or `undefined` while it runs, waits for a save, or is halted. A HUD draws "waiting for seat 1"; a headless test says why a match stopped.
+  
+  Code that matches every `Disconnected` reason, or builds a `Status` (a test double), adds the new member:
+  
+  ```diff
+   switch (failure.reason) {
+     case "closed": return "the connection closed"
+     case "timeout": return `seat ${failure.seat} went quiet`
+  +  case "restarted": return `seat ${failure.seat} reloaded: start a new match`
+   }
+  -const status: Netcode.Status = { ...fields, delayChanges: 0 }
+  +const status: Netcode.Status = { ...fields, delayChanges: 0, waiting: undefined }
+  ```
+  
+  Session bugs over a jittery, lossy link are fixed:
+  
+  - Inputs of a newer epoch that overtook their save were taken into the old timelines, with the acknowledgements they carry: a peer could prune its own inputs for ticks the save then ran again and stall for good, or desync after the resync. Inputs (and their acknowledgements and pacing) now apply only in the epoch they were sent in; the sender sends them again.
+  - A hidden tab announced its hide once, so under loss the others could miss it and end with `Disconnected` after `timeoutMS`. The announcement now carries the inputs the others still need, goes out five times, and every peer that heard it passes it on with its pings while the seat is hidden (with two seats, it is lost only when all five copies are). Its inputs count in a later epoch too, from that save's floor on; one of a newer epoch waits for its save, but the seat counts as hidden at once, so a seat that hides right after a save is not timed out by a peer whose save was lost.
+  - A message overtaken by a later one lowered the acknowledgements a peer held, so a seat that hid could announce fewer inputs than the others had already run with: a desync with a long input delay (rollback), and after a resync (lockstep). Acknowledgements now only grow.
+  - A seat back from a hide under `"resync-on-return"` sent checksums of the ticks it ran on guesses while it waited for its save, and the others ended `Desynced`. A seat played around sends no checksums.
+  
+  The session protocol is version 3: a peer on an earlier version ends with `ProtocolMismatch`. Give every peer the same release.
+
+### Patch Changes
+
+- d2970e8: `SyncFailed`'s doc names `QueuedCommands`: a session whose `simulate` leaves a command queued after its last marker ends with it on the first checksum or save, since `runtime.checksum()` and `runtime.snapshot()` now fail then. End `simulate` with `Game.Schedule.applyDeferred()`. Peers that restore a save no longer keep their own transient resources or report the replaced world's despawns (see `@typeonce/ritmo`), which made a match desync after its first save or after every resync. No code changes.
+- c07e93e: A session enforces the sender's own limits on what it receives, so another peer cannot grow its memory without bound: an inputs message with more than 64 inputs, or a checksum longer than 16 characters, is malformed, and inputs or checksums for ticks further ahead than an honest peer can be (more than `2 * (maxRollback + inputDelay) + 64` ticks past this peer's last input, `adaptiveDelay.max` for an adaptive delay) are dropped. Both count in `status().dropped`. An honest match whose peers give the same `maxRollback` and delay drops nothing, through a resync and a seat that hides and returns; a peer given a larger `maxRollback` may see some inputs dropped until they are in reach, and sends them again.
+- Updated dependencies [5a16a40]
+- Updated dependencies [148ec5f]
+- Updated dependencies [4df0496]
+- Updated dependencies [4df0496]
+- Updated dependencies [0dd0a84]
+- Updated dependencies [51a0b7f]
+- Updated dependencies [dff932a]
+- Updated dependencies [dfe3432]
+- Updated dependencies [52d6a6f]
+- Updated dependencies [02ca2a4]
+- Updated dependencies [7e416f5]
+- Updated dependencies [40f60e7]
+- Updated dependencies [51efba5]
+- Updated dependencies [5f9fe33]
+- Updated dependencies [1b83e0c]
+- Updated dependencies [ca0544d]
+- Updated dependencies [4a32ad1]
+- Updated dependencies [917001b]
+- Updated dependencies [0f4a5fe]
+- Updated dependencies [4df0496]
+- Updated dependencies [02b8683]
+- Updated dependencies [791517f]
+- Updated dependencies [4fc0728]
+- Updated dependencies [207e611]
+- Updated dependencies [d2970e8]
+- Updated dependencies [c99b968]
+- Updated dependencies [08c0c91]
+- Updated dependencies [78683e7]
+- Updated dependencies [04d2a9d]
+  - @typeonce/ritmo@0.23.0
+
 ## 0.22.0
 
 ### Patch Changes
