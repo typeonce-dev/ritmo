@@ -74,6 +74,29 @@ describe("runtime.checksum", () => {
   })
 })
 
+// A schema that accepts an own key holding `undefined`, and `undefined` in an array: JSON drops the one and writes `null` for the other.
+type Stats = { readonly a: number; readonly b?: number | undefined; readonly slots: ReadonlyArray<number | null | undefined> }
+const statsCodec = Codecs.primitiveOf("stats", (raw): raw is Stats =>
+  typeof raw === "object" && raw !== null && typeof (raw as Stats).a === "number" && Array.isArray((raw as Stats).slots))
+const Stats = Descriptor.ConstructedComponent(statsCodec)("ChecksumJson/Stats")
+const JsonGame = Schema.bind(Schema.fragment({ components: { Stats } }), Schema.defineRoot("ChecksumJson"))
+
+describe("runtime.checksum of a world read back from its JSON save", () => {
+  it("is the checksum of the world that wrote it", () => {
+    const make = () => JsonGame.Runtime.make({ services: JsonGame.Runtime.services() }).value
+    const SpawnStats = JsonGame.System("ChecksumJson/SpawnStats", { commands: JsonGame.System.commands(JsonGame.System.spawns(Stats)) }, ({ commands }) => {
+      commands.spawn(JsonGame.Command.spawn([Stats, { a: 1, b: undefined, slots: [1, undefined] }]))
+    })
+    const writer = make()
+    expect(writer.tick(JsonGame.Schedule(SpawnStats, JsonGame.Schedule.applyDeferred())).ok).toBe(true)
+    const saved = writer.snapshot()
+    if (!saved.ok) throw new Error("snapshot failed")
+    const reader = make()
+    expect(reader.restore(JSON.parse(JSON.stringify(saved.value))).ok).toBe(true)
+    expect(reader.checksum()).toEqual(writer.checksum())
+  })
+})
+
 const worldOf = (runtime: ReturnType<typeof makeRuntime>) => {
   const saved = runtime.snapshot()
   if (!saved.ok) throw new Error("snapshot failed")
