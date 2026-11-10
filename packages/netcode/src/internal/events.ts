@@ -14,6 +14,13 @@
  * confirmed queue once, and tells the ledger when it rewinds. A tick a
  * reader saw as predicted is withdrawn when it runs again with other events
  * (compared by value, see {@link same}), or does not run again at all.
+ *
+ * A resync can run settled ticks again: a peer ahead of seat 0 settled
+ * ticks that seat 0's save makes idle. Those are at most the session's
+ * `resyncReach` ticks before `settled`, so the ledger keeps what it handed
+ * out for them; a tick that runs again with other events is reported
+ * through `lost()` with the reason `"resync"`, and its new run is not
+ * handed out as confirmed a second time.
  */
 import * as Inspector from "@typeonce/ritmo/Inspector"
 import * as System from "@typeonce/ritmo/System"
@@ -32,7 +39,13 @@ interface Reader {
   readonly delivered: Map<number, ReadonlyArray<unknown>>
   /** Ticks a rewind undid after `predicted()` handed out their records, not read yet. */
   readonly withdrawn: Set<number>
-  lost: { from: number; to: number } | undefined
+  /** Confirmed events dropped unread, and confirmed ticks a resync ran again with other events: reported apart. */
+  readonly lost: { unread: Range | undefined; resync: Range | undefined }
+}
+
+interface Range {
+  readonly from: number
+  readonly to: number
 }
 
 export interface Ledger {
@@ -58,12 +71,13 @@ export interface LedgerHost {
   readonly inspect: (inspector: unknown) => unknown
   /** The ticks before this one are settled. */
   readonly settled: () => number
+  /** How many ticks before `settled()` a resync can run again: the idle ticks after a save. */
+  readonly resyncReach: number
 }
 
-const lose = (reader: Reader, from: number, to: number): void => {
-  reader.lost = reader.lost === undefined
-    ? { from, to }
-    : { from: Math.min(reader.lost.from, from), to: Math.max(reader.lost.to, to) }
+const lose = (reader: Reader, reason: EventsLost["reason"], from: number, to: number): void => {
+  const lost = reader.lost[reason]
+  reader.lost[reason] = lost === undefined ? { from, to } : { from: Math.min(lost.from, from), to: Math.max(lost.to, to) }
 }
 
 const byTick = (a: number, b: number): number => a - b
@@ -109,6 +123,8 @@ export const make = (host: LedgerHost, descriptor: { readonly name: string }): L
     host.inspect(inspector) as { readonly values: ReadonlyArray<unknown>; readonly lagged: boolean }
 
   const log = new Map<number, ReadonlyArray<unknown>>()
+  /** What the last `resyncReach` settled ticks handed out as confirmed: a resync may run them again. */
+  const handedOut = new Map<number, ReadonlyArray<unknown>>()
   const readers: Array<Reader> = []
 
   const withdraw = (reader: Reader, tick: number): void => {
@@ -136,7 +152,7 @@ export const make = (host: LedgerHost, descriptor: { readonly name: string }): L
         if (seen !== undefined && !same(seen, values)) withdraw(reader, tick)
       }
       // More than the runtime's stream capacity in one tick: what it dropped is gone for every reader.
-      if (lagged) for (const reader of readers) if (tick >= reader.from) lose(reader, tick, tick + 1)
+      if (lagged) for (const reader of readers) if (tick >= reader.from) lose(reader, "unread", tick, tick + 1)
     },
     rewind: (from) => {
       for (const tick of [...log.keys()]) if (tick >= from) log.delete(tick)
@@ -150,10 +166,23 @@ export const make = (host: LedgerHost, descriptor: { readonly name: string }): L
     },
     settle: (previous, settled) => {
       const ticks = [...log.keys()].filter((tick) => tick < settled).sort(byTick)
+      /** Run again after a resync, but settled before it with other events: what was handed out is not in the match. */
+      const replaced = new Set<number>()
+      for (const tick of ticks) {
+        if (tick >= previous) handedOut.set(tick, log.get(tick)!)
+        else {
+          const before = handedOut.get(tick)
+          if (before !== undefined && !same(before, log.get(tick))) replaced.add(tick)
+        }
+      }
       for (const reader of readers) {
         for (const tick of ticks) {
+          if (tick < reader.from) continue
           // Run again after a resync, but settled before it: already handed out.
-          if (tick < previous || tick < reader.from) continue
+          if (tick < previous) {
+            if (replaced.has(tick)) lose(reader, "resync", tick, tick + 1)
+            continue
+          }
           for (const value of log.get(tick)!) reader.confirmed.push({ tick, value })
         }
         for (const tick of reader.delivered.keys()) if (tick < settled) reader.delivered.delete(tick)
@@ -162,15 +191,16 @@ export const make = (host: LedgerHost, descriptor: { readonly name: string }): L
         let drop = 0
         while (drop < reader.confirmed.length && reader.confirmed[drop]!.tick < oldest) drop++
         if (drop > 0) {
-          lose(reader, reader.confirmed[0]!.tick, reader.confirmed[drop - 1]!.tick + 1)
+          lose(reader, "unread", reader.confirmed[0]!.tick, reader.confirmed[drop - 1]!.tick + 1)
           reader.confirmed = reader.confirmed.slice(drop)
         }
         for (const tick of reader.withdrawn) if (tick < oldest) reader.withdrawn.delete(tick)
       }
       for (const tick of ticks) log.delete(tick)
+      for (const tick of handedOut.keys()) if (tick < settled - host.resyncReach) handedOut.delete(tick)
     },
     reader: (from) => {
-      const reader: Reader = { from, confirmed: [], delivered: new Map(), withdrawn: new Set(), lost: undefined }
+      const reader: Reader = { from, confirmed: [], delivered: new Map(), withdrawn: new Set(), lost: { unread: undefined, resync: undefined } }
       readers.push(reader)
       return {
         confirmed: () => {
@@ -196,10 +226,12 @@ export const make = (host: LedgerHost, descriptor: { readonly name: string }): L
           return ticks
         },
         lost: (): EventsLost | undefined => {
-          const lost = reader.lost
+          // One report per call, a resync's first: it replaced events the host may have acted on.
+          const reason = reader.lost.resync !== undefined ? "resync" : "unread"
+          const lost = reader.lost[reason]
           if (lost === undefined) return undefined
-          reader.lost = undefined
-          return { _tag: "EventsLost", from: lost.from, to: lost.to }
+          reader.lost[reason] = undefined
+          return { _tag: "EventsLost", from: lost.from, to: lost.to, reason }
         }
       }
     }
