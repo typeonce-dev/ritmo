@@ -261,7 +261,12 @@ export interface Status {
   readonly again: number
   /** Rollbacks, in total. */
   readonly rollbacks: number
-  /** Messages dropped because they did not parse or decode. */
+  /**
+   * Messages dropped because they did not parse or decode, or were for
+   * ticks further ahead than an honest peer can be: more than
+   * `2 * (maxRollback + inputDelay) + 64` ticks past this peer's last
+   * input (`adaptiveDelay.max` for an adaptive delay).
+   */
   readonly dropped: number
   /** How many ticks this peer runs ahead of the slowest other seat (negative: behind). */
   readonly ahead: number

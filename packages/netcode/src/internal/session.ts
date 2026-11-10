@@ -78,8 +78,6 @@ export interface MakeOptions {
 
 type Mode = "rollback" | "lockstep"
 
-/** Most inputs one message carries: a peer far behind catches up over several frames. */
-const maxInputsPerMessage = 64
 const pingEveryMS = 250
 const resendSyncEveryMS = 500
 /** Below this, `rate` would stretch a frame too far for a player to miss. */
@@ -125,6 +123,22 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     if (hiddenOptions.then !== "stall" && hiddenOptions.then !== "resync-on-return") return invalid("hidden.then", hiddenOptions.then, "\"stall\" or \"resync-on-return\"")
   }
   const maxRollback = options.maxRollback ?? 8
+  /**
+   * How far past this peer's `localNext` an honest peer's input or checksum
+   * can be. A peer runs at most `maxRollback` past the inputs it has of
+   * this seat, which end before `localNext`, and records its own input up
+   * to `saveDelay` ahead of the tick it runs. Before this peer restores a
+   * save, seat 0 may already run from it: the save's tick is at most
+   * `maxRollback` past this seat's inputs, and its idle ticks reach
+   * `saveDelay` further, so both terms count twice. A message's worth of
+   * inputs on top is margin. Lockstep runs nothing on guesses, so its
+   * peers stay within `2 * saveDelay`. Further ahead is not an honest peer:
+   * dropped, so a peer cannot make this one keep inputs and checksums
+   * without bound. (A peer given a larger `maxRollback` than this one can
+   * be further: its inputs are dropped until they are in reach, and it
+   * sends them again until acknowledged.)
+   */
+  const furthestAhead = 2 * (maxRollback + saveDelay) + Wire.maxInputsPerMessage
   if (mode === "rollback") {
     if (!wholeNumber(maxRollback, 1)) return invalid("maxRollback", maxRollback, "a whole number of ticks, 1 or more")
     // The runtime must hold `maxRollback` checkpoints: take that many and go back to the first.
@@ -427,6 +441,11 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     broadcast(syncMessage)
   }
 
+  /** A message for ticks no honest peer is at yet. Not counted while this seat is played around: the others ran on without it, and the save that ends it moves this seat to them. */
+  const tooFarAhead = (): void => {
+    if (!Hidden.away(tracker, seat)) dropped += 1
+  }
+
   const receive = (message: Wire.Message): void => {
     const other = message.from
     if (other === seat) return
@@ -448,6 +467,11 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
         for (let index = 0; index < message.inputs.length; index++) {
           const tick = message.start + index
           if (tick <= contiguous[other]! || inputs[other]!.has(tick)) continue
+          // The rest are further still: an honest peer sends them again once they are in reach.
+          if (tick > localNext + furthestAhead) {
+            tooFarAhead()
+            return
+          }
           const decoded = decode(codec, message.inputs[index])
           if (!decoded.ok) {
             dropped += 1
@@ -459,6 +483,10 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       }
       case "sum": {
         if (message.epoch !== epoch || message.tick < syncTick) return
+        if (message.tick > localNext + furthestAhead) {
+          tooFarAhead()
+          return
+        }
         let bySeat = remoteSums.get(message.tick)
         if (bySeat === undefined) remoteSums.set(message.tick, bySeat = new Map())
         bySeat.set(other, message.sum)
@@ -537,7 +565,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     for (let other = 0; other < count; other++) if (other !== seat && !playedAround(other)) acked = Math.min(acked, acks[other]![seat]!)
     const start = Math.max(floorTick, acked + 1)
     const payload: Array<unknown> = []
-    for (let tick = start; tick < localNext && payload.length < maxInputsPerMessage; tick++) {
+    for (let tick = start; tick < localNext && payload.length < Wire.maxInputsPerMessage; tick++) {
       const input = sent.get(tick)
       if (input === undefined) break
       payload.push(input)
