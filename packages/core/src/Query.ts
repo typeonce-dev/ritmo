@@ -676,8 +676,12 @@ export interface EntityStateMismatchError<State extends string> {
   readonly actual: State
 }
 
-/** The states every one of `From` may move to: with a union `from`, only the moves all of them allow. */
-type EntityStateTargets<Transitions, From extends keyof Transitions> =
+/**
+ * The states every one of `From` may move to in a transition graph (of an
+ * entity state or a state machine): with a union `from`, only the moves all
+ * of them allow.
+ */
+export type StateTargets<Transitions, From extends keyof Transitions> =
   (From extends unknown ? (to: Transitions[From] extends ReadonlyArray<infer To> ? To : never) => void : never) extends
     (to: infer To) => void ? To : never
 
@@ -689,8 +693,11 @@ export type StateData<States extends StateDefinitions, State extends StateName<S
   { readonly [Field in StateFieldName<States, State>]: StateValueOf<States, State>[Field] }
 >
 
-/** `data` of a move into `To`: required with all of `To`'s fields, and absent for a state without fields. */
-type EntityStateMoveData<States extends StateDefinitions, To extends StateName<States>> =
+/**
+ * `data` of a `transition` into `To` (of an entity state or a state machine):
+ * required with all of `To`'s fields, and absent for a state without fields.
+ */
+export type StateMoveData<States extends StateDefinitions, To extends StateName<States>> =
   [StateFieldName<States, To>] extends [never] ? { readonly data?: never } : { readonly data: StateData<States, To> }
 
 /**
@@ -845,9 +852,9 @@ export interface EntityStateWriteSlot<States extends StateDefinitions, Transitio
    * }
    * ```
    */
-  transition<const From extends keyof States & keyof Transitions & string, const To extends EntityStateTargets<Transitions, From> & keyof States & string>(
+  transition<const From extends keyof States & keyof Transitions & string, const To extends StateTargets<Transitions, From> & keyof States & string>(
     entity: EntityProving<D>,
-    move: { readonly from: From; readonly to: To } & EntityStateMoveData<States, To>
+    move: { readonly from: From; readonly to: To } & StateMoveData<States, To>
   ): Result.Result<void, EntityStateMismatchError<StateName<States>>>
   /**
    * Changes the fields of `state` if the component is still in it, without

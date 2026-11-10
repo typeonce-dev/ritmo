@@ -61,7 +61,7 @@ import type * as Entity from "./Entity.ts"
 import * as Machine from "./Machine.ts"
 import type * as Relation from "./Relation.ts"
 import type { Query, QueryData, QueryEntity, QueryRow } from "./Query.ts"
-import type { ConstructedWriteCell, ReadCell, ReadonlyValue, StateExactFields, StateUpdateResult, WriteCell } from "./Query.ts"
+import type { ConstructedWriteCell, ReadCell, ReadonlyValue, StateExactFields, StateMoveData, StateTargets, StateUpdateResult, WriteCell } from "./Query.ts"
 import * as Requirement from "./Requirement.ts"
 import type * as Result from "./Result.ts"
 import type { Schema } from "./Schema.ts"
@@ -599,8 +599,8 @@ export interface MachineUpdateView<M extends Machine.StateMachine.Any = Machine.
    * change immediately. The write is visible to later systems in the same
    * run, rolled back with a failed system, and runs no enter or exit
    * schedules and publishes no transition event. Move to another state with
-   * `nextMachines.x.set(...)`; a move queued before the commit replaces
-   * these fields with the target's.
+   * `nextMachines.x.transition(...)`; a move queued before the commit
+   * replaces these fields with the target's.
    *
    * @example
    * ```ts
@@ -615,22 +615,66 @@ export interface MachineUpdateView<M extends Machine.StateMachine.Any = Machine.
     change: {
       readonly state: State
       readonly data: (current: ReadonlyValue<Machine.StateOf<M, State>>) => Next
-    } & StateExactFields<M["states"], State, Next, "nextMachines.x.set(...)">
-  ): Machine.UpdateResult<M>
+    } & StateExactFields<M["states"], State, Next, "nextMachines.x.transition(...)">
+  ): Machine.CompareAndSetResult<M>
 }
 
 /**
  * A queued write view over one finite-state-machine transition target.
+ *
+ * `transition` queues a move the machine's graph allows, if the machine is
+ * in the state the move starts from. `set` and `setIfChanged` queue any
+ * value without checking either.
  */
 export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machine.StateMachine.Any> {
   /** The value queued for the next `applyStateTransitions(...)`, if any. */
   getPending(): ReadonlyValue<Machine.StateOf<M>> | undefined
   /**
+   * Queues a move from `from` to `to` if the machine's committed state is
+   * `from`, with `to`'s fields from `data`: nothing carries over from
+   * `from`. A state without fields takes no `data`. With a `transitions`
+   * graph, `to` must be one of the moves it allows from `from`; without
+   * one, any pair of states is accepted. Use it for every move a system
+   * makes itself.
+   *
+   * Otherwise it queues nothing and returns `MachineStateMismatch` (or, for
+   * a sub-state whose parent is in another state, `SubStateInactive`). The
+   * check reads the committed state when it is called, not a value queued
+   * earlier. The move is queued exactly as `set` queues it: committed at
+   * the next `applyStateTransitions(...)`, replacing a value queued before,
+   * and a `to` equal to `from` re-enters the state.
+   *
+   * @example
+   * ```ts
+   * const Round = Game.StateMachine("Game/Round", {
+   *   Lobby: {},
+   *   Playing: z.object({ round: z.int() }),
+   *   Over: z.object({ winner: z.int() })
+   * }, { transitions: { Lobby: ["Playing"], Playing: ["Over"], Over: ["Lobby"] } })
+   * // ---cut---
+   * Game.System("Game/Start", { nextMachines: { round: Game.System.nextState(Round) } }, ({ nextMachines }) => {
+   *   const started = nextMachines.round.transition({ from: "Lobby", to: "Playing", data: { round: 1 } })
+   *   if (!started.ok) {
+   *     // started.error.actual is the state the round is in
+   *   }
+   * })
+   * ```
+   */
+  transition<
+    const From extends Machine.StateMachine.State<M> & keyof Machine.StateMachine.Transitions<M>,
+    const To extends StateTargets<Machine.StateMachine.Transitions<M>, From> & Machine.StateMachine.State<M>
+  >(
+    move: { readonly from: From; readonly to: To } & StateMoveData<M["states"], To>
+  ): Machine.CompareAndSetResult<M>
+  /**
    * Queues `value`: the target state's name in `_tag` and all of its fields
-   * (nothing carries over from the current state). The state and its fields
-   * commit together at the next `applyStateTransitions(...)`. For a
-   * sub-state it returns a `Result` that fails with `SubStateInactive` (and
-   * queues nothing) while the parent is in another state.
+   * (nothing carries over from the current state), without checking the
+   * transition graph or the current state: a reset, or the value a pure
+   * function computed. Use `transition` for the moves a system makes
+   * itself, so the graph and the current state are checked. The state and
+   * its fields commit together at the next `applyStateTransitions(...)`.
+   * For a sub-state it returns a `Result` that fails with `SubStateInactive`
+   * (and queues nothing) while the parent is in another state.
    *
    * One value is queued per machine: a later `set` before the marker
    * replaces an earlier one. A `set` from a transition schedule (`onEnter`,
@@ -646,7 +690,8 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
   /**
    * Like `set`, but committing a value equal to the current one (the same
    * state with equal fields) is skipped: no exit or enter schedules. The
-   * same state with other fields re-enters, like `set`.
+   * same state with other fields re-enters, like `set`. Unchecked like
+   * `set`: use `transition` for the moves a system makes itself.
    */
   setIfChanged(value: ReadonlyValue<Machine.StateOf<M>>): Machine.SetResult<M>
   /**

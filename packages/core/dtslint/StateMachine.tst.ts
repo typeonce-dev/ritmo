@@ -472,7 +472,7 @@ describe("per-state data", () => {
         expect(talking).type.toBe<{ readonly _tag: "Talking"; readonly speaker: string; readonly pages: ReadonlyArray<string>; readonly page: number }>()
         return { speaker: talking.speaker, pages: talking.pages, page: 0 }
       } })
-      // @ts-expect-error Talking has no field typo: write only this state's fields, or move with nextMachines.x.set(...)
+      // @ts-expect-error Talking has no field typo: write only this state's fields, or move with nextMachines.x.transition(...)
       machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, typo: 1 }) })
       // @ts-expect-error Property 'pages' is missing in type
       machines.mode.update({ state: "Talking", data: (talking) => ({ speaker: talking.speaker, page: 0 }) })

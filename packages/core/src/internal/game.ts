@@ -7,7 +7,7 @@
 import * as Command from "../Command.ts"
 import type * as Debug from "../Debug.ts"
 import type * as Snapshot from "../Snapshot.ts"
-import type { Descriptor, StateDefinitions } from "../Descriptor.ts"
+import type { Descriptor, StateDefinitions, StateTransitions } from "../Descriptor.ts"
 import * as Condition from "../Condition.ts"
 import * as Entity from "../Entity.ts"
 import { makeEntityId } from "./entity.ts"
@@ -35,16 +35,18 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
   const defineMachine = (
     name: string,
     states: StateDefinitions,
-    options?: { readonly within: readonly [Machine.StateMachine.Any, string] }
+    options?: {
+      readonly within?: readonly [Machine.StateMachine.Any, string]
+      readonly transitions?: StateTransitions<StateDefinitions>
+    }
   ) => {
     if (definedMachineNames.has(name)) {
       throw new Error(`Duplicate state machine name: ${name}`)
     }
-    const machine = Machine.StateMachine(
-      name,
-      states,
-      options === undefined ? undefined : { machine: options.within[0], state: options.within[1] }
-    )
+    const machine = Machine.StateMachine(name, states, {
+      within: options?.within === undefined ? undefined : { machine: options.within[0], state: options.within[1] },
+      transitions: options?.transitions
+    })
     definedMachines.push(machine)
     definedMachineNames.add(name)
     return machine

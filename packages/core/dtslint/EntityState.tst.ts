@@ -133,13 +133,13 @@ describe("Descriptor.EntityState", () => {
 
   it("requires states with fields, a graph listing exactly the states, and no _tag field", () => {
     // Missing state.
-    // @ts-expect-error Property 'b' is missing in type '{ a: "b"[]; }' but required in type 'EntityStateTransitions<{ readonly a: {}; readonly b: {}; }>'.
+    // @ts-expect-error Property 'b' is missing in type '{ a: "b"[]; }' but required in type 'StateTransitions<{ readonly a: {}; readonly b: {}; }>'.
     Descriptor.EntityState("StateTypes/Missing", { a: {}, b: {} }, { transitions: { a: ["b"] } })
     // Unknown target.
     // @ts-expect-error Type '"c"' is not assignable to type '"a" | "b"'.
     Descriptor.EntityState("StateTypes/Target", { a: {}, b: {} }, { transitions: { a: ["c"], b: [] } })
     // Unknown source.
-    // @ts-expect-error Type 'string[]' is not assignable to type 'never'.
+    // @ts-expect-error this key is not a state: `transitions` lists the moves of the declared states only
     Descriptor.EntityState("StateTypes/Source", { a: {}, b: {} }, { transitions: { a: ["b"], b: [], c: ["a"] } })
     // Terminal states list no moves.
     expect(Descriptor.EntityState("StateTypes/Terminal", { a: {}, b: {} }, { transitions: { a: ["b"], b: [] } })).type.not.toRaiseError()

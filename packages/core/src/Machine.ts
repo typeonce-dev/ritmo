@@ -11,7 +11,10 @@
  *
  * A machine holds one value for the whole game. A state that each entity has
  * on its own (an enemy's attack windup, a door's open/closed) is not a
- * machine: use a `Descriptor.EntityState(...)` component instead.
+ * machine: use a `Descriptor.EntityState(...)` component instead. Both are
+ * written one way: an optional `transitions` graph of allowed moves, checked
+ * at compile time, and a compare-and-set `transition({ from, to, data })`;
+ * a machine's move is queued and commits at `applyStateTransitions(...)`.
  *
  * @example
  * ```ts
@@ -37,7 +40,7 @@
  * @groupDescription Functions
  * Public constructors for machines, conditions, and explicit transition bundles.
  */
-import type { StateDefinitions, StateValueOf } from "./Descriptor.ts"
+import type { StateDefinitions, StateTransitions, StateValueOf } from "./Descriptor.ts"
 import type { AnyScheduleOrder, Schedule } from "./Schedule.ts"
 import * as Requirement from "./Requirement.ts"
 import type * as Result from "./Result.ts"
@@ -46,18 +49,23 @@ import type { SystemFailure } from "./System.ts"
 
 /**
  * One schema-bound finite state machine definition: its states, each with its
- * own fields (`{}` for a state without data).
+ * own fields (`{}` for a state without data), and the moves between them that
+ * `nextMachines.x.transition(...)` accepts (every move, for a machine
+ * declared without `transitions`).
  */
 export interface StateMachineDefinition<
   out Name extends string = string,
   out States extends StateDefinitions = StateDefinitions,
   out Root = unknown,
-  out Parent = unknown
+  out Parent = unknown,
+  out Transitions = StateTransitions<States>
 > {
   readonly kind: "stateMachine"
   readonly name: Name
   readonly key: symbol
   readonly states: States
+  /** The `transitions` graph the machine was declared with; `undefined` when it declares none. */
+  readonly transitions?: Transitions | undefined
   /** For a sub-state: the machine and the state it exists in. */
   readonly within?: SubStateParent | undefined
   readonly __schemaRoot?: Root | undefined
@@ -130,13 +138,14 @@ export interface SubStateInactive {
 }
 
 /**
- * An `update` found the machine in another state, so nothing was written.
+ * An `update` or a `transition` found the machine in another state, so
+ * nothing was written or queued.
  */
 export interface MachineStateMismatch<State extends string = string> {
   readonly _tag: "MachineStateMismatch"
   /** The machine's name. */
   readonly machine: string
-  /** The state `update` was given. */
+  /** The state the write expected (`update`'s `state`, or `transition`'s `from`). */
   readonly expected: State
   /** The state the machine was actually in. */
   readonly actual: State
@@ -151,11 +160,12 @@ export type SetResult<M extends StateMachine.Any> =
   IsSubState<M> extends true ? Result.Result<void, SubStateInactive> : void
 
 /**
- * What `machines.x.update(...)` returns: a failure with
- * `MachineStateMismatch` when the machine is in another state, and for a
- * sub-state with `SubStateInactive` when it has no value.
+ * What the compare-and-set writes `machines.x.update(...)` and
+ * `nextMachines.x.transition(...)` return: a failure with
+ * `MachineStateMismatch` when the machine is in another state than the one
+ * expected, and for a sub-state with `SubStateInactive` when it has no value.
  */
-export type UpdateResult<M extends StateMachine.Any> = Result.Result<
+export type CompareAndSetResult<M extends StateMachine.Any> = Result.Result<
   void,
   MachineStateMismatch<StateMachine.State<M>> | (IsSubState<M> extends true ? SubStateInactive : never)
 >
@@ -348,6 +358,11 @@ export namespace StateMachine {
   export type State<M extends Any> = keyof M["states"] & string
   /** The game root a machine belongs to (the `Game` whose `Game.StateMachine` made it). */
   export type Root<M extends Any> = M extends StateMachineDefinition<string, StateDefinitions, infer R> ? R : never
+  /**
+   * The moves `nextMachines.x.transition(...)` accepts for `M`: its
+   * `transitions` graph, or every pair of states when it declares none.
+   */
+  export type Transitions<M extends Any> = M extends StateMachineDefinition<string, StateDefinitions, unknown, unknown, infer T> ? T : never
   /** Any run condition of the game rooted at `Root` (`Game.Condition.inState(...)`, `not`, `or`). */
   export type AnyCondition<Root = unknown> = Condition<Root>
   /** Any transition schedule (`Game.Schedule.onEnter` / `onExit` / `onTransition`) of the game rooted at `Root`. */
@@ -403,7 +418,7 @@ export type MachineNeedsFromConditions<C extends ReadonlyArray<Condition>> =
 /**
  * Creates a schema-bound finite-state machine definition: one game-wide mode.
  * Games declare machines with `Game.StateMachine(...)`, whose JSDoc describes
- * the states and their data.
+ * the states, their data, `within`, and `transitions`.
  *
  * Use `Descriptor.EntityState(...)` instead when every entity carries its own
  * state (per-entity, written immediately, no enter/exit schedules).
@@ -411,17 +426,19 @@ export type MachineNeedsFromConditions<C extends ReadonlyArray<Condition>> =
 export const StateMachine = <
   const Name extends string,
   const States extends StateDefinitions,
-  Root = unknown
+  Root = unknown,
+  const Transitions extends StateTransitions<States> = StateTransitions<States>
 >(
   name: Name,
   states: States,
-  within?: SubStateParent
-): StateMachineDefinition<Name, States, Root> => ({
+  options?: { readonly within?: SubStateParent | undefined; readonly transitions?: Transitions | undefined }
+): StateMachineDefinition<Name, States, Root, unknown, Transitions> => ({
   kind: "stateMachine",
   name,
   key: Symbol.for(`ritmo/stateMachine/${name}`),
   states,
-  ...(within === undefined ? {} : { within })
+  ...(options?.within === undefined ? {} : { within: options.within }),
+  ...(options?.transitions === undefined ? {} : { transitions: options.transitions })
 })
 
 /**

@@ -1783,6 +1783,15 @@ const makeValidatedRuntime = <
     setIfChanged(value) {
       return queueMachine(stateMachine, value, true)
     },
+    transition(move: { readonly from: string; readonly to: string; readonly data?: object }) {
+      const current = currentMachines.get(stateMachine.key) as { readonly _tag: string } | undefined
+      if (current === undefined) return subStateInactive(stateMachine) as Machine.CompareAndSetResult<M>
+      if (current._tag !== move.from) {
+        return Result.failure({ _tag: "MachineStateMismatch", machine: stateMachine.name, expected: move.from, actual: current._tag })
+      }
+      queueMachine(stateMachine, move.data === undefined ? { _tag: move.to } : { _tag: move.to, ...move.data }, false)
+      return succeeded
+    },
     reset() {
       journalMachine(stateMachine.key)
       pendingMachines.delete(stateMachine.key)

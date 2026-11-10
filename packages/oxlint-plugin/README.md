@@ -71,7 +71,7 @@ const started = performance.now()
 | [`no-brand-cast`](#ritmono-brand-cast) | simulation | `raw as UserId`, `1 as Random.State` | the schema or constructor that brands it |
 | [`handle-runtime-result`](#ritmohandle-runtime-result) | everywhere | a dropped or unchecked `runtime.tick(...)` / `restore(...)` / `rewind(...)` / `snapshot()` / `checksum()` result | check `.ok` |
 | [`prefix-descriptor-and-system-names`](#ritmoprefix-descriptor-and-system-names) | everywhere | `"Position"`, `Game.System("Move", ...)` | `"Game/Position"` |
-| [`no-state-spread`](#ritmono-state-spread) | everywhere | `{ ...ground, _tag: "air", vy }` | `data.state.transition(entity, { from, to, data })`, `nextMachines.x.set({ _tag, ...fields })`, or the new state's fields written out |
+| [`no-state-spread`](#ritmono-state-spread) | everywhere | `{ ...ground, _tag: "air", vy }` | `data.state.transition(entity, { from, to, data })`, `nextMachines.x.transition({ from, to, data })`, or the new state's fields written out |
 | [`no-kept-query-values`](#ritmono-kept-query-values) | everywhere | `local.target = queries.x.each()[0]`, `local.slots = queries.x.data` | `entity.id` and `queries.x.get(id)`, or plain values from `queries.x.rows()` |
 
 ## Simulation rules
@@ -272,7 +272,7 @@ const popped = { ...ground, _tag: "air", vy: 2 }   // reported: `platform` survi
 
 // instead
 data.contact.transition(entity, { from: "ground", to: "air", data: { vy: 2, coyote: 0 } })
-nextMachines.mode.set({ _tag: "Exploring" })       // a machine's move, not { ...talking, _tag: "Exploring" }
+nextMachines.mode.transition({ from: "Talking", to: "Exploring" })   // a machine's move, not { ...talking, _tag: "Exploring" }
 const popped = { _tag: "air", vy: 2, coyote: 0 }   // in a pure function
 ```
 

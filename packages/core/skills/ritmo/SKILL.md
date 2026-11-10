@@ -50,7 +50,7 @@ Read it before writing code; a change of several kinds reads each.
 
 **Each piece of state has an owner and a lifetime.** Every mutable value lives in saved world state, unsaved runtime state, or host state, with a defined fate on new game, restore, and dispose. Never a module variable or a variable a system closes over: it survives restore, ignores rollback, and is shared by every runtime. Host input reaches systems through a resource, an event the host sends, or an input source service.
 
-**Make impossible states unrepresentable.** A field that means something only in one state belongs to that state (`Descriptor.EntityState` per entity, `Game.StateMachine` game-wide), never next to a mode field or boolean flag where it can go stale. Two values that must agree are one state.
+**Make impossible states unrepresentable.** A field that means something only in one state belongs to that state (`Descriptor.EntityState` per entity, `Game.StateMachine` game-wide), never next to a mode field or boolean flag where it can go stale. Two values that must agree are one state. Declare which states may follow which as its `transitions` graph, and make a system's moves with `transition`, so a move the design forbids does not compile.
 
 **A handle is not proof the entity is alive.** A stored id can outlive its entity, so a lookup through it can fail. A link between entities is a `Descriptor.Relation`, whose dropped edge a system reacts to once.
 

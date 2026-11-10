@@ -80,7 +80,7 @@ export const Game = Schema.bind(Schema.fragment({
 export const Round = Game.StateMachine("Netcode/Round", {
   Playing: {},
   Over: struct({ winner: integer, left: integer })
-})
+}, { transitions: { Playing: ["Over"], Over: ["Playing"] } })
 /** Shots belong to the rally: a round that ends wipes them. */
 export const Rally = Game.EntityScope("Netcode/Rally", { despawnOnExit: [Round, "Playing"] })
 
@@ -190,10 +190,10 @@ const Decide = Game.System("Netcode/Decide", {
   const round = machines.round.get()
   if (round._tag === "Playing") {
     const [left, right] = resources.score.get()
-    if (left >= 3 || right >= 3) nextMachines.round.set({ _tag: "Over", winner: left >= 3 ? 0 : 1, left: 20 })
+    if (left >= 3 || right >= 3) nextMachines.round.transition({ from: "Playing", to: "Over", data: { winner: left >= 3 ? 0 : 1, left: 20 } })
     return
   }
-  if (round.left <= 1) nextMachines.round.set({ _tag: "Playing" })
+  if (round.left <= 1) nextMachines.round.transition({ from: "Over", to: "Playing" })
   else machines.round.update({ state: "Over", data: (over) => ({ ...over, left: over.left - 1 }) })
 })
 
