@@ -136,19 +136,30 @@ describe("Clock.system", () => {
 })
 
 describe("Clock.durationOfSteps", () => {
-  it("infers a duration of the step's rate from a whole step count", () => {
+  it("infers a duration of the step's rate from a literal whole step count", () => {
     expect(Clock.durationOfSteps(step, 3)).type.toBe<Clock.Duration<60>>()
-    const counted: number = 4
-    expect(Clock.durationOfSteps(step, counted)).type.toBe<Clock.Duration<60>>()
+    expect(Clock.durationOfStepsRaw(step, 0)).type.toBe<Result.Result<Clock.Duration<60>, Clock.InvalidDuration>>()
   })
 
-  it("rejects a literal zero, negative, or fractional count", () => {
+  it("rejects a literal zero, negative, fractional, or unsafe count", () => {
     // @ts-expect-error Clock.durationOfSteps needs a positive whole number of steps
     Clock.durationOfSteps(step, 0)
     // @ts-expect-error Clock.durationOfSteps needs a positive whole number of steps
     Clock.durationOfSteps(step, -2)
     // @ts-expect-error Clock.durationOfSteps needs a positive whole number of steps
     Clock.durationOfSteps(step, 1.5)
+    // @ts-expect-error Clock.durationOfSteps needs a positive whole number of steps
+    Clock.durationOfSteps(step, 9007199254740992)
+  })
+
+  it("rejects a computed count, naming durationOfStepsRaw", () => {
+    const counted: number = 4
+    // @ts-expect-error Clock.durationOfSteps needs a literal count of steps: use Clock.durationOfStepsRaw for data
+    Clock.durationOfSteps(step, counted)
+    const either = counted > 2 ? 3 : 0
+    // @ts-expect-error Clock.durationOfSteps needs one literal count of steps: use Clock.durationOfStepsRaw for data
+    Clock.durationOfSteps(step, either)
+    expect(Clock.durationOfStepsRaw(step, counted)).type.toBe<Result.Result<Clock.Duration<60>, Clock.InvalidDuration>>()
   })
 })
 
