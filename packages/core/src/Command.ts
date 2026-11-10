@@ -114,6 +114,16 @@ export namespace Draft {
  * it. Each tuple is checked against its own descriptor
  * ({@link ExactEntries}). `Game.Command.entryRaw(...)` returns one in a
  * `Result` for raw input.
+ *
+ * A tuple built outside the call (returned by a helper, pushed into an
+ * array) widens to an array unless it is `as const` or annotated with this
+ * type, and no longer reads as an entry:
+ *
+ * @example
+ * ```ts
+ * const push = (x: number): Command.Entry<typeof Velocity> => [Velocity, { x, y: 0 }]
+ * const draft = Game.Command.spawn([Position, { x: 0, y: 0 }], push(2))
+ * ```
  */
 export type Entry<D extends Descriptor<"component", string, any>> = readonly [D, ReadonlyValue<Descriptor.Value<D>>]
 
@@ -162,6 +172,8 @@ export type UncheckedEntry = readonly [{ readonly kind: string; readonly name: s
  *
  * - `Game/Position has no field z: pass only its own fields`
  * - `Game/Outside is not a component of this game's schema: ...`
+ * - `this entry widened to an array: ...`, for a tuple built outside the
+ *   call without `as const` or a {@link Entry} annotation
  * - a missing field or a value of another type: TypeScript's message
  *   against the component's own value
  */
@@ -184,8 +196,15 @@ type FieldKeys<S extends Schema.Any> = {
 
 type CheckedEntries<C, Entries extends ReadonlyArray<unknown>> = { readonly [K in keyof Entries]: CheckedEntry<C, Entries[K]> }
 
-type NotInSchema<D> =
-  `${Names<D>} is not a component of this game's schema: spawn and insert take components registered in Schema.fragment({ components: { ... } })`
+// A tuple built outside the call (returned by a helper, pushed into an array) widens to an
+// array, fails the entries' constraint, and is checked as the constraint's `UncheckedEntry`,
+// whose name is `string`: that is the widening, not a component missing from the schema.
+type NotInSchema<D> = string extends Names<D> ? WidenedEntry
+  : `${Names<D>} is not a component of this game's schema: spawn and insert take components registered in Schema.fragment({ components: { ... } })`
+
+type WidenedEntry =
+  "this entry widened to an array: write the [Descriptor, value] tuple in the call, add `as const` where it is built, or annotate it Command.Entry<typeof Descriptor>"
+
 
 /** Names the component in the message for a value that does not fit it: `{ readonly x: number; readonly y: number; } & ValueOf<"Game/Position">`. */
 interface ValueOf<in out Component extends string> { readonly "~component"?: Component }

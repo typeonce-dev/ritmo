@@ -20,6 +20,12 @@
    - 0.15: the devtools monitor and its "Save replay" button are gone: bind `recorder.save(reason)` to a key in the host.
    - 0.23: `restore` leaves nothing of the world it replaced. A transient resource, and a resource or machine the save lacks, takes the value the runtime was made with instead of keeping its own: set again after `restore` what the game kept in one. No despawn or removal of the replaced world is reported: a system that mirrors entities (a node, a cache per entity) rebuilds from queries when its read reports `lagged()`.
    - 0.23: `runtime.snapshot()` and `runtime.checksum()` fail with `QueuedCommands` while a command waits for a marker: end the schedule the save follows with `Game.Schedule.applyDeferred()`.
+   - 0.23: `RenderSync` makes a node again whenever a system writes its renderable with a new value: count `create` calls, and key a sync whose renderable systems write on a component that never changes, reading the written one through a required `select` slot.
+   - 0.23: a transient resource filled late in a step and read early in the next reads its starting value in the first step after `restore`: fill it at the start of the schedule (`ritmo-devtools lint` notes it as `read-before-write`).
+   - 0.23: `Clock.duration` rounds a half step up: such a duration is one step longer, and replays recorded with it diverge.
+   - 0.23: `FlowField` gives a way out of blocked cells, and `Collide2.moveCircle` / `pushOut` no longer pass through walls closing in: AI and balance numbers move. Find the change that moved a baseline before recording it again.
+   - 0.23: a key pressed with Ctrl or Cmd presses no action unless the bindings hold `"Control"` or `"Meta"`; a gamepad without the standard mapping reads its buttons only (`standard: false`).
+   - 0.23: a debug runtime throws for an entity kept from an earlier run that no longer matches the system's queries.
    - Any version: a new lint rule is off until `.oxlintrc.json` lists it. Compare the config with the `@typeonce/oxlint-plugin-ritmo` README after every upgrade.
 
 **Check:** a test takes a snapshot, round-trips it through `JSON.stringify` and `JSON.parse`, restores it, and asserts each new value; a snapshot taken before the change restores after it; the game's check passes.

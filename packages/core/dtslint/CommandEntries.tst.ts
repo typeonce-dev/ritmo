@@ -1,4 +1,5 @@
 import { Descriptor, Random, Schema } from "@typeonce/ritmo"
+import type * as Command from "@typeonce/ritmo/Command"
 import * as Codecs from "../test/codecs.ts"
 import { describe, expect, it } from "tstyche"
 
@@ -109,6 +110,22 @@ describe("an entry is checked against its own component", () => {
     Game.Command.spawn([Stranger, 1])
     // @ts-expect-error Entries/Config is not a component of this game's schema
     Game.Command.spawn([Config, { speed: 1, debug: false }])
+  })
+
+  it("says a tuple built outside the call widened, and accepts it as const or annotated", () => {
+    const widened = () => [[Hp, 1]]
+    // @ts-expect-error this entry widened to an array: write the [Descriptor, value] tuple in the call, add `as const` where it is built
+    Game.Command.spawn(...widened())
+    const pushed = [Name, "n"]
+    // @ts-expect-error this entry widened to an array
+    Game.Command.spawn(pushed)
+    const constant = () => [[Hp, 1]] as const
+    expect(Game.Command.spawn(...constant())).type.not.toRaiseError()
+    const annotated = (hp: number): Command.Entry<typeof Hp> => [Hp, hp]
+    expect(Game.Command.spawn(annotated(1), [Name, "n"])).type.not.toRaiseError()
+    const many: Array<Command.Entry<typeof Hp> | Command.Entry<typeof Name>> = []
+    many.push([Hp, 1], [Name, "n"])
+    expect(Game.Command.spawn(...many)).type.not.toRaiseError()
   })
 
   it("checks inserts the same way", () => {
