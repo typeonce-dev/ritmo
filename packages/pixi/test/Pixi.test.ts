@@ -110,4 +110,55 @@ describe("@typeonce/ritmo-pixi", () => {
     expect(turret.parent).toBe(tank)
     expect(turret.getGlobalPosition()).toMatchObject({ x: 104, y: 48 })
   })
+
+  it("RenderSync makes a Pixi container again for a new renderable value and keeps its child's container under the new one", () => {
+    const Root = Schema.defineRoot("PixiRemade")
+    const Position = Descriptor.Component<{ x: number; y: number }>()("PixiRemade/Position")
+    const Body = Descriptor.Component<{ kind: string }>()("PixiRemade/Body")
+    const { relation: Attached } = Descriptor.Hierarchy("PixiRemade/Attached", "PixiRemade/Attachments")
+    const Nodes = Descriptor.Service<NodeRegistry.NodeRegistry<Container>>()("PixiRemade/Nodes")
+    const Game = Schema.bind(Schema.fragment({ components: { Position, Body }, relations: { Attached } }), Root)
+    type Id = Entity.EntityId<typeof Game.schema, typeof Root>
+
+    const render = RenderSync.system(Game, {
+      name: "PixiRemade/Render",
+      renderable: Body,
+      transform: Position,
+      registry: Nodes,
+      hierarchy: Attached,
+      create: ({ renderable }) => new Container({ label: renderable.kind }),
+      apply: (node, { transform }) => node.position.set(transform.x, transform.y)
+    })
+    const ids: Array<Id> = []
+    const Spawn = Game.System("PixiRemade/Spawn", {
+      commands: Game.System.commands(Game.System.spawns(Position, Body), Game.System.relates(Attached))
+    }, ({ commands }) => {
+      const tank = commands.spawn(Game.Command.spawn([Position, { x: 100, y: 50 }], [Body, { kind: "tank" }]))
+      const turret = commands.spawn(Game.Command.relate(Game.Command.spawn([Position, { x: 4, y: -2 }], [Body, { kind: "turret" }]), Attached, tank))
+      ids.push(tank, turret)
+    })
+    const Wreck = Game.System("PixiRemade/Wreck", {
+      queries: { bodies: Game.Query({ selection: { body: Game.Query.write(Body) } }) }
+    }, ({ queries }) => {
+      const { data } = queries.bodies
+      for (const entity of queries.bodies.each()) if (data.body.get(entity).kind === "tank") data.body.set(entity, { kind: "wreck" })
+    })
+
+    const layer = new Container()
+    const registry = PixiNodeRegistry.make(layer)
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Nodes, registry)) }).value
+    runtime.tick(Game.Schedule(Spawn, Game.Schedule.applyDeferred(), render))
+    const tank = registry.get(ids[0]!)!
+    const turret = registry.get(ids[1]!)!
+    runtime.tick(Game.Schedule(Wreck, render))
+
+    const wreck = registry.get(ids[0]!)!
+    expect(wreck.label).toBe("wreck")
+    expect(tank.destroyed).toBe(true)
+    expect(layer.children).toEqual([wreck])
+    expect(registry.get(ids[1]!)).toBe(turret)
+    expect(turret.destroyed).toBe(false)
+    expect(turret.parent).toBe(wreck)
+    expect(turret.getGlobalPosition()).toMatchObject({ x: 104, y: 48 })
+  })
 })
