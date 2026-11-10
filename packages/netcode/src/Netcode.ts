@@ -140,7 +140,9 @@ export interface InvalidOptions {
 /**
  * The players of a networked game: `count` seats whose input is decoded
  * with `codec` (a Standard Schema the game brings, like a constructed
- * component's) when it arrives from another peer. `idle` must decode.
+ * component's). Every peer simulates an input as it decodes from its
+ * message, the local seat's own too, so a schema that normalizes (a clamp,
+ * a default) gives every peer the same value. `idle` must encode and decode.
  */
 export const seats = <const S extends Descriptor.Codec<any, any>>(
   codec: S & Descriptor.CheckedCodec<S>,
@@ -259,7 +261,12 @@ export interface Status {
   readonly again: number
   /** Rollbacks, in total. */
   readonly rollbacks: number
-  /** Messages dropped because they did not parse or decode. */
+  /**
+   * Messages dropped because they did not parse or decode, or were for
+   * ticks further ahead than an honest peer can be: more than
+   * `2 * (maxRollback + inputDelay) + 64` ticks past this peer's last
+   * input (`adaptiveDelay.max` for an adaptive delay).
+   */
   readonly dropped: number
   /** How many ticks this peer runs ahead of the slowest other seat (negative: behind). */
   readonly ahead: number
@@ -288,15 +295,24 @@ export interface Withdrawn {
 }
 
 /**
- * Confirmed events dropped before the reader read them, from tick `from` up
- * to `to` (excluded): the reader did not call `confirmed()` for more than
- * {@link eventWindow} ticks, or one tick published more than the runtime's
- * `streamCapacity` events.
+ * Confirmed events of ticks `from` up to `to` (excluded) that the reader
+ * cannot rely on, and why (`reason`).
  */
 export interface EventsLost {
   readonly _tag: "EventsLost"
   readonly from: number
   readonly to: number
+  /**
+   * - `"unread"`: dropped before the reader read them: the reader did not
+   *   call `confirmed()` for more than {@link eventWindow} ticks, or one
+   *   tick published more than the runtime's `streamCapacity` events.
+   * - `"resync"`: these ticks were handed out as confirmed, then a resync
+   *   ran them again with other events (a peer ahead of seat 0 confirms
+   *   ticks that seat 0's save makes idle). The new run's events are not
+   *   handed out; undo or ignore what the old ones started if it matters
+   *   (a score sent to a server).
+   */
+  readonly reason: "unread" | "resync"
 }
 
 /** How many confirmed ticks of events a reader of `session.events(...)` that stopped reading keeps; older ones are {@link EventsLost}. */
@@ -322,7 +338,8 @@ export interface EventStreams<Value> {
   /**
    * Events of ticks that will not run again, each handed out once: a
    * rolled-back tick is handed out only as it finally ran. A lockstep
-   * session confirms every tick it runs.
+   * session confirms every tick it runs. Final within one epoch: a resync
+   * can replace ticks it handed out, which `lost()` reports.
    */
   readonly confirmed: () => ReadonlyArray<EventRecord<Value>>
   /**
@@ -337,7 +354,11 @@ export interface EventStreams<Value> {
    * previous read: the tick ran again with other events, or not at all.
    */
   readonly withdrawn: () => ReadonlyArray<Withdrawn>
-  /** Confirmed events dropped since the previous call before this reader read them: `undefined` when none. */
+  /**
+   * Confirmed events lost since the previous report: `undefined` when none.
+   * One report per call: when both reasons are pending, a `"resync"` one
+   * comes first and the `"unread"` one on the next call.
+   */
   readonly lost: () => EventsLost | undefined
 }
 
@@ -351,6 +372,13 @@ export interface Session<Input, TickError, Events extends Descriptor.Descriptor<
    * a guess (rollback), records `local` as this seat's input for the tick
    * `status().inputDelay` ticks ahead, ticks the simulation, and sends what
    * the other peers need. Call it once per fixed step, from `FixedLoop`'s `update`.
+   *
+   * `local` goes through the seats' input schema as it will on the other
+   * peers (encoded, written as JSON, decoded), and this peer simulates the
+   * decoded value. An input the schema rejects throws: it is a defect in
+   * the game, since the other peers could never decode it. Make the input
+   * the schema's output type before `advance` (round an analog axis the
+   * schema wants whole, for example).
    */
   readonly advance: (local: Input) => Result.Result<Advanced, SessionError<TickError>>
   /**
@@ -601,7 +629,9 @@ export interface SyncTest<Input, TickError> {
    * Runs the next tick with `local` as seat 0's input and every other
    * seat's predicted one, then rewinds `rewind` ticks and runs them again,
    * comparing the world's checksum at the start of every tick with the
-   * first run's. Call it once per frame of the test.
+   * first run's. Call it once per frame of the test. `local` goes through
+   * the input schema as in a session's `advance`, and one the schema
+   * rejects throws.
    */
   readonly advance: (local: Input) => Result.Result<Extract<Advanced, { readonly _tag: "Ran" }>, SyncTestError<TickError>>
   readonly status: () => SyncTestStatus

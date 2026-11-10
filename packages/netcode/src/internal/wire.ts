@@ -8,6 +8,12 @@
 /** Bumped when a message changes shape; peers on another version fail with `ProtocolMismatch`. */
 export const version = 2
 
+/** Most inputs one message carries: a peer far behind catches up over several frames. A message with more is malformed. */
+export const maxInputsPerMessage = 64
+
+/** The length of `runtime.checksum()`: two 32-bit halves in hex. A longer one is malformed. */
+export const sumLength = 16
+
 interface Base {
   readonly from: number
   readonly epoch: number
@@ -127,10 +133,11 @@ export const parse = (text: string, seats: number): Parsed => {
       const inputs = value["inputs"]
       if (!isTick(value["next"]) || !isTick(value["start"]) || value["start"] < 0) return malformed
       if (!Array.isArray(acks) || acks.length !== seats || !acks.every(isTick) || !Array.isArray(inputs)) return malformed
+      if (inputs.length > maxInputsPerMessage) return malformed
       return { _tag: "Message", message: { k: "inputs", ...base, next: value["next"], acks, start: value["start"], inputs } }
     }
     case "sum":
-      if (!isTick(value["tick"]) || typeof value["sum"] !== "string") return malformed
+      if (!isTick(value["tick"]) || typeof value["sum"] !== "string" || value["sum"].length > sumLength) return malformed
       return { _tag: "Message", message: { k: "sum", ...base, tick: value["tick"], sum: value["sum"] } }
     case "ping":
       if (!isTime(value["at"]) || !isCount(value["shown"])) return malformed

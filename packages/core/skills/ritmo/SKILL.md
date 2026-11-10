@@ -35,6 +35,7 @@ Read it before writing code; a change of several kinds reads each.
 | Items, kinds, levels, or tuning that reuse behaviour | [`playbooks/content.md`](playbooks/content.md) |
 | A readout, panel, menu, or anything drawn | [`playbooks/ui-and-render.md`](playbooks/ui-and-render.md) |
 | Something behaves wrong | [`playbooks/bug-fix.md`](playbooks/bug-fix.md) |
+| Something is slow: a frame, a tick, a bot run | [`playbooks/performance.md`](playbooks/performance.md) |
 | Moving or splitting code without changing behaviour | [`playbooks/refactor.md`](playbooks/refactor.md) |
 | New state, saves, schemas, or a Ritmo upgrade | [`playbooks/state-and-upgrades.md`](playbooks/state-and-upgrades.md) |
 | Online multiplayer, rollback, or prediction | [`playbooks/netcode.md`](playbooks/netcode.md) |

@@ -365,6 +365,8 @@ export type LineKind =
   | "skip"
   | "transition"
   | "restore"
+  /** A `rewind` to a checkpoint: what the frames it undid changed is gone. Shown under every filter, between the lines it separates. */
+  | "rewind"
   | "ignored"
   /** A read the writing system declared, under a `why` line; only `why` and `whyResource` with `depth` above 1 print them. */
   | "read"
@@ -382,6 +384,15 @@ export const ignoredFailure = (event: Debug.FailureIgnoredEvent, options: ValueO
   const later = `${event.skipped.length} later ${event.skipped.length === 1 ? "system" : "systems"} did not run`
   const found = event.when === "next-tick" ? "not read before the next tick" : "not read before the session ended"
   return `tick failure ignored: ${who} with ${value(error, options)}; ${later} (${found})`
+}
+
+/**
+ * The text for a rewind: the checkpoint's tick and, when known, the frames
+ * it undid (those that started at or after that tick).
+ */
+export const rewind = (event: Debug.RewindEvent, undid?: readonly [from: number, to: number]): string => {
+  if (!event.ok) return `rewind to tick ${event.toTick} rejected`
+  return undid === undefined ? `rewind to tick ${event.toTick}` : `rewind to tick ${event.toTick}, undoing f${undid[0]}-f${undid[1]}`
 }
 
 /**
@@ -484,6 +495,8 @@ const rawLines = (event: Debug.TraceEvent, options: ValueOptions, labels: Labels
       return []
     case "restore":
       return [{ kind: "restore", frame: event.frame, schedule: "", system: undefined, entity: undefined, subject: undefined, noop: false, text: `restore ${event.ok ? "applied" : "rejected"}` }]
+    case "rewind":
+      return [{ kind: "rewind", frame: event.frame, schedule: "", system: undefined, entity: undefined, subject: undefined, noop: !event.ok, text: rewind(event) }]
     case "failure.ignored":
       return [{ kind: "ignored", frame: event.frame, schedule: event.schedule, system: event.system, entity: undefined, subject: undefined, noop: false, text: ignoredFailure(event, options) }]
     case "transition":
