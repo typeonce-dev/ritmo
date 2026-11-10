@@ -348,6 +348,20 @@ type RuntimeMachinesOf<Provided extends RuntimeMachines<any>> =
   [Provided] extends [RuntimeMachines<infer Machines>] ? Machines : {}
 
 /**
+ * A queued next value. `first` is the oldest request this one replaced
+ * without a `cancelPending()` in between, absent when nothing was queued:
+ * the marker compares it to tell a `set` over a request from one made
+ * after the request was cancelled.
+ */
+interface PendingMachine {
+  readonly value: unknown
+  readonly skipIfSame: boolean
+  readonly by?: string
+  readonly from?: string
+  readonly first?: PendingMachine
+}
+
+/**
  * Flattens an inferred object type for clearer diagnostics.
  */
 type Simplify<A> = {
@@ -852,7 +866,7 @@ const makeValidatedRuntime = <
   const currentMachines = new Map<symbol, unknown>()
   /** Queued next values; with `debug`, `by` is the system that queued it, for the `next-state-replaced` lint. */
   /** Next values by machine. `from` is set by `transition`: the state the move must still start from at the marker. */
-  const pendingMachines = new Map<symbol, { value: unknown; skipIfSame: boolean; by?: string; from?: string }>()
+  const pendingMachines = new Map<symbol, PendingMachine>()
   /** Requests dropped because their sub-state stopped existing: skipped by the marker that queued them. */
   const discardedPending = new WeakSet()
   const previousMachines = new Map<symbol, unknown>()
@@ -1805,9 +1819,10 @@ const makeValidatedRuntime = <
     }
     journalMachine(stateMachine.key)
     value = sharedValue(stateMachine, value)
+    const previous = pendingMachines.get(stateMachine.key)
+    const first = previous === undefined ? undefined : previous.first ?? previous
     if (debugEnabled) {
       deepFreeze(value)
-      const previous = pendingMachines.get(stateMachine.key)
       // A set from a transition schedule waits for the next marker: it replaces nothing queued for this one.
       if (previous?.by !== undefined && previous.by !== runningSystem && !sameValue(previous.value, value) && activeTransitions.size === 0) {
         const key = `${stateMachine.name}/${previous.by}/${runningSystem}/${JSON.stringify(previous.value)}/${JSON.stringify(value)}`
@@ -1819,9 +1834,9 @@ const makeValidatedRuntime = <
           count: (seen?.count ?? 0) + 1
         })
       }
-      pendingMachines.set(stateMachine.key, { value, skipIfSame, by: runningSystem, ...(from === undefined ? {} : { from }) })
+      pendingMachines.set(stateMachine.key, { value, skipIfSame, by: runningSystem, ...(from === undefined ? {} : { from }), ...(first === undefined ? {} : { first }) })
     } else {
-      pendingMachines.set(stateMachine.key, { value, skipIfSame, ...(from === undefined ? {} : { from }) })
+      pendingMachines.set(stateMachine.key, { value, skipIfSame, ...(from === undefined ? {} : { from }), ...(first === undefined ? {} : { first }) })
     }
     return (within === undefined ? undefined : succeeded) as Machine.SetResult<M>
   }
@@ -2341,17 +2356,21 @@ const makeValidatedRuntime = <
       )
 
     const schedules = bundle?.entries ?? []
-    for (const [machineKey, pending] of scheduledTransitions) {
-      if (discardedPending.has(pending)) {
+    for (const [machineKey, scheduled] of scheduledTransitions) {
+      if (discardedPending.has(scheduled)) {
         // Discarded earlier in this marker: its parent left the state it exists in.
         continue
       }
       // A transition schedule earlier in this marker may have cancelled this
       // request (`cancelPending`): it is not applied.
-      if (!pendingMachines.has(machineKey)) continue
-      // It may also have queued a newer value for this machine: that one
-      // waits for the next marker.
-      if (pendingMachines.get(machineKey) === pending) pendingMachines.delete(machineKey)
+      const queued = pendingMachines.get(machineKey)
+      if (queued === undefined) continue
+      // It may also have queued a newer value for this machine. One queued
+      // over this request (a plain `set`) waits for the next marker; one
+      // queued after a `cancelPending()` started a new run of requests, and
+      // the first of that run takes the cancelled request's place here.
+      const pending = (queued.first ?? queued) === (scheduled.first ?? scheduled) ? scheduled : queued.first ?? queued
+      if (queued === pending) pendingMachines.delete(machineKey)
       /** Keeps this request queued after a failure, unless a newer one replaced it. */
       const requeue = () => {
         if (!pendingMachines.has(machineKey)) pendingMachines.set(machineKey, pending)
@@ -2419,18 +2438,13 @@ const makeValidatedRuntime = <
       // triggers fire before what the onEnter schedules spawn.
       const entered = commitSubStates(machineKey, snapshot.to)
 
-      for (const schedule of schedules) {
-        const transition = schedule.transition
-        if (transition.phase === "enter" && transition.machine.key === machineKey && transition.state === snapshot.to) {
-          const result = runTransitionSchedule(schedule, snapshot)
-          if (!result.ok) {
-            if (tracing) traceTransition(machineKey, snapshot, "enterFailed")
-            return result
-          }
-        }
-      }
-      const enteredSchedules = runSubStateEnters(entered, schedules)
-      if (!enteredSchedules.ok) return enteredSchedules
+      // Each enter schedule runs even when one before it failed: the state is
+      // committed, and a failing setup must not skip the rest of it. The
+      // marker then stops with the first failure.
+      const enteredState = runEnters(machineKey, snapshot.to, snapshot, schedules)
+      const enteredSubStates = runSubStateEnters(entered, schedules)
+      if (!enteredState.ok) return enteredState
+      if (!enteredSubStates.ok) return enteredSubStates
     }
     return succeeded
   }
@@ -2459,7 +2473,7 @@ const makeValidatedRuntime = <
 
   type TransitionSchedules = ReadonlyArray<Machine.StateMachine.AnyTransitionSchedule<S, Root>>
 
-  /** Runs every schedule of `phase` for `machineKey` in `state`, in bundle order. */
+  /** Runs every schedule of `phase` for `machineKey` in `state`, in bundle order, stopping at the first failure. */
   const runPhase = (
     machineKey: symbol,
     phase: "enter" | "exit",
@@ -2503,17 +2517,40 @@ const makeValidatedRuntime = <
     return entered
   }
 
-  /** Runs the onEnter schedules of sub-states entered by {@link commitSubStates}, in that order. */
-  const runSubStateEnters = (entered: ReadonlyArray<readonly [symbol, unknown]>, schedules: TransitionSchedules): Result.Result<void, SystemFailure> => {
-    for (const [key, value] of entered) {
-      const snapshot = { from: undefined, to: stateOf(value) } as unknown as Machine.TransitionSnapshot
-      const result = runPhase(key, "enter", stateOf(value), snapshot, schedules)
-      if (!result.ok) {
-        if (tracing) traceTransition(key, snapshot, "enterFailed")
-        return result
+  /**
+   * Runs every onEnter schedule of `machineKey` in `state`, in bundle order,
+   * each even when one before it failed. Returns the first failure, traced
+   * once as `enterFailed`.
+   */
+  const runEnters = (
+    machineKey: symbol,
+    state: string | undefined,
+    snapshot: Machine.TransitionSnapshot,
+    schedules: TransitionSchedules
+  ): Result.Result<void, SystemFailure> => {
+    let first: Result.Result<void, SystemFailure> = succeeded
+    for (const schedule of schedules) {
+      const transition = schedule.transition
+      if (transition.phase === "enter" && transition.machine.key === machineKey && transition.state === state) {
+        const result = runTransitionSchedule(schedule, snapshot)
+        if (!result.ok && first.ok) {
+          first = result
+          if (tracing) traceTransition(machineKey, snapshot, "enterFailed")
+        }
       }
     }
-    return succeeded
+    return first
+  }
+
+  /** Runs the onEnter schedules of sub-states entered by {@link commitSubStates}, in that order, all of them; returns the first failure. */
+  const runSubStateEnters = (entered: ReadonlyArray<readonly [symbol, unknown]>, schedules: TransitionSchedules): Result.Result<void, SystemFailure> => {
+    let first: Result.Result<void, SystemFailure> = succeeded
+    for (const [key, value] of entered) {
+      const snapshot = { from: undefined, to: stateOf(value) } as unknown as Machine.TransitionSnapshot
+      const result = runEnters(key, stateOf(value), snapshot, schedules)
+      if (!result.ok && first.ok) first = result
+    }
+    return first
   }
 
   /**
@@ -3020,7 +3057,7 @@ const makeValidatedRuntime = <
     readonly resources: ReadonlyMap<symbol, unknown>
     readonly resourceChangedAt: ReadonlyMap<symbol, number>
     readonly currentMachines: ReadonlyMap<symbol, unknown>
-    readonly pendingMachines: ReadonlyMap<symbol, { value: unknown; skipIfSame: boolean; by?: string; from?: string }>
+    readonly pendingMachines: ReadonlyMap<symbol, PendingMachine>
     readonly previousMachines: ReadonlyMap<symbol, unknown>
     readonly pendingCommands: ReadonlyArray<Command.DeferredCommand<S>>
     readonly pendingOrigins: ReadonlyArray<string>

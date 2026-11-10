@@ -908,7 +908,7 @@ export namespace Schema {
        * `onEnter` schedule runs: the parent's `onEnter` systems already see its
        * value, its `despawnOnEnter` scopes are cleared before they spawn, and
        * a failing `onEnter` leaves it entered. Its own `onEnter` schedules
-       * run after the parent's.
+       * run after the parent's, even when one of the parent's failed.
        *
        * Use a second top-level machine instead when the two modes are
        * independent (each keeps its value whatever the other does).
@@ -1076,9 +1076,12 @@ export namespace Schema {
       ) => BoundTransitionBundleResult<S, Root, Entries>
       /**
        * Systems run when `machine` enters `state`, after the new value is
-       * committed. When one fails, the transition stays committed (traced as
-       * `enterFailed`). Pass it to `applyStateTransitions` through
-       * `transitions(...)`; see `onExit` for the exit phase.
+       * committed. Each enter schedule is independent: when one fails, the
+       * transition stays committed (traced as `enterFailed`), the other
+       * enter schedules of `state` and of the sub-states that start existing
+       * still run in their usual order, and the marker returns the first
+       * failure (the tick fails with it). Pass it to `applyStateTransitions`
+       * through `transitions(...)`; see `onExit` for the exit phase.
        */
       onEnter: <M extends BoundStateMachine<Root>, const Entries extends ReadonlyArray<BoundTransitionEntry<S, Root>>>(
         machine: M,

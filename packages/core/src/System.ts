@@ -699,7 +699,8 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
    * One value is queued per machine: a later `set` before the marker
    * replaces an earlier one. A `set` from a transition schedule (`onEnter`,
    * `onExit`, `onTransition`) is committed at the following marker, while a
-   * value queued before the current marker still commits at it. A sub-state
+   * value queued before the current marker still commits at it (unless
+   * `cancelPending()` dropped it first: then this value takes its place). A sub-state
    * value set while its parent is still in its state but leaves it at the
    * same marker returns ok and is dropped with the sub-state.
    *
@@ -720,7 +721,13 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
    * Drops the queued value, if any, so the next `applyStateTransitions(...)`
    * commits nothing for this machine. Called from a transition schedule, it
    * cancels a value queued before the current marker that the marker has not
-   * applied yet.
+   * applied yet, and the next value queued for this machine (`set`,
+   * `setIfChanged`, or `transition`) takes its place at this marker: from
+   * another machine's `onEnter`, `cancelPending()` then `set({ _tag: "Off" })`
+   * commits Off at this marker, and the cancelled value never. Without the
+   * cancel, that `set` waits for the following marker. Once the marker has
+   * applied this machine, a value queued after a cancel waits for the
+   * following marker too.
    */
   cancelPending(): void
 }

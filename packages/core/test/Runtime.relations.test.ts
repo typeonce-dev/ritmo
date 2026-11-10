@@ -889,11 +889,13 @@ describe("Runtime relationships", () => {
     )
     const runtime = makeRuntime()
     runtime.tick(Game.Schedule(spawn, Game.Schedule.applyDeferred()))
-    const count = Game.Inspector("WideHierarchy/Count", {}, ({ lookup }) => {
+    let counted: Array<number | string> = []
+    const count = Game.System("WideHierarchy/Count", {}, ({ lookup }) => {
       const breadth = lookup.descendants(rootId!, ChildOf, { order: "breadth" })
       const depth = lookup.descendants(rootId!, ChildOf)
-      return [breadth.ok ? breadth.value.length : breadth.error._tag, depth.ok ? depth.value.length : depth.error._tag]
+      counted = [breadth.ok ? breadth.value.length : breadth.error._tag, depth.ok ? depth.value.length : depth.error._tag]
     })
-    expect(runtime.inspect(count)).toEqual([200_001, 200_001])
+    runtime.tick(Game.Schedule(count))
+    expect(counted).toEqual([200_001, 200_001])
   }, 30_000)
 })
