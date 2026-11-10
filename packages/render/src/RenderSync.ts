@@ -23,6 +23,16 @@
  * interpolation). Place the system after the `applyDeferred()` that commits
  * spawns to render new entities in the same tick.
  *
+ * A node follows its renderable: when the entity's renderable value is no
+ * longer the one its node was made from (a system wrote another one, or
+ * after a rewind another entity holds an id the system drew), the node is
+ * destroyed and made again from the new value, then applied. An equal value,
+ * compared as plain data, keeps the node. Making a node costs more than
+ * applying one, so the renderable holds what decides which node to make (a
+ * kind, a texture, a mesh), and what changes while the node lives (a frame,
+ * a tint, a facing) goes in other components, listed in `redrawOn` and set by
+ * `apply`.
+ *
  * `create` and `apply` receive one context: the renderable and transform
  * values, the entity id, extra read-only slots declared in `select` (as read
  * cells in `data`), resources declared in `resources` (as read cells), and extra
@@ -154,7 +164,16 @@ export interface Options<
 > {
   /** The system name. */
   readonly name: string
-  /** The component whose presence means "this entity has a node". */
+  /**
+   * The component whose presence means "this entity has a node", and whose
+   * value decides which node `create` makes. When the entity's value is no
+   * longer the one its node was made from, the node is destroyed and made
+   * again from the new value; an equal value (compared as plain data) keeps
+   * it. Keep here only what decides which node to make (a kind, a texture, a
+   * mesh): a field written while the node lives (a frame, a tint) would make
+   * the node again each time. Put that in its own component, listed in
+   * `redrawOn` and set by `apply`.
+   */
   readonly renderable: Renderable
   /**
    * The component applied to the node on creation and whenever it changes.
@@ -173,9 +192,12 @@ export interface Options<
   readonly resources?: Resources
   /**
    * More components whose changes re-run `apply`, for node state other than
-   * the transform: animation frames, tints, interpolation. `apply` then runs
-   * once per changed entity per sync, however many of these changed, so it
-   * should set the node's state rather than increment it.
+   * the transform: animation frames, tints, interpolation. This is where data
+   * that changes while the node lives belongs, not in the renderable, whose
+   * new values make the node again (listing the renderable here only re-runs
+   * `apply` when it is written with an equal value). `apply` then runs once
+   * per changed entity per sync, however many of these changed, so it should
+   * set the node's state rather than increment it.
    */
   readonly redrawOn?: ReadonlyArray<Schema.ComponentDescriptor<S>>
   /**
@@ -199,11 +221,18 @@ export interface Options<
    * parent, so the cost grows with the number of children, not of changes.
    */
   readonly hierarchy?: HierarchyOption<S, Hierarchy>
-  /** Builds the node for a new renderable entity. */
+  /**
+   * Builds the node for a new renderable entity, and again whenever the
+   * entity's renderable takes a value other than the one its node was made
+   * from (the old node is destroyed first). Build from the renderable what
+   * stays for the node's life; `apply` runs right after and sets the rest.
+   */
   readonly create: (context: NodeContext<S, Root, Renderable, Transform, Select, Services, Resources>) => NodeOf<Registry>
   /**
-   * Applies the current state to the node: on creation, and whenever the
-   * transform or a `redrawOn` component changes.
+   * Applies the current state to the node: on creation (also of a node made
+   * again for a new renderable value), and whenever the transform or a
+   * `redrawOn` component changes. Set here everything that changes while the
+   * node lives, from the transform and the `redrawOn` components.
    */
   readonly apply: (node: NodeOf<Registry>, context: NodeContext<S, Root, Renderable, Transform, Select, Services, Resources>) => void
 }
@@ -303,14 +332,25 @@ export const system = <
     // Despawns are recorded as removals of every component, so these cover them too.
     removedReads[`removed${index}`] = Game.System.readRemoved(descriptor)
   })
-  // One query: an entity whose required component was added, or whose
-  // trigger changed, is synced once.
-  const filters = [
+  // When `apply` runs: a required component was added, or a trigger changed.
+  const applyFilters = [
     ...additions.map((descriptor) => Game.Query.added(descriptor)),
     ...triggers.map((trigger) => Game.Query.changed(trigger))
   ]
-  // Never empty: `required` always holds the renderable.
-  queries["sync"] = Query({ selection, filters: [filters.length === 1 ? filters[0] : anyOf(...filters)] })
+  // A node follows its renderable, so the sync also meets every entity whose
+  // renderable changed, to compare it with the value its node was made from.
+  const renderableTriggers = triggers.includes(options.renderable)
+  const syncFilters = renderableTriggers ? applyFilters : [...applyFilters, Game.Query.changed(options.renderable)]
+  // One query: an entity whose required component was added, or whose
+  // trigger or renderable changed, is synced once.
+  queries["sync"] = Query({ selection, filters: [syncFilters.length === 1 ? syncFilters[0] : anyOf(...syncFilters)] })
+  // Whether `apply` runs for an entity the sync met only for its renderable:
+  // looked up (`get` checks one entity against the filters for this reader)
+  // when the renderable was written with an equal value, never iterated.
+  queries["applies"] = Query({
+    selection: { __renderable: Game.Query.read(options.renderable) },
+    filters: [applyFilters.length === 1 ? applyFilters[0] : anyOf(...applyFilters)]
+  })
   // Every entity that should have a node: read only after removals were lost.
   queries["members"] = Query({
     selection: { __renderable: Game.Query.read(options.renderable) },
@@ -324,6 +364,80 @@ export const system = <
     queries["parented"] = Query({ selection: { __parent: Game.Query.readRelation(hierarchy) }, with: [options.renderable] })
   }
 
+  // The renderable value each node was made from, by entity, for each
+  // registry (one system may run in several runtimes). World values are
+  // never mutated, so a value still held here by reference is unchanged.
+  const madeFrom = new WeakMap<NodeRegistry<Node>, Map<number, unknown>>()
+  const sourcesOf = (registry: NodeRegistry<Node>): Map<number, unknown> => {
+    let sources = madeFrom.get(registry)
+    if (sources === undefined) madeFrom.set(registry, sources = new Map())
+    return sources
+  }
+  const destroy = (registry: NodeRegistry<Node>, sources: Map<number, unknown>, entity: number): void => {
+    registry.remove(entity)
+    sources.delete(entity)
+  }
+
+  // The context of the node being created, read by one shared thunk, so a
+  // creation allocates no closure.
+  let creating: Context | undefined
+  const createNode = (): Node => options.create(creating!)
+  const create = (
+    registry: NodeRegistry<Node>,
+    sources: Map<number, unknown>,
+    entity: { readonly id: number },
+    data: Record<string, any>,
+    context: Context
+  ): Node => {
+    // A child met before its parent's node exists starts at the root; the
+    // reattach pass moves it under the parent in this same run.
+    const parent: number | undefined = hierarchy === undefined ? undefined : data["__parent"]?.get(entity)
+    creating = context
+    const node = registry.ensure(entity.id, createNode, parent)
+    creating = undefined
+    sources.set(entity.id, context.renderable)
+    return node
+  }
+
+  // An entity whose renderable is not the value its node was made from (by
+  // reference): another value makes the node again, an equal one keeps it
+  // and is applied only when the entity was met for more than its renderable.
+  // A node the system did not make is applied as it is.
+  const follow = (
+    registry: NodeRegistry<Node>,
+    sources: Map<number, unknown>,
+    applies: { get(entity: number): { readonly ok: boolean } },
+    entity: { readonly id: number },
+    data: Record<string, any>,
+    node: Node,
+    context: Context
+  ): void => {
+    if (!sources.has(entity.id)) return options.apply(node, context)
+    if (!sameValue(sources.get(entity.id), context.renderable)) {
+      registry.remove(entity.id)
+      return options.apply(create(registry, sources, entity, data, context), context)
+    }
+    sources.set(entity.id, context.renderable)
+    if (renderableTriggers || applies.get(entity.id).ok) options.apply(node, context)
+  }
+
+  // Creates, makes again, or applies the node of one entity the sync met.
+  const sync = (
+    registry: NodeRegistry<Node>,
+    sources: Map<number, unknown>,
+    applies: { get(entity: number): { readonly ok: boolean } },
+    entity: { readonly id: number },
+    data: Record<string, any>,
+    provided: Record<string, unknown>,
+    cells: Record<string, unknown>
+  ): void => {
+    const context = contextOf(entity, data, provided, cells)
+    const node = registry.get(entity.id)
+    if (node === undefined) options.apply(create(registry, sources, entity, data, context), context)
+    else if (sources.get(entity.id) !== context.renderable) follow(registry, sources, applies, entity, data, node, context)
+    else options.apply(node, context)
+  }
+
   return System(options.name, {
     queries,
     removed: removedReads,
@@ -332,36 +446,32 @@ export const system = <
     when: options.when ?? []
   }, ({ queries, removed, resources, services, lookup }) => {
     const registry = services.__registry as NodeRegistry<Node>
+    const sources = sourcesOf(registry)
     // Destroy first: an entity that lost a required component has no node,
     // and one that lost it and got it back since the last run gets a fresh one.
     let lagged = false
     for (let index = 0; index < required.length; index++) {
       const stream = removed[`removed${index}`]
-      for (const entity of stream.all()) registry.remove(entity)
+      for (const entity of stream.all()) destroy(registry, sources, entity)
       if (stream.lagged()) lagged = true
     }
     // Removals were dropped before this system read them (it did not run
     // for longer than the stream keeps them, or a restore replaced the
     // world): destroy every node whose entity no longer has one, so none
     // stays on screen, and every node of an entity added since, which may
-    // be another entity under the same id.
+    // be another entity under the same id. The sync then makes those once.
     if (lagged) {
       const members = new Set<number>()
       for (const entity of queries["members"].each()) members.add(entity.id)
       for (const [entity] of [...registry.entries()]) {
-        if (!members.has(entity)) registry.remove(entity)
+        if (!members.has(entity)) destroy(registry, sources, entity)
       }
-      for (const entity of queries["added"].each()) registry.remove(entity.id)
+      for (const entity of queries["added"].each()) destroy(registry, sources, entity.id)
     }
 
     const data = queries["sync"].data
-    for (const entity of queries["sync"].each()) {
-      const context = contextOf(entity, data, services, resources)
-      // A child met before its parent's node exists starts at the root; the
-      // pass below moves it under the parent in this same run.
-      const parent: number | undefined = hierarchy === undefined ? undefined : data["__parent"]?.get(entity)
-      options.apply(registry.ensure(entity.id, () => options.create(context), parent), context)
-    }
+    const applies = queries["applies"]
+    for (const entity of queries["sync"].each()) sync(registry, sources, applies, entity, data, services, resources)
 
     if (hierarchy !== undefined) reattach(registry, queries["parented"], lookup, hierarchy)
   }) as RenderSystem<S, Root, Registry | Services[keyof Services] | Resources[keyof Resources] | ConditionNeedsFromConditions<When>>
@@ -419,6 +529,35 @@ const reattach = (
     moves.sort((a, b) => a.depth - b.depth)
   }
   for (const move of moves) registry.reparent(move.entity, move.parent)
+}
+
+// Structural equality for plain data, as the world compares resource writes:
+// primitives by `Object.is`, arrays and plain objects by their entries, other
+// objects (class instances, maps, sets) by reference.
+const sameValue = (left: unknown, right: unknown): boolean => {
+  if (Object.is(left, right)) return true
+  if (typeof left !== "object" || typeof right !== "object" || left === null || right === null) return false
+  if (Array.isArray(left)) {
+    if (!Array.isArray(right) || left.length !== right.length) return false
+    for (let index = 0; index < left.length; index++) {
+      if (!sameValue(left[index], right[index])) return false
+    }
+    return true
+  }
+  if (Array.isArray(right) || !isPlain(left) || !isPlain(right)) return false
+  const leftKeys = Object.keys(left)
+  if (leftKeys.length !== Object.keys(right).length) return false
+  const leftRecord = left as Record<string, unknown>
+  const rightRecord = right as Record<string, unknown>
+  for (const key of leftKeys) {
+    if (!(key in rightRecord) || !sameValue(leftRecord[key], rightRecord[key])) return false
+  }
+  return true
+}
+
+const isPlain = (value: object): boolean => {
+  const prototype = Object.getPrototypeOf(value) as object | null
+  return prototype === null || prototype === Object.prototype
 }
 
 /** A 2D position, the value `interpolate` blends when no `blend` is given. */
