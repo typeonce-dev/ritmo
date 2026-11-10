@@ -15,7 +15,7 @@ import * as Result from "@typeonce/ritmo/Result"
 import type * as Snapshot from "@typeonce/ritmo/Snapshot"
 
 import type { Advanced, InvalidOptions, RewindDiffers, Seats, SyncTest, SyncTestError, SyncTestStatus } from "../Netcode.ts"
-import { stateOf } from "./seats.ts"
+import { send, stateOf } from "./seats.ts"
 import type { Driven } from "./session.ts"
 
 export interface SyncTestMakeOptions {
@@ -54,7 +54,7 @@ export const make = (runtime: Driven, options: SyncTestMakeOptions): Result.Resu
   const count = options.seats.count
   const predict = options.predict ?? ((previous: unknown) => previous)
   const keep = options.keepSnapshots === true
-  let last: ReadonlyArray<unknown> = Array.from({ length: count }, () => options.seats.idle)
+  let last: ReadonlyArray<unknown> = Array.from({ length: count }, () => seatsState.idle.value)
   let next = 0
   let verified = -1
   let rollbacks = 0
@@ -103,10 +103,13 @@ export const make = (runtime: Driven, options: SyncTestMakeOptions): Result.Resu
     return false
   }
 
-  const advance = (local: unknown): Result.Result<Extract<Advanced, { readonly _tag: "Ran" }>, SyncTestError<unknown>> => {
+  const advance = (pressed: unknown): Result.Result<Extract<Advanced, { readonly _tag: "Ran" }>, SyncTestError<unknown>> => {
     if (failed !== undefined) return Result.failure(failed)
+    // As a session would simulate it: the input as it decodes from its message.
+    const local = send(seatsState.codec, pressed)
+    if (!local.ok) throw new Error(`Netcode: the local input ${local.error}`)
     const tick = next
-    const current = last.map((previous, seat) => seat === 0 ? local : predict(previous))
+    const current = last.map((previous, seat) => seat === 0 ? local.value.value : predict(previous))
     last = current
     inputs.set(tick, current)
     if (!sums.has(tick)) {

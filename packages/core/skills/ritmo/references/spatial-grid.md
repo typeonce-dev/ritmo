@@ -3,6 +3,7 @@
 When many bodies test each other every step (separation, pickups, hits, sensing), testing every pair is quadratic. Ritmo ships no broad phase: copy [`spatial-grid.ts`](spatial-grid.ts) into the simulation folder and keep it as game code, sized to the game's data. It uses only exact operations, so it replays the same on every engine, and the simulation lint rules cover it like the rest of the game. Its JSDoc explains `clear`, `insert`, `forEachIn`, and the cell size.
 
 - Keep the grid in the system that queries it, in its `local`: it is rebuilt from the world every step, so it is never saved.
+- In a schedule that rewinds (a netcode session, `runtime.checkpoint`), `local` does not compile: make the grid and the array in the system's body instead (`const grid = made(SpatialGrid.make(32))`), new each run. Not in a resource: a `debug` runtime freezes what the world holds, and the grid writes to itself on every query.
 - Insert under the index of an array the system keeps (positions, entities), never an entity id: the grid relies on small, dense indices.
 - The grid returns candidates; the exact test (`Collide2.overlapsCircleCircle`, `Box2.overlapsCircle`) decides.
 

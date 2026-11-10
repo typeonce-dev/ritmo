@@ -161,6 +161,7 @@ describe("session.events", () => {
     const { tick } = host!.session.status()
     const lost = reader.lost()
     expect(lost?._tag).toBe("EventsLost")
+    expect(lost!.reason).toBe("unread")
     expect(lost!.from).toBeLessThan(10)
     expect(lost!.to).toBe(tick - Netcode.eventWindow)
     // Reported once.
@@ -168,5 +169,73 @@ describe("session.events", () => {
     const kept = reader.confirmed()
     expect(kept[0]!.tick).toBe(lost!.to)
     expect(kept.at(-1)!.tick).toBe(tick - 1)
+  })
+
+  describe("a resync that replaces ticks a peer ahead of seat 0 confirmed", () => {
+    /**
+     * Seat 1 runs a tick or two ahead of seat 0 and confirms ticks seat 0
+     * has not run yet. Seat 0 hitches for two frames and resyncs: its save
+     * makes those ticks idle for every seat, so seat 1 runs them again.
+     */
+    const resyncAhead = (input: (seat: number, at: number) => PlayerInput, options: { readonly tail?: number; readonly read?: boolean } = {}) => {
+      const match = setUpMatch({ mode: "rollback", latencyMS: 0, jitterMS: 0, inputDelay: 2 })
+      const [host, other] = match.peers as [MatchPeer, MatchPeer]
+      const hostReader = host.session.events(Fired)
+      const otherReader = other.session.events(Fired)
+      const hostConfirmed: Array<string> = []
+      const otherConfirmed: Array<string> = []
+      const lost: Array<Netcode.EventsLost> = []
+      const read = () => {
+        for (const record of hostReader.confirmed()) hostConfirmed.push(`${record.tick}:${record.value.seat}`)
+        // A reader that stops reading: seat 1's waits until the test reads it.
+        if (options.read === false) return
+        for (const record of otherReader.confirmed()) otherConfirmed.push(`${record.tick}:${record.value.seat}`)
+        const reported = otherReader.lost()
+        if (reported !== undefined) lost.push(reported)
+      }
+      let at = 0
+      for (; at < 40; at++) {
+        frame(match, at, (seat) => input(seat, at))
+        read()
+      }
+      // Seat 0 hitches: seat 1 runs on and confirms ticks seat 0 has not run.
+      for (let n = 0; n < 2; n++, at++) {
+        frame(match, at, (seat) => input(seat, at), (seat) => seat === 0)
+        read()
+      }
+      const resyncAt = host.session.status().tick
+      const confirmedAhead = other.session.status().confirmed
+      host.session.resync()
+      for (let n = 0; n < (options.tail ?? 60); n++, at++) {
+        frame(match, at, () => idle)
+        read()
+      }
+      return { hostConfirmed, otherConfirmed, lost, resyncAt, confirmedAhead, otherReader }
+    }
+
+    it("reports through lost() the confirmed events it replaced", () => {
+      const { hostConfirmed, otherConfirmed, lost, resyncAt, confirmedAhead } = resyncAhead(() => ({ dx: 1, fire: true }))
+      expect(confirmedAhead).toBeGreaterThan(resyncAt)
+      // Handed out before the resync, so they stay handed out; the save ran those ticks idle, with no events.
+      const replaced = otherConfirmed.filter((record) => !hostConfirmed.includes(record))
+      expect(replaced).toEqual([`${resyncAt}:0`, `${resyncAt}:1`, `${resyncAt + 1}:0`, `${resyncAt + 1}:1`])
+      expect(lost).toEqual([{ _tag: "EventsLost", from: resyncAt, to: resyncAt + 2, reason: "resync" }])
+    })
+
+    it("reports nothing when the ticks it ran again published the same events", () => {
+      // Both seats stop firing before the hitch: the confirmed ticks and their idle runs publish nothing.
+      const { hostConfirmed, otherConfirmed, lost, resyncAt, confirmedAhead } = resyncAhead((_, at) => ({ dx: 1, fire: at < 30 }))
+      expect(confirmedAhead).toBeGreaterThan(resyncAt)
+      expect(otherConfirmed.length).toBeGreaterThan(0)
+      expect(otherConfirmed).toEqual(hostConfirmed)
+      expect(lost).toEqual([])
+    })
+
+    it("reports a resync first, and what the reader did not read in time on the next call", () => {
+      const { otherReader, resyncAt } = resyncAhead(() => ({ dx: 1, fire: true }), { tail: Netcode.eventWindow + 60, read: false })
+      expect(otherReader.lost()).toEqual({ _tag: "EventsLost", from: resyncAt, to: resyncAt + 2, reason: "resync" })
+      expect(otherReader.lost()).toMatchObject({ _tag: "EventsLost", from: 2, reason: "unread" })
+      expect(otherReader.lost()).toBeUndefined()
+    })
   })
 })

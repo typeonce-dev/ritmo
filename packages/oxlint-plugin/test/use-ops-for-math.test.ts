@@ -21,7 +21,14 @@ tester.run("use-ops-for-math", rule, {
     "type Lib = typeof Math; let sin: typeof Math.sin",
     // A local Math is not the global.
     "const Math = { sin: (x: number) => x }; Math.sin(1)",
-    "function f(Math: { sin(x: number): number }) { const M = Math; return M.sin(1) + Math[key]!(1) }"
+    "function f(Math: { sin(x: number): number }) { const M = Math; return M.sin(1) + Math[key]!(1) }",
+    "const self = worker(); self.Math.sin(1)",
+    "const wave = stats.Math.sin(t)",
+    // Exact members stay allowed through a global object or destructuring.
+    "const d = self.Math.sqrt(x) + globalThis.Math.abs(y) + window.Math.min(a, b) + globalThis.Math.max(a, b)",
+    "const { sqrt, abs, min, max, floor, ceil, round, trunc, sign, PI } = globalThis.Math",
+    "const { Math: { floor, ceil } } = globalThis",
+    "const { random } = Math"
   ],
   invalid: [
     {
@@ -99,6 +106,11 @@ tester.run("use-ops-for-math", rule, {
       errors: [{ messageId: "math", data: { name: "sin" } }]
     },
     {
+      code: "const a = self.Math.sin(t) + window.Math.cos(t)",
+      output: "import { Ops } from \"@typeonce/ritmo\"\nconst a = Ops.sin(t) + Ops.cos(t)",
+      errors: [{ messageId: "math", data: { name: "sin" } }, { messageId: "math", data: { name: "cos" } }]
+    },
+    {
       // CommonJS gets a require, and an existing one is used.
       code: "const fs = require(\"node:fs\")\nconst a = Math.cos(t)\nmodule.exports = { a }",
       output: "const fs = require(\"node:fs\")\nconst { Ops } = require(\"@typeonce/ritmo\")\nconst a = Ops.cos(t)\nmodule.exports = { a }",
@@ -134,6 +146,8 @@ tester.run("use-ops-for-math", rule, {
     { code: "const { sin, cos } = Math", errors: [{ messageId: "alias" }] },
     { code: "const { abs, ...rest } = Math", errors: [{ messageId: "alias" }] },
     { code: "const M = Math; M.sin(t)", errors: [{ messageId: "alias" }] },
+    { code: "const { Math: M } = globalThis", errors: [{ messageId: "alias" }] },
+    { code: "const { Math: { sin } } = self", errors: [{ messageId: "alias" }] },
     { code: "const M = globalThis.Math", errors: [{ messageId: "alias" }] },
     { code: "const wave = apply(Math, \"sin\", t)", errors: [{ messageId: "alias" }] },
     { code: "const f = Math[name]", errors: [{ messageId: "alias" }] },

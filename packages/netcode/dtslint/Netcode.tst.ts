@@ -108,6 +108,12 @@ describe("session.events", () => {
     expect(hits.predicted()).type.toBe<ReadonlyArray<Netcode.EventRecord<{ readonly seat: number; readonly at: { readonly x: number } }>>>()
     expect(hits.withdrawn()).type.toBe<ReadonlyArray<Netcode.Withdrawn>>()
     expect(hits.lost()).type.toBe<Netcode.EventsLost | undefined>()
+    const lost = hits.lost()
+    if (lost !== undefined) {
+      expect(lost.reason).type.toBe<"unread" | "resync">()
+      // @ts-expect-error and '"rollback"' have no overlap
+      if (lost.reason === "rollback") throw new Error("not a reason")
+    }
     for (const { tick, value } of hits.confirmed()) {
       expect(tick).type.toBe<number>()
       // @ts-expect-error Cannot assign to 'seat' because it is a read-only property
