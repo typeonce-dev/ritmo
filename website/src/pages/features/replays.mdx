@@ -87,6 +87,12 @@ The file holds hashes of the world as it was recorded. "Checkpoints match"
 means the replayed world matched every one, so what you debug is what the
 player saw, not a near copy.
 
+Once play outlasts the window, the replay starts from a save the recorder
+took along the way. A save does not hold events still in flight or what
+each system had already seen, so that replay plays and explains the bug but
+says its checksums are not compared, instead of reporting a difference that
+is not a bug.
+
 </Claim>
 
 <Claim title="The moment is saved before anyone asks">
@@ -148,7 +154,7 @@ declare const file: Replay.ReplayFile
 // Ticks 1400 to 1412 only: a few kilobytes for the test folder
 const small = Replay.extract(make, file, { from: 1400, to: 1412 })
 
-// Plays twice and against the recording:
+// Plays twice, and against the recording when it starts at the first tick:
 // a difference means something outside the world leaks in
 const same = await Verify.acrossEngines(make, file)
 ```

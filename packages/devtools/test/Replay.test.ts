@@ -90,7 +90,7 @@ describe("Replay", () => {
     const opened = Replay.session(make, file)
     if (!opened.ok) throw new Error(JSON.stringify(opened.error))
     const played = opened.value.play()
-    expect(played.data.diverged).toEqual([])
+    expect(played.data.checkpoints).toEqual({ _tag: "Compared", diverged: [] })
     expect(played.text).toContain("checkpoints match")
     expect(positionOf(worldOf(opened.value.snapshot()))).toEqual(positionOf(worldOf(runtime.snapshot())))
     expect(positionOf(worldOf(opened.value.snapshot()))).toEqual({ x: (1 + 2 + 3 + 5) * 2 + 10 })
@@ -120,7 +120,9 @@ describe("Replay", () => {
     if (!opened.ok) throw new Error(JSON.stringify(opened.error))
     const played = opened.value.play()
     expect(played.data.run.stop).toEqual({ reason: "completed" })
-    expect(played.data.diverged).toEqual([])
+    // It starts from a save, which holds no events in flight: it plays, and is not compared.
+    expect(played.data.checkpoints).toEqual({ _tag: "NotCompared", reason: expect.stringContaining("starts from a save at tick 16") })
+    expect(positionOf(worldOf(opened.value.snapshot()))).toEqual(positionOf(worldOf(runtime.snapshot())))
   })
 
   it("is a session: why and journal explain the replayed ticks", () => {
@@ -160,7 +162,8 @@ describe("Replay", () => {
     expect(extracted.value.ticks.map((record) => record.tick)).toEqual([4, 5])
     const opened = Replay.session(make, JSON.parse(JSON.stringify(extracted.value)))
     if (!opened.ok) throw new Error("open extract")
-    expect(opened.value.play().data.diverged).toEqual([])
+    // An extract starts from a save of the replay at tick 3: it plays, and is not compared.
+    expect(opened.value.play().data.checkpoints._tag).toBe("NotCompared")
     expect(positionOf(worldOf(opened.value.snapshot()))).toEqual({ x: (1 + 2 + 3 + 4 + 5) * 2 })
   })
 

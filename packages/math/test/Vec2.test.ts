@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { Ops } from "@typeonce/ritmo"
-import { Vec2 } from "@typeonce/ritmo-math"
+import { Scalar, Vec2 } from "@typeonce/ritmo-math"
 
 describe("Vec2", () => {
   it("does plain arithmetic", () => {
@@ -29,6 +29,23 @@ describe("Vec2", () => {
     expect(Vec2.moveToward({ x: 0, y: 0 }, { x: 10, y: 0 }, 40)).toEqual({ x: 10, y: 0 })
     expect(Vec2.clampLength({ x: 30, y: 40 }, 5)).toEqual({ x: 3, y: 4 })
     expect(Vec2.clampLength({ x: 3, y: 4 }, 10)).toEqual({ x: 3, y: 4 })
+  })
+
+  it("counts a limit below 0 as 0, as Scalar.moveToward and Angle.turnToward do, never reversing", () => {
+    // A speed gone negative (a slow effect minus friction) stops the point instead of moving it away.
+    const current = { x: 0, y: 0 }
+    const target = { x: 10, y: 0 }
+    expect(Vec2.moveToward(current, target, -1)).toBe(current)
+    expect(Vec2.moveToward(current, target, 0)).toBe(current)
+    expect(Vec2.moveToward(current, target, Number.NaN)).toBe(current)
+    expect(Scalar.moveToward(0, 10, -1)).toBe(0)
+    expect(Scalar.moveToward(0, 10, Number.NaN)).toBe(0)
+    // A cap below 0 leaves no length, never the flipped vector.
+    expect(Vec2.clampLength({ x: 3, y: 4 }, -1)).toEqual({ x: 0, y: 0 })
+    expect(Vec2.clampLength({ x: -3, y: -4 }, 0)).toEqual({ x: 0, y: 0 })
+    expect(Vec2.clampLength({ x: 3, y: 4 }, Number.NaN)).toEqual({ x: 0, y: 0 })
+    expect(Vec2.clampLength({ x: 0, y: 0 }, -1)).toEqual({ x: 0, y: 0 })
+    expect(Vec2.clampLength({ x: Number.NaN, y: 4 }, -1)).toEqual({ x: Number.NaN, y: 0 })
   })
 
   it("turns a quarter turn exactly with perpendicular, the 2D cross product through dot", () => {

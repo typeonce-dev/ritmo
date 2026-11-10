@@ -100,7 +100,7 @@ describe("what is too large to read or draw", { timeout: 60_000 }, () => {
     expect(looked.status).toBe(3)
     expect(looked.stdout).toContain("draw did not return within 5 s on frame 2")
     const rendered = run(game, "fx", "render", "stuck.fx.json", "-o", join(game, "out"))
-    expect(rendered.status).not.toBe(0)
+    expect(rendered.status).toBe(3)
     expect(rendered.stderr).toContain("draw did not return within 5 s on frame 2")
   })
 })

@@ -168,11 +168,16 @@ export const normalizeOr = (a: Vec2, fallback: Vec2): Vec2 => {
 export const lerp = (a: Vec2, b: Vec2, t: number): Vec2 => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t })
 
 /**
- * Moves `current` toward `target` by at most `maxDelta`, never overshooting.
+ * Moves `current` toward `target` by at most `maxDelta`, never overshooting:
+ * `target` itself once the distance is `maxDelta` or less, and `current`
+ * unchanged when `maxDelta` is 0 or less, so a speed that drops below 0 (a
+ * slow effect minus friction) stops the point instead of moving it away. For
+ * plain numbers use `Scalar.moveToward`, for angles `Angle.turnToward`.
  *
  * @category Operations
  */
 export const moveToward = (current: Vec2, target: Vec2, maxDelta: number): Vec2 => {
+  if (!(maxDelta > 0)) return current
   const dx = target.x - current.x
   const dy = target.y - current.y
   const len = Ops.hypot(dx, dy)
@@ -181,13 +186,17 @@ export const moveToward = (current: Vec2, target: Vec2, maxDelta: number): Vec2 
 }
 
 /**
- * `a` with its length capped at `max`, keeping its direction.
+ * `a` with its length capped at `max`, keeping its direction. A `max` of 0
+ * or less caps it at 0 (the zero vector), never flipping it.
  *
  * @category Operations
  */
 export const clampLength = (a: Vec2, max: number): Vec2 => {
   const len = Ops.hypot(a.x, a.y)
-  return len <= max ? a : { x: (a.x / len) * max, y: (a.y / len) * max }
+  if (len <= max) return a
+  if (max > 0) return { x: (a.x / len) * max, y: (a.y / len) * max }
+  // No length left: `+ 0` turns a -0 into 0, and NaN stays NaN.
+  return { x: a.x * 0 + 0, y: a.y * 0 + 0 }
 }
 
 /**

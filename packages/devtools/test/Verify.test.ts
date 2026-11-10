@@ -49,7 +49,7 @@ describe("Verify", () => {
 
   it("verifies in this process alone", async () => {
     const verified = await Verify.acrossEngines(replayTarget, file)
-    expect(verified.ok && verified.value.data).toEqual({ schedule: "update", ticks: 6, engines: ["node"] })
+    expect(verified.ok && verified.value.data).toEqual({ schedule: "update", recording: "matched", ticks: 6, engines: ["node"] })
     expect(verified.ok && verified.value.text).toBe("verified 6 ticks of update on node: every engine reaches the same world as node after every tick, and node matches the recording")
   })
 
