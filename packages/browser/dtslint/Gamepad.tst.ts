@@ -10,6 +10,8 @@ describe("Gamepad", () => {
     expect(input.snapshot().actions.attack.pressed).type.toBe<boolean>()
     expect(input.snapshot().buttons.dpadUp.held).type.toBe<boolean>()
     expect(input.snapshot().left).type.toBe<Controls.Vector>()
+    expect(input.snapshot().standard).type.toBe<boolean>()
+    expect(Gamepad.idle({ jump: ["south"] }).standard).type.toBe<boolean>()
     // @ts-expect-error Property 'jump' does not exist
     input.snapshot().actions.jump
   })

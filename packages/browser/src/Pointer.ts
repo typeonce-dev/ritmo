@@ -199,7 +199,7 @@ export interface Actions<B extends Bindings> extends System.Consumes<"snapshot">
    * the pointer was made with.
    */
   rebind<const R extends Rebinding<B>>(bindings: R & OnlyActionsOf<R, B>): void
-  /** Removes the event listeners. */
+  /** Removes the event listeners and releases the pointer capture, if taken. */
   dispose(): void
 }
 
@@ -382,7 +382,8 @@ const tracker = <B extends Bindings>(initial: B, start: Position) => {
  * Starts tracking the pointer over `target` with `bindings`, until
  * `dispose()`. `blurHost` (usually `window`) releases held buttons when the
  * page loses focus; a cancelled pointer and leaving the pointer lock release
- * them too. Use `Touch.actions` for on-screen touch controls.
+ * them too. Each of these, the last button coming up, and `dispose()` also
+ * release the pointer capture the first press took. Use `Touch.actions` for on-screen touch controls.
  */
 export const actions = <const B extends Bindings>(
   target: PointerTarget,
@@ -402,6 +403,31 @@ export const actions = <const B extends Bindings>(
   // Buttons that went down while the pointer was not locked, ignored until they
   // come up: the click that locks is not a press, even once the lock is taken.
   let ignored = 0
+  // The pointer id capture was taken for, until it is released.
+  let captured: number | null = null
+
+  const capture = (pointerId: number): void => {
+    captured = pointerId
+    target.setPointerCapture?.(pointerId)
+  }
+
+  const release = (): void => {
+    if (captured === null) return
+    const pointerId = captured
+    captured = null
+    // Browsers throw for a pointer that is no longer active (after a cancel) or not captured.
+    try {
+      target.releasePointerCapture?.(pointerId)
+    } catch {
+      // The capture is already gone.
+    }
+  }
+
+  // A blur, a cancelled pointer, and leaving the lock let go of every button and of the capture.
+  const letGo = (): void => {
+    state.buttons.upAll()
+    release()
+  }
 
   const heldMask = (): number => {
     let mask = 0
@@ -428,8 +454,8 @@ export const actions = <const B extends Bindings>(
       }
     }
     const isHeld = state.buttons.held.size > 0
-    if (!wasHeld && isHeld) target.setPointerCapture?.(pointerId)
-    else if (wasHeld && !isHeld) target.releasePointerCapture?.(pointerId)
+    if (!wasHeld && isHeld) capture(pointerId)
+    else if (wasHeld && !isHeld) release()
   }
 
   const locate = (event: PointerEventLike): void => {
@@ -474,7 +500,7 @@ export const actions = <const B extends Bindings>(
   }
 
   const onCancel = (event: PointerEventLike): void => {
-    if (tracked(event)) state.buttons.upAll()
+    if (tracked(event)) letGo()
   }
 
   const onContextMenu = (event: { preventDefault(): void }): void => {
@@ -489,7 +515,7 @@ export const actions = <const B extends Bindings>(
 
   // Leaving the lock (Escape) releases what was held, like a blur.
   const onLockChange = (): void => {
-    if (!isLocked()) state.buttons.upAll()
+    if (!isLocked()) letGo()
   }
 
   target.addEventListener("pointerdown", onDown)
@@ -500,7 +526,7 @@ export const actions = <const B extends Bindings>(
   target.addEventListener("pointercancel", onCancel)
   target.addEventListener("contextmenu", onContextMenu)
   target.addEventListener("wheel", onWheel, { passive: false })
-  blurHost.addEventListener("blur", state.buttons.upAll)
+  blurHost.addEventListener("blur", letGo)
   lock?.addEventListener("pointerlockchange", onLockChange)
 
   return {
@@ -518,8 +544,9 @@ export const actions = <const B extends Bindings>(
       target.removeEventListener("pointercancel", onCancel)
       target.removeEventListener("contextmenu", onContextMenu)
       target.removeEventListener("wheel", onWheel)
-      blurHost.removeEventListener("blur", state.buttons.upAll)
+      blurHost.removeEventListener("blur", letGo)
       lock?.removeEventListener("pointerlockchange", onLockChange)
+      release()
     }
   }
 }
