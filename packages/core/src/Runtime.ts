@@ -639,6 +639,9 @@ export interface Runtime<
    * The first expected system failure stops the tick and is returned; that
    * system's ECS writes are rolled back and earlier systems stay committed.
    *
+   * Calling `tick` or `tryTick` while one is running (from a system, a
+   * service, or a trace or host listener) throws.
+   *
    * To tick at a fixed rate from a frame loop, use `FixedLoop.start`
    * instead of an accumulator of your own.
    */
@@ -654,7 +657,8 @@ export interface Runtime<
    *
    * Requirements are checked against current provisioning first and missing
    * ones are returned as data, then `Game.System.thisTick` reads are checked
-   * against the schedule's order (`TickOrderViolation`).
+   * against the schedule's order (`TickOrderViolation`). Like `tick`, it
+   * throws while a `tick` or `tryTick` is running.
    */
   readonly tryTick: <const Selected extends ExecutableScheduleDefinition<S, any, any, any, any>>(
     schedule: Selected
@@ -1245,10 +1249,11 @@ const makeValidatedRuntime = <
     reverts: Reverts | undefined
   }
 
-  /** {@link QueryReverts}, and per component ordinal the removals (and the despawns) a rewind made. */
+  /** {@link QueryReverts}, per component ordinal the removals (and the despawns) a rewind made, and the resources it put back. */
   interface Reverts extends QueryReverts {
     readonly removed: Map<number, Set<number>>
     readonly despawned: Set<number>
+    readonly resources: Set<symbol>
   }
 
   const resolve = <Q extends Query.Query.Any<Root>>(id: number, query: Q, reader: ReaderState) =>
@@ -1609,7 +1614,7 @@ const makeValidatedRuntime = <
     return {
       get: () => read.get(),
       // `since` is the previous completed run; 0 before the first one.
-      changed: () => reader.since === 0 || (resourceChangedAt.get(key) ?? 0) > reader.since
+      changed: () => reader.since === 0 || (resourceChangedAt.get(key) ?? 0) > reader.since || reader.reverts?.resources.has(key) === true
     }
   }
 
@@ -2052,6 +2057,18 @@ const makeValidatedRuntime = <
     return slot
   }
 
+  /** Drops a system's slot, so its next run makes a fresh one, as on its first run. */
+  const forgetSlot = (system: SystemDefinition<any, any, any>, reader: ReaderState): void => {
+    slots.delete(system)
+    allReaders.delete(reader)
+    streamReaders.delete(reader)
+    events.unregister(reader)
+    transitionEvents.unregister(reader)
+    relationFailures.unregister(reader)
+    droppedRelations.unregister(reader)
+    world.unregisterLifecycleReader(reader)
+  }
+
   const succeeded = Result.success(undefined)
 
   /**
@@ -2271,8 +2288,11 @@ const makeValidatedRuntime = <
         // Discarded earlier in this marker: its parent left the state it exists in.
         continue
       }
-      // A transition schedule earlier in this marker may have queued a newer
-      // value for this machine: that one waits for the next marker.
+      // A transition schedule earlier in this marker may have reset this
+      // request: it is not applied.
+      if (!pendingMachines.has(machineKey)) continue
+      // It may also have queued a newer value for this machine: that one
+      // waits for the next marker.
       if (pendingMachines.get(machineKey) === pending) pendingMachines.delete(machineKey)
       /** Keeps this request queued after a failure, unless a newer one replaced it. */
       const requeue = () => {
@@ -2466,7 +2486,11 @@ const makeValidatedRuntime = <
     return succeeded
   }
 
-  /** Whether `runtime.tick` is on the stack: a nested `tick` is a defect. */
+  /**
+   * Whether `runtime.tick` or `runtime.tryTick` is on the stack, from its
+   * first check to its return: a nested `tick` or `tryTick` is a defect, since
+   * the nested run would commit the outer system's rollback journal.
+   */
   let ticking = false
   /**
    * Whether a tick is advancing its frame or running its schedules (in
@@ -2604,7 +2628,7 @@ const makeValidatedRuntime = <
     run: () => Result.Result<void, SystemFailure>
   ): Result.Result<void, SystemFailure> => {
     if (hostListeners.size === 0) return run()
-    emitHost({ type: "tick.start", schedules, frame: frameCount })
+    emitHost({ type: "tick.start", schedules, frame: frameCount, tick: world.currentTick() })
     let result: Result.Result<void, SystemFailure>
     try {
       result = run()
@@ -2636,6 +2660,7 @@ const makeValidatedRuntime = <
     schedule: Selected
   ): Result.Result<void, MissingRuntimeRequirements | TickOrderViolation | Schedule.FailureOf<Selected>> => {
     if (frameOpen) throw openFrameDefect("runtime.tryTick")
+    if (ticking) throw new Error("runtime.tryTick cannot run inside another tick")
     if (debugEnabled) reportUnread("next-tick")
     const missing = schedule.requirements
       .filter((requirement) => !hasRequirement(requirement))
@@ -2653,12 +2678,13 @@ const makeValidatedRuntime = <
       return watchResult(Result.failure({ kind: "TickOrderViolation" as const, issues }), [schedule])
     }
 
-    if (inTick) throw new Error("runtime.tryTick cannot run inside another tick")
+    ticking = true
     inTick = true
     try {
       advanceFrame()
       return watchResult(observedTick([schedule], () => runScheduleUnsafe(schedule)), [schedule]) as Result.Result<void, Schedule.FailureOf<Selected>>
     } finally {
+      ticking = false
       inTick = false
     }
   }
@@ -2784,9 +2810,13 @@ const makeValidatedRuntime = <
     // Validate everything before touching the world.
     const ids = new Set<number>()
     const entities: Array<{ readonly id: number; readonly components: Array<Entity.StagedComponent> }> = []
+    // Exactly the save's: ids allocated after a restore do not depend on the world it replaced.
+    // A loop, not a spread: a spread of every id overflows the stack on a large world.
+    let nextEntity = saved.nextEntity
     for (const entity of saved.entities) {
       if (ids.has(entity.id)) return Result.failure({ _tag: "DuplicateEntity", entityId: entity.id })
       ids.add(entity.id)
+      if (entity.id >= nextEntity) nextEntity = entity.id + 1
       const components: Array<Entity.StagedComponent> = []
       for (const [name, raw] of Object.entries(entity.components)) {
         const descriptor = componentsByName.get(name)
@@ -2891,8 +2921,7 @@ const makeValidatedRuntime = <
     droppedRelations.clear()
     world.advanceTick()
     world.despawnAll()
-    // Exactly the save's: ids allocated after a restore do not depend on the world it replaced.
-    world.setNextEntity(Math.max(saved.nextEntity, ...entities.map((entity) => entity.id + 1)))
+    world.setNextEntity(nextEntity)
     for (const entity of entities) {
       world.spawnEntity(world.entityIdOf(entity.id), entity.components)
     }
@@ -3032,13 +3061,25 @@ const makeValidatedRuntime = <
   }
 
   /** Gives a reader outside the rewound schedule what the rewind changed, for its next run. */
-  const revert = (reader: ReaderState, rewound: WorldRewind): void => {
-    const reverts = reader.reverts ??= { added: new Map(), changed: new Map(), removed: new Map(), despawned: new Set() }
+  const revert = (reader: ReaderState, rewound: WorldRewind, putBack: ReadonlySet<symbol>): void => {
+    const reverts = reader.reverts ??= { added: new Map(), changed: new Map(), seen: new Map(), removed: new Map(), despawned: new Set(), resources: new Set() }
     addAll(reverts.added, rewound.back)
     addAll(reverts.changed, rewound.back)
     addAll(reverts.changed, rewound.written)
-    addAll(reverts.removed, rewound.gone)
+    for (const [ordinal, ids] of rewound.gone) {
+      let removed = reverts.removed.get(ordinal)
+      if (removed === undefined) reverts.removed.set(ordinal, removed = new Set<number>())
+      let seen = reverts.seen.get(ordinal)
+      for (const [id, addedAt] of ids) {
+        removed.add(id)
+        // Present when the reader last ran: brought back by its next run, it is changed, not added.
+        if (addedAt > reader.lastRun) continue
+        if (seen === undefined) reverts.seen.set(ordinal, seen = new Set<number>())
+        seen.add(id)
+      }
+    }
     for (const id of rewound.despawned) reverts.despawned.add(id)
+    for (const key of putBack) reverts.resources.add(key)
     // Removals made after the checkpoint that the reader had not read yet: the rewind took them back.
     for (const [ordinal, id, at] of rewound.removedAfter) {
       if (at <= reader.lastRun) continue
@@ -3068,6 +3109,9 @@ const makeValidatedRuntime = <
       if (failed !== undefined) return Result.failure({ _tag: "RestoreFailed", service: failed.service, error: failed.error })
     }
     const index = runtimeMarks.indexOf(mark)
+    // Resources written after the checkpoint: the rewind puts each back.
+    const putBack = new Set<symbol>()
+    for (const [key, at] of resourceChangedAt) if (at > mark.world.tick) putBack.add(key)
     const rewound = world.rewindToMark(mark.world)
     for (let newer = index + 1; newer < runtimeMarks.length; newer++) runtimeMarks[newer]!.released = "rewound"
     runtimeMarks.length = index + 1
@@ -3091,9 +3135,14 @@ const makeValidatedRuntime = <
     for (const [system, positions] of mark.readers) {
       const reader = slots.get(system)?.reader
       if (reader === undefined) continue
+      if (positions === undefined) {
+        // A system first run after the checkpoint starts over, as if it never
+        // ran: unregistered, so it holds nothing until its first run again.
+        forgetSlot(system, reader)
+        continue
+      }
       inside.add(reader)
-      // A system first run after the checkpoint starts over, as if it never ran.
-      const [since, lastRun, streamSince, streamLastRun] = positions ?? [0, 0, 0, 0]
+      const [since, lastRun, streamSince, streamLastRun] = positions
       reader.since = since
       reader.lastRun = lastRun
       reader.streamSince = streamSince
@@ -3102,9 +3151,21 @@ const makeValidatedRuntime = <
     }
     for (const reader of allReaders) {
       // A reader that has not run since the checkpoint never saw what the rewind undid.
-      if (!inside.has(reader) && reader.lastRun > mark.world.tick) revert(reader, rewound)
+      if (!inside.has(reader) && reader.lastRun > mark.world.tick) revert(reader, rewound, putBack)
     }
     return succeeded
+  }
+
+  const tracedRewind = (value: Checkpoint.Checkpoint<Root>): Result.Result<void, Checkpoint.RewindError> => {
+    const from = world.currentTick()
+    const mark = CheckpointInternal.internalOf(value) as RuntimeMark | undefined
+    const result = rewind(value)
+    if (tracing || hostListeners.size > 0) {
+      const event: Debug.RewindEvent = { type: "rewind", frame: frameCount, tick: from, toTick: mark?.owner === checkpointOwner ? mark.world.tick : from, ok: result.ok }
+      if (tracing) emit(event)
+      emitHost(event)
+    }
+    return result
   }
 
   const runtime: Runtime<S, Services, Resources, Root, Machines> = {
@@ -3122,7 +3183,7 @@ const makeValidatedRuntime = <
     restore: tracedRestore as unknown as Snapshot.Gate<S, typeof restore>,
     checkpoint: checkpoint as Runtime<S, Services, Resources, Root, Machines>["checkpoint"],
     // Restore failures are typed per service in the interface; the runtime only knows their names.
-    rewind: rewind as Runtime<S, Services, Resources, Root, Machines>["rewind"],
+    rewind: tracedRewind as Runtime<S, Services, Resources, Root, Machines>["rewind"],
     inspect,
     send: send as Runtime<S, Services, Resources, Root, Machines>["send"]
   }
@@ -3246,7 +3307,7 @@ const makeValidatedRuntime = <
     schedule: ExecutableScheduleDefinition<S, any, any, any, any>
   ): Result.Result<Debug.FrameCursor<SystemFailure>, MissingRuntimeRequirements | TickOrderViolation> => {
     if (frameOpen) throw openFrameDefect("debug.beginFrame")
-    if (inTick) throw new Error("debug.beginFrame was called while a schedule is running: begin a frame between ticks")
+    if (inTick || ticking) throw new Error("debug.beginFrame was called while a schedule is running: begin a frame between ticks")
     reportUnread("next-tick")
     const missing = schedule.requirements
       .filter((requirement) => !hasRequirement(requirement))
@@ -3267,7 +3328,7 @@ const makeValidatedRuntime = <
     }
     const frame = frameCount
     const hosted = hostListeners.size > 0
-    if (hosted) emitHost({ type: "tick.start", schedules: [schedule], frame })
+    if (hosted) emitHost({ type: "tick.start", schedules: [schedule], frame, tick: world.currentTick() })
     changedMachines = new Set()
     const label = scheduleName(schedule)
     // Like `traceSchedule`: the schedule events are emitted when tracing was on at its start.
@@ -3300,6 +3361,7 @@ const makeValidatedRuntime = <
       remaining: () => ended ? [] : steps.slice(index).map(DebugInternal.describeStep),
       next: () => {
         if (ended) throw new Error("FrameCursor.next was called after the frame ended: begin another frame")
+        if (inTick) throw new Error("FrameCursor.next was called while a step is running: step the frame from the host, between steps")
         const at = index
         const step = steps[at]!
         index += 1

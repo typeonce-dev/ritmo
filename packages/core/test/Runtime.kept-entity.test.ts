@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 import type { QueryEntity } from "@typeonce/ritmo/Query"
 import { Descriptor, HostClock, Schema } from "@typeonce/ritmo"
+import * as Codecs from "./codecs.ts"
+import { worldOf } from "./saved.ts"
 
 const Position = Descriptor.Component<{ readonly x: number }>()("Kept/Position")
 const Dead = Descriptor.Tag("Kept/Dead")
@@ -138,5 +140,70 @@ describe("an entity kept past its run, on a debug runtime", () => {
       queries.enemies.each().map((entity) => queries.living.data.position.get(entity).x))
 
     expect(runtime.inspect(Cross)).toEqual([1, 2])
+  })
+})
+
+describe("a kept entity whose id is used again, on a debug runtime", () => {
+  // Saved worlds and rewinds give ids out again: the kept entity must not reach the new one's slot.
+  const Health = Descriptor.ConstructedComponent(Codecs.number)("Kept/Health")
+  const Saved = Schema.bind(Schema.fragment({ components: { Health } }))
+  const makeSaved = (debug: boolean) => {
+    const made = Saved.Runtime.make({ services: Saved.Runtime.services(), checkpoints: 4, ...(debug ? { debug: { hostClock: HostClock.test() } } : {}) })
+    if (!made.ok) throw new Error("runtime")
+    return made.value
+  }
+  const spawnWith = (health: number) => Saved.Schedule(
+    Saved.System(`Kept/SpawnHealth${health}`, { commands: Saved.System.commands(Saved.System.spawns(Health)) }, ({ commands }) => {
+      commands.spawn(Saved.Command.spawn([Health, health]))
+    }),
+    Saved.Schedule.applyDeferred()
+  )
+  const Healths = Saved.Query({ selection: { health: Saved.Query.write(Health) } })
+  /** Keeps the first entity it sees in a closure (a restore rebuilds `local`), then reads and heals it on every run. */
+  const healer = (outcomes: Array<string>) => {
+    let target: QueryEntity<typeof Saved.schema, typeof Healths> | undefined
+    return Saved.System("Kept/Healer", { queries: { healths: Healths } }, ({ queries }) => {
+      target ??= queries.healths.each()[0]
+      if (target === undefined) return
+      try {
+        outcomes.push(String(queries.healths.data.health.get(target)))
+        queries.healths.data.health.set(target, 1000)
+      } catch (error) {
+        outcomes.push((error as Error).message.split(":")[0]!)
+      }
+    })
+  }
+  const AllHealth = Saved.Inspector("Kept/AllHealth", { queries: { healths: Saved.Query({ selection: { health: Saved.Query.read(Health) } }) } }, ({ queries }) =>
+    queries.healths.each().map((entity) => [entity.id, queries.healths.data.health.get(entity)] as const))
+
+  it("throws once a restore gives its id to another entity", () => {
+    const other = makeSaved(false)
+    other.tick(spawnWith(77))
+    const save = JSON.parse(JSON.stringify(worldOf(other.snapshot())))
+    const runtime = makeSaved(true)
+    const outcomes: Array<string> = []
+    const system = Saved.Schedule(healer(outcomes))
+    runtime.tick(spawnWith(5))
+    runtime.tick(system)
+    expect(runtime.restore(save).ok).toBe(true)
+    runtime.tick(system)
+
+    expect(outcomes).toEqual(["5", "Kept/Health was used for an entity that was despawned"])
+    expect(runtime.inspect(AllHealth)).toEqual([[1, 77]])
+  })
+
+  it("throws once a rewind takes it back and a spawn gets its id again", () => {
+    const runtime = makeSaved(true)
+    const outcomes: Array<string> = []
+    const system = Saved.Schedule(healer(outcomes))
+    const checkpoint = runtime.checkpoint(system)
+    runtime.tick(spawnWith(5))
+    runtime.tick(system)
+    expect(runtime.rewind(checkpoint).ok).toBe(true)
+    runtime.tick(spawnWith(77))
+    runtime.tick(system)
+
+    expect(outcomes).toEqual(["5", "Kept/Health was used for an entity that was despawned"])
+    expect(runtime.inspect(AllHealth)).toEqual([[1, 77]])
   })
 })

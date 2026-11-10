@@ -111,6 +111,36 @@ describe("debug.beginFrame", () => {
     expect(runtime.tryTick(update).ok).toBe(true)
   })
 
+  it("refuses a step or a frame begun while a step or a tick is running", () => {
+    const runtime = makeRuntime()
+    let cursor: Debug.FrameCursor | undefined
+    const StepInside = Game.System("Stepping/StepInside", {}, () => {
+      cursor!.next()
+    })
+    const begun = runtime.debug.beginFrame(Game.Schedule(StepInside, Listen))
+    if (!begun.ok) throw new Error("did not begin")
+    cursor = begun.value
+    expect(() => cursor.next()).toThrow(/FrameCursor\.next was called while a step is running/)
+    // A host listener at the end of a tick is still inside it.
+    const begins: Array<string> = []
+    const stop = runtime.debug.observeHost((event) => {
+      if (event.type !== "tick.end") return
+      try {
+        runtime.debug.beginFrame(update)
+        begins.push("begun")
+      } catch (error) {
+        begins.push(String(error))
+      }
+    })
+    runtime.tick(Game.Schedule())
+    runtime.tryTick(Game.Schedule())
+    stop()
+    expect(begins).toEqual([
+      "Error: debug.beginFrame was called while a schedule is running: begin a frame between ticks",
+      "Error: debug.beginFrame was called while a schedule is running: begin a frame between ticks"
+    ])
+  })
+
   it("ends the frame at a failing system or a thrown defect", () => {
     const Fail = Game.System("Stepping/Fail", {}, () => Result.failure("Broken" as const))
     const Throw = Game.System("Stepping/Throw", {}, () => {

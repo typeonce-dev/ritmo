@@ -298,7 +298,7 @@ export interface JournalFilter<S extends Schema.Any> {
   /** Schedule path prefix, for example `update`. */
   readonly schedule?: string
   readonly kinds?: ReadonlyArray<Format.LineKind>
-  /** Keep only the most recent `n` lines. */
+  /** Keep only the most recent `n` lines, and the rewinds between and after them. */
   readonly limit?: number
   /**
    * Include lines that record no change (equal-value writes, transitions to
@@ -398,6 +398,8 @@ export interface Report {
   readonly lints: ReadonlyArray<Debug.Lint>
   /** Live entities and entities per component now. */
   readonly population: Debug.Population
+  /** Rewinds to a checkpoint in the session (rejected ones not counted); `journal({ kinds: ["rewind"] })` lists those still in history. */
+  readonly rewinds: number
 }
 
 /** What `session.system(name)` shows: the system's declared access, its stats, and its recent journal lines. */
@@ -623,6 +625,9 @@ export const make = <
   const history: Array<FrameRecord> = []
   let current: FrameRecord = { frame: debug.frame(), events: [] }
   history.push(current)
+  /** Per rewind, the frames in history it undid. */
+  const undone = new WeakMap<Debug.RewindEvent, readonly [number, number]>()
+  let rewinds = 0
 
   const stats = new Map<string, { runs: number; failures: number; skips: number; pauses: number; totalMs: number; maxMs: number }>()
   const statsOf = (system: string) => {
@@ -836,6 +841,17 @@ export const make = <
           warn("transition-failed", `transition:${event.machine}:${String(event.from)}:${String(event.to)}`, `transition ${Format.transition(event)} ${event.outcome}`, event.frame)
         }
         break
+      case "rewind": {
+        if (!event.ok) break
+        rewinds += 1
+        // The frames that started at or after the checkpoint's tick.
+        const first = history.find((entry) => {
+          const start = entry.events[0]
+          return start?.type === "frame" && start.tick >= event.toTick
+        })
+        if (first !== undefined) undone.set(event, [first.frame, event.frame])
+        break
+      }
       // A frame starts above; schedule bounds and restores carry nothing to check.
       case "frame":
       case "schedule.start":
@@ -1153,6 +1169,13 @@ export const make = <
       const labels = labelsAt(entry.frame)
       for (const event of entry.events) {
         const position = at++
+        if (event.type === "rewind") {
+          // A rewind undid the lines before it, whatever they are about.
+          const [line] = Format.lines(event, format, labels)
+          if (line!.noop && filter.verbose !== true) hidden += 1
+          else result.push({ line: { ...line!, text: Format.rewind(event, undone.get(event)) }, at: position })
+          continue
+        }
         for (const line of Format.lines(event, format, labels)) {
           if (filter.entity !== undefined && line.entity !== filter.entity) continue
           if (subject !== undefined && line.subject !== subject && !(line.kind === "effect" && line.subject === undefined && filter.entity !== undefined)) continue
@@ -1167,7 +1190,15 @@ export const make = <
         }
       }
     }
-    return filter.limit === undefined ? result : result.slice(-filter.limit)
+    if (filter.limit === undefined || filter.limit === 0) return result
+    // The last `limit` lines that are not rewinds, with the rewinds after the first of them.
+    let from = result.length
+    for (let kept = 0; from > 0 && kept < filter.limit;) {
+      from -= 1
+      if (result[from]!.line.kind !== "rewind") kept += 1
+    }
+    while (from < result.length && result[from]!.line.kind === "rewind") from += 1
+    return result.slice(from)
   }
 
   const renderLines = (header: string, lines: ReadonlyArray<Format.Line>): string =>
@@ -1525,9 +1556,11 @@ export const make = <
       })),
       streams: debug.streams().filter((stream) => stream.heldBy !== undefined || stream.readers.some((reader) => reader.lagged)),
       lints: debug.describe().lints,
-      population: debug.population()
+      population: debug.population(),
+      rewinds
     }
-    const lines = [`${data.frames} frames run (${rangeText()})`, "", ...Format.lintLines(data.lints), "", "# Systems (by total time)"]
+    const rewound = rewinds === 0 ? "" : `; ${rewinds} rewinds to a checkpoint (journal({ kinds: ["rewind"] }) lists them)`
+    const lines = [`${data.frames} frames run (${rangeText()})${rewound}`, "", ...Format.lintLines(data.lints), "", "# Systems (by total time)"]
     for (const entry of systems) {
       lines.push(`${entry.system}: ${entry.runs} runs, avg ${Format.value(entry.runs === 0 ? 0 : entry.totalMs / entry.runs)}ms, max ${Format.value(entry.maxMs)}ms${entry.failures > 0 ? `, ${entry.failures} failures` : ""}${entry.skips > 0 ? `, ${entry.skips} skips` : ""}${entry.pauses > 0 ? `, ${entry.pauses} pauses` : ""}`)
     }
