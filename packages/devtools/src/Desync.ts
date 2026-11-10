@@ -36,7 +36,7 @@ import * as Rendered from "./Rendered.ts"
 
 /** One value that differs: where, and each side's (`undefined`: absent on that side). */
 export interface Difference {
-  /** `nextEntity`, `entity 12`, `entity 12 Game/Position.x`, `resource Game/Score`, `machine Game/Round`, `relation Game/ChildOf`, or `scope Game/Wave`. */
+  /** `nextEntity`, `entity 12`, `entity 12 Game/Position.x`, `resource Game/Score`, `machine Game/Round`, `next state Game/Round`, `relation Game/ChildOf`, or `scope Game/Wave`. */
   readonly path: string
   /** The entity the difference is in, when it is in one. */
   readonly entity: number | undefined
@@ -80,7 +80,7 @@ export interface CompareOptions {
   readonly labels?: Format.Labels
 }
 
-/** Every difference between two saves, in a stable order: the next id, entities by id, then resources, machines, relations, and scopes by name. */
+/** Every difference between two saves, in a stable order: the next id, entities by id, then resources, machines, queued next states, relations, and scopes by name. */
 export const compare = (mine: Snapshot.WorldSnapshot, theirs: Snapshot.WorldSnapshot, options: CompareOptions = {}): Rendered.Rendered<ReadonlyArray<Difference>> => {
   const found: Array<Difference> = []
   differences("nextEntity", undefined, mine.nextEntity, theirs.nextEntity, found)
@@ -94,6 +94,7 @@ export const compare = (mine: Snapshot.WorldSnapshot, theirs: Snapshot.WorldSnap
   }
   byName("resource", undefined, mine.resources, theirs.resources, found)
   byName("machine", undefined, mine.machines, theirs.machines, found)
+  byName("next state", undefined, mine.nextStates, theirs.nextStates, found)
   byName("relation", undefined, mine.relations, theirs.relations, found)
   byName("scope", undefined, mine.scopes, theirs.scopes, found)
   // `entity 12 ...` prints as `player e12 ...`, like every entity in devtools text.

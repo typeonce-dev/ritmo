@@ -147,6 +147,20 @@ export const globalRead = (context: Context, node: ESTree.Node): GlobalRead | un
   return undefined
 }
 
+/**
+ * The value of the `const` `node` names (`value` in `const x = value`), when
+ * a declaration in the file binds it to the whole value. A `let`, a
+ * parameter, and a destructured name give `undefined`.
+ */
+export const constValue = (context: Context, node: ESTree.Node): ESTree.Node | undefined => {
+  if (node.type !== "Identifier") return undefined
+  const variable = context.sourceCode.getScope(node).references.find((reference) => reference.identifier === node)?.resolved
+  const definition = variable?.defs.length === 1 ? variable.defs[0] : undefined
+  if (definition?.type !== "Variable" || definition.parent?.type !== "VariableDeclaration" || definition.parent.kind !== "const") return undefined
+  const declarator = definition.node
+  return declarator.type === "VariableDeclarator" && declarator.id.type === "Identifier" ? declarator.init ?? undefined : undefined
+}
+
 /** Whether `node` names the global `name` (not a local binding, property key, or type). */
 export const isGlobalIdentifier = (context: Context, node: ESTree.Node, name: string): boolean =>
   node.type === "Identifier" && node.name === name && isGlobalReference(context, node)

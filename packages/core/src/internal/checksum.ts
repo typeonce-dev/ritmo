@@ -4,9 +4,10 @@
  * The walk does not depend on how the data was built: object keys are
  * hashed in sorted order, so `{ x, y }` and `{ y, x }` hash the same, while
  * array, `Map`, and `Set` order counts. Every value is tagged with its type,
- * so `"1"` and `1` differ. `-0` hashes as `0`, as a save does: JSON writes
- * `-0` as `0`, so a world read back from a save or a replay file must hash
- * the same as the one that wrote it.
+ * so `"1"` and `1` differ. The walk hashes what a JSON save writes, so a
+ * world read back from a save or a replay file hashes the same as the one
+ * that wrote it: `-0` hashes as `0`, an object key whose value is
+ * `undefined` is skipped, and `undefined` in an array hashes as `null`.
  *
  * The hash is two 32-bit lanes (cyrb53's mixing), printed as 16 hex digits:
  * a fingerprint for spotting worlds that differ, not a cryptographic hash.
@@ -40,7 +41,7 @@ const walk = (lanes: Lanes, value: unknown): void => {
       if (value === null) return feed(lanes, "n")
       if (Array.isArray(value)) {
         feed(lanes, "[")
-        for (const item of value) walk(lanes, item)
+        for (const item of value) walk(lanes, item === undefined ? null : item)
         return feed(lanes, "]")
       }
       if (value instanceof Map) {
@@ -58,8 +59,10 @@ const walk = (lanes: Lanes, value: unknown): void => {
       }
       feed(lanes, "{")
       for (const key of Object.keys(value).sort()) {
+        const item = (value as Record<string, unknown>)[key]
+        if (item === undefined) continue
         walk(lanes, key)
-        walk(lanes, (value as Record<string, unknown>)[key])
+        walk(lanes, item)
       }
       return feed(lanes, "}")
     default:

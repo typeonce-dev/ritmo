@@ -537,8 +537,7 @@ const snapshotRoundTrip: BenchCase = {
   setup: () => {
     const runtime = makeRuntime()
     populate(runtime, N, 0)
-    // A restore logs the old world's despawns, which only a new frame lets go:
-    // without one between runs, every run would keep the previous one's 10k.
+    // A frame between runs, as between a game's loads.
     const frame = Game.Schedule(Game.Schedule.applyDeferred())
     return {
       prepare: () => runtime.tick(frame),

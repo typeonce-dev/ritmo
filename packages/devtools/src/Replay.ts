@@ -351,7 +351,7 @@ export const recorder = <S extends Schema.Any, Root, const Recorded extends AnyS
 
   const save = (reason: string): ReplayFile => {
     const point = points[0]
-    if (point === undefined) throw new Error("no tick of this run could be saved: a `~encode` rejected the world every time (see runtime.snapshot())")
+    if (point === undefined) throw new Error("no tick of this run could be saved: a `~encode` rejected the world, or commands were queued (end the schedule with applyDeferred()), every time (see runtime.snapshot())")
     const start = { tick: point.tick, snapshot: point.snapshot, pendingCommands: point.pendingCommands }
     const file: ReplayFile = {
       format: "ritmo-replay",

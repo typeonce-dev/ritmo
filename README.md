@@ -112,10 +112,11 @@ All packages are released together with the same version.
 | `@typeonce/ritmo-netcode` | Online multiplayer: rollback and lockstep sessions over WebSocket, WebRTC, or any transport, with resyncs and desync checks |
 | `@typeonce/ritmo-devtools` | Headless debug sessions, reports, and `ritmo-devtools lint` |
 | `@typeonce/oxlint-plugin-ritmo` | Lint rules for deterministic, headless simulation code |
-| `@typeonce/ritmo-tools` | `ritmo-tools`, the asset command for agents: pixel art, animation sheets, sound effects, and music |
+| `@typeonce/ritmo-tools` | `ritmo-tools`, the asset command for agents: pixel art, animation sheets, pixel art effects, sound effects, and music |
 
 Try the tools' pages in the browser: the [pixel fixer](https://ritmo.typeonce.dev/tools/pixel/),
-the [sound lab](https://ritmo.typeonce.dev/tools/sound/), and the [music lab](https://ritmo.typeonce.dev/tools/music/).
+the [effects lab](https://ritmo.typeonce.dev/tools/fx/), the [sound lab](https://ritmo.typeonce.dev/tools/sound/),
+and the [music lab](https://ritmo.typeonce.dev/tools/music/).
 
 ## Get started with your agent
 
@@ -173,6 +174,8 @@ effects on or off, and it never claims a touch feels good: you play, it listens.
   once.
 - A failing system rolls back its writes, and the tick returns the failure.
 - Queries visit only entities with their rarest required component and cache
-  their entities. CI fails on runtime regressions over 25%.
+  their entities. On a pull request that changes measured code, CI runs the
+  benchmarks against the base commit and fails when a case allocates over 10%
+  more, or a `critical` case runs slower than its limit (25% by default).
 
 <sub>[Brand assets and palette](./brand/README.md)</sub>
