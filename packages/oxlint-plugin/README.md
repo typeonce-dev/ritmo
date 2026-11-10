@@ -292,7 +292,7 @@ Spreading the previous value to change fields of the same state (`{ ...air, vy: 
 
 ### `ritmo/no-kept-query-values`
 
-An entity from `queries.x.each()` and a query's `data` live for one run. Kept past it, the data throws in the next run, and the entity is not checked against its query again: a runtime without `debug` keeps reading it after it left the query (gained a `without` component, lost a `with` one), and a debug runtime throws. The rule reports an entity or `data` stored in `local` state (directly, in a field or element of a literal, pushed or set into a collection there, or captured by a closure stored there) or in a variable declared outside the `Game.System` or `Game.Inspector` callback.
+An entity from `queries.x.each()` and a query's `data` live for one run. Kept past it, the data throws in the next run, and the entity is not checked against its query again: a runtime without `debug` keeps reading it after it left the query (gained a `without` component, lost a `with` one), and a debug runtime throws. The rule reports an entity or `data` stored in `local` state (directly, in a field or element of a literal, pushed or set into a collection there, merged in with `Object.assign(local, ...)`, or captured by a closure stored there) or in a variable declared outside the system's function: the callback of `Game.System` or `Game.Inspector`, or a function of the same file passed to one by name (`Game.System(name, spec, run)`). It follows entities copied (`Array.from(queries.x.each())`, `const [first] = queries.x.each()`) or returned by a `map` or `reduce` callback, and a context destructured or renamed (`({ queries: q })`, `({ queries: { x } })`, `({ local: kept })`, `ctx.queries.x`).
 
 ```ts
 local.target ??= queries.targets.each()[0]       // reported
@@ -305,7 +305,7 @@ if (found?.ok) aimAt(queries.targets.data.position.get(found.value))
 local.rows = queries.targets.rows()              // plain values, safe to keep
 ```
 
-Ids, values read from `data`, and rows are not reported, nor are variables of the run itself (`let best` in the system's body).
+Ids (`entity.id`, `.map((entity) => entity.id)`), values read from `data`, and rows are not reported, nor are variables of the run itself (`let best` in the system's body). An entity handed to a service (`services.cache.remember(entity)`) is not judged: the rule cannot see what the service keeps.
 
 ## Built-in rules that pair well
 
