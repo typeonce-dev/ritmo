@@ -1,6 +1,7 @@
 import { defineRule } from "@oxlint/plugins"
+import type { ESTree } from "@oxlint/plugins"
 
-import { docsUrl, globalMember } from "../internal/ast.ts"
+import { docsUrl, globalRead } from "../internal/ast.ts"
 
 /**
  * Simulation code draws randomness from the world's Random resource, which is
@@ -22,16 +23,13 @@ export default defineRule({
     schema: []
   },
   create(context) {
-    return {
-      MemberExpression(node) {
-        if (globalMember(context, node, "Math") === "random") {
-          context.report({ node, messageId: "random", data: { call: "Math.random()" } })
-          return
-        }
-        const crypto = globalMember(context, node, "crypto")
-        if (crypto === "getRandomValues") context.report({ node, messageId: "random", data: { call: "crypto.getRandomValues()" } })
-        if (crypto === "randomUUID") context.report({ node, messageId: "uuid" })
-      }
+    /** Reports a read of a random source: a member (`globalThis.Math.random`) or a destructured property (`const { random } = Math`). */
+    const check = (node: ESTree.Node): void => {
+      const path = globalRead(context, node)?.path
+      if (path === "Math.random") context.report({ node, messageId: "random", data: { call: "Math.random()" } })
+      if (path === "crypto.getRandomValues") context.report({ node, messageId: "random", data: { call: "crypto.getRandomValues()" } })
+      if (path === "crypto.randomUUID") context.report({ node, messageId: "uuid" })
     }
+    return { MemberExpression: check, Property: check }
   }
 })

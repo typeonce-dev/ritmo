@@ -13,7 +13,13 @@ tester.run("keep-simulation-headless", rule, {
     "const term = { window: 12 }; const left = term.window - 1",
     "function open(location: { x: number }) { return location.x }",
     "class Shop { fetch = 0 }",
-    "import { history } from \"./ledger.ts\"; history.push(entry)"
+    "import { history } from \"./ledger.ts\"; history.push(entry)",
+    "const self = worker(); const wide = self.innerWidth > 800",
+    "const size = stats.window.innerWidth + config.localStorage",
+    "function play(Audio: Player) { new Audio(\"hit\").play() }",
+    // Types never run.
+    "let context: AudioContext; let store: typeof localStorage",
+    "const { innerWidth } = settings"
   ],
   invalid: [
     { code: "const muted = localStorage.getItem(\"muted\") === \"1\"", errors: [{ messageId: "io", data: { name: "localStorage" } }] },
@@ -21,6 +27,15 @@ tester.run("keep-simulation-headless", rule, {
     { code: "const socket = new WebSocket(url)", errors: [{ messageId: "network", data: { name: "WebSocket" } }] },
     { code: "const peer = new RTCPeerConnection()", errors: [{ messageId: "network", data: { name: "RTCPeerConnection" } }] },
     { code: "const wide = window.innerWidth > 800", errors: [{ messageId: "page", data: { name: "window" } }] },
+    // Reached through a global object, an alias, or destructuring.
+    { code: "const muted = globalThis.localStorage.getItem(\"muted\")", errors: [{ messageId: "io", data: { name: "localStorage" } }] },
+    { code: "const wide = self.innerWidth > 800", errors: [{ messageId: "page", data: { name: "innerWidth" } }] },
+    { code: "const wide = globalThis.window.innerWidth > 800", errors: [{ messageId: "page", data: { name: "window" } }] },
+    { code: "const { localStorage: store } = globalThis", errors: [{ messageId: "io", data: { name: "localStorage" } }] },
+    { code: "const g = globalThis; const data = await g.fetch(url)", errors: [{ messageId: "io", data: { name: "fetch" } }] },
+    { code: "new Audio(\"hit.mp3\").play()", errors: [{ messageId: "audio", data: { name: "Audio" } }] },
+    { code: "const context = new AudioContext()", errors: [{ messageId: "audio", data: { name: "AudioContext" } }] },
+    { code: "const context = new globalThis.AudioContext()", errors: [{ messageId: "audio", data: { name: "AudioContext" } }] },
     { code: "document.title = score.toString()", errors: [{ messageId: "page", data: { name: "document" } }] },
     { code: "if (matchMedia(\"(prefers-reduced-motion)\").matches) skip()", errors: [{ messageId: "page", data: { name: "matchMedia" } }] },
     { code: "import { Container } from \"pixi.js\"", errors: [{ messageId: "renderer", data: { source: "pixi.js" } }] },

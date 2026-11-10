@@ -32,6 +32,7 @@ const connect = (): Promise<WebSocket> =>
     socket.addEventListener("error", () => reject(new Error("could not connect")))
   })
 
+// oxlint-disable-next-line ritmo/use-clock-for-time -- this test is the host: it yields to the relay between ticks, as a game's loop does.
 const nextTurn = () => new Promise<void>((resolve) => setImmediate(resolve))
 
 describe("two peers over a real WebSocket relay", () => {
