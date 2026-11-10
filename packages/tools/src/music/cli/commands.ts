@@ -9,6 +9,7 @@
  */
 import { Effect, FileSystem, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
+import { intFlag, numberFlag } from "../../internal/flags.ts"
 import { Exit } from "../../sound/cli/commands.ts"
 import { CliFailure, printJson, readText, writeBytes, writeText } from "../../sound/cli/io.ts"
 import { monoWav, readWav, stereoWav } from "../core/audio.ts"
@@ -98,7 +99,7 @@ const listenCommand = Command.make(
   {
     song: songArgument,
     audio: Argument.String("audio").pipe(Argument.withDescription("A WAV file of one voice: the person humming, whistling, tapping a beat, or a recorded lead line (a full song gives a tempo and a key, not its tune).")),
-    tempo: Flag.Finite("tempo").pipe(Flag.withDescription("The tempo, when it is known: only the melody and key are listened for."), Flag.optional)
+    tempo: numberFlag("tempo", 30, 300).pipe(Flag.withDescription("The tempo, when it is known: only the melody and key are listened for."), Flag.optional)
   },
   Effect.fn("listen")(function* (flags) {
     const path = yield* Path.Path
@@ -167,7 +168,7 @@ const review = Command.make(
   "review",
   {
     paths: pathsArgument,
-    port: Flag.Int("port").pipe(Flag.withDescription("The port to serve the page on."), Flag.withDefault(5191)),
+    port: intFlag("port", 1, 65535).pipe(Flag.withDescription("The port to serve the page on."), Flag.withDefault(5191)),
     host: Flag.Boolean("host").pipe(Flag.withDefault(false), Flag.withDescription("Serve on the network too, to listen on a phone (recording needs localhost or HTTPS)."))
   },
   Effect.fn("review")(function* (flags) {

@@ -24,6 +24,7 @@
  * `music listen` heard in a hum or a recording (its tempo, key, and melody),
  * for the agent to build the song around and the page to draw under it.
  */
+import { unknownKeys } from "../../internal/keys.ts"
 import { drumNames, instrumentIds, instruments, isDrum, type InstrumentId } from "./instruments.ts"
 
 export type Decoded<A> = { readonly ok: true; readonly value: A } | { readonly ok: false; readonly error: string }
@@ -209,6 +210,7 @@ const decodeNote = (raw: unknown, at: string, drums: boolean, errors: Array<stri
     return undefined
   }
   const { number, text } = reader(errors)
+  errors.push(...unknownKeys(raw, ["at", "length", "pitch", "velocity"], `${at}.`))
   const pitch = text(raw.pitch, `${at}.pitch`)
   if (drums && !isDrum(pitch)) errors.push(`${at}.pitch must be a drum on a drum track: ${drumNames.join(", ")}`)
   if (!drums && midiOf(pitch) === undefined) errors.push(`${at}.pitch must be a note name like "C4", "F#3", or "Bb5" (got ${JSON.stringify(raw.pitch)})`)
@@ -226,6 +228,7 @@ const decodeTrack = (raw: unknown, at: string, errors: Array<string>): Track | u
     return undefined
   }
   const { number, text } = reader(errors)
+  errors.push(...unknownKeys(raw, ["name", "instrument", "volume", "pan", "reverb", "mute", "notes"], `${at}.`))
   const instrument = instrumentIds.find((id) => id === raw.instrument)
   if (instrument === undefined) errors.push(`${at}.instrument must be one of ${instrumentIds.join(", ")}`)
   const drums = instrument !== undefined && instruments[instrument].kind === "drums"
@@ -250,6 +253,7 @@ const decodeReference = (raw: unknown, at: string, errors: Array<string>): Refer
     return undefined
   }
   const { number, text } = reader(errors)
+  errors.push(...unknownKeys(raw, ["audio", "tempo", "key", "length", "notes", "contour", "offset", "start"], `${at}.`))
   const notes: Array<HeardNote> = []
   for (const [i, note] of (Array.isArray(raw.notes) ? raw.notes : []).entries()) {
     if (!isRecord(note) || typeof note.pitch !== "string" || midiOf(note.pitch) === undefined) {
@@ -274,7 +278,7 @@ const decodeReference = (raw: unknown, at: string, errors: Array<string>): Refer
 /** Reads a song from parsed JSON, collecting every problem with where it is. */
 export const decodeSongValue = (raw: unknown): Decoded<Song> => {
   if (!isRecord(raw)) return { ok: false, error: 'a song is {"version": 1, "tempo": 96, "key": "A minor", "bars": 8, "tracks": [...]}' }
-  const errors: Array<string> = []
+  const errors: Array<string> = unknownKeys(raw, ["version", "about", "tempo", "key", "beatsPerBar", "bars", "loop", "master", "compressor", "tracks", "reference"])
   const { number, text } = reader(errors)
   const key = text(raw.key, "key", "C major")
   if (parseKey(key) === undefined) errors.push(`key must be a note and a scale, like "A minor" or "F# dorian" (scales: ${scaleNames.join(", ")})`)

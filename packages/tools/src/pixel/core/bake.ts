@@ -15,6 +15,7 @@
  * down-left. The sun is given in the axes of yaw 0 whatever the yaw (+x
  * right on the picture), and stays put as a model turns.
  */
+import { nearestKey } from "../../internal/keys.ts"
 import { parseHex, toHex, type Rgb } from "./color.ts"
 import { TRANSPARENT, type PixelArt } from "./fix.ts"
 import type { RgbaImage } from "./grid.ts"
@@ -157,7 +158,7 @@ class Reader {
       return {}
     }
     for (const key of Object.keys(raw)) {
-      if (!allowed.includes(key)) this.fail(`${path}.${key}`, hints[key] ?? `is not a field here, which takes ${allowed.join(", ")}`)
+      if (!allowed.includes(key)) this.fail(`${path}.${key}`, hints[key] ?? `is not a field here: did you mean ${nearestKey(key, allowed)}? It takes ${allowed.join(", ")}`)
     }
     return raw
   }
@@ -459,10 +460,20 @@ const parseNode = (read: Reader, raw: unknown, path: string, material: boolean, 
     from: low,
     to: high,
     axis,
-    sides: read.number(fields.sides, `${path}.sides`, 20, (n) => (Number.isInteger(n) && n >= 3 ? undefined : "must be 3 or more")),
+    sides: read.number(fields.sides, `${path}.sides`, 20, (n) => (Number.isInteger(n) && n >= 3 && n <= MAX_SIDES ? undefined : `must be a whole number from 3 to ${MAX_SIDES}`)),
     taper: read.number(fields.taper, `${path}.taper`, 1, (n) => (n >= 0 ? undefined : "must be 0 or more: how much the far end is scaled"))
   }
 }
+
+/** The most frames one bake draws (headings times every animation's frames): far past a game's sprite, and short of a bake that runs for minutes. */
+export const MAX_BAKE_FRAMES = 1024
+/** The most sides a cylinder has: past it, no art pixel shows the difference. */
+const MAX_SIDES = 256
+/** The largest frame a bake draws, on a side, in art pixels. */
+export const MAX_BAKE_SIDE = 1024
+
+/** A model whose frame is past `MAX_BAKE_SIDE`: said before anything is drawn, which would run out of memory. */
+export class BakeTooLarge extends Error {}
 
 const MODEL_FIELDS = ["headings", "animations", "frame", "materials", "outline", "cleanup", "normals", "shadow", "parts", "paint"]
 
@@ -489,6 +500,8 @@ export const parseBakeModel = (text: string, setup: BakeSetup): Parsed<BakeModel
       }
     } else read.fail("$.animations", 'must map names to { "frames": 6, "fps": 8 }')
   }
+  const drawn = headings * Math.max(1, animations.reduce((sum, animation) => sum + animation.frames, 0))
+  if (drawn > MAX_BAKE_FRAMES) read.fail("$", `draws ${drawn} frames (headings times every animation's frames): a bake draws at most ${MAX_BAKE_FRAMES}. Draw fewer headings or frames`)
   const frame = read.fields(fields.frame ?? {}, "$.frame", ["width", "up", "below"])
   const rows = (n: number) => (Number.isInteger(n) && n >= 0 ? undefined : "must be a whole number of art pixels")
   const materials = read.materials(fields.materials, "$.materials")
@@ -919,6 +932,8 @@ export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: Readonl
   const below = model.frame.below ?? auto.below
   const width = Math.ceil(left + right)
   const height = up + below
+  if (width > MAX_BAKE_SIDE || height > MAX_BAKE_SIDE)
+    throw new BakeTooLarge(`its frame would be ${width}×${height} art pixels: a bake draws frames of at most ${MAX_BAKE_SIDE} on a side. Make the model smaller, lower \`bake.camera.scale\` in pixel.config.json, or set \`frame\``)
   const cut = {
     left: Math.max(0, Math.ceil(-minX - left)),
     right: Math.max(0, Math.ceil(maxX - right)),

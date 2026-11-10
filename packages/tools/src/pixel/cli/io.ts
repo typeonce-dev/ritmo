@@ -9,7 +9,7 @@ import type { RgbaImage } from "../core/grid.ts"
 import { isPng, readProjectRecipe, withProjectRecipe } from "../core/project.ts"
 import { parseJsonMap, parseSprite } from "../core/sprite.ts"
 import { CliFailure } from "./config.ts"
-import { decodePicture, encodePng } from "./png.ts"
+import { decodePicture, encodePng, PictureTooLarge } from "./png.ts"
 
 /** A picture to fix, or pixel art already as data (a sprite source or a JSON map). */
 export type Source = { readonly kind: "image"; readonly image: RgbaImage } | { readonly kind: "art"; readonly art: PixelArt }
@@ -22,7 +22,7 @@ export const readPicture = Effect.fn("readPicture")(function* (file: string) {
   const bytes = yield* fs.readFile(file).pipe(Effect.mapError(() => new CliFailure({ message: `cannot read ${file}` })))
   return yield* Effect.try({
     try: () => decodePicture(bytes),
-    catch: (error) => new CliFailure({ message: `${file} is not a PNG or a JPEG: ${error instanceof Error ? error.message : String(error)}` })
+    catch: (error) => new CliFailure({ message: error instanceof PictureTooLarge ? `${file} is too large to read: ${error.message}` : `${file} is not a PNG or a JPEG: ${error instanceof Error ? error.message : String(error)}` })
   })
 })
 

@@ -43,6 +43,7 @@
  * frame of a draft ("this pixel, here"), and, once approved, what they
  * approved (`approval.ts`), so a later change to it shows.
  */
+import { unknownKeys } from "../../internal/keys.ts"
 import { approvedSaid, goneEntry, goneSaid, statuses, unrecordedOf, type Status } from "../../internal/review.ts"
 import type { Decoded, Palette, Ramps } from "./effect.ts"
 
@@ -157,7 +158,7 @@ export const decodeBank = (text: string): Decoded<Bank> => {
   const raw = parsed.value
   if (!isRecord(raw) || !isRecord(raw.palette) || !isRecord(raw.effects))
     return { ok: false, error: 'an effects bank is {"version": 1, "palette": {"name": "#rrggbb"}, "effects": {"name": {"drafts": {"a": {"file": "..."}}}}}' }
-  const errors: Array<string> = []
+  const errors: Array<string> = unknownKeys(raw, ["version", "palette", "ramps", "backdrops", "standIn", "effects"])
   const palette: Record<string, string> = {}
   for (const [name, hex] of Object.entries(raw.palette)) {
     if (typeof hex !== "string" || !/^#[0-9a-f]{6}$/i.test(hex)) errors.push(`palette.${name} must be a #rrggbb color`)
@@ -188,6 +189,7 @@ export const decodeBank = (text: string): Decoded<Bank> => {
   if (raw.standIn !== undefined) {
     if (!isRecord(raw.standIn) || typeof raw.standIn.file !== "string" || raw.standIn.file === "" || !pixel(raw.standIn.anchor))
       errors.push('standIn must be {"file": "a PNG of one of the game\'s sprites", "anchor": [x, y] (its feet)}')
+    else if (unknownKeys(raw.standIn, ["file", "anchor"]).length > 0) errors.push(...unknownKeys(raw.standIn, ["file", "anchor"], "standIn."))
     else if (!staysInside(raw.standIn.file)) errors.push(`standIn.file ${INSIDE}`)
     else standIn = { file: raw.standIn.file, anchor: [raw.standIn.anchor[0], raw.standIn.anchor[1]] }
   }
@@ -197,12 +199,14 @@ export const decodeBank = (text: string): Decoded<Bank> => {
       errors.push(`effects.${name} needs drafts: {"a": {"file": "..."}}`)
       continue
     }
+    errors.push(...unknownKeys(value, ["about", "standIn", "drafts", "use"], `effects.${name}.`))
     const drafts: Record<string, Draft> = {}
     for (const [id, draft] of Object.entries(value.drafts)) {
       if (!isRecord(draft) || typeof draft.file !== "string" || draft.file === "") {
         errors.push(`effects.${name}.drafts.${id} needs a file`)
         continue
       }
+      errors.push(...unknownKeys(draft, ["file", "seed", "tune", "accept", "recolor"], `effects.${name}.drafts.${id}.`))
       if (!staysInside(draft.file)) errors.push(`effects.${name}.drafts.${id}.file ${INSIDE}`)
       if (draft.seed !== undefined && !Number.isInteger(draft.seed)) errors.push(`effects.${name}.drafts.${id}.seed must be a whole number`)
       const tune: Record<string, number> = {}

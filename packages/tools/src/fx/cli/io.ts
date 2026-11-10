@@ -1,10 +1,11 @@
 /** Reading banks, reviews, and the drafts' modules, and writing what the CLI makes, through Effect's FileSystem. */
+import { createContext, Script } from "node:vm"
 import { Effect, FileSystem, Option, Path } from "effect"
 import { loadConfig } from "../../pixel/cli/config.ts"
 import { decodePng } from "../../pixel/cli/png.ts"
 import { decodeBank, decodeReview, emptyReview, reviewPath, type Bank, type Draft, type Review } from "../core/bank.ts"
 import type { Rules } from "../core/check.ts"
-import { decodeEffect, type Effect as FxEffect } from "../core/effect.ts"
+import { decodeEffect, DrawTimedOut, type Effect as FxEffect } from "../core/effect.ts"
 import { CliFailure, readText } from "../../sound/cli/io.ts"
 
 export { CliFailure, printJson, readText, writeBytes, writeText } from "../../sound/cli/io.ts"
@@ -47,8 +48,33 @@ export const loadDraft = Effect.fn("loadDraft")(function* (bankFile: string, dra
   )
   if (!loaded.ok) return { ok: false, error: loaded.error, file } satisfies Loaded
   const decoded = decodeEffect(loaded.module)
-  return (decoded.ok ? { ok: true, effect: decoded.value, file } : { ok: false, error: `${draft.file}: ${decoded.error}`, file }) satisfies Loaded
+  return (decoded.ok ? { ok: true, effect: timed(decoded.value), file } : { ok: false, error: `${draft.file}: ${decoded.error}`, file }) satisfies Loaded
 })
+
+/** How long one frame's `draw` may run in the CLI before it is stopped, in seconds. */
+export const DRAW_SECONDS = 5
+
+const watchdog = createContext({ run: (): void => undefined })
+const call = new Script("run()")
+
+/** The effect with its `draw` stopped past `DRAW_SECONDS` (`DrawTimedOut`), once and for every frame after: a draft that never returns is reported, not waited on. */
+const timed = (effect: FxEffect): FxEffect => {
+  let timedOut = false
+  return {
+    ...effect,
+    draw: (fx) => {
+      if (timedOut) throw new DrawTimedOut(DRAW_SECONDS)
+      watchdog.run = () => effect.draw(fx)
+      try {
+        call.runInContext(watchdog, { timeout: DRAW_SECONDS * 1000 })
+      } catch (error) {
+        if (!(typeof error === "object" && error !== null && "code" in error && error.code === "ERR_SCRIPT_EXECUTION_TIMEOUT")) throw error
+        timedOut = true
+        throw new DrawTimedOut(DRAW_SECONDS)
+      }
+    }
+  }
+}
 
 /** The project's rules for effects, from `pixel.config.json` (at `explicit`, or the nearest at or above the bank's folder). */
 export const readRules = Effect.fn("readRules")(function* (bankFile: string, explicit: Option.Option<string>) {

@@ -13,6 +13,7 @@ import { Argument, Command, Flag } from "effect/cli"
 import { toGif } from "../../pixel/core/gif.ts"
 import { atlasOf, played, spritesheetJson } from "../../pixel/core/spritesheet.ts"
 import { encodePng } from "../../pixel/cli/png.ts"
+import { intFlag } from "../../internal/flags.ts"
 import { Exit } from "../../pixel/cli/commands.ts"
 import { changedSince } from "../core/approval.ts"
 import { encodeBank, encodeReview, newEffect, resolveComments, reviewPath, reviewSummary, standInSpot, usedDraft, type Bank, type EffectReview } from "../core/bank.ts"
@@ -97,8 +98,8 @@ const look = Command.make(
     bank: bankArgument,
     name: Argument.String("name").pipe(Argument.withDescription("The effect to look at.")),
     draft: Flag.String("draft").pipe(Flag.withDescription("Only this draft (default: every draft)."), Flag.optional),
-    scale: Flag.Int("scale").pipe(Flag.withDescription("Each pixel drawn this many times."), Flag.withDefault(6)),
-    columns: Flag.Int("columns").pipe(Flag.withDescription("Frames per row."), Flag.withDefault(8)),
+    scale: intFlag("scale", 1, 32).pipe(Flag.withDescription("Each pixel drawn this many times."), Flag.withDefault(6)),
+    columns: intFlag("columns", 1, 64).pipe(Flag.withDescription("Frames per row."), Flag.withDefault(8)),
     backdrop: Flag.String("backdrop").pipe(Flag.withDescription("What the frames are drawn over: dark, light, checker, or one of the bank's backdrops by name."), Flag.withDefault("dark")),
     marks: Flag.Literals("marks", ["comments", "jaggies", "doubles", "holes", "flicker", "none"]).pipe(
       Flag.withDescription("What to ring in magenta: the person's comments on the draft (default), or where a craft rule from `fx check` breaks."),
@@ -133,6 +134,12 @@ const look = Command.make(
       const loaded = yield* loadDraft(flags.bank, draft)
       if (!loaded.ok) return yield* new CliFailure({ message: loaded.error })
       const run = runEffect(loaded.effect, bank.palette, { seed: draft.seed, tune: draft.tune, ramps: rampsFor(bank.ramps, draft.recolor) })
+      // A draw that never returned was stopped: its frames from there are blank, so the picture would mislead.
+      const stopped = run.errors.find((error) => error.startsWith("draw did not return"))
+      if (stopped !== undefined) {
+        yield* printJson({ effect: flags.name, draft: id, errors: [stopped], next: `Fix draft ${id}'s draw so it returns on every frame (a loop that never ends), then look again.` })
+        return yield* exitWith(3)
+      }
       const mine = comments.filter((comment) => comment.draft === id)
       const marks = flags.marks === "comments" ? mine : flags.marks === "none" ? [] : flags.marks === "flicker" ? flicker(run).spots : { jaggies, doubles, holes }[flags.marks](run)
       if (flags.marks === "comments") for (const comment of mine) ringed.push({ number: comment.number, draft: id, frame: comment.frame, x: comment.x, y: comment.y, text: comment.text })
@@ -166,7 +173,7 @@ const renderCommand = Command.make(
     bank: bankArgument,
     names,
     out: Flag.String("out").pipe(Flag.withAlias("o"), Flag.withDescription("The folder to write to (default: <bank>.out/ next to the bank).")).pipe(Flag.optional),
-    scale: Flag.Int("scale").pipe(Flag.withDescription("Each pixel written this many times in the sheet and the GIF."), Flag.withDefault(1))
+    scale: intFlag("scale", 1, 32).pipe(Flag.withDescription("Each pixel written this many times in the sheet and the GIF."), Flag.withDefault(1))
   },
   Effect.fn("render")(function* (flags) {
     const path = yield* Path.Path
@@ -239,7 +246,7 @@ const review = Command.make(
   {
     bank: bankArgument,
     config: configFlag,
-    port: Flag.Int("port").pipe(Flag.withDescription("The port to serve the page on (the next free one if taken)."), Flag.withDefault(5192)),
+    port: intFlag("port", 1, 65535).pipe(Flag.withDescription("The port to serve the page on (the next free one if taken)."), Flag.withDefault(5192)),
     host: Flag.Boolean("host").pipe(Flag.withDefault(false), Flag.withDescription("Serve on the network too, to look on a phone."))
   },
   Effect.fn("review")(function* (flags) {

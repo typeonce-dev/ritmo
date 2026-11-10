@@ -21,7 +21,7 @@ import { toJson, toRgba, toSvg } from "../core/export.ts"
 import type { Issue, LintRules } from "../core/lint.ts"
 import { presets, proposePalette, type ProposeMethod } from "../core/palette.ts"
 import { runRecipe, type Outcome } from "../core/pipeline.ts"
-import { bake as bakeModel, parseBakeModel, type BakedClip } from "../core/bake.ts"
+import { bake as bakeModel, BakeTooLarge, parseBakeModel, type BakedClip } from "../core/bake.ts"
 import { atlasClips, detectFrames, proposeForSheet, runSheet, type AnimationCache } from "../core/animation.ts"
 import { toGif } from "../core/gif.ts"
 import { decodeNormals, encodeNormals, flickerOf, isNormalPreset, makeNormals, NORMAL_CONVENTION, normalIssues, normalPresets, type NormalPreset } from "../core/normals.ts"
@@ -33,7 +33,9 @@ import { checkImage, compareReports, reportOfArt, reportOfFix, reportOfSheet, ty
 import { pixelSummary, resolveComments, reviewSummary } from "../core/review.ts"
 import { artOfImage, formatSprite } from "../core/sprite.ts"
 import { CliFailure, CONFIG_FILE, decodeOrFail, loadConfig, loadPalette, starterConfig, type Config } from "./config.ts"
-import { decodePicture } from "./png.ts"
+import { intFlag, numberFlag } from "../../internal/flags.ts"
+import type { RgbaImage } from "../core/grid.ts"
+import { decodePicture, MAX_PIXELS, MAX_SIDE } from "./png.ts"
 import { outputBase, printJson, readPicture, readProjectRecipeOf, readSource, readText, writeBytes, writePng, writeProject, writeText } from "./io.ts"
 import { findAssets, goneOf, normalFilesOf, pictureOf, readAsset, readReviewFile, reviewPlace, reviewsOf, writeReview, type PixelAsset } from "./library.ts"
 import { serve } from "./serve.ts"
@@ -59,15 +61,15 @@ const palette = Flag.String("palette").pipe(
   Flag.withDescription('The palette: a preset (see `ritmo-tools pixel palettes`), a .hex or .gpl file, or hex colors like "#000,#fff".'),
   Flag.optional
 )
-const colors = Flag.Int("colors").pipe(Flag.withDescription("Without a palette, propose one of this many colors from the picture itself."), Flag.optional)
+const colors = intFlag("colors", 1, 256).pipe(Flag.withDescription("Without a palette, propose one of this many colors from the picture itself."), Flag.optional)
 const out = Flag.String("out").pipe(Flag.withAlias("o"), Flag.withDescription("Where to write, without extension (default: next to the input)."), Flag.optional)
-const scale = Flag.Int("scale").pipe(Flag.withDescription("Also write a PNG enlarged this many times."), Flag.withDefault(1))
+const scale = intFlag("scale", 1, 32).pipe(Flag.withDescription("Also write a PNG enlarged this many times."), Flag.withDefault(1))
 const removeBackground = Flag.Boolean("remove-background").pipe(Flag.withDefault(false), Flag.withDescription("Make the background around the subject transparent."))
 const crop = Flag.Boolean("crop").pipe(Flag.withDefault(false), Flag.withDescription("Write the art without its transparent margins (with --remove-background: just the subject)."))
-const cleanup = Flag.Int("cleanup").pipe(Flag.withDescription("Merge specks up to this many pixels into their surroundings."), Flag.optional)
+const cleanup = intFlag("cleanup", 0, 64).pipe(Flag.withDescription("Merge specks up to this many pixels into their surroundings."), Flag.optional)
 const metric = Flag.Literals("metric", ["oklab", "ciede2000"]).pipe(Flag.withDescription("How color distance is measured."), Flag.optional)
 const dither = Flag.Boolean("dither").pipe(Flag.withDefault(false), Flag.withDescription("Ordered dithering where the palette has no close color."))
-const shrink = Flag.Int("shrink-to").pipe(Flag.withDescription("Merge pixels down to this width, keeping outlines."), Flag.optional)
+const shrink = intFlag("shrink-to", 1, MAX_SIDE).pipe(Flag.withDescription("Merge pixels down to this width, keeping outlines."), Flag.optional)
 const outlines = Flag.Literals("outlines", ["auto", "on", "off"]).pipe(
   Flag.withDescription("One-pixel dark outlines: grid lines kept off dark strokes, and a stroke split between two pixels given back to one (auto: when the picture's dark strokes are about one cell wide)."),
   Flag.optional
@@ -250,9 +252,9 @@ const pixelate = Command.make(
   "pixelate",
   {
     input: Argument.String("input").pipe(Argument.withDescription("A reference picture that is not pixel art (a drawing, a render, a photo).")),
-    width: Flag.Int("width").pipe(Flag.withAlias("w"), Flag.withDescription("How many pixels wide the pixel art is.")),
-    height: Flag.Int("height").pipe(Flag.withDescription("How many pixels high (default: keeps the picture's proportions)."), Flag.optional),
-    colors: Flag.Int("colors").pipe(Flag.withDescription("Without a palette, how many colors to propose from the picture."), Flag.withDefault(16)),
+    width: intFlag("width", 1, MAX_SIDE).pipe(Flag.withAlias("w"), Flag.withDescription("How many pixels wide the pixel art is.")),
+    height: intFlag("height", 1, MAX_SIDE).pipe(Flag.withDescription("How many pixels high (default: keeps the picture's proportions)."), Flag.optional),
+    colors: intFlag("colors", 1, 256).pipe(Flag.withDescription("Without a palette, how many colors to propose from the picture."), Flag.withDefault(16)),
     config,
     recipe: recipeFlag,
     ...overrides,
@@ -262,7 +264,6 @@ const pixelate = Command.make(
   Effect.fn("pixelate")(function* (flags) {
     const project = yield* loadConfig(flags.config)
     const { recipe: start } = yield* recipeOf(project, flags.recipe, flags)
-    if (flags.width < 1) return yield* new CliFailure({ message: "--width must be at least 1" })
     const recipe: Recipe = {
       ...start,
       grid: { kind: "size", width: flags.width, height: Option.getOrUndefined(flags.height) },
@@ -394,11 +395,13 @@ const compare = Command.make(
 ).pipe(Command.withDescription("Checks two versions of an asset and says which is better, and why."))
 
 /** Reads "x,y,w,h;x,y,w,h" as frame boxes, in source pixels. */
-const parseBoxes = (text: string): Effect.Effect<Sheet["frames"], CliFailure> => {
+const parseBoxes = (text: string, image: RgbaImage): Effect.Effect<Sheet["frames"], CliFailure> => {
   const boxes = text.split(/[;\s]+/).filter((part) => part !== "").map((part) => part.split(",").map(Number))
   if (boxes.length === 0 || boxes.some((box) => box.length !== 4 || box.some((value) => !Number.isFinite(value)) || box[2]! < 1 || box[3]! < 1)) {
     return Effect.fail(new CliFailure({ message: 'frame boxes are "x,y,w,h" in source pixels, separated by ";"' }))
   }
+  const outside = boxes.findIndex(([x, y, width, height]) => x! < 0 || y! < 0 || x! + width! > image.width || y! + height! > image.height)
+  if (outside >= 0) return Effect.fail(new CliFailure({ message: `--boxes: box ${outside + 1} (${boxes[outside]!.join(",")}) is not inside the picture, which is ${image.width}×${image.height}` }))
   return Effect.succeed(boxes.map(([x, y, width, height]) => frameOf({ x: x!, y: y!, width: width!, height: height! })))
 }
 
@@ -444,7 +447,7 @@ const sheetCommand = Command.make(
     config,
     recipe: recipeFlag,
     ...overrides,
-    colors: Flag.Int("colors").pipe(Flag.withDescription("Without a palette, how many colors to propose from all the frames together."), Flag.withDefault(16)),
+    colors: intFlag("colors", 1, 256).pipe(Flag.withDescription("Without a palette, how many colors to propose from all the frames together."), Flag.withDefault(16)),
     cell: Flag.String("cell").pipe(Flag.withDescription('The cell size in source pixels, "11.5", instead of finding it (each frame finds its own offset).'), Flag.optional),
     boxes: Flag.String("boxes").pipe(Flag.withDescription('The frames\' boxes, "x,y,w,h;x,y,w,h" in source pixels, instead of finding them.'), Flag.optional),
     skip: Flag.String("skip").pipe(Flag.withDescription('Frames to leave out of their animation, by number from 1: "1,6".'), Flag.optional),
@@ -457,10 +460,10 @@ const sheetCommand = Command.make(
     only: Flag.String("only").pipe(Flag.withDescription('The animations to write, by name: "walk,explode" (the others stay in the recipe, left out).'), Flag.optional),
     keepBackground: Flag.Boolean("keep-background").pipe(Flag.withDefault(false), Flag.withDescription("Keep the sheet's background (by default it is cleared, with any painted grid and labels).")),
     anchor: Flag.Literals("anchor", ["ground", "feet", "center", "box"]).pipe(Flag.withDescription("What lines frames up: the ground (default: each frame at its height as drawn, hops kept, sideways drift removed), the feet (pinned to one row), the body's center, or nothing (frames as in their boxes)."), Flag.optional),
-    fps: Flag.Finite("fps").pipe(Flag.withDescription("Beats per second, for every animation (default 8): a frame shows for one beat, or as many as --animations holds it for."), Flag.optional),
+    fps: numberFlag("fps", 0.1, 120).pipe(Flag.withDescription("Beats per second, for every animation (default 8): a frame shows for one beat, or as many as --animations holds it for."), Flag.optional),
     pingpong: Flag.Boolean("pingpong").pipe(Flag.withDefault(false), Flag.withDescription("Every animation plays there and back instead of looping from the start.")),
-    columns: Flag.Int("columns").pipe(Flag.withDescription("Frames per row on the sheet written; each animation starts a new row (default: one row per animation)."), Flag.optional),
-    spacing: Flag.Int("spacing").pipe(Flag.withDescription("Empty pixels between frames, and between animations, on the sheet written."), Flag.withDefault(0)),
+    columns: intFlag("columns", 1, 1024).pipe(Flag.withDescription("Frames per row on the sheet written; each animation starts a new row (default: one row per animation)."), Flag.optional),
+    spacing: intFlag("spacing", 0, 64).pipe(Flag.withDescription("Empty pixels between frames, and between animations, on the sheet written."), Flag.withDefault(0)),
     out,
     scale
   },
@@ -475,13 +478,16 @@ const sheetCommand = Command.make(
     const cache: AnimationCache = {}
     const start = recipe.sheet ?? defaultSheet
     let sheet: Sheet = Option.isSome(flags.boxes)
-      ? withFrames(start, yield* parseBoxes(flags.boxes.value))
+      ? withFrames(start, yield* parseBoxes(flags.boxes.value, image))
       : start.frames.length > 0
         ? start
         : withFrames(start, detectFrames(image, recipe, cache))
     if (sheet.frames.length === 0) return yield* new CliFailure({ message: "no frames found in the sheet: give them with --boxes" })
     if (Option.isSome(flags.skip)) {
-      const skipped = new Set(flags.skip.value.split(",").map((part) => Number(part.trim()) - 1))
+      const numbers = flags.skip.value.split(",").map((part) => Number(part.trim()))
+      const wrong = numbers.filter((n) => !Number.isInteger(n) || n < 1 || n > sheet.frames.length)
+      if (wrong.length > 0) return yield* new CliFailure({ message: `--skip: ${wrong.join(", ")} ${wrong.length === 1 ? "is not a frame" : "are not frames"}: the sheet has frames 1 to ${sheet.frames.length}` })
+      const skipped = new Set(numbers.map((n) => n - 1))
       sheet = { ...sheet, frames: sheet.frames.map((frame, i) => ({ ...frame, include: !skipped.has(i) })) }
     }
     if (Option.isSome(flags.animations)) {
@@ -626,7 +632,10 @@ const bake = Command.make(
     const parsed = parseBakeModel(yield* readText(flags.input), project.bake)
     if (!parsed.ok) return yield* new CliFailure({ message: `${flags.input} has ${parsed.problems.length} problem${parsed.problems.length === 1 ? "" : "s"}`, details: { file: flags.input, problems: parsed.problems } })
     const model = parsed.value
-    const result = bakeModel(model, project.bake, project.palette?.colors)
+    const result = yield* Effect.try({
+      try: () => bakeModel(model, project.bake, project.palette?.colors),
+      catch: (error) => (error instanceof BakeTooLarge ? new CliFailure({ message: `${flags.input}: ${error.message}` }) : new CliFailure({ message: `pixel bake failed on ${flags.input}: ${error instanceof Error ? error.message : String(error)}` }))
+    })
     const path = yield* Path.Path
     const base = Option.isSome(flags.out) ? flags.out.value.replace(/\.(png|json)$/i, "") : flags.input.replace(/\.bake\.json$/i, "")
     const name = path.basename(base)
@@ -634,6 +643,8 @@ const bake = Command.make(
     const everyFrame = clips.flatMap((clip) => clip.frames)
     const still = result.clips.length === 1 && result.clips[0]!.name === undefined
     const atlas = atlasOf(clips, { columns: Number.MAX_SAFE_INTEGER, spacing: 0 })
+    if (atlas.art.width > MAX_SIDE || atlas.art.height > MAX_SIDE || atlas.art.width * atlas.art.height > MAX_PIXELS)
+      return yield* new CliFailure({ message: `${flags.input}: its sheet would be ${atlas.art.width}×${atlas.art.height} pixels, past what the tools read back (${MAX_PIXELS.toLocaleString("en")} pixels, ${MAX_SIDE} on a side). Draw fewer or smaller frames` })
     const atlasPick = (pick: (frame: BakedClip["frames"][number]) => PixelArt) => atlasOf(bakedClips(result.clips, result.anchor, pick), { columns: Number.MAX_SAFE_INTEGER, spacing: 0 })
     const files: Record<string, string | ReadonlyArray<string>> = {}
     files.png = yield* writePng(`${base}.png`, toRgba(atlas.art))
@@ -770,7 +781,7 @@ const normals = Command.make(
   {
     input: Argument.String("input").pipe(Argument.withDescription("The art: a PNG at its true size (a sheet when its JSON sits beside it), or a sprite source.")),
     preset: Flag.Literals("preset", normalPresets).pipe(Flag.withDescription("What the art is of, which sets how the shape is guessed (default: the last run's; else character for a sheet, object for a still)."), Flag.optional),
-    strength: Flag.Int("strength").pipe(Flag.withDescription("How steep the shape is, in percent (default: the last run's; else the preset's own)."), Flag.optional),
+    strength: intFlag("strength", 1, 400).pipe(Flag.withDescription("How steep the shape is, in percent (default: the last run's; else the preset's own)."), Flag.optional),
     force: Flag.Boolean("force").pipe(Flag.withDefault(false), Flag.withDescription("Replace a normal map with no `.normals.json` beside it: one painted by hand."))
   },
   Effect.fn("normals")(function* (flags) {
@@ -840,7 +851,7 @@ const review = Command.make(
   "review",
   {
     paths: pathsArgument,
-    port: Flag.Int("port").pipe(Flag.withDescription("The port to serve the page on."), Flag.withDefault(5193)),
+    port: intFlag("port", 1, 65535).pipe(Flag.withDescription("The port to serve the page on."), Flag.withDefault(5193)),
     host: Flag.Boolean("host").pipe(Flag.withDefault(false), Flag.withDescription("Serve on the network too, to look on a phone."))
   },
   Effect.fn("review")(function* (flags) {
