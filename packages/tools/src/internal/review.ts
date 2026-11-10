@@ -19,8 +19,18 @@ export const isUnrecorded = (status: Status, approved: unknown): boolean => stat
 /** The `next` for an approval with no record. */
 export const UNRECORDED_NEXT = "Approved, with no record of what was seen: ask the person to look again; only they approve it."
 
-/** What `notes` adds to such an entry: `unrecorded: true` and its `next`. */
-export const unrecordedOf = (status: Status, approved: unknown): { readonly unrecorded?: true; readonly next?: string } => (isUnrecorded(status, approved) ? { unrecorded: true, next: UNRECORDED_NEXT } : {})
+/**
+ * What `notes` adds to such an entry: `unrecorded: true` and its `next`. An
+ * approval that kept only part of what was seen (`unkept` names the rest, as
+ * "its anchor") is unrecorded too: what it did not keep may have changed
+ * unseen, so it is not taken as approved, and its `next` names what is missing.
+ */
+export const unrecordedOf = (status: Status, approved: unknown, unkept: ReadonlyArray<string> = []): { readonly unrecorded?: true; readonly next?: string } =>
+  isUnrecorded(status, approved)
+    ? { unrecorded: true, next: UNRECORDED_NEXT }
+    : status === "approved" && unkept.length > 0
+      ? { unrecorded: true, next: `Approved, with no record of ${unkept.join(" or ")}: ask the person to look again; only they approve it.` }
+      : {}
 
 /** One review whose piece is no longer found (renamed or deleted), as every tool's `notes` lists it under `gone`. */
 export interface Gone {

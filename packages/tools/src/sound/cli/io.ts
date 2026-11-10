@@ -4,8 +4,8 @@ import { writeWhole } from "../../internal/files.ts"
 import { decodeBank, type Bank } from "../core/recipe.ts"
 import { decodeReview, emptyReview, reviewPath, type Review } from "../core/review.ts"
 
-/** A failure the CLI reports and exits on: a missing file, a bad bank. */
-export class CliFailure extends Data.TaggedError("CliFailure")<{ readonly message: string; readonly details?: Readonly<Record<string, unknown>> }> {}
+/** A failure the CLI reports and exits on: a missing file, a bad bank. Exits 2 unless `code` says otherwise (3 for an fx draft that does not draw cleanly, as `fx check` exits). */
+export class CliFailure extends Data.TaggedError("CliFailure")<{ readonly message: string; readonly details?: Readonly<Record<string, unknown>>; readonly code?: 2 | 3 | undefined }> {}
 
 export const readText = Effect.fn("readText")(function* (file: string) {
   const fs = yield* FileSystem.FileSystem

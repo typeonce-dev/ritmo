@@ -50,8 +50,9 @@ All four tools share these rules:
 - **Notes** say the same things in every tool: a `summary` of what is left,
   each piece's status and note, `changedSinceApproved` for an approved piece
   that changed, `unrecorded: true` for an approval that kept no record of
-  what was seen (from an older version, or edited by hand: ask the person to
-  look again; it is not counted among the approved), and `gone`, what was
+  what was seen, or only part of it (from an older version, or edited by
+  hand: ask the person to look again; it is not counted among the approved),
+  and `gone`, what was
   said about pieces no longer found (renamed or deleted), with where the
   review is to move or remove it.
 
@@ -843,7 +844,8 @@ Drafts are code, and every `fx` command that reads a bank runs them (with
 Node's full permissions in the CLI, in the browser on the page): run it on
 banks you trust, as you would `npm run` in a project. In the CLI, one
 frame's `draw` that runs past 5 seconds is stopped: "draw did not return
-within 5 s on frame F" is an error (`fx check` and `fx look` exit 3), and
+within 5 s on frame F" is an error (`fx check`, `fx look`, and `fx render`
+exit 3), and
 the frames after it are not drawn. It catches a loop that never ends; it is
 not a sandbox.
 
@@ -896,7 +898,9 @@ A bank is one file per game naming:
 Its review lives next to it (`game.fx.json` → `game.fx.review.json`): each
 effect's status (`new`, `approved`, `changes`), the person's note, and their
 comments, each pinned to a draft, a frame (from 0, as `fx.frame`), and a
-pixel, and resolved by the agent with a reply (`fx resolve`). `examples/fx/effects.fx.json` in the repository is a hit, a heavy
+pixel, and resolved by the agent with a reply (`fx resolve`). Once approved,
+it keeps everything `fx render` hands the game: the draft, a hash of each
+frame, the fps, whether it loops, the canvas size, and the anchor. `examples/fx/effects.fx.json` in the repository is a hit, a heavy
 slash, an ice spike, an explosion, a torch (one draft of it recolored), and a
 heavy landing, with two to four drafts each and a character's silhouette as the stand-in.
 
@@ -941,7 +945,7 @@ file, broken bank), or 3 (a draft has errors).
 | `ritmo-tools fx look <bank> <name> [--draft a] [--scale 6] [--columns 8] [--backdrop dark] [--marks comments] [--compare] [--alone]` | Writes a contact sheet PNG per draft: every frame side by side, enlarged, on a backdrop (`dark`, `light`, `checker`, or one of the bank's by name), with the bank's stand-in behind it (`--alone` leaves it out), for the agent to look at. `--marks` rings the person's comments (the default) or where a craft rule breaks (`jaggies`, `doubles`, `holes`, `flicker`), and the report lists them. `--compare` writes one picture instead: a row per draft, each column the same moment (`--columns` of them, first frame to last), to weigh the drafts against each other. |
 | `ritmo-tools fx render <bank> [names...] [-o dir] [--scale 1]` | Writes each effect's draft in use as a sprite sheet PNG (its frames in rows of up to 8), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the draft's `anchor`, the animation and its fps, and `meta.loop`, whether it loops or plays once), and a GIF. An effect that differs from what the person approved lists `changedSinceApproved`. |
 | `ritmo-tools fx review <bank> [--port 5192] [--host] [--config file]` | Serves the review page and prints its address; runs until stopped. |
-| `ritmo-tools fx notes <bank>` | What the person said: each effect's status, note, open comments (numbered, with draft, frame, pixel, and text), how many are resolved, draft in use, tune, and `changedSinceApproved` when an approved effect no longer matches what the person saw (its frames, fps, or draft), or `unrecorded`, changes asked first; `gone`, what was said about effects the bank no longer has; and the bank's palette and ramps as they are now. |
+| `ritmo-tools fx notes <bank>` | What the person said: each effect's status, note, open comments (numbered, with draft, frame, pixel, and text), how many are resolved, draft in use, tune, and `changedSinceApproved` when an approved effect no longer matches what the person saw (its draft, frames, fps, loop, canvas size, or anchor), or `unrecorded` (also for an approval from before approvals kept the loop and anchor), changes asked first; `gone`, what was said about effects the bank no longer has; and the bank's palette and ramps as they are now. |
 | `ritmo-tools fx resolve <bank> <effect> <numbers...> [--reply "what changed"]` | Marks comments as resolved: `fx notes` and `fx look` stop showing them, and the page shows them done with the reply. The person can reopen one. |
 
 ### The review page
