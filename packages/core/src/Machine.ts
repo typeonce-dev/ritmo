@@ -15,6 +15,7 @@
  * written one way: an optional `transitions` graph of allowed moves, checked
  * at compile time, and a compare-and-set `transition({ from, to, data })`;
  * a machine's move is queued and commits at `applyStateTransitions(...)`.
+ * A machine that declares the graph moves only with `transition`.
  *
  * @example
  * ```ts
@@ -150,6 +151,14 @@ export interface MachineStateMismatch<State extends string = string> {
   /** The state the machine was actually in. */
   readonly actual: State
 }
+
+/**
+ * Whether `M` was declared with a `transitions` graph. Such a machine moves
+ * only with `nextMachines.x.transition(...)`: its `set` and `setIfChanged`
+ * do not compile, so no write gets around the graph.
+ */
+export type DeclaresTransitions<M extends StateMachine.Any> =
+  StateTransitions<M["states"]> extends StateMachine.Transitions<M> ? false : true
 
 /**
  * What `nextMachines.x.set(...)` returns: nothing for a top-level machine,

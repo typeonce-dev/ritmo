@@ -1782,12 +1782,10 @@ const makeValidatedRuntime = <
 
   const makeNextMachineWriteView = <M extends Machine.StateMachine.Any>(stateMachine: M): NextMachineWriteView<M> => ({
     getPending: () => pendingMachines.get(stateMachine.key)?.value as ReadonlyValue<Machine.StateOf<M>> | undefined,
-    set(value) {
-      return queueMachine(stateMachine, value, false)
-    },
-    setIfChanged(value) {
-      return queueMachine(stateMachine, value, true)
-    },
+    // Typed as a message, not a function, for a machine that declares
+    // `transitions` (`UncheckedMachineWrite`): game code cannot call these.
+    set: ((value: unknown) => queueMachine(stateMachine, value, false)) as unknown as NextMachineWriteView<M>["set"],
+    setIfChanged: ((value: unknown) => queueMachine(stateMachine, value, true)) as unknown as NextMachineWriteView<M>["setIfChanged"],
     transition(move: { readonly from: string; readonly to: string; readonly data?: object }) {
       const current = currentMachines.get(stateMachine.key) as { readonly _tag: string } | undefined
       if (current === undefined) return subStateInactive(stateMachine) as Machine.CompareAndSetResult<M>

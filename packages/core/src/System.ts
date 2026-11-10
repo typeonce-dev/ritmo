@@ -620,11 +620,23 @@ export interface MachineUpdateView<M extends Machine.StateMachine.Any = Machine.
 }
 
 /**
+ * The type of `nextMachines.x.set` and `setIfChanged`: the unchecked write,
+ * for a machine declared without `transitions`. For a machine declared with
+ * them it is a message naming `transition`, so calling it does not compile
+ * and no write gets around the graph.
+ */
+export type UncheckedMachineWrite<M extends Machine.StateMachine.Any> =
+  Machine.DeclaresTransitions<M> extends true
+    ? { readonly __fixMove__: "this machine declares `transitions`: move it with nextMachines.x.transition({ from, to, data }), which checks the graph and the current state" }
+    : (value: ReadonlyValue<Machine.StateOf<M>>) => Machine.SetResult<M>
+
+/**
  * A queued write view over one finite-state-machine transition target.
  *
  * `transition` queues a move the machine's graph allows, if the machine is
  * in the state the move starts from. `set` and `setIfChanged` queue any
- * value without checking either.
+ * value without checking either, and exist only on a machine declared
+ * without `transitions`.
  */
 export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machine.StateMachine.Any> {
   /** The value queued for the next `applyStateTransitions(...)`, if any. */
@@ -635,7 +647,9 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
    * `from`. A state without fields takes no `data`. With a `transitions`
    * graph, `to` must be one of the moves it allows from `from`; without
    * one, any pair of states is accepted. Use it for every move a system
-   * makes itself.
+   * makes itself. For a move from whatever state the machine is in (back to
+   * a menu), pass the state read from `machines.x.get()._tag` as `from`:
+   * with a union `from`, `to` must be a move every one of them allows.
    *
    * Otherwise it queues nothing and returns `MachineStateMismatch` (or, for
    * a sub-state whose parent is in another state, `SubStateInactive`). The
@@ -675,7 +689,9 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
    * (nothing carries over from the current state), without checking the
    * transition graph or the current state: a reset, or the value a pure
    * function computed. Use `transition` for the moves a system makes
-   * itself, so the graph and the current state are checked. The state and
+   * itself, so the current state is checked. On a machine declared with
+   * `transitions` it does not compile: `transition` is the only way to
+   * move it, so every move is one the graph lists. The state and
    * its fields commit together at the next `applyStateTransitions(...)`.
    * For a sub-state it returns a `Result` that fails with `SubStateInactive`
    * (and queues nothing) while the parent is in another state.
@@ -690,14 +706,16 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
    * Setting the current state again re-runs its exit and enter schedules, so
    * its sub-states restart. Use `setIfChanged` when that is not wanted.
    */
-  set(value: ReadonlyValue<Machine.StateOf<M>>): Machine.SetResult<M>
+  readonly set: UncheckedMachineWrite<M>
   /**
    * Like `set`, but committing a value equal to the current one (the same
    * state with equal fields) is skipped: no exit or enter schedules. The
    * same state with other fields re-enters, like `set`. Unchecked like
-   * `set`: use `transition` for the moves a system makes itself.
+   * `set`, and like it does not compile on a machine declared with
+   * `transitions`: there, `transition` to another state always changes it,
+   * and `machines.x.update(...)` changes fields without re-entering.
    */
-  setIfChanged(value: ReadonlyValue<Machine.StateOf<M>>): Machine.SetResult<M>
+  readonly setIfChanged: UncheckedMachineWrite<M>
   /**
    * Drops the queued value, if any, so the next `applyStateTransitions(...)`
    * commits nothing for this machine. Called from a transition schedule, it

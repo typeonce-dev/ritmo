@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { HostClock, Schema } from "@typeonce/ritmo"
+import type * as Machine from "@typeonce/ritmo/Machine"
 import type { NextMachineWriteView } from "@typeonce/ritmo/System"
 import * as Codecs from "./codecs.ts"
 
@@ -20,7 +21,7 @@ const Phase = Game.StateMachine("MachineMoves/Phase", { Setup: {}, Battle: Codec
 })
 const Free = Game.StateMachine("MachineMoves/Free", { A: {}, B: Codecs.struct({ n: Codecs.number }) })
 
-type RoundValue = Parameters<NextMachineWriteView<typeof Round>["set"]>[0]
+type RoundValue = Machine.StateOf<typeof Round>
 
 const makeRuntime = (round: RoundValue, options: { readonly debug?: boolean } = {}) => Game.Runtime.make({
   services: Game.Runtime.services(),
@@ -96,7 +97,7 @@ describe("nextMachines.x.transition", () => {
     reset()
     const runtime = makeRuntime({ _tag: "Lobby" })
     // The check reads the committed state, not a value queued before it.
-    const QueueCountdown = onRound("QueueCountdown", (round) => round.set({ _tag: "Countdown", until: 3 }))
+    const QueueCountdown = onRound("QueueCountdown", (round) => round.transition({ from: "Lobby", to: "Countdown", data: { until: 3 } }))
     const Start = onRound("StartTooEarly", (round) => {
       const result = round.transition({ from: "Countdown", to: "Playing", data: { round: 1 } })
       log.push(`pending=${JSON.stringify(round.getPending())}`)
@@ -104,7 +105,7 @@ describe("nextMachines.x.transition", () => {
     })
     expect(runtime.tick(Game.Schedule(QueueCountdown, Start, commit, Read)).ok).toBe(true)
     expect(results).toEqual([
-      undefined,
+      ok,
       { ok: false, error: { _tag: "MachineStateMismatch", machine: "MachineMoves/Round", expected: "Countdown", actual: "Lobby" } }
     ])
     expect(log).toEqual([
@@ -209,13 +210,31 @@ describe("nextMachines.x.transition", () => {
     ])
   })
 
+  it("moves from whatever state the machine is in when every one of them allows the move", () => {
+    reset()
+    const runtime = makeRuntime({ _tag: "Playing", round: 1 })
+    // Countdown and Over both list Lobby, so a `from` that is either compiles.
+    const Leave = Game.System("MachineMoves/Leave", {
+      machines: { round: Game.System.machine(Round) },
+      nextMachines: { round: Game.System.nextState(Round) }
+    }, ({ machines, nextMachines }) => {
+      const round = machines.round.get()
+      if (round._tag === "Countdown" || round._tag === "Over") results.push(nextMachines.round.transition({ from: round._tag, to: "Lobby" }))
+      else if (round._tag === "Playing") results.push(nextMachines.round.transition({ from: "Playing", to: "Over", data: { winner: 0 } }))
+    })
+    runtime.tick(Game.Schedule(Leave, commit))
+    runtime.tick(Game.Schedule(Leave, commit, Read))
+    expect(results).toEqual([ok, ok])
+    expect(log.at(-1)).toBe("round={\"_tag\":\"Lobby\"} phase=undefined free={\"_tag\":\"A\"}")
+  })
+
   it("replaces an earlier queued value like set, and debug runtimes lint it the same way", () => {
     reset()
     const runtime = makeRuntime({ _tag: "Countdown", until: 3 }, { debug: true })
-    const Cancel = onRound("Cancel", (round) => round.set({ _tag: "Lobby" }))
+    const Cancel = onRound("Cancel", (round) => round.transition({ from: "Countdown", to: "Lobby" }))
     const Start = onRound("StartAnyway", (round) => round.transition({ from: "Countdown", to: "Playing", data: { round: 1 } }))
     runtime.tick(Game.Schedule(Cancel, Start, commit, Read))
-    expect(results).toEqual([undefined, ok])
+    expect(results).toEqual([ok, ok])
     expect(log.at(-1)).toBe("round={\"_tag\":\"Playing\",\"round\":1} phase={\"_tag\":\"Setup\"} free={\"_tag\":\"A\"}")
     expect(runtime.debug.describe().lints.filter((lint) => lint.code === "next-state-replaced").map((lint) => lint.message)).toEqual([
       "MachineMoves/StartAnyway queued MachineMoves/Round=Playing {\"round\":1}, replacing Lobby queued by MachineMoves/Cancel before the same applyStateTransitions(): the last value wins"

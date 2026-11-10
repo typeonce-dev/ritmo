@@ -855,7 +855,10 @@ export namespace Schema {
      *
      * `options.transitions` declares the allowed moves, as for
      * `Descriptor.EntityState(...)`: for every state, the states it may move
-     * to (`[]` for a state with no way out). It lists every state.
+     * to (`[]` for a state with no way out). It lists every state. A machine
+     * that declares them moves only with `nextMachines.x.transition(...)`:
+     * `set` and `setIfChanged` do not compile on it, so every move it makes
+     * is one the graph lists.
      *
      * The state name changes only at the commit; the current state's fields
      * change immediately. `nextMachines.x.transition({ from, to, data })`

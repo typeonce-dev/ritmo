@@ -96,8 +96,48 @@ describe("Game.StateMachine transitions", () => {
       expect(nextMachines.free.transition({ from: "B", to: "A" })).type.not.toRaiseError()
       // @ts-expect-error Type '"C"' is not assignable to type '"A" | "B"'.
       nextMachines.free.transition({ from: "A", to: "C" })
-      // set stays, unchecked.
-      expect(nextMachines.round.set({ _tag: "Over", winner: 0 })).type.toBe<void>()
+    })
+  })
+
+  it("moves from a union of states only where every one of them allows the move", () => {
+    Game.System("MachineMoves/FromAny", {
+      machines: { round: Game.System.machine(Round) },
+      nextMachines: { round: Game.System.nextState(Round) }
+    }, ({ machines, nextMachines }) => {
+      const round = machines.round.get()
+      // Countdown and Over both list Lobby.
+      if (round._tag === "Countdown" || round._tag === "Over") {
+        expect(nextMachines.round.transition({ from: round._tag, to: "Lobby" })).type.toBe<
+          Result.Result<void, Machine.MachineStateMismatch<RoundState>>
+        >()
+        // Only Countdown lists Playing.
+        expect(nextMachines.round.transition).type.not.toBeCallableWith({ from: round._tag, to: "Playing", data: { round: 1 } })
+      }
+      // No state is a move from every state.
+      expect(nextMachines.round.transition).type.not.toBeCallableWith({ from: round._tag, to: "Lobby" })
+    })
+  })
+
+  it("has set and setIfChanged only on a machine declared without a graph", () => {
+    expect<Machine.DeclaresTransitions<typeof Round>>().type.toBe<true>()
+    expect<Machine.DeclaresTransitions<typeof Phase>>().type.toBe<true>()
+    expect<Machine.DeclaresTransitions<typeof Free>>().type.toBe<false>()
+    Game.System("MachineMoves/Unchecked", {
+      nextMachines: { round: Game.System.nextState(Round), phase: Game.System.nextState(Phase), free: Game.System.nextState(Free) }
+    }, ({ nextMachines }) => {
+      // Without a graph, the unchecked writes stay.
+      expect(nextMachines.free.set({ _tag: "B", n: 1 })).type.toBe<void>()
+      expect(nextMachines.free.setIfChanged({ _tag: "A" })).type.toBe<void>()
+      // With one, no write gets around it.
+      // @ts-expect-error this machine declares `transitions`: move it with nextMachines.x.transition({ from, to, data }), which checks the graph and the current state
+      nextMachines.round.set({ _tag: "Over", winner: 0 })
+      // @ts-expect-error this machine declares `transitions`: move it with nextMachines.x.transition({ from, to, data }), which checks the graph and the current state
+      nextMachines.round.setIfChanged({ _tag: "Lobby" })
+      // @ts-expect-error this machine declares `transitions`: move it with nextMachines.x.transition({ from, to, data }), which checks the graph and the current state
+      nextMachines.phase.set({ _tag: "Battle", wave: 1 })
+      // Reading and cancelling what is queued stay.
+      expect(nextMachines.round.getPending()).type.not.toRaiseError()
+      expect(nextMachines.round.reset()).type.toBe<void>()
     })
   })
 
