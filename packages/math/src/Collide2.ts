@@ -86,7 +86,8 @@ export interface MoveResult {
 
 /**
  * The distance `pushOut` and `moveCircle` keep from walls after a contact
- * (in world units), so the next sweep starts outside the wall.
+ * (in world units), so the next sweep starts outside the wall. Where another
+ * wall leaves no room for it (a corner, a gap), `moveCircle` stays touching.
  *
  * @category Movement
  */
@@ -319,75 +320,207 @@ export const overlapsCircleCircle = (center: Vec2, radius: number, other: Vec2, 
   return dx * dx + dy * dy <= r * r
 }
 
+// How far into a wall still counts as touching it: rounding, not overlap.
+const hair = 1e-9
+
+// The way out of a wall that `boxDepth` and `segmentDepth` found, read right
+// after the call: module state, so testing every wall on every step
+// allocates nothing.
+const wayOut = { x: 0, y: 0 }
+
 /**
- * Pushes a circle out of every wall it overlaps, boxes first and then
- * segments, each in order, leaving `skin` between it and each wall. Returns
- * the corrected center. A center inside a box leaves through the nearest
- * side; a center exactly on a segment leaves along the segment's left normal.
+ * How far a circle of `radius` at (`x`, `y`) is inside `box` (0 when it does
+ * not overlap it), with the unit way out in `wayOut`. A center inside the box
+ * leaves through the nearest side.
+ */
+const boxDepth = (x: number, y: number, radius: number, box: Box2): number => {
+  const closestX = Math.max(box.minX, Math.min(x, box.maxX))
+  const closestY = Math.max(box.minY, Math.min(y, box.maxY))
+  const dx = x - closestX
+  const dy = y - closestY
+  const distanceSquared = dx * dx + dy * dy
+  if (distanceSquared >= radius * radius) return 0
+  if (distanceSquared > 1e-12) {
+    const distance = Math.sqrt(distanceSquared)
+    wayOut.x = dx / distance
+    wayOut.y = dy / distance
+    return radius - distance
+  }
+  const left = x - box.minX
+  const right = box.maxX - x
+  const top = y - box.minY
+  const bottom = box.maxY - y
+  const nearest = Math.min(left, right, top, bottom)
+  wayOut.x = nearest === left ? -1 : nearest === right ? 1 : 0
+  wayOut.y = wayOut.x !== 0 ? 0 : nearest === top ? -1 : 1
+  return radius + nearest
+}
+
+/**
+ * How far a circle of `radius` at (`x`, `y`) is inside `segment` (0 when it
+ * does not overlap it), with the unit way out in `wayOut`. A center on the
+ * segment leaves along its left normal, one on a round post along +x.
+ */
+const segmentDepth = (x: number, y: number, radius: number, segment: Segment2): number => {
+  const ex = segment.bx - segment.ax
+  const ey = segment.by - segment.ay
+  const lengthSquared = ex * ex + ey * ey
+  const along = lengthSquared > 1e-12 ? Math.max(0, Math.min(1, ((x - segment.ax) * ex + (y - segment.ay) * ey) / lengthSquared)) : 0
+  const dx = x - (segment.ax + ex * along)
+  const dy = y - (segment.ay + ey * along)
+  const distanceSquared = dx * dx + dy * dy
+  if (distanceSquared >= radius * radius) return 0
+  if (distanceSquared > 1e-12) {
+    const distance = Math.sqrt(distanceSquared)
+    wayOut.x = dx / distance
+    wayOut.y = dy / distance
+    return radius - distance
+  }
+  if (lengthSquared > 1e-12) {
+    const length = Math.sqrt(lengthSquared)
+    wayOut.x = -ey / length
+    wayOut.y = ex / length
+  } else {
+    wayOut.x = 1
+    wayOut.y = 0
+  }
+  return radius
+}
+
+/** Whether a circle of `radius` at (`x`, `y`) overlaps none of the walls (touching is clear). */
+const clear = (x: number, y: number, radius: number, boxes: ReadonlyArray<Box2>, segments: ReadonlyArray<Segment2>): boolean => {
+  for (const box of boxes) if (boxDepth(x, y, radius, box) > hair) return false
+  for (const segment of segments) if (segmentDepth(x, y, radius, segment) > hair) return false
+  return true
+}
+
+/**
+ * How far a circle of `radius` whose center is inside `box` must go to leave
+ * it, through the nearest side where it then overlaps none of the walls (the
+ * nearest side when none has room), with the way out in `wayOut`.
+ */
+const exitBox = (x: number, y: number, radius: number, box: Box2, boxes: ReadonlyArray<Box2>, segments: ReadonlyArray<Segment2>, skin: number): number => {
+  let nearest = Infinity
+  let nx = 0
+  let ny = 0
+  let room = false
+  for (let side = 0; side < 4; side++) {
+    const distance = side === 0 ? x - box.minX : side === 1 ? box.maxX - x : side === 2 ? y - box.minY : box.maxY - y
+    const sx = side === 0 ? -1 : side === 1 ? 1 : 0
+    const sy = side === 2 ? -1 : side === 3 ? 1 : 0
+    const open = clear(x + sx * (distance + radius + skin), y + sy * (distance + radius + skin), radius, boxes, segments)
+    if ((open && !room) || (open === room && distance < nearest)) {
+      nearest = distance
+      nx = sx
+      ny = sy
+      room = open
+    }
+  }
+  wayOut.x = nx
+  wayOut.y = ny
+  return radius + nearest
+}
+
+/** Pushes the circle at `at` out of the walls in place: {@link pushOut} without allocating. */
+const separate = (at: { x: number; y: number }, radius: number, boxes: ReadonlyArray<Box2>, segments: ReadonlyArray<Segment2>, skin: number): void => {
+  for (let pass = 0; pass < 8; pass++) {
+    // The deepest wall the circle is in: the one to leave first.
+    let depth = hair
+    let nx = 0
+    let ny = 0
+    let deepest: Box2 | Segment2 | undefined
+    let inside: Box2 | undefined
+    for (const box of boxes) {
+      const found = boxDepth(at.x, at.y, radius, box)
+      if (found <= depth) continue
+      depth = found
+      nx = wayOut.x
+      ny = wayOut.y
+      deepest = box
+      // Only a center inside the box is a radius or more deep.
+      inside = found >= radius ? box : undefined
+    }
+    for (const segment of segments) {
+      const found = segmentDepth(at.x, at.y, radius, segment)
+      if (found <= depth) continue
+      depth = found
+      nx = wayOut.x
+      ny = wayOut.y
+      deepest = segment
+      inside = undefined
+    }
+    if (deepest === undefined) return
+    if (inside !== undefined) {
+      depth = exitBox(at.x, at.y, radius, inside, boxes, segments, skin)
+      nx = wayOut.x
+      ny = wayOut.y
+    }
+    // The wall that way out pushes deepest into, facing back across an
+    // acute corner: leaving one of the two alone pushes into the other, so
+    // leave both at once. Each wall is measured from the start, so the side
+    // the circle is on stays the side it leaves to.
+    const out = depth + skin
+    let landing = hair
+    let across = 0
+    let fx = 0
+    let fy = 0
+    for (const box of boxes) {
+      // How deep it is now (below 0: that far clear), and once pushed.
+      const now = boxDepth(at.x, at.y, radius + out, box) - out
+      const facing = wayOut.x * nx + wayOut.y * ny
+      if (box === deepest || now <= -out || facing >= 0 || now - out * facing <= landing) continue
+      landing = now - out * facing
+      across = now + skin
+      fx = wayOut.x
+      fy = wayOut.y
+    }
+    for (const segment of segments) {
+      const now = segmentDepth(at.x, at.y, radius + out, segment) - out
+      const facing = wayOut.x * nx + wayOut.y * ny
+      if (segment === deepest || now <= -out || facing >= 0 || now - out * facing <= landing) continue
+      landing = now - out * facing
+      across = now + skin
+      fx = wayOut.x
+      fy = wayOut.y
+    }
+    // Walls face to face (a gap narrower than the circle) have no corner to leave by.
+    const det = nx * fy - ny * fx
+    if (landing > hair && Math.abs(det) > 1e-6) {
+      at.x += (out * fy - across * ny) / det
+      at.y += (across * nx - out * fx) / det
+    } else {
+      at.x += nx * out
+      at.y += ny * out
+    }
+  }
+}
+
+/**
+ * Pushes a circle out of every wall it overlaps, the deepest first, leaving
+ * `skin` between it and each wall, and returns the corrected center. The two
+ * walls of an acute corner are left at once, since leaving one alone pushes
+ * into the other. Only walls with no room between them (a gap narrower than
+ * the circle) can leave it overlapping. A center inside a box leaves through
+ * the nearest side with room; a center exactly on a segment leaves along the
+ * segment's left normal.
  *
  * @category Movement
  */
 export const pushOut = (center: Vec2, radius: number, walls: Walls, skin: number = defaultSkin): Vec2 => {
-  let x = center.x
-  let y = center.y
-  for (const box of walls.boxes ?? noBoxes) {
-    const closestX = Math.max(box.minX, Math.min(x, box.maxX))
-    const closestY = Math.max(box.minY, Math.min(y, box.maxY))
-    const dx = x - closestX
-    const dy = y - closestY
-    const distanceSquared = dx * dx + dy * dy
-    if (distanceSquared >= radius * radius) continue
-    if (distanceSquared > 1e-12) {
-      const distance = Math.sqrt(distanceSquared)
-      x = closestX + (dx / distance) * (radius + skin)
-      y = closestY + (dy / distance) * (radius + skin)
-    } else {
-      // Center inside the box: leave through the nearest side.
-      const left = x - box.minX
-      const right = box.maxX - x
-      const top = y - box.minY
-      const bottom = box.maxY - y
-      const nearest = Math.min(left, right, top, bottom)
-      if (nearest === left) x = box.minX - radius - skin
-      else if (nearest === right) x = box.maxX + radius + skin
-      else if (nearest === top) y = box.minY - radius - skin
-      else y = box.maxY + radius + skin
-    }
-  }
-  for (const segment of walls.segments ?? noSegments) {
-    const ex = segment.bx - segment.ax
-    const ey = segment.by - segment.ay
-    const lengthSquared = ex * ex + ey * ey
-    const along = lengthSquared > 1e-12 ? Math.max(0, Math.min(1, ((x - segment.ax) * ex + (y - segment.ay) * ey) / lengthSquared)) : 0
-    const closestX = segment.ax + ex * along
-    const closestY = segment.ay + ey * along
-    const dx = x - closestX
-    const dy = y - closestY
-    const distanceSquared = dx * dx + dy * dy
-    if (distanceSquared >= radius * radius) continue
-    if (distanceSquared > 1e-12) {
-      const distance = Math.sqrt(distanceSquared)
-      x = closestX + (dx / distance) * (radius + skin)
-      y = closestY + (dy / distance) * (radius + skin)
-    } else if (lengthSquared > 1e-12) {
-      // Center on the segment: leave along its left normal.
-      const length = Math.sqrt(lengthSquared)
-      x = closestX - (ey / length) * (radius + skin)
-      y = closestY + (ex / length) * (radius + skin)
-    } else {
-      // Center on a round post: leave along +x.
-      x = closestX + radius + skin
-    }
-  }
-  return { x, y }
+  const corrected = { x: center.x, y: center.y }
+  separate(corrected, radius, walls.boxes ?? noBoxes, walls.segments ?? noSegments, skin)
+  return corrected
 }
 
 /**
  * Moves a circle by `delta`, stopping at walls and sliding along them (up to
  * four contacts per call). The whole path is swept, so no displacement can
- * tunnel through a wall. A circle that starts inside a wall is pushed out
- * first. A circle meeting a box's corner or a segment's end dead-on goes
- * around it rather than stopping against it.
+ * tunnel through a wall: a circle that starts outside every wall ends outside
+ * every wall, also where walls close in on it (an acute corner, a gap
+ * narrower than it), stopping there when nothing is left to slide along. A
+ * circle that starts inside a wall is pushed out first. A circle meeting a
+ * box's corner or a segment's end dead-on goes around it rather than stopping
+ * against it.
  *
  * `blocked` says the move touched a wall, not which one, nor whether the
  * circle stands on one now (a circle resting on a floor and not moving into
@@ -420,60 +553,106 @@ export const pushOut = (center: Vec2, radius: number, walls: Walls, skin: number
  * @category Movement
  */
 export const moveCircle = (start: Vec2, delta: Vec2, radius: number, walls: Walls, skin: number = defaultSkin): MoveResult => {
-  let position = pushOut(start, radius, walls, skin)
-  let rx = delta.x
-  let ry = delta.y
+  const boxes = walls.boxes ?? noBoxes
+  const segments = walls.segments ?? noSegments
+  // The circle's place and the movement left, changed in place as it slides
+  // (the sweeps read them), so a move allocates only its result and hits.
+  const position = { x: start.x, y: start.y }
+  separate(position, radius, boxes, segments, skin)
+  const step = { x: delta.x, y: delta.y }
+  // Within a hair of a wall counts as touching it, so a circle left
+  // touching cannot slip in where the sweeps round the other way.
+  const touching = radius + hair
   let blocked = false
   for (let iteration = 0; iteration < 4; iteration++) {
-    if (rx * rx + ry * ry < 1e-12) break
-    const step = { x: rx, y: ry }
-    // The first contact, and whether it is round (a box's corner or a
-    // segment's end) rather than a flat side.
-    let hit: Hit | undefined
+    if (step.x * step.x + step.y * step.y < 1e-12) break
+    // The first contact: when, its normal, and whether it is round (a box's
+    // corner or a segment's end) rather than a flat side.
+    let time = Infinity
+    let nx = 0
+    let ny = 0
     let round = false
-    for (const box of walls.boxes ?? noBoxes) {
-      const found = sweepCircleBox(position, step, radius, box)
-      if (found === undefined || (hit !== undefined && found.time >= hit.time)) continue
-      hit = found
-      round = found.nx !== 0 && found.ny !== 0
+    // The bounds of the swept circle: a wall outside them is not in the way.
+    const minX = Math.min(position.x, position.x + step.x) - touching
+    const minY = Math.min(position.y, position.y + step.y) - touching
+    const maxX = Math.max(position.x, position.x + step.x) + touching
+    const maxY = Math.max(position.y, position.y + step.y) + touching
+    // A wall the circle touches or is already inside (by a rounding error,
+    // or a push out with no room) may not be reported by the sweeps, so test
+    // it first: moving into it is a contact now, moving out of it is free.
+    for (const box of boxes) {
+      if (box.minX > maxX || box.maxX < minX || box.minY > maxY || box.maxY < minY) continue
+      if (boxDepth(position.x, position.y, touching, box) > 0) {
+        if (time === 0 || step.x * wayOut.x + step.y * wayOut.y >= 0) continue
+        time = 0
+        nx = wayOut.x
+        ny = wayOut.y
+      } else {
+        const hit = sweepCircleBox(position, step, radius, box)
+        if (hit === undefined || hit.time >= time) continue
+        time = hit.time
+        nx = hit.nx
+        ny = hit.ny
+      }
+      round = nx !== 0 && ny !== 0
     }
-    for (const segment of walls.segments ?? noSegments) {
-      const found = sweepCircleSegment(position, step, radius, segment)
-      if (found === undefined || (hit !== undefined && found.time >= hit.time)) continue
-      hit = found
+    for (const segment of segments) {
+      if (
+        Math.min(segment.ax, segment.bx) > maxX || Math.max(segment.ax, segment.bx) < minX ||
+        Math.min(segment.ay, segment.by) > maxY || Math.max(segment.ay, segment.by) < minY
+      ) continue
+      if (segmentDepth(position.x, position.y, touching, segment) > 0) {
+        if (time === 0 || step.x * wayOut.x + step.y * wayOut.y >= 0) continue
+        time = 0
+        nx = wayOut.x
+        ny = wayOut.y
+      } else {
+        const hit = sweepCircleSegment(position, step, radius, segment)
+        if (hit === undefined || hit.time >= time) continue
+        time = hit.time
+        nx = hit.nx
+        ny = hit.ny
+      }
       const ex = segment.bx - segment.ax
       const ey = segment.by - segment.ay
       const lengthSquared = ex * ex + ey * ey
-      const along = found.nx * ex + found.ny * ey
+      const along = nx * ex + ny * ey
       // A flat side's normal is perpendicular to the segment.
       round = lengthSquared < 1e-12 || along * along > 1e-18 * lengthSquared
     }
-    if (hit === undefined) {
-      position = { x: position.x + rx, y: position.y + ry }
+    if (time === Infinity) {
+      position.x += step.x
+      position.y += step.y
       break
     }
     blocked = true
-    position = {
-      x: position.x + rx * hit.time + hit.nx * skin,
-      y: position.y + ry * hit.time + hit.ny * skin
+    position.x += step.x * time
+    position.y += step.y * time
+    // Keep `skin` off the wall, unless that would put the circle inside
+    // another one (in a corner or a gap narrower than it): then stay touching.
+    if (clear(position.x + nx * skin, position.y + ny * skin, radius, boxes, segments)) {
+      position.x += nx * skin
+      position.y += ny * skin
     }
     // Slide: keep the remaining movement tangent to the contact.
-    const remaining = 1 - hit.time
-    rx *= remaining
-    ry *= remaining
-    const into = rx * hit.nx + ry * hit.ny
+    const remaining = 1 - time
+    let rx = step.x * remaining
+    let ry = step.y * remaining
+    const into = rx * nx + ry * ny
     if (into < 0) {
-      rx -= into * hit.nx
-      ry -= into * hit.ny
+      rx -= into * nx
+      ry -= into * ny
       // Dead-on into a rounded corner or end (as an exact diagonal meets an
       // axis-aligned box) nothing is left to slide along: go around it
       // instead of stopping against it.
       if (round && rx * rx + ry * ry < 1e-12 * into * into) {
-        const side = rx * -hit.ny + ry * hit.nx < 0 ? -1 : 1
-        rx = -hit.ny * -into * side
-        ry = hit.nx * -into * side
+        const side = rx * -ny + ry * nx < 0 ? -1 : 1
+        rx = -ny * -into * side
+        ry = nx * -into * side
       }
     }
+    step.x = rx
+    step.y = ry
   }
   return { position, blocked }
 }
