@@ -525,8 +525,10 @@ export const makeQueryEngine = (world: World) => {
    * component but matches none of the system's queries was kept from an
    * earlier run and has left its query since (through `without`, `with`, or a
    * relation filter): reading it would return a value the query no longer
-   * proves, so it throws. A despawned entity, one that lost the component, and
-   * one from another runtime go on to the slot, whose own error names the cause.
+   * proves, so it throws. So does a despawned entity: its id may belong to
+   * another entity since (after a restore, or a rewind and a spawn), whose slot
+   * the accessor would use. One that lost the component, and one from another
+   * runtime go on to the slot, whose own error names the cause.
    */
   /**
    * `matchesStructure` for one query, made once: the components it requires
@@ -561,12 +563,13 @@ export const makeQueryEngine = (world: World) => {
       const holds = plan.mode === "read" || plan.mode === "write"
       // Off the hot path: the entity left the slot's own query, or is not one of this runtime's.
       const recheck = (record: EntityRecord): void => {
-        if (!record.alive || (holds && !world.has(record, plan.ordinal))) return
+        const used = "relation" in plan ? plan.relation.name : record.nameAt(plan.ordinal)
+        if (!record.alive) Cells.staleEntity(used, record)
+        if (holds && !world.has(record, plan.ordinal)) return
         for (const other of others) {
           if (other(record)) return
         }
         if (world.records.get(record.id) !== record) return
-        const used = "relation" in plan ? plan.relation.name : record.nameAt(plan.ordinal)
         throw new Error(
           `${system} used ${used} of entity ${record.id}, which matches none of its queries: an entity kept from an earlier run is not checked against its query again. `
           + "Keep entity.id and resolve it with queries.x.get(id) in each run, which is fallible"
@@ -591,9 +594,10 @@ const entityMethods = ["get", "has", "set", "update", "setRaw", "updateRaw", "tr
 type SlotAccessor = Record<(typeof entityMethods)[number], (entity: unknown, argument?: unknown) => unknown>
 
 /**
- * A slot of a debug runtime's `data`: checks the entity against the slot's own
- * query (bit masks), and only when that fails against the system's other
- * queries, then calls the slot. One class for every slot keeps the calls cheap.
+ * A slot of a debug runtime's `data`: checks that the entity is alive and
+ * matches the slot's own query (bit masks), and only when that fails against
+ * the system's other queries, then calls the slot. One class for every slot
+ * keeps the calls cheap.
  */
 class GuardedSlot {
   readonly accessor: SlotAccessor
@@ -607,7 +611,7 @@ class GuardedSlot {
   }
 
   check(entity: unknown): void {
-    if (typeof entity === "object" && entity !== null && !this.matches(entity as EntityRecord)) this.recheck(entity as EntityRecord)
+    if (typeof entity === "object" && entity !== null && (!(entity as EntityRecord).alive || !this.matches(entity as EntityRecord))) this.recheck(entity as EntityRecord)
   }
 
   get(entity: unknown): unknown {

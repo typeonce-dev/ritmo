@@ -85,18 +85,20 @@ const staleRun = (name: string): never => {
  * A required slot is empty only when its entity outlived what the query proved:
  * it was despawned, or lost the component. Reading would hand out the internal
  * marker as a value, and writing would put the component back without the insert
- * path, so both fail loudly instead.
+ * path, so both fail loudly instead. `name` is the slot's component or relation;
+ * a debug runtime's `data` throws it too for a despawned entity whose id is used
+ * again.
  */
-const staleEntity = (record: EntityRecord, ordinal: number): never => {
+export const staleEntity = (name: string, record: EntityRecord): never => {
   throw new Error(
-    `${record.nameAt(ordinal)} was used for an entity ${record.alive ? "that lost it" : "that was despawned"}: `
+    `${name} was used for an entity ${record.alive ? "that lost it" : "that was despawned"}: `
     + "to follow an entity across runs, keep its id and resolve it again with queries.x.get(id), which is fallible"
   )
 }
 
 /** A slot access that failed its one hot-path check: the component is gone, or the slot is from another run. */
 const invalid = (record: EntityRecord, ordinal: number, value: unknown): never =>
-  value === ABSENT ? staleEntity(record, ordinal) : staleRun(record.nameAt(ordinal))
+  value === ABSENT ? staleEntity(record.nameAt(ordinal), record) : staleRun(record.nameAt(ordinal))
 
 // `typeof` first: an object or string value skips the comparison with the imported marker.
 const isPresent = (value: unknown): boolean => typeof value === "symbol" && value === PRESENT
@@ -532,9 +534,7 @@ export const relationAccessor = <T>(stamp: Stamp, name: string, required: boolea
   return {
     get: (record) => {
       const value = held(record)
-      if (value === undefined && required) {
-        throw new Error(`${name} was used for an entity ${record.alive ? "that lost it" : "that was despawned"}: to follow an entity across runs, keep its id and resolve it again with queries.x.get(id), which is fallible`)
-      }
+      if (value === undefined && required) staleEntity(name, record)
       return value
     },
     has: (record) => held(record) !== undefined
