@@ -239,6 +239,7 @@ Make the value through its check: decode at the boundary with the game's schema,
 ```ts
 runtime.tick(update)                                             // reported
 runtime.restore(save)                                            // reported
+if (!runtime.restore(save)) showLoadError()                      // reported: a Result is an object, always true
 runtime.rewind(checkpoint)                                       // reported
 persist(runtime.snapshot())                                      // reported
 log(`hash ${runtime.checksum()}`)                                // reported
@@ -255,7 +256,9 @@ if (saved.ok) persist(saved.value)
 void runtime.tick(render)                                        // ignored on purpose
 ```
 
-Catches these calls on a receiver named like a runtime (`runtime`, `game.runtime`, `worldRuntime`) used as a statement, or passed on unchecked: as a call argument, inside a template string, an object or array literal, a spread, or an operand, also through `??`, `? :`, and `as`. A variable, a field, a `return`, `.ok`, and `void` keep the `Result` for the code to check. A `tick`, `tryTick`, `restore`, or `rewind` result passed to a function is left to that function (a test's `expectOk(runtime.tick(update))`), unless it only prints or encodes (`JSON.stringify`, `String`, `console.*`). A `snapshot()` or `checksum()` result is data on its way somewhere, so passing it to any function unchecked is reported; a helper that takes that `Result` itself gets it once it is named: `const checksum = runtime.checksum(); helper(checksum)`. Game wrappers with other names (`town.restore(...)`) are not reported. Option: `{ "runtimePattern": "^(runtime|world)$" }` (a case-insensitive regular expression for the receiver's name; default `runtime$`).
+A runtime is a receiver named like one (`runtime`, `game.runtime`, `worldRuntime`), the `.value` of a `Game.Runtime.make(...)` held in a `const` of the same file (`made.value`, or `game` after `const game = made.value`), or a method destructured from one in a `const` (`const { tick } = runtime`).
+
+Catches these calls on a runtime used as a statement, as the value an arrow returns to a caller that drops it (`forEach`, `addEventListener`, `requestAnimationFrame`, `requestIdleCallback`, `setTimeout`, `setInterval`, `setImmediate`, `queueMicrotask`), as any but the last expression of a sequence (`runtime.tick(update), draw()`), tested as a condition (`!`, `if`, `while`, `for`, `? :`, the left of `&&` / `||`), or passed on unchecked: as a call argument, inside a template string, an object or array literal, a spread, or an operand, also through `??`, `? :`, and `as`. A variable, a field, a `return`, `.ok`, and `void` keep the `Result` for the code to check (`() => void runtime.tick(update)` ignores it on purpose). A `tick`, `tryTick`, `restore`, or `rewind` result passed to a function is left to that function (a test's `expectOk(runtime.tick(update))`), unless it only prints or encodes (`JSON.stringify`, `String`, `console.*`). A `snapshot()` or `checksum()` result is data on its way somewhere, so passing it to any function unchecked is reported; a helper that takes that `Result` itself gets it once it is named: `const checksum = runtime.checksum(); helper(checksum)`. Other receivers cannot be told from a runtime by syntax and are not reported: game wrappers (`town.restore(...)`) and runtimes reached any other way (`game.tick(...)` with `game` a parameter or an import). Option: `{ "runtimePattern": "^(runtime|world)$" }` (a case-insensitive regular expression for the receiver's name; default `runtime$`).
 
 ### `ritmo/prefix-descriptor-and-system-names`
 
@@ -310,7 +313,7 @@ Some of oxlint's own rules catch Ritmo mistakes too. They are optional; turn on 
 
 | Rule | Catches in a Ritmo game |
 |---|---|
-| `typescript/no-unnecessary-condition` | a `Result` checked as a boolean instead of with `.ok` (`if (!runtime.restore(save))` never fires), an object compared to `undefined` |
+| `typescript/no-unnecessary-condition` | a `Result` checked as a boolean instead of with `.ok` where `ritmo/handle-runtime-result` cannot see the runtime (`if (!game.restore(save))` never fires), an object compared to `undefined` |
 | `typescript/switch-exhaustiveness-check` | a switch over a closed set (a role, a kind, a state's `_tag`) that misses a member added later |
 | `typescript/no-floating-promises`, `typescript/no-misused-promises` | host code that never awaits an asset load or a replay upload, or passes an async callback where a plain one is called |
 | `typescript/restrict-template-expressions`, `typescript/no-base-to-string` | `[object Object]` in HUD or log text |

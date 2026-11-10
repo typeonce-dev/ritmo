@@ -1,7 +1,7 @@
 import { defineRule } from "@oxlint/plugins"
 import type { Context, ESTree } from "@oxlint/plugins"
 
-import { calledMethod, docsUrl, globalPath, propertyKey, propertyName } from "../internal/ast.ts"
+import { calledMethod, constValue, docsUrl, globalPath, propertyKey, propertyName } from "../internal/ast.ts"
 
 /**
  * The names a step's length in seconds goes by, lowercased without `_`: a
@@ -48,7 +48,7 @@ const isDelta = (context: Context, raw: ESTree.Node, countdown = false): boolean
   const node = unwrap(raw)
   if (node.type === "Identifier") {
     if (deltaNames.has(normal(node.name)) || (countdown && node.name === "delta")) return true
-    const init = constInit(context, node)
+    const init = constValue(context, node)
     return init !== undefined && isDelta(context, init)
   }
   if (node.type === "MemberExpression") {
@@ -76,15 +76,6 @@ const isDelta = (context: Context, raw: ESTree.Node, countdown = false): boolean
   }
   if (isMinMax(context, node)) return node.arguments.some((argument) => isDelta(context, argument))
   return false
-}
-
-/** The value a `const` holds, if `node` names one declared in the file. */
-const constInit = (context: Context, node: ESTree.Node): ESTree.Node | undefined => {
-  const variable = context.sourceCode.getScope(node).references.find((reference) => reference.identifier === node)?.resolved
-  const definition = variable?.defs.length === 1 ? variable.defs[0] : undefined
-  if (definition?.type !== "Variable" || definition.parent?.type !== "VariableDeclaration" || definition.parent.kind !== "const") return undefined
-  const declarator = definition.node
-  return declarator.type === "VariableDeclarator" && declarator.id.type === "Identifier" ? declarator.init ?? undefined : undefined
 }
 
 /** The last name of a stored value: `remaining` for `timer.remaining`, `left` for `left`. */
