@@ -18,10 +18,10 @@ interface Notes {
   readonly gone: ReadonlyArray<{ readonly name?: string; readonly file?: string; readonly status: string; readonly note?: string; readonly comments?: number; readonly next: string }>
 }
 
-const notes = (...args: Array<string>): Notes & Record<string, unknown> => {
+const notes = <Entries>(...args: Array<string>): Notes & Entries => {
   const result = spawnSync(process.execPath, [cli, ...args], { encoding: "utf8" })
   expect(result.status, result.stderr).toBe(0)
-  return JSON.parse(result.stdout) as Notes & Record<string, unknown>
+  return JSON.parse(result.stdout) as Notes & Entries
 }
 
 const folder = (): string => realpathSync(mkdtempSync(join(tmpdir(), "notes-")))
@@ -34,7 +34,7 @@ describe("notes", { timeout: 60_000 }, () => {
     const bank = join(game, "game.sounds.json")
     copyFileSync(example("spirit-call.sounds.json"), bank)
     writeFileSync(join(game, "game.sounds.review.json"), JSON.stringify({ version: 1, sounds: { ghost: { status: "changes", note: "make it louder" }, hit: { status: "approved" } } }))
-    const said = notes("sound", "notes", bank) as Notes & { sounds: ReadonlyArray<{ name: string; unrecorded?: boolean; next?: string }> }
+    const said = notes<{ sounds: ReadonlyArray<{ name: string; unrecorded?: boolean; next?: string }> }>("sound", "notes", bank)
     expect(said.gone).toEqual([{ name: "ghost", status: "changes", note: "make it louder", next: expect.stringContaining("Its sound is gone.") }])
     expect(said.gone[0]!.next).toContain("game.sounds.review.json")
     expect(said.sounds.find((sound) => sound.name === "hit")).toMatchObject({ unrecorded: true, next: UNRECORDED })
@@ -49,7 +49,7 @@ describe("notes", { timeout: 60_000 }, () => {
     const effects = Object.keys((JSON.parse(readFileSync(bank, "utf8")) as { effects: Record<string, unknown> }).effects)
     const comment = { draft: "a", frame: 0, x: 1, y: 1, text: "brighter here" }
     writeFileSync(join(game, "effects.fx.review.json"), JSON.stringify({ version: 1, effects: { ghost: { status: "new", comments: [comment] }, [effects[0]!]: { status: "approved" } } }))
-    const said = notes("fx", "notes", bank) as Notes & { effects: ReadonlyArray<{ name: string; unrecorded?: boolean; next?: string }> }
+    const said = notes<{ effects: ReadonlyArray<{ name: string; unrecorded?: boolean; next?: string }> }>("fx", "notes", bank)
     expect(said.gone).toEqual([{ name: "ghost", status: "new", comments: 1, next: expect.stringContaining("Its effect is gone.") }])
     expect(said.effects.find((effect) => effect.name === effects[0])).toMatchObject({ unrecorded: true, next: UNRECORDED })
     expect(said.summary).toMatch(/^0 approved, 1 approved with no record of what was seen: ask the person to look again, /)
