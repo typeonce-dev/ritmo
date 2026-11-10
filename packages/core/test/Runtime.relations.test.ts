@@ -746,7 +746,7 @@ describe("Runtime relationships", () => {
           const targetingFailures = relationFailures.targeting.all()
           const hierarchyFailures = relationFailures.childOf.all()
           const alphaTarget = lookup.related(alphaId, Targeting)
-          const betaParent = lookup.parent(betaId, ChildOf)
+          const betaParent = lookup.related(betaId, ChildOf)
 
           resources.summary.set([
             targetingFailures.map((failure) => failure.error._tag).join(","),

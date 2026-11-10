@@ -485,7 +485,7 @@ describe("Schema", () => {
       },
       ({ queries, lookup, commands, relationFailures }) =>
         {
-          lookup.parent(entityId, ChildOf)
+          lookup.related(entityId, ChildOf)
           lookup.ancestors(entityId, ChildOf)
           queries.nodes.children(entityId, ChildOf)
           queries.nodes.descendants(entityId, ChildOf, { order: "depth" })
@@ -523,7 +523,9 @@ describe("Schema", () => {
           // @ts-expect-error Type 'Descriptor<"component", "Position", { x: number; y: number; }>' is missing the following properties
           Game.Query.readRelated(Position)
           // @ts-expect-error Type '"Targeting"' is not assignable to type '"ChildOf"'.
-          lookup.parent(entityId, Targeting)
+          lookup.ancestors(entityId, Targeting)
+          // @ts-expect-error Property 'parent' does not exist
+          lookup.parent(entityId, ChildOf)
           // @ts-expect-error Type '"Targeting"' is not assignable to type '"ChildOf"'.
           queries.nodes.children(entityId, Targeting)
           // @ts-expect-error Type '"Targeting"' is not assignable to type '"ChildOf"'.

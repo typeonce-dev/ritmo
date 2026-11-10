@@ -1059,22 +1059,43 @@ export interface QueryLookups<S extends Schema.Any, Q extends Query.Any> {
  * - hierarchy traversal is available only for hierarchy relations
  */
 export interface LookupApi<S extends Schema.Any, Root = unknown> {
+  /**
+   * The entity's target in `relation`: its parent for a hierarchy
+   * (`lookup.related(id, ChildOf)`), the one it points at otherwise. Fails
+   * with `MissingEntity` when the entity is gone and `MissingRelation` when it
+   * has no target. For every entity of a query, select
+   * `Game.Query.readRelation(R)` instead.
+   */
   related<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Any>>(
     entityId: Entity.EntityId<S, Root>,
     relation: R
   ): Result.Result<Entity.EntityId<S, Root>, Relation.Relation.LookupError>
+  /**
+   * The entities whose target in `relation` is this one: a hierarchy parent's
+   * children in stored order, everyone targeting it otherwise. An entity with
+   * none gives an empty list. To read the children through a query, use the
+   * query handle's `children`; for every entity of a query, select
+   * `Game.Query.readRelated(R)`.
+   */
   relatedSources<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Any>>(
     entityId: Entity.EntityId<S, Root>,
     relation: R
   ): Result.Result<ReadonlyArray<Entity.EntityId<S, Root>>, Relation.Relation.MissingEntityError>
-  parent<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Hierarchy>>(
-    entityId: Entity.EntityId<S, Root>,
-    relation: R
-  ): Result.Result<Entity.EntityId<S, Root>, Relation.Relation.LookupError>
+  /**
+   * The entity's hierarchy ancestors, nearest first: its parent, the
+   * parent's parent, up to the root. Use {@link root} for the last one alone
+   * and {@link related} for the first.
+   */
   ancestors<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Hierarchy>>(
     entityId: Entity.EntityId<S, Root>,
     relation: R
   ): Result.Result<ReadonlyArray<Entity.EntityId<S, Root>>, Relation.Relation.MissingEntityError>
+  /**
+   * Every hierarchy descendant's id, in `options.order` (depth-first by
+   * default). The query handle's `descendants` returns only the ones that
+   * match that query, ready to read; {@link relatedSources} gives the direct
+   * children alone.
+   */
   descendants<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Hierarchy>>(
     entityId: Entity.EntityId<S, Root>,
     relation: R,
@@ -1082,6 +1103,10 @@ export interface LookupApi<S extends Schema.Any, Root = unknown> {
       readonly order?: "breadth" | "depth"
     }
   ): Result.Result<ReadonlyArray<Entity.EntityId<S, Root>>, Relation.Relation.MissingEntityError>
+  /**
+   * The top of the entity's hierarchy: the ancestor with no parent, or the
+   * entity itself when it has none. {@link ancestors} gives the whole path.
+   */
   root<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Hierarchy>>(
     entityId: Entity.EntityId<S, Root>,
     relation: R

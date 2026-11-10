@@ -10,7 +10,7 @@
  * Use a scope when a set of entities shares one lifetime and nothing else: a
  * level's walls, a menu's buttons. Membership is flat, unordered, and not
  * queryable. Use `Descriptor.Hierarchy(...)` instead when entities form a
- * parent-child tree: ordered children, `lookup.parent` / `descendants`
+ * parent-child tree: ordered children, `lookup.related` / `descendants`
  * traversal, and children despawned with their parent.
  *
  * A scope whose lifetime is a game state declares it:
