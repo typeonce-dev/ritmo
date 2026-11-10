@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -27,9 +27,12 @@ const lintProject = (prepare: (dir: string) => void = () => {}): { readonly stat
   }
 }
 
+/** Every skill `@typeonce/ritmo` ships, from its `skills` folder. */
+const shipped = readdirSync(fileURLToPath(new URL("../../core/skills", import.meta.url))).sort()
+
 /** The installed skills at `node_modules/@typeonce/ritmo/skills/<skill>`. */
-const install = (dir: string): void => {
-  for (const name of ["ritmo", "ritmo-prototype", "ritmo-onboarding", "ritmo-polish"]) {
+const install = (dir: string, names: ReadonlyArray<string> = shipped): void => {
+  for (const name of names) {
     const skill = join(dir, "node_modules", "@typeonce", "ritmo", "skills", name)
     mkdirSync(skill, { recursive: true })
     writeFileSync(join(skill, "SKILL.md"), `# ${name}\n`)
@@ -44,22 +47,50 @@ const link = (dir: string, folder: string, names: ReadonlyArray<string>): void =
 
 describe("ritmo-devtools lint: the skill link", () => {
   it("notes each skill a project does not link, without failing", () => {
-    const { status, output } = lintProject()
-    expect(status).toBe(0)
+    const notes = (skill: string, misses: string) => [
+      `note  skill-not-linked  ${skill}`,
+      `  No .agents/skills/${skill} or .claude/skills/${skill} links to node_modules/@typeonce/ritmo/skills/${skill}.`,
+      `  Link it (SETUP.md step 2) so your agent ${misses}.`
+    ]
+    const expected = [
+      ...notes("ritmo", "reads the playbooks for this Ritmo version"),
+      ...notes("ritmo-fx", "makes and reviews the game's pixel art effects with `ritmo-tools fx` for this Ritmo version"),
+      ...notes("ritmo-music", "makes and reviews the game's music with `ritmo-tools music` for this Ritmo version"),
+      ...notes("ritmo-onboarding", "can teach the game to strangers with this Ritmo version"),
+      ...notes("ritmo-pixel-art", "makes and checks the game's pixel art with `ritmo-tools pixel` and this Ritmo version's principles"),
+      ...notes("ritmo-polish", "can polish the game's feel, feedback, and UI with this Ritmo version"),
+      ...notes("ritmo-prototype", "can prototype a mechanic with this Ritmo version"),
+      ...notes("ritmo-sounds", "makes and reviews the game's sound effects with `ritmo-tools sound` for this Ritmo version")
+    ].join("\n")
+    // Installed, every skill in the package's folder; not installed, every skill this version knows.
+    expect(shipped).toEqual(["ritmo", "ritmo-fx", "ritmo-music", "ritmo-onboarding", "ritmo-pixel-art", "ritmo-polish", "ritmo-prototype", "ritmo-sounds"])
+    for (const prepare of [(dir: string) => install(dir), () => {}]) {
+      const { status, output } = lintProject(prepare)
+      expect(status).toBe(0)
+      expect(output).toContain(expected)
+    }
+  })
+
+  it("notes the art, effects, sounds, and music skills in a project set up before they were checked", () => {
+    const { output } = lintProject((dir) => {
+      install(dir)
+      link(dir, ".agents/skills", ["ritmo", "ritmo-prototype", "ritmo-onboarding", "ritmo-polish"])
+    })
+    for (const skill of ["ritmo-pixel-art", "ritmo-fx", "ritmo-sounds", "ritmo-music"]) expect(output).toContain(`note  skill-not-linked  ${skill}\n`)
+    for (const skill of ["ritmo", "ritmo-prototype", "ritmo-onboarding", "ritmo-polish"]) expect(output).not.toContain(`note  skill-not-linked  ${skill}\n`)
+  })
+
+  it("checks every skill the installed package ships, one this version does not know too", () => {
+    const { output } = lintProject((dir) => {
+      install(dir, [...shipped, "ritmo-ninth"])
+      link(dir, ".agents/skills", shipped)
+    })
     expect(output).toContain([
-      "note  skill-not-linked  ritmo",
-      "  No .agents/skills/ritmo or .claude/skills/ritmo links to node_modules/@typeonce/ritmo/skills/ritmo.",
-      "  Link it (SETUP.md step 2) so your agent reads the playbooks for this Ritmo version.",
-      "note  skill-not-linked  ritmo-prototype",
-      "  No .agents/skills/ritmo-prototype or .claude/skills/ritmo-prototype links to node_modules/@typeonce/ritmo/skills/ritmo-prototype.",
-      "  Link it (SETUP.md step 2) so your agent can prototype a mechanic with this Ritmo version.",
-      "note  skill-not-linked  ritmo-onboarding",
-      "  No .agents/skills/ritmo-onboarding or .claude/skills/ritmo-onboarding links to node_modules/@typeonce/ritmo/skills/ritmo-onboarding.",
-      "  Link it (SETUP.md step 2) so your agent can teach the game to strangers with this Ritmo version.",
-      "note  skill-not-linked  ritmo-polish",
-      "  No .agents/skills/ritmo-polish or .claude/skills/ritmo-polish links to node_modules/@typeonce/ritmo/skills/ritmo-polish.",
-      "  Link it (SETUP.md step 2) so your agent can polish the game's feel, feedback, and UI with this Ritmo version."
+      "note  skill-not-linked  ritmo-ninth",
+      "  No .agents/skills/ritmo-ninth or .claude/skills/ritmo-ninth links to node_modules/@typeonce/ritmo/skills/ritmo-ninth.",
+      "  Link it (SETUP.md step 2) so your agent reads the ritmo-ninth skill of this Ritmo version."
     ].join("\n"))
+    expect(output.match(/note {2}skill/g)).toHaveLength(1)
   })
 
   it("notes the prototype skill alone in a project set up before it shipped", () => {
@@ -96,7 +127,7 @@ describe("ritmo-devtools lint: the skill link", () => {
     for (const folder of [".agents/skills", ".claude/skills"]) {
       const { status, output } = lintProject((dir) => {
         install(dir)
-        link(dir, folder, ["ritmo", "ritmo-prototype", "ritmo-onboarding", "ritmo-polish"])
+        link(dir, folder, shipped)
       })
       expect(status).toBe(0)
       expect(output, folder).not.toContain("note  skill")
@@ -106,13 +137,13 @@ describe("ritmo-devtools lint: the skill link", () => {
   it("says nothing when the package itself is linked from a checkout (`link:`)", () => {
     const { status, output } = lintProject((dir) => {
       const checkout = join(dir, "checkout")
-      for (const name of ["ritmo", "ritmo-prototype", "ritmo-onboarding", "ritmo-polish"]) {
+      for (const name of shipped) {
         mkdirSync(join(checkout, "skills", name), { recursive: true })
         writeFileSync(join(checkout, "skills", name, "SKILL.md"), `# ${name}\n`)
       }
       mkdirSync(join(dir, "node_modules", "@typeonce"), { recursive: true })
       symlinkSync(checkout, join(dir, "node_modules", "@typeonce", "ritmo"))
-      link(dir, ".agents/skills", ["ritmo", "ritmo-prototype", "ritmo-onboarding", "ritmo-polish"])
+      link(dir, ".agents/skills", shipped)
     })
     expect(status).toBe(0)
     expect(output).not.toContain("note  skill")

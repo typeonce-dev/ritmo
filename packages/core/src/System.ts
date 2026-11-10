@@ -699,7 +699,8 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
    * One value is queued per machine: a later `set` before the marker
    * replaces an earlier one. A `set` from a transition schedule (`onEnter`,
    * `onExit`, `onTransition`) is committed at the following marker, while a
-   * value queued before the current marker still commits at it. A sub-state
+   * value queued before the current marker still commits at it (unless
+   * `cancelPending()` dropped it first: then this value takes its place). A sub-state
    * value set while its parent is still in its state but leaves it at the
    * same marker returns ok and is dropped with the sub-state.
    *
@@ -720,7 +721,13 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
    * Drops the queued value, if any, so the next `applyStateTransitions(...)`
    * commits nothing for this machine. Called from a transition schedule, it
    * cancels a value queued before the current marker that the marker has not
-   * applied yet.
+   * applied yet, and the next value queued for this machine (`set`,
+   * `setIfChanged`, or `transition`) takes its place at this marker: from
+   * another machine's `onEnter`, `cancelPending()` then `set({ _tag: "Off" })`
+   * commits Off at this marker, and the cancelled value never. Without the
+   * cancel, that `set` waits for the following marker. Once the marker has
+   * applied this machine, a value queued after a cancel waits for the
+   * following marker too.
    */
   cancelPending(): void
 }
@@ -1630,16 +1637,24 @@ export type SystemRun<Spec extends AnySystemSpec, E = never> =
   (context: SystemContext<Spec>) => Result.Result<unknown, E> | void
 
 /**
- * The body `Game.System(...)` takes: a {@link SystemRun}, whose return type
- * also has a member no value has. It names the fix when a body returns a
- * value (an expression body, `({ commands }) => commands.spawn(draft)`) or a
- * promise (an `async` body).
+ * The fix a system body's return type names when it is neither nothing nor
+ * a `Result`: an expression body (`({ commands }) => commands.spawn(draft)`)
+ * or an `async` body. `Game.System` checks the body's return type against
+ * `Result.Result<unknown, unknown> | void | { readonly __fixSystem__: SystemReturnFix }`.
  */
-export type SystemBody<Spec extends AnySystemSpec, E = never> =
-  (context: SystemContext<Spec>) =>
-    | Result.Result<unknown, E>
-    | void
-    | { readonly __fixSystem__: "a system returns nothing or Result.failure(...), and runs synchronously: wrap an expression body in braces, and drop async"; readonly __never__: never }
+export type SystemReturnFix = "a system returns nothing or Result.failure(...), and runs synchronously: wrap an expression body in braces, and drop async"
+
+/** The failure type of a system body that returns `R`: the union of the errors of every `Result.failure(...)` it returns. */
+export type BodyFailure<R> = R extends Result.Failure<infer E> ? E : never
+
+/**
+ * The body `Game.System(...)` takes: a {@link SystemRun} whose whole return
+ * type `R` is inferred, so a body returning failures of different shapes
+ * (`"NotEnoughGold"` in one branch, `{ _tag: "OutOfStock" }` in another)
+ * fails with their union ({@link BodyFailure}).
+ */
+export type SystemBody<Spec extends AnySystemSpec, R = void> =
+  (context: SystemContext<Spec>) => R
 
 const requirementValuesFromRecord = (
   record: Record<string, unknown> | undefined
@@ -1704,7 +1719,7 @@ const collectSystemRequirements = (
  */
 export function System<
   const Access extends SystemAccessInput & { readonly schema: Schema.Any },
-  E = never,
+  R extends Result.Result<unknown, unknown> | void | { readonly __fixSystem__: SystemReturnFix; readonly __never__: never } = void,
   Root = unknown,
   const Name extends string = string
 >(
@@ -1712,13 +1727,13 @@ export function System<
   spec: Access & {
     readonly [Key in Exclude<keyof Access, keyof SystemAccessInput | "schema">]: UnknownCategory<Key>
   },
-  run: SystemBody<SystemSpec<Access["schema"], Access, Root>, E>
-): SystemDefinition<SystemSpec<Access["schema"], Access, Root>, E, Root, Name, SystemAccessNeeds<Access>>
+  run: SystemBody<SystemSpec<Access["schema"], Access, Root>, R>
+): SystemDefinition<SystemSpec<Access["schema"], Access, Root>, BodyFailure<R>, Root, Name, SystemAccessNeeds<Access>>
 
 export function System(
   name: string,
   spec: { readonly schema: Schema.Any } & SystemAccessInput,
-  run: SystemBody<any, any>
+  run: SystemBody<any, unknown>
 ): SystemDefinition<any, any, any, any, any> {
   type Spec = SystemSpec<Schema.Any>
 

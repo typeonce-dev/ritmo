@@ -85,6 +85,39 @@ describe("Clock", () => {
     expect(Clock.steps(Clock.duration(Clock.hz(10000000), 1e-7))).toBe(1)
   })
 
+  it("rounds a decimal that is exactly a half step up, where the float product lands just below it", () => {
+    expect(Clock.steps(Clock.duration(step, 1.025))).toBe(62)
+    expect(Clock.steps(Clock.duration(Clock.hz(30), 2.05))).toBe(62)
+    expect(Clock.steps(Clock.duration(Clock.hz(100), 0.145))).toBe(15)
+    const bad: Array<string> = []
+    for (const hz of [20, 30, 50, 60, 100, 120, 144, 240]) {
+      for (let thousandths = 1; thousandths <= 5000; thousandths++) {
+        const exactTimes2 = thousandths * hz * 2
+        if (exactTimes2 % 1000 !== 0) continue
+        const twice = exactTimes2 / 1000
+        if (twice % 2 !== 1) continue
+        const want = (twice + 1) / 2
+        const got = Clock.durationRaw(Clock.hz(hz as 60), thousandths / 1000)
+        if (got.ok && got.value.steps !== want) bad.push(`${thousandths / 1000}s@${hz}: got ${got.value.steps} want ${want}`)
+      }
+    }
+    expect(bad).toEqual([])
+  })
+
+  it("keeps every duration that is not a half step as Math.round gave it", () => {
+    const moved: Array<string> = []
+    for (const hz of [20, 30, 50, 60, 100, 120, 144, 240]) {
+      for (let thousandths = 1; thousandths <= 5000; thousandths++) {
+        if ((thousandths * hz * 2) % 1000 === 0 && ((thousandths * hz * 2) / 1000) % 2 === 1) continue
+        const seconds = thousandths / 1000
+        const got = Clock.durationRaw(Clock.hz(hz as 60), seconds)
+        const before = Math.max(1, Math.round(seconds * hz))
+        if (got.ok && got.value.steps !== before) moved.push(`${seconds}s@${hz}: ${got.value.steps}, was ${before}`)
+      }
+    }
+    expect(moved).toEqual([])
+  })
+
   it("runs two clocks of one game at their own rates", () => {
     const runtime = make()
     const read = Game.Inspector("ClockRun/ReadBoth", {
@@ -118,12 +151,25 @@ describe("Clock", () => {
 })
 
 describe("Clock.durationOfSteps", () => {
-  it("spans exactly the given steps, and throws on a computed count that is not a positive whole number", () => {
+  it("spans exactly the given steps", () => {
     expect(Clock.steps(Clock.durationOfSteps(step, 3))).toBe(3)
-    const zero: number = 0
+  })
+
+  it("throws on a count that is not a positive whole number, which only a cast reaches", () => {
+    const zero = 0 as 1
     expect(() => Clock.durationOfSteps(step, zero)).toThrow("Clock.durationOfSteps needs a positive whole number of steps, got 0")
-    const half: number = 0.5
-    expect(() => Clock.durationOfSteps(step, half)).toThrow("got 0.5")
+  })
+})
+
+describe("Clock.durationOfStepsRaw", () => {
+  it("spans a positive whole count from data, and fails for any other count", () => {
+    const counted: number = 8
+    expect(Clock.durationOfStepsRaw(step, counted)).toEqual(Result.success({ kind: "ClockDuration", steps: 8, hz: 60 }))
+    expect(Clock.durationOfStepsRaw(step, 0)).toEqual(Result.failure({ _tag: "InvalidDuration", seconds: 0, message: "a duration needs a positive whole number of steps, got 0" }))
+    expect(Clock.durationOfStepsRaw(step, -6)).toEqual(Result.failure({ _tag: "InvalidDuration", seconds: -0.1, message: "a duration needs a positive whole number of steps, got -6" }))
+    expect(Clock.durationOfStepsRaw(step, 1.5).ok).toBe(false)
+    expect(Clock.durationOfStepsRaw(step, Number.NaN).ok).toBe(false)
+    expect(Clock.durationOfStepsRaw(step, 2 ** 53).ok).toBe(false)
   })
 })
 

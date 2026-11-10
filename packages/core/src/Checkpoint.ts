@@ -54,8 +54,13 @@
  * away and the ticks after it brought back before the reader's next run, is
  * changed, not added. So an entity the rewind took away and the ticks after
  * it brought back (the same id: ids are exact) is seen as changed, never as
- * despawned and spawned again. They may see a value as changed that ended
- * up equal. Events they
+ * despawned and spawned again. One case reads as added again: a reader
+ * that saw a component on an entity, did not run while a tick after the
+ * checkpoint removed it, and runs next after a rewind to that checkpoint
+ * brought it back, sees the component as `added` again, though for that
+ * reader it never left. A host that creates something per entity from an
+ * `added` read (a sprite, a node) keys it by entity id and keeps the one it
+ * has. They may see a value as changed that ended up equal. Events they
  * read during ticks that are ticked again are published again. A networked
  * game reads them through its session instead (`session.events(...)` in
  * `@typeonce/ritmo-netcode`), which hands each event out once, when its tick

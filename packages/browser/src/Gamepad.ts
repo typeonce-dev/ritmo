@@ -11,9 +11,14 @@
  *
  * Buttons are named by their place in the browser's standard mapping
  * (`"south"` is A on Xbox, Cross on PlayStation, B on Nintendo), so bindings
- * stay the same on every pad. A pad whose `mapping` is not `"standard"` is
- * read by the same indices, which may not match its labels: let players
- * remap (`rebind`). The snapshot also reports every `button` by name,
+ * stay the same on every pad. A pad whose `mapping` is not `"standard"` has
+ * its buttons read by the same indices, which may not match its labels: let
+ * players remap (`rebind`). Its sticks and analog triggers cannot be mapped,
+ * since nothing says which axis is which (many such pads report triggers as
+ * axes resting at -1), so they read as rest, and only its buttons count
+ * toward `used`. The snapshot's `standard` is `false` for such a pad: tell
+ * the player its sticks are not supported and offer button bindings. The
+ * snapshot also reports every `button` by name,
  * whatever the bindings, for fixed menu navigation and for a settings screen
  * that waits for the button to bind; `parseRebinding(...)` validates
  * bindings saved as JSON.
@@ -208,6 +213,14 @@ export interface Snapshot<B extends Bindings> {
    * the dead zone: the player is using the pad.
    */
   readonly used: boolean
+  /**
+   * Whether the followed pad uses the browser's standard mapping. `false`
+   * for a pad that does not: its buttons are read by index (offer
+   * `rebind`), while its sticks and triggers read as rest and never count
+   * as use, so tell the player they are not supported. `true` with no pad,
+   * and for scripted pads.
+   */
+  readonly standard: boolean
   /** Whether a pad is being followed. */
   readonly connected: boolean
   /** The followed pad's `id` (it names the maker, for button labels), or `null`. */
@@ -260,7 +273,7 @@ const zero: Vector = { x: 0, y: 0 }
  * resource before the first capture.
  */
 export const idle = <const B extends Bindings>(bindings: B): Snapshot<B> => {
-  return { actions: idleActions(bindings), vectors: idleVectors(bindings) as Snapshot<B>["vectors"], buttons: idleButtons(buttonNames), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, used: false, connected: false, id: null }
+  return { actions: idleActions(bindings), vectors: idleVectors(bindings) as Snapshot<B>["vectors"], buttons: idleButtons(buttonNames), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, used: false, standard: true, connected: false, id: null }
 }
 
 const sameVector = (a: Vector, b: Vector): boolean => a.x === b.x && a.y === b.y
@@ -304,11 +317,14 @@ const tracker = <B extends Bindings>(initial: B) => {
   }
 }
 
-/** Whether a pad is being touched: a button down or a stick past the dead zone. */
+/** Whether the pad's axes are the standard mapping's sticks; any other pad's axes are unknown. */
+const isStandard = (pad: PadReading): boolean => pad.mapping === "standard"
+
+/** Whether a pad is being touched: a button down, or a stick past the dead zone on a standard pad. */
 const inUse = (pad: PadReading, deadZone: number, triggerThreshold: number): boolean =>
   pad.buttons.some((button, index) => isDown(button, index, triggerThreshold)) ||
   // Only the sticks' axes: some pads report their triggers as extra axes resting at -1.
-  pad.axes.slice(0, 4).some((axis) => Math.abs(axis) > deadZone)
+  (isStandard(pad) && pad.axes.slice(0, 4).some((axis) => Math.abs(axis) > deadZone))
 
 const triggerIndices = new Set([6, 7])
 
@@ -366,7 +382,7 @@ export const actions = <const B extends Bindings>(host: GamepadHost, bindings: B
     snapshot() {
       poll()
       const pad = reading
-      if (pad === null) return state.snapshot({ ...resting, connected: false, id: null })
+      if (pad === null) return state.snapshot({ ...resting, standard: true, connected: false, id: null })
       return state.snapshot({ ...analogOf(pad, deadZone), connected: true, id: pad.id })
     },
     rebind: state.rebind,
@@ -412,15 +428,17 @@ const readButtons = (state: ReturnType<typeof tracker>, pad: PadReading, trigger
   }
 }
 
-/** A pad's sticks (dead zone removed) and triggers. */
+/** A pad's sticks (dead zone removed) and triggers, at rest when the pad's mapping is not standard. */
 const analogOf = (pad: PadReading, deadZone: number) => {
+  if (!isStandard(pad)) return { ...resting, standard: false }
   const axis = (index: number) => pad.axes[index] ?? 0
   const trigger = (index: number) => Math.min(1, Math.max(0, pad.buttons[index]?.value ?? 0))
   return {
     left: stick(axis(0), axis(1), deadZone),
     right: stick(axis(2), axis(3), deadZone),
     leftTrigger: trigger(6),
-    rightTrigger: trigger(7)
+    rightTrigger: trigger(7),
+    standard: true
   }
 }
 
@@ -484,7 +502,7 @@ export const pads = <const B extends Bindings, const N extends number>(host: Gam
     snapshot() {
       poll()
       return seen.map((entry) => entry.state.snapshot(entry.reading === null
-        ? { ...resting, connected: false, id: entry.id }
+        ? { ...resting, standard: true, connected: false, id: entry.id }
         : { ...analogOf(entry.reading, deadZone), connected: true, id: entry.id }))
     },
     rebind(next) {
@@ -609,7 +627,7 @@ export const scripted = <const B extends Bindings>(bindings: B, timeline: Timeli
         }
       }
       frame += 1
-      return state.snapshot({ ...analog, connected, id: connected ? "scripted" : null })
+      return state.snapshot({ ...analog, standard: true, connected, id: connected ? "scripted" : null })
     },
     rebind: state.rebind,
     dispose() {},
@@ -629,7 +647,7 @@ export interface Recording<B extends Bindings> extends Actions<B> {
  */
 export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B> => {
   const entries: Array<TimelineEntry> = []
-  let previous: Omit<Snapshot<B>, "actions" | "vectors" | "id" | "used"> = { buttons: idleButtons(buttonNames), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, connected: false }
+  let previous: Omit<Snapshot<B>, "actions" | "vectors" | "id" | "used" | "standard"> = { buttons: idleButtons(buttonNames), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, connected: false }
   let frame = 0
   return {
     snapshot() {

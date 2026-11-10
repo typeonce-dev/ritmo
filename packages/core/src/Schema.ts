@@ -50,7 +50,7 @@
  * ```
  */
 import type * as Command from "./Command.ts"
-import type { CheckedStates, CheckedTransitions, ConstructedDescriptor, Descriptor, StateDefinitions, StateTransitions } from "./Descriptor.ts"
+import type { CheckedStates, CheckedTransitions, ConstructedDescriptor, Descriptor, Named, StateDefinitions, StateTransitions } from "./Descriptor.ts"
 import type * as Entity from "./Entity.ts"
 import type * as EntityScope from "./EntityScope.ts"
 import { buildSchema, emptySchema, mergeSchemas } from "./internal/fragments.ts"
@@ -726,7 +726,7 @@ export namespace Schema {
         /** Despawns every member when the machine leaves this state, after its `onExit` schedules run. */
         readonly despawnOnExit?: readonly [Exit & Machine.SameGame<Exit, Root>, Machine.StateMachine.State<Exit>]
       }
-    ) => EntityScope.EntityScope<Name, Root>
+    ) => Named<Name, EntityScope.EntityScope<Name, Root>>
     /** Declares a reusable, requirement-checked read-only world projection. */
     readonly Inspector: <
       const Name extends string,
@@ -892,7 +892,7 @@ export namespace Schema {
         name: Name,
         states: States & CheckedStates<States, "a state machine needs at least one state">,
         options?: { readonly transitions: CheckedTransitions<States, Transitions> }
-      ): Schema.BoundStateMachine<Root, Name, States, unknown, Transitions>
+      ): Named<Name, Schema.BoundStateMachine<Root, Name, States, unknown, Transitions>>
       /**
        * Declares a sub-state: a machine that exists only while `within[0]` is
        * in state `within[1]` (a battle phase that only means something while
@@ -908,7 +908,7 @@ export namespace Schema {
        * `onEnter` schedule runs: the parent's `onEnter` systems already see its
        * value, its `despawnOnEnter` scopes are cleared before they spawn, and
        * a failing `onEnter` leaves it entered. Its own `onEnter` schedules
-       * run after the parent's.
+       * run after the parent's, even when one of the parent's failed.
        *
        * Use a second top-level machine instead when the two modes are
        * independent (each keeps its value whatever the other does).
@@ -936,7 +936,7 @@ export namespace Schema {
           readonly within: readonly [Parent & Machine.SameGame<Parent, Root>, Machine.StateMachine.State<Parent>]
           readonly transitions?: CheckedTransitions<States, Transitions>
         }
-      ): Schema.BoundStateMachine<Root, Name, States, Parent, Transitions>
+      ): Named<Name, Schema.BoundStateMachine<Root, Name, States, Parent, Transitions>>
     }
     readonly Condition: {
       /**
@@ -974,12 +974,12 @@ export namespace Schema {
       <
         const Name extends string,
         const Access extends BoundSystemAccess<S, Root>,
-        E = never
+        R extends Result.Result<unknown, unknown> | void | { readonly __fixSystem__: System.SystemReturnFix; readonly __never__: never } = void
       >(
         name: Name,
         spec: System.ExactAccess<Access>,
-        run: System.SystemBody<System.SystemSpec<S, Access, Root>, E>
-      ): BoundSystem<S, Root, System.SystemSpec<S, Access, Root>, E, Name, System.SystemAccessNeeds<Access>>
+        run: System.SystemBody<System.SystemSpec<S, Access, Root>, R>
+      ): BoundSystem<S, Root, System.SystemSpec<S, Access, Root>, System.BodyFailure<R>, Name, System.SystemAccessNeeds<Access>>
       /** A read-only resource slot (`resources`). Use `changedResource` to skip work when it did not change. */
       readResource: <D extends ResourceDescriptor<S>>(descriptor: D) => System.ResourceRead<D>
       /** A writable resource slot (`resources`); writes roll back when the system fails. */
@@ -1076,9 +1076,12 @@ export namespace Schema {
       ) => BoundTransitionBundleResult<S, Root, Entries>
       /**
        * Systems run when `machine` enters `state`, after the new value is
-       * committed. When one fails, the transition stays committed (traced as
-       * `enterFailed`). Pass it to `applyStateTransitions` through
-       * `transitions(...)`; see `onExit` for the exit phase.
+       * committed. Each enter schedule is independent: when one fails, the
+       * transition stays committed (traced as `enterFailed`), the other
+       * enter schedules of `state` and of the sub-states that start existing
+       * still run in their usual order, and the marker returns the first
+       * failure (the tick fails with it). Pass it to `applyStateTransitions`
+       * through `transitions(...)`; see `onExit` for the exit phase.
        */
       onEnter: <M extends BoundStateMachine<Root>, const Entries extends ReadonlyArray<BoundTransitionEntry<S, Root>>>(
         machine: M,

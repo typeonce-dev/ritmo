@@ -34,7 +34,7 @@ describe("ritmo-devtools verify", () => {
   it("defaults to node, and prints JSON with --json", () => {
     const run = verify([entry, replay, "--json"])
     expect(run.status).toBe(0)
-    expect(JSON.parse(run.stdout)).toEqual({ ok: true, schedule: "update", ticks: 6, engines: ["node"] })
+    expect(JSON.parse(run.stdout)).toEqual({ ok: true, schedule: "update", recording: "matched", ticks: 6, engines: ["node"] })
   })
 
   it("exits with 1 and names the tick and value when a second run differs", () => {
