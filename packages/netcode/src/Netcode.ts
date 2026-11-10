@@ -218,14 +218,23 @@ export interface SyncFailed {
 }
 
 /**
- * A link closed (`seat` is unknown), or a seat sent nothing for `timeoutMS`
- * (`timeoutMS + afterMS` while it is hidden, with the `hidden` option). Ends
- * the session.
+ * The match lost a seat. Ends the session. `reason`:
+ *
+ * - `"closed"`: a link closed (`seat` is unknown).
+ * - `"timeout"`: `seat` sent nothing for `timeoutMS` (`timeoutMS + afterMS`
+ *   while it is hidden, with the `hidden` option).
+ * - `"restarted"`: `seat` started a new session while its earlier one was in
+ *   the match (its page reloaded). A session cannot join a match in
+ *   progress, so the others end with this, and the new session too (at once
+ *   when seat 0's save reaches it, or after `timeoutMS` of a match running
+ *   without it). Sessions are told apart by their `hostClock` reading when
+ *   made: two of one seat made at the same reading are not. Start a new
+ *   match to play on.
  */
 export interface Disconnected {
   readonly _tag: "Disconnected"
   readonly seat: number | undefined
-  readonly reason: "closed" | "timeout"
+  readonly reason: "closed" | "timeout" | "restarted"
   readonly detail: string
 }
 
@@ -281,6 +290,16 @@ export interface Status {
   readonly inputDelay: number
   /** How many times `adaptiveDelay` moved the delay, in total (0 with a fixed `inputDelay`). */
   readonly delayChanges: number
+  /**
+   * What the last `advance` stalled on (`Stalled`): the seat whose input for
+   * `tick` this peer cannot run past, and for how long, by `hostClock`.
+   * Rollback stalls `maxRollback` ticks past the seat furthest behind;
+   * lockstep on any seat without input for the next tick. `undefined` while
+   * the session runs, and while it waits for a save (`Waiting`) or is
+   * halted. For a HUD ("waiting for seat 1") and tests; a seat that stays
+   * silent ends the session after `timeoutMS`.
+   */
+  readonly waiting: { readonly seat: number; readonly tick: number; readonly forMS: number } | undefined
 }
 
 /** One event the simulation published, and the session tick that published it. */

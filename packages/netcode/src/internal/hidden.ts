@@ -12,7 +12,6 @@
  * Seat 0 answers once it has seen the spell end; the seat restores that
  * save and plays again from it.
  */
-import type * as Wire from "./wire.ts"
 
 export interface Tracker {
   /** Per seat, the latest spell it announced (0: never hid). */
@@ -54,13 +53,13 @@ export const show = (tracker: Tracker, seat: number): void => {
   tracker.shown[seat] = tracker.hides[seat]!
 }
 
-/** A seat announced a spell. Inputs before `floor` are fixed by the last save, so its idle input starts after `floor - 1` at the earliest. */
-export const announced = (tracker: Tracker, message: Wire.Hidden, floor: number): void => {
-  const seat = message.from
-  if (message.n < tracker.hides[seat]!) return
-  tracker.hides[seat] = message.n
-  tracker.away[seat] = message.away
-  tracker.last[seat] = Math.max(message.last, floor - 1)
+/** A seat announced its `n`th spell, with its inputs ending at `last` in this peer's epoch. Returns whether it is the latest this peer knows of. */
+export const announced = (tracker: Tracker, seat: number, n: number, playedAround: boolean, last: number): boolean => {
+  if (n < tracker.hides[seat]!) return false
+  tracker.hides[seat] = n
+  tracker.away[seat] = playedAround
+  tracker.last[seat] = last
+  return true
 }
 
 /** A seat's ping: `shown` of its spells ended. */
@@ -78,12 +77,3 @@ export const synced = (tracker: Tracker, returned: ReadonlyArray<number>, floor:
 
 /** For seat 0: `seat` is away and back, so the next save answers it. */
 export const returned = (tracker: Tracker, seat: number): boolean => away(tracker, seat) && tracker.shown[seat]! >= tracker.hides[seat]!
-
-export const message = (tracker: Tracker, seat: number, epoch: number): Wire.Hidden => ({
-  k: "hidden",
-  from: seat,
-  epoch,
-  n: tracker.hides[seat]!,
-  last: tracker.last[seat]!,
-  away: tracker.away[seat]!
-})
