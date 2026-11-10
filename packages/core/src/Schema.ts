@@ -974,12 +974,12 @@ export namespace Schema {
       <
         const Name extends string,
         const Access extends BoundSystemAccess<S, Root>,
-        E = never
+        R extends Result.Result<unknown, unknown> | void | { readonly __fixSystem__: System.SystemReturnFix; readonly __never__: never } = void
       >(
         name: Name,
         spec: System.ExactAccess<Access>,
-        run: System.SystemBody<System.SystemSpec<S, Access, Root>, E>
-      ): BoundSystem<S, Root, System.SystemSpec<S, Access, Root>, E, Name, System.SystemAccessNeeds<Access>>
+        run: System.SystemBody<System.SystemSpec<S, Access, Root>, R>
+      ): BoundSystem<S, Root, System.SystemSpec<S, Access, Root>, System.BodyFailure<R>, Name, System.SystemAccessNeeds<Access>>
       /** A read-only resource slot (`resources`). Use `changedResource` to skip work when it did not change. */
       readResource: <D extends ResourceDescriptor<S>>(descriptor: D) => System.ResourceRead<D>
       /** A writable resource slot (`resources`); writes roll back when the system fails. */
