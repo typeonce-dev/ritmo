@@ -263,7 +263,7 @@ const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Positio
 // Copied from Position, and the name was never changed
 const Speed = Descriptor.Component<number>()("Arena/Position") // [!code error]
 
-// @errors: 2345
+// @errors: 2345 2769
 const Root = Schema.defineRoot("Arena")
 const Game = Schema.bind(Schema.fragment({ components: { Position, Speed } }), Root)
 ```

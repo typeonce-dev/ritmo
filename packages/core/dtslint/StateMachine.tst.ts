@@ -177,7 +177,7 @@ describe("StateMachine", () => {
       "StateMachine/CrossSchemaSystem",
       {
         machines: {
-          // @ts-expect-error Property 'Position' is missing in type '{}' but required in type '{ readonly Position
+          // @ts-expect-error Type 'RootToken<"StateMachine/Other">' is not assignable to type 'RootToken<"StateMachine">'
           other: System.machine(OtherState)
         }
       },
@@ -188,14 +188,14 @@ describe("StateMachine", () => {
       "StateMachine/CrossSchemaTransitionEvents",
       {
         transitionEvents: {
-          // @ts-expect-error Property 'Position' is missing in type '{}' but required in type '{ readonly Position
+          // @ts-expect-error Type 'RootToken<"StateMachine/Other">' is not assignable to type 'RootToken<"StateMachine">'
           other: Game.System.readTransitionEvent(OtherState)
         }
       },
       () => {}
     )
 
-    // @ts-expect-error Property 'Position' is missing in type '{}' but required in type '{ readonly Position
+    // @ts-expect-error Type 'RootToken<"StateMachine/Other">' is not assignable to type 'RootToken<"StateMachine">'
     Game.Schedule.onEnter(OtherState, "Idle", [ReaderSystem])
 
     const OtherBundle = OtherGame.Schedule.transitions(
@@ -204,7 +204,7 @@ describe("StateMachine", () => {
 
     Game.Schedule(
       ReaderSystem,
-      // @ts-expect-error Property 'Position' is missing in type '{}' but required in type '{ readonly Position
+      // @ts-expect-error Type 'RootToken<"StateMachine/Other">' is not assignable to type 'RootToken<"StateMachine">'
       Game.Schedule.applyStateTransitions(OtherBundle)
     )
   })
@@ -348,7 +348,7 @@ describe("StateMachine", () => {
   it("rejects nested transition-application markers in transition schedules", () => {
     Game.Schedule.onEnter(AppState, "Playing", [
       TransitionSystem,
-      // @ts-expect-error Type 'ApplyStateTransitionsStep<undefined, SchemaDefinition<{ readonly Position: Descriptor<"component"
+      // @ts-expect-error Type 'ApplyStateTransitionsStep<undefined, RootToken<"StateMachine">>' is not assignable to type 'BoundTransitionEntry<
       Game.Schedule.applyStateTransitions()
     ])
   })
@@ -406,14 +406,14 @@ describe("StateMachine", () => {
     // Conditions from another game do not fit.
     Game.Schedule.when(
       [
-        // @ts-expect-error Property 'Position' is missing in type '{}' but required in type '{ readonly Position
+        // @ts-expect-error Type 'RootToken<"StateMachine/Other">' is not assignable to type 'RootToken<"StateMachine">'
         OtherGame.Condition.inState(OtherState, "Idle")
       ],
       Increment
     )
 
     // A group needs at least one condition.
-    // @ts-expect-error Argument of type '[]' is not assignable to parameter of type 'readonly [Condition<SchemaDefinition<{ readonly
+    // @ts-expect-error Argument of type '[]' is not assignable to parameter of type 'readonly [Condition<RootToken<"StateMachine">>, ...Condition<RootToken<"StateMachine">>[]]'
     Game.Schedule.when([], Increment)
 
     expect(gated).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof Root>>()

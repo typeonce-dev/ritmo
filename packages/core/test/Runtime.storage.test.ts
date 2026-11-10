@@ -192,10 +192,17 @@ describe("Runtime storage", () => {
 
   it("guards duplicate descriptor names when types are erased", () => {
     const Other = Descriptor.Component<{ x: number }>()("Storage/Position")
-    const bindErased = Schema.bind as (...fragments: ReadonlyArray<Schema.Schema.Any>) => unknown
+    const bindErased = Schema.bind as (...args: ReadonlyArray<Schema.Schema.Any | Schema.RootToken>) => unknown
     expect(() => bindErased(
       Schema.fragment({ components: { Position } }),
-      Schema.fragment({ components: { Other } })
+      Schema.fragment({ components: { Other } }),
+      Root
     )).toThrow("Duplicate descriptor name: Storage/Position")
+  })
+
+  it("needs a root when types are erased", () => {
+    const bindErased = Schema.bind as (...args: ReadonlyArray<Schema.Schema.Any | Schema.RootToken>) => unknown
+    expect(() => bindErased(Schema.fragment({ components: { Position } })))
+      .toThrow("Schema.bind takes the game's root last: const Root = Schema.defineRoot('Game'), then Schema.bind(...fragments, Root)")
   })
 })

@@ -25,7 +25,8 @@ Follow these steps once in a new project, and for any step an existing project i
    After every Ritmo upgrade, compare `.oxlintrc.json` with that README's config: a new rule is not on until the config lists it, so an existing project does not get it by upgrading.
 4. Name the schema's type where the game binds it, so type errors print `GameSchema` instead of every descriptor the game has:
    ```ts
-   const schema = Schema.fragment({ components: { Position, Velocity } }) // or Schema.bind(Core, Combat).schema
+   const Root = Schema.defineRoot("Game")
+   const schema = Schema.fragment({ components: { Position, Velocity } }) // or Schema.bind(Core, Combat, Root).schema
    type SchemaOf = typeof schema
    export interface GameSchema extends SchemaOf {}
    const named: GameSchema = schema

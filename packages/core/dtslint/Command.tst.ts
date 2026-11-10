@@ -31,7 +31,7 @@ describe("Command", () => {
     expect(draft).type.toBe<Entity.EntityDraft<typeof schema, {
       readonly Position: { x: number; y: number }
       readonly Velocity: { x: number; y: number }
-    }, typeof schema>>()
+    }, typeof Root>>()
   })
 
   it("spawn starts with an empty draft proof", () => {
@@ -76,7 +76,7 @@ describe("Command", () => {
     expect(draft).type.toBe<Result.Result<Entity.EntityDraft<typeof schema, {
       readonly Position: { x: number; y: number }
       readonly SafePosition: Codecs.SafeVector
-    }, typeof schema>, readonly [null, Descriptor.SchemaIssues | null]>>()
+    }, typeof Root>, readonly [null, Descriptor.SchemaIssues | null]>>()
   })
 
   it("has no entryResult: validation goes through the descriptor", () => {
@@ -96,7 +96,7 @@ describe("Command", () => {
     expect(inserted).type.toBe<Result.Result<Entity.EntityDraft<typeof schema, {
       readonly Position: { x: number; y: number }
       readonly SafePosition: Codecs.SafeVector
-    }, typeof schema>, readonly [Descriptor.SchemaIssues | null]>>()
+    }, typeof Root>, readonly [Descriptor.SchemaIssues | null]>>()
   })
 
   it("entryRaw rejects plain component descriptors", () => {

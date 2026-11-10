@@ -23,7 +23,8 @@
  * ```ts
  * const step = Clock.hz(60)
  * const Time = Clock.resource("Game/Time", step)
- * const Game = Schema.bind(Schema.fragment({ resources: { Time } }))
+ * const Root = Schema.defineRoot("Game")
+ * const Game = Schema.bind(Schema.fragment({ resources: { Time } }), Root)
  * const Pause = Game.StateMachine("Game/Pause", { Running: {}, Paused: {} })
  * const AdvanceTime = Clock.system(Game, { name: "Game/AdvanceTime", resource: Time, hold: [Game.Condition.inState(Pause, "Paused")] })
  * // The clock resource is validated, so `make` returns a Result to check.

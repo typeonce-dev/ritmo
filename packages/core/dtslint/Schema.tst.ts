@@ -474,7 +474,7 @@ describe("Schema", () => {
       readonly parent: Relation.RelationReadAccess<typeof ChildOf, typeof schema, typeof Root>
       readonly children: Relation.OptionalRelatedReadAccess<typeof ChildOf, typeof schema, typeof Root>
       readonly target: Relation.OptionalRelationReadAccess<typeof Targeting, typeof schema, typeof Root>
-    }, readonly [], readonly [], readonly [], readonly [typeof ChildOf], readonly [], readonly [], readonly [], typeof Game.schema>>()
+    }, readonly [], readonly [], readonly [], readonly [typeof ChildOf], readonly [], readonly [], readonly [], typeof Root>>()
 
     const ObserveSystem = Game.System(
       "ObserveRelations",
@@ -501,12 +501,12 @@ describe("Schema", () => {
           expect(relationFailures.targeting.all()).type.toBeAssignableTo<ReadonlyArray<Relation.Relation.MutationFailure<
             typeof Targeting,
             typeof schema,
-            typeof Game.schema
+            typeof Root
           >>>()
           expect(relationFailures.childOf.all()).type.toBeAssignableTo<ReadonlyArray<Relation.Relation.MutationFailure<
             typeof ChildOf,
             typeof schema,
-            typeof Game.schema
+            typeof Root
           >>>()
           expect(queries.nodes.children(entityId, ChildOf)).type.toBeAssignableTo<Result.Result<
             ReadonlyArray<QueryTypes.QueryEntity<typeof schema, typeof query>>,

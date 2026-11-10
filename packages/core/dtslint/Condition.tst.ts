@@ -76,7 +76,7 @@ describe("Game.Condition.check", () => {
   it("rejects descriptors of another game and non-boolean predicates", () => {
     // @ts-expect-error Type '"CheckTypes/OtherFreeze"' is not assignable to type '"CheckTypes/Freeze"'.
     Game.Condition.check("foreignResource", { resources: { freeze: Other.System.readResource(OtherFreeze) } }, () => true)
-    // @ts-expect-error Type 'BoundStateMachine<SchemaDefinition<{}, { readonly OtherFreeze: Descriptor<"resource", "CheckTypes/OtherFreeze"
+    // @ts-expect-error Type 'RootToken<"CheckTypes/Other">' is not assignable to type 'RootToken<"CheckTypes">'
     Game.Condition.check("foreignMachine", { machines: { flow: Other.System.machine(OtherFlow) } }, () => true)
     Game.Condition.check("notBoolean", { resources: { freeze: Game.System.readResource(Freeze) } },
       // @ts-expect-error Type 'number' is not assignable to type 'boolean'.

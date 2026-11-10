@@ -671,7 +671,8 @@ interface InterpolateBase<
  * const PrevPosition = Descriptor.Component<{ x: number; y: number }>()("Game/PrevPosition")
  * const Position3 = Descriptor.Component<{ x: number; y: number; z: number }>()("Game/Position3")
  * const PrevPosition3 = Descriptor.Component<{ x: number; y: number; z: number }>()("Game/PrevPosition3")
- * const Game = Schema.bind(Schema.fragment({ components: { Position, PrevPosition, Position3, PrevPosition3 } }))
+ * const Root = Schema.defineRoot("Game")
+ * const Game = Schema.bind(Schema.fragment({ components: { Position, PrevPosition, Position3, PrevPosition3 } }), Root)
  * const Sprites = Descriptor.Service<NodeRegistry.NodeRegistry<Sprite>>()("Game/Sprites")
  * const Meshes = Descriptor.Service<NodeRegistry.NodeRegistry<Mesh>>()("Game/Meshes")
  * // The loop's render alpha, provided by the host each frame:
