@@ -24,6 +24,37 @@ its `SETUP.md`.
 The tools are built on Effect; nothing a game imports depends on this
 package.
 
+All four tools share these rules:
+
+- **Exit codes.** 0 clean, 2 a usage problem, a missing file, or a broken
+  file (its `problems` listed), 3 fixable, 4 needs a person (pixel only);
+  each tool's section says what 3 and 4 mean for it. 1 is a failure the tool
+  did not expect (a draft's own code that throws, or a bug): one line on
+  stderr and `{"error": "<tool> <command> failed: ..."}` on stdout, never a
+  stack trace.
+- **Number flags** take a range (`--count` 1 to 12, `--scale` 1 to 32, a
+  `--port` 1 to 65535, ...). A value outside it is refused as a usage error,
+  naming the flag, the value, and the range (exit 2), never clamped.
+- **Unknown keys** in a file the agent writes (`pixel.config.json`, a
+  recipe, a bank, a song, a model) are problems, each with the nearest key
+  the file takes (`unknown key maxColours: did you mean maxColors?`), so a
+  typo never turns a setting off.
+- **Review pages** answer only on this machine (`localhost`, `127.0.0.1`,
+  or `[::1]` on their port, and with `--host` the addresses printed): a
+  request naming any other host gets 403, so a web page open elsewhere
+  cannot reach a game's files. Each save carries the version of the file the
+  page read; when the agent wrote the file meanwhile, the page lays the
+  person's change over the agent's and saves again, so neither is lost. Files
+  are written whole (to a file beside them, then renamed), by the pages and
+  the commands, so a reader never sees half of one.
+- **Notes** say the same things in every tool: a `summary` of what is left,
+  each piece's status and note, `changedSinceApproved` for an approved piece
+  that changed, `unrecorded: true` for an approval that kept no record of
+  what was seen (from an older version, or edited by hand: ask the person to
+  look again; it is not counted among the approved), and `gone`, what was
+  said about pieces no longer found (renamed or deleted), with where the
+  review is to move or remove it.
+
 ## Pixel fixer (`ritmo-tools pixel`)
 
 Turns blurry or AI-made pixel art into true pixel art. Image generators draw
@@ -301,7 +332,7 @@ the source), 4 needs a person (the grid is unsure: look at the preview).
 | `init` | Writes a starting `pixel.config.json`. |
 | `normals <art> [--preset character\|object\|architecture\|terrain] [--strength N] [--force]` | Makes a normal map beside the art: `.normal.png`, `.normals.json` (what it was made from, and corrections), and `.lit.png` (a picture of it lit from each side). See "Normal maps". |
 | `review <paths...> [--port 5193] [--host]` | Serves the review page for the PNGs, text sprites, and folders named, and prints its address; runs until stopped. |
-| `notes <paths...>` | What the person said about the same paths: a `summary` of what is left, then `assets`, each one's status, note, open comments (numbered, with their area and frame, and `about: "map"` on those about its normal map), how many are resolved, `changedSinceApproved`, the lint, and `next`, changes asked first. An asset with several parts also lists `parts`, each with its own status and note, and `goneParts` for reviewed parts it no longer has. `gone` lists reviews whose file is no longer found. |
+| `notes <paths...>` | What the person said about the same paths: a `summary` of what is left, then `assets`, each one's status, note, open comments (numbered, with their area and frame, and `about: "map"` on those about its normal map), how many are resolved, `changedSinceApproved` (or `unrecorded`), the lint, and `next`, changes asked first. An asset with several parts also lists `parts`, each with its own status and note, and `goneParts` for reviewed parts it no longer has. `gone` lists reviews whose file is no longer found. |
 | `resolve <asset> <numbers...> [--reply "what changed"]` | Marks comments as resolved: `pixel notes` stops listing them, and the page shows them done with the reply. The person can reopen one. |
 
 `review`, `notes`, and `resolve` exit 0 or 2 only: what the lint says about
@@ -389,6 +420,14 @@ of the true size, which are as clean but have half their lines mid-cell.
 - Fetching from Lospec depends on lospec.com allowing the request from the
   browser. If it fails, download the `.hex` file from lospec.com and import it.
 - It fixes pixels and colors, not the drawing itself.
+- Every command reads pictures of up to 4096 × 4096 pixels in all
+  (16,777,216), and 16384 on a side, for long animation strips. A file whose
+  header claims more is refused before it is read (exit 2): scale it down
+  first.
+- `pixel bake` draws at most 1024 frames (headings times every animation's
+  frames), each at most 1024 art pixels on a side, a cylinder has at most
+  256 `sides`, and the sheet it writes stays within what the tools read
+  back. A model past one is refused (exit 2) before anything is drawn.
 
 ### The review page
 
@@ -802,7 +841,11 @@ export default {
 
 Drafts are code, and every `fx` command that reads a bank runs them (with
 Node's full permissions in the CLI, in the browser on the page): run it on
-banks you trust, as you would `npm run` in a project.
+banks you trust, as you would `npm run` in a project. In the CLI, one
+frame's `draw` that runs past 5 seconds is stopped: "draw did not return
+within 5 s on frame F" is an error (`fx check` and `fx look` exit 3), and
+the frames after it are not drawn. It catches a loop that never ends; it is
+not a sandbox.
 
 `draw(fx)` runs once per frame, from nothing: an effect is a function of
 time, not a simulation. It gets:
@@ -826,7 +869,7 @@ A bank is one file per game naming:
 - `ramps` (optional): fades through palette colors by name, hot to cold, that drafts draw with (`fx.ramp("fire", v)`);
 - the game's own backgrounds (`backdrops`, optional: the contrast check and the page use them);
 - a stand-in (`standIn`, optional): a PNG of one of the game's sprites, `anchor` at its feet, drawn behind every effect on the page and in `fx look` so its size reads against a body. It stands on the effect's anchor, moved by the effect's `standIn` offset (`[0, 24]`: a hit's target stands 24 pixels below where the blow lands), or not at all with `false`;
-- each effect's drafts (paths from the bank's folder), with each draft's `seed`, `tune`, `recolor` (a ramp drawn as another: `{"fire": "frost"}` is a recolored copy with no new code), and `accept` (warnings judged deliberate, each with why: `fx check` lists them apart and does not count them; errors cannot be accepted), and the draft the game gets in `use` (the first when unset):
+- each effect's drafts (paths from the bank's folder, inside it: no absolute path and no `..`, for drafts and the stand-in alike), with each draft's `seed`, `tune`, `recolor` (a ramp drawn as another: `{"fire": "frost"}` is a recolored copy with no new code), and `accept` (warnings judged deliberate, each with why: `fx check` lists them apart and does not count them; errors cannot be accepted), and the draft the game gets in `use` (the first when unset):
 
 ```json
 {
@@ -898,7 +941,7 @@ file, broken bank), or 3 (a draft has errors).
 | `ritmo-tools fx look <bank> <name> [--draft a] [--scale 6] [--columns 8] [--backdrop dark] [--marks comments] [--compare] [--alone]` | Writes a contact sheet PNG per draft: every frame side by side, enlarged, on a backdrop (`dark`, `light`, `checker`, or one of the bank's by name), with the bank's stand-in behind it (`--alone` leaves it out), for the agent to look at. `--marks` rings the person's comments (the default) or where a craft rule breaks (`jaggies`, `doubles`, `holes`, `flicker`), and the report lists them. `--compare` writes one picture instead: a row per draft, each column the same moment (`--columns` of them, first frame to last), to weigh the drafts against each other. |
 | `ritmo-tools fx render <bank> [names...] [-o dir] [--scale 1]` | Writes each effect's draft in use as a sprite sheet PNG (its frames in rows of up to 8), its JSON (the hash format Pixi, Phaser, and Aseprite read: each frame's rectangle, duration, and anchor from the draft's `anchor`, the animation and its fps, and `meta.loop`, whether it loops or plays once), and a GIF. An effect that differs from what the person approved lists `changedSinceApproved`. |
 | `ritmo-tools fx review <bank> [--port 5192] [--host] [--config file]` | Serves the review page and prints its address; runs until stopped. |
-| `ritmo-tools fx notes <bank>` | What the person said: each effect's status, note, open comments (numbered, with draft, frame, pixel, and text), how many are resolved, draft in use, tune, and `changedSinceApproved` when an approved effect no longer matches what the person saw (its frames, fps, or draft), changes asked first; and the bank's palette and ramps as they are now. |
+| `ritmo-tools fx notes <bank>` | What the person said: each effect's status, note, open comments (numbered, with draft, frame, pixel, and text), how many are resolved, draft in use, tune, and `changedSinceApproved` when an approved effect no longer matches what the person saw (its frames, fps, or draft), or `unrecorded`, changes asked first; `gone`, what was said about effects the bank no longer has; and the bank's palette and ramps as they are now. |
 | `ritmo-tools fx resolve <bank> <effect> <numbers...> [--reply "what changed"]` | Marks comments as resolved: `fx notes` and `fx look` stop showing them, and the page shows them done with the reply. The person can reopen one. |
 
 ### The review page
@@ -1006,7 +1049,7 @@ file, broken bank), or 3 (a sound has errors).
 | `ritmo-tools sound render <bank> [names...] [-o dir] [--sequence 0.25]` | Writes WAV files, and with `--sequence` the sounds in a row. A sound that differs from what the person approved is listed in `changedSinceApproved`. |
 | `ritmo-tools sound vary <bank> <name> --toward heavier [--count 4] [--seed 1]` | Makes takes nudged one way (`heavier`, `lighter`, `brighter`, `darker`, `punchier`, `softer`, `shorter`, `longer`, or `wider` for anything) and offers them in the review. |
 | `ritmo-tools sound review <bank> [--port 5190] [--host]` | Serves the review page and prints its address; runs until stopped. |
-| `ritmo-tools sound notes <bank>` | What the person said: status and note for each sound, changes asked first, and `changedSinceApproved` for an approved sound that no longer matches what the person heard. |
+| `ritmo-tools sound notes <bank>` | What the person said: status and note for each sound, changes asked first, `changedSinceApproved` for an approved sound that no longer matches what the person heard (or `unrecorded`), and `gone`, what was said about sounds the bank no longer has. |
 
 ### The review page
 
@@ -1151,7 +1194,7 @@ or 3 (the song clips or is silent).
 | `ritmo-tools music check <song>` | Measures the song (length, peak, loudness, each track's loudness and range) and lists what usually sounds wrong: clipping, silence, notes outside the key or an instrument's range, a buried track, a doubled note, and with a reference, how closely the melody follows it. |
 | `ritmo-tools music render <song> [-o file.wav] [--stems]` | Writes the song as a stereo WAV and a MIDI file, and with `--stems` each track alone. `changedSinceApproved` says when the song differs from what the person approved. |
 | `ritmo-tools music review <paths...> [--port 5191] [--host]` | Serves the review page for the songs, audio files, and folders named, and prints its address; runs until stopped. |
-| `ritmo-tools music notes <paths...>` | What the person said about the same paths: a `summary` of what is left, then `music`, each piece's status, note, comments (with their bars and tracks, or their times), edits, `changedSinceApproved`, and `next`, changes asked first. |
+| `ritmo-tools music notes <paths...>` | What the person said about the same paths: a `summary` of what is left, then `music`, each piece's status, note, comments (with their bars and tracks, or their times), edits, `changedSinceApproved` (or `unrecorded`), and `next`, changes asked first; `gone` lists reviews whose music is no longer found (a song's review with no song beside it, a plain file's in `music.review.json`). |
 
 A folder is searched for `*.song.json` and audio files. Name the folders the
 game's music is in rather than the whole game, which holds much that is not

@@ -9,6 +9,7 @@
  */
 import { Data, Effect, Option, Path, Runtime } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
+import { intFlag, numberFlag } from "../../internal/flags.ts"
 import { checkBank } from "../core/measure.ts"
 import { encodeBank, type Bank } from "../core/recipe.ts"
 import { render, renderSequence } from "../core/render.ts"
@@ -60,7 +61,7 @@ const renderCommand = Command.make(
     bank: bankArgument,
     names,
     out: Flag.String("out").pipe(Flag.withAlias("o"), Flag.withDescription("The folder to write the WAV files to (default: <bank>.wav/ next to the bank).")).pipe(Flag.optional),
-    sequence: Flag.Finite("sequence").pipe(
+    sequence: numberFlag("sequence", 0, 10).pipe(
       Flag.withDescription("Also write the named sounds played one after another, this many seconds apart, as sequence.wav: a combo heard in context."),
       Flag.optional
     )
@@ -100,7 +101,7 @@ const vary = Command.make(
       "toward",
       towards.map((entry) => entry.id)
     ).pipe(Flag.withDescription(`Which way to push the takes: ${towards.map((entry) => `${entry.id} (${entry.hint.toLowerCase().replace(/\.$/, "")})`).join("; ")}.`), Flag.withDefault("wider")),
-    count: Flag.Int("count").pipe(Flag.withDescription("How many takes, 1 to 12."), Flag.withDefault(4)),
+    count: intFlag("count", 1, 12).pipe(Flag.withDescription("How many takes, 1 to 12."), Flag.withDefault(4)),
     seed: Flag.Int("seed").pipe(Flag.withDescription("Another seed makes other takes; the same seed, the same takes."), Flag.withDefault(1))
   },
   Effect.fn("vary")(function* (flags) {
@@ -125,7 +126,7 @@ const review = Command.make(
   "review",
   {
     bank: bankArgument,
-    port: Flag.Int("port").pipe(Flag.withDescription("The port to serve the page on (the next free one if taken)."), Flag.withDefault(5190)),
+    port: intFlag("port", 1, 65535).pipe(Flag.withDescription("The port to serve the page on (the next free one if taken)."), Flag.withDefault(5190)),
     host: Flag.Boolean("host").pipe(Flag.withDefault(false), Flag.withDescription("Serve on the network too, to listen on a phone."))
   },
   Effect.fn("review")(function* (flags) {
@@ -137,7 +138,7 @@ const review = Command.make(
       try: () => serve({ bank, port: flags.port, host: flags.host }),
       catch: (error) => new CliFailure({ message: `cannot serve the page: ${error instanceof Error ? error.message : String(error)}` })
     })
-    yield* printJson({ ...address, bank, review: reviewPath(bank), next: "Send the person the url. What they pick, tune, and note is saved to the bank and the review as they go; read it back with `ritmo-tools sound notes`." })
+    yield* printJson({ url: address.url, network: address.network, bank, review: reviewPath(bank), next: "Send the person the url. What they pick, tune, and note is saved to the bank and the review as they go; read it back with `ritmo-tools sound notes`." })
     return yield* Effect.never
   })
 ).pipe(
@@ -152,9 +153,9 @@ const notes = Command.make(
   Effect.fn("notes")(function* (flags) {
     const bank = yield* readBank(flags.bank)
     const review = yield* readReview(flags.bank)
-    yield* printJson({ file: flags.bank, review: reviewPath(flags.bank), ...reviewSummary(bank, review) })
+    yield* printJson({ file: flags.bank, review: reviewPath(flags.bank), ...reviewSummary(bank, review, reviewPath(flags.bank)) })
   })
-).pipe(Command.withDescription("What the person said in the review: each sound's status (new, approved, changes asked), its note, and, for an approved sound that no longer matches what the person heard, `changedSinceApproved`, the changes first."))
+).pipe(Command.withDescription("What the person said in the review: each sound's status (new, approved, changes asked), its note, and, for an approved sound that no longer matches what the person heard, `changedSinceApproved` (`unrecorded` when nothing of what they heard was kept), the changes first. `gone` lists what was said about sounds the bank no longer has."))
 
 const STARTER: Bank = {
   master: 0.6,

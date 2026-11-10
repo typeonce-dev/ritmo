@@ -16,12 +16,11 @@
  * a transparent pixel hashes the same whatever color it hides.
  */
 import { makeHash } from "../../internal/hash.ts"
+import { approvedSaid, goneSaid, isUnrecorded, statuses, UNRECORDED_NEXT, type Status } from "../../internal/review.ts"
 import type { RgbaImage } from "./grid.ts"
 import { facings, isFacing, type Facing } from "./normals.ts"
 import type { Decoded } from "./recipe.ts"
 
-export type Status = "new" | "approved" | "changes"
-export const statuses: ReadonlyArray<Status> = ["new", "approved", "changes"]
 
 /** The file every asset's review lives in, at the game's root. */
 export const REVIEW_FILE = "pixel.review.json"
@@ -509,6 +508,8 @@ export const reviewSummary = (review: AssetReview, shape: ArtShape | undefined) 
         ...named(review.maps, "map", (name) => shape.normal !== undefined && shape.animations.some((animation) => animation.name === name)),
         ...(review.map !== undefined && shape.normal === undefined && !partSaysNothing(review.map) ? [gone("map", undefined, review.map)] : [])
       ]
+  // Approved with nothing kept of what was seen: nothing to compare it with.
+  const unrecorded = shape !== undefined && parts.some((part) => isUnrecorded(partReview(review, part).status, partReview(review, part).approved))
   const worded = open.length > 0 || review.note !== "" || (each?.some((part) => part.note !== undefined) ?? false)
   const partly = status === "new" && parts.some((part) => partReview(review, part).status === "approved")
   // Said once for the asset: how to read what the parts and the comments carry.
@@ -528,22 +529,25 @@ export const reviewSummary = (review: AssetReview, shape: ArtShape | undefined) 
     resolved: resolved === 0 ? undefined : resolved,
     changedSinceApproved: changed,
     ...(goneParts === undefined || goneParts.length === 0 ? {} : { goneParts }),
+    ...(unrecorded ? { unrecorded: true as const } : {}),
     next: withAbout(
       changed !== undefined
         ? `It changed since the person approved it. Tell them what changed and ask them to look again; only they approve it.${open.length > 0 ? " Then `pixel resolve` the comments you acted on, with a reply saying what changed." : ""}`
-        : status === "approved" && open.length > 0
-          ? "The person approved it and left comments too. Read each: change only what it asks for, `pixel resolve` it with a reply saying what changed, and if the art changed, ask them to look again."
-          : status === "approved" && worded
-            ? "The person approved it and left a note. Read it, and leave the art as it is unless the note asks for a change."
-            : status === "approved"
-              ? "The person approved it. Leave it as it is."
-              : worded
-                ? "Act on the note and each comment where it points, then `pixel resolve` the comments with a reply saying what changed, and tell the person."
-                : status === "changes"
-                  ? "The person asked for changes but said nothing yet: ask them what."
-                  : partly
-                    ? "The person approved some of it and has not judged the rest yet. Wait for them, or ask them to look."
-                    : "Nothing said yet. Wait for the person, or ask them to look."
+        : unrecorded
+          ? UNRECORDED_NEXT
+          : status === "approved" && open.length > 0
+            ? "The person approved it and left comments too. Read each: change only what it asks for, `pixel resolve` it with a reply saying what changed, and if the art changed, ask them to look again."
+            : status === "approved" && worded
+              ? "The person approved it and left a note. Read it, and leave the art as it is unless the note asks for a change."
+              : status === "approved"
+                ? "The person approved it. Leave it as it is."
+                : worded
+                  ? "Act on the note and each comment where it points, then `pixel resolve` the comments with a reply saying what changed, and tell the person."
+                  : status === "changes"
+                    ? "The person asked for changes but said nothing yet: ask them what."
+                    : partly
+                      ? "The person approved some of it and has not judged the rest yet. Wait for them, or ask them to look."
+                      : "Nothing said yet. Wait for the person, or ask them to look."
     )
   }
 }
@@ -556,23 +560,22 @@ interface Summarized {
   /** The comments still open. */
   readonly comments?: ReadonlyArray<unknown> | undefined
   readonly changedSinceApproved?: string | undefined
+  readonly unrecorded?: true | undefined
 }
 
 /** Whether the person said something about it without asking for changes: a note or comments, with no status set; or comments on what they approved. */
 const leftWords = (entry: Summarized): boolean =>
   entry.status !== "changes" && (entry.comments !== undefined || (entry.status === "new" && (entry.note !== undefined || (entry.parts?.some((part) => part.note !== undefined) ?? false))))
 
-const urgency = (entry: Summarized): number => (entry.status === "changes" || leftWords(entry) ? 0 : entry.changedSinceApproved !== undefined ? 1 : entry.status === "new" ? 2 : 3)
+const urgency = (entry: Summarized): number => (entry.status === "changes" || leftWords(entry) ? 0 : entry.changedSinceApproved !== undefined || entry.unrecorded === true ? 1 : entry.status === "new" ? 2 : 3)
 
-/** What is left to do across the assets, with them in the order to act on them: changes asked or words left, changed since approved, not reviewed yet, approved. */
-export const pixelSummary = <A extends Summarized>(entries: ReadonlyArray<A>) => {
+/** What is left to do across the assets, with them in the order to act on them: changes asked or words left, changed since approved (or approved with no record), not reviewed yet, approved. `gone` counts the reviews whose art is no longer found. */
+export const pixelSummary = <A extends Summarized>(entries: ReadonlyArray<A>, gone = 0) => {
   const total = (status: Status): number => entries.filter((entry) => entry.status === status).length
-  const stale = entries.filter((entry) => entry.changedSinceApproved !== undefined).length
   const approvedWords = entries.filter((entry) => entry.status === "approved" && leftWords(entry)).length
   const newWords = entries.filter((entry) => entry.status === "new" && leftWords(entry)).length
-  const about = [...(stale === 0 ? [] : [`${stale} changed since: ask the person to look again`]), ...(approvedWords === 0 ? [] : [`${approvedWords} with open comments: read them`])]
   return {
-    summary: `${total("approved")} approved${about.length === 0 ? "" : ` (${about.join("; ")})`}, ${total("changes")} with changes asked, ${newWords === 0 ? "" : `${newWords} with a note or comments but no status set: act on them, `}${total("new") - newWords} not reviewed yet (of ${entries.length}).`,
+    summary: `${approvedSaid(entries, "look", approvedWords === 0 ? [] : [`${approvedWords} with open comments: read them`])}, ${total("changes")} with changes asked, ${newWords === 0 ? "" : `${newWords} with a note or comments but no status set: act on them, `}${total("new") - newWords} not reviewed yet (of ${entries.length}).${goneSaid(gone)}`,
     assets: [...entries].sort((a, b) => urgency(a) - urgency(b))
   }
 }

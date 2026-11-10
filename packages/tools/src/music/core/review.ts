@@ -16,11 +16,9 @@
  * game's root.
  */
 import { hashText } from "../../internal/hash.ts"
+import { approvedSaid, goneSaid, isUnrecorded, statuses, UNRECORDED_NEXT, type Status } from "../../internal/review.ts"
 import { instruments } from "./instruments.ts"
 import { barsOf, encodeSong, type Decoded, type Note, type Song, type Track } from "./song.ts"
-
-export type Status = "new" | "approved" | "changes"
-export const statuses: ReadonlyArray<Status> = ["new", "approved", "changes"]
 
 export interface Comment {
   readonly id: string
@@ -187,10 +185,13 @@ export const reviewSummary = (song: Song, review: Review) => {
       .map((comment) => ({ where: `${barsOf(song, comment.from, comment.to)}${comment.track === undefined ? "" : `, ${comment.track}`}`, from: comment.from, to: comment.to, track: comment.track, text: comment.text })),
     edits: review.edits,
     changedSinceApproved: changed,
+    ...(isUnrecorded(review.status, review.approved) ? { unrecorded: true as const } : {}),
     next:
       changed !== undefined
         ? "The song changed since the person approved it. Tell them what changed and ask them to listen again; only they approve it."
-        : review.status === "approved"
+        : isUnrecorded(review.status, review.approved)
+          ? UNRECORDED_NEXT
+          : review.status === "approved"
           ? "The person approved the song. Render it (`music render`) for the game."
           : review.comments.length === 0 && review.edits.length === 0 && review.note === ""
             ? "Nothing said yet. Wait for the person, or ask them to listen."
@@ -290,10 +291,13 @@ export const audioReviewSummary = (review: AudioReview, hash: string) => {
     note: review.note,
     comments: [...review.comments].sort((a, b) => a.from - b.from).map((comment) => ({ where: `${seconds(comment.from)} to ${seconds(comment.to)}`, from: comment.from, to: comment.to, text: comment.text })),
     changedSinceApproved: changed,
+    ...(isUnrecorded(review.status, review.approved) ? { unrecorded: true as const } : {}),
     next:
       changed !== undefined
         ? "The file changed since the person approved it. Tell them what changed and ask them to listen again; only they approve it."
-        : review.status === "approved"
+        : isUnrecorded(review.status, review.approved)
+          ? UNRECORDED_NEXT
+          : review.status === "approved"
           ? "The person approved the file. It is ready for the game."
           : review.comments.length === 0 && review.note === ""
             ? "Nothing said yet. Wait for the person, or ask them to listen."
@@ -307,16 +311,16 @@ export const audioReviewSummary = (review: AudioReview, hash: string) => {
 interface Summarized {
   readonly status: Status
   readonly changedSinceApproved?: string | undefined
+  readonly unrecorded?: true | undefined
 }
 
-const urgency = (entry: Summarized): number => (entry.status === "changes" ? 0 : entry.changedSinceApproved !== undefined ? 1 : entry.status === "new" ? 2 : 3)
+const urgency = (entry: Summarized): number => (entry.status === "changes" ? 0 : entry.changedSinceApproved !== undefined || entry.unrecorded === true ? 1 : entry.status === "new" ? 2 : 3)
 
-/** What is left to do across the music, with the entries in the order to act on them: changes asked, changed since approved, not reviewed yet, approved. */
-export const musicSummary = <A extends Summarized>(entries: ReadonlyArray<A>) => {
+/** What is left to do across the music, with the entries in the order to act on them: changes asked, changed since approved (or approved with no record), not reviewed yet, approved. `gone` counts the reviews whose music is no longer found. */
+export const musicSummary = <A extends Summarized>(entries: ReadonlyArray<A>, gone = 0) => {
   const total = (status: Status): number => entries.filter((entry) => entry.status === status).length
-  const stale = entries.filter((entry) => entry.changedSinceApproved !== undefined).length
   return {
-    summary: `${total("approved")} approved${stale === 0 ? "" : ` (${stale} changed since: ask the person to listen again)`}, ${total("changes")} with changes asked, ${total("new")} not reviewed yet (of ${entries.length}).`,
+    summary: `${approvedSaid(entries, "listen")}, ${total("changes")} with changes asked, ${total("new")} not reviewed yet (of ${entries.length}).${goneSaid(gone)}`,
     music: [...entries].sort((a, b) => urgency(a) - urgency(b))
   }
 }

@@ -3,6 +3,7 @@
  * drafts' modules: the CLI's server (`serverStore`, the files the agent reads
  * back), or the tab itself (`memoryStore`, the website's demo).
  */
+import { putFile, type Written } from "../../internal/save.ts"
 
 /** The project's rules from pixel.config.json, as the page checks drafts against them. */
 export interface PageRules {
@@ -31,13 +32,16 @@ export interface Store {
   readonly session: () => Promise<Session | undefined>
   /** The files' version now, or `undefined` when it cannot be read (the CLI was stopped). */
   readonly version: () => Promise<string | undefined>
-  /** Writes the bank or the review; resolves with the new version. */
-  readonly save: (file: "bank" | "review", text: string) => Promise<string>
+  /** Writes the bank or the review when the file is still at `base` (`internal/save.ts`); fails with `SERVER_GONE` when the server cannot be reached. */
+  readonly save: (file: "bank" | "review", text: string, base: string) => Promise<Written>
   /** Whether someone else (the agent) can change the files while the page is open. */
   readonly follows: boolean
   /** A demo: nothing is written anywhere, and the page says so. */
   readonly demo: boolean
 }
+
+/** What a save failure says when the server cannot be reached at all. */
+export const SERVER_GONE = "the review server is not running. Start `ritmo-tools fx review` again; the page saves what is owed once it is back"
 
 const isSession = (value: unknown): value is Session =>
   typeof value === "object" && value !== null && "bankText" in value && typeof value.bankText === "string" && "sources" in value && "version" in value && typeof value.version === "string"
@@ -58,12 +62,7 @@ export const serverStore: Store = {
       return undefined
     }
   },
-  save: async (file, text) => {
-    const response = await fetch(`/api/${file}`, { method: "PUT", body: text })
-    const answer: unknown = await response.json()
-    if (!response.ok) throw new Error(typeof answer === "object" && answer !== null && "error" in answer ? String(answer.error) : response.statusText)
-    return versionOf(answer) ?? ""
-  },
+  save: (file, text, base) => putFile(`/api/${file}`, text, base, SERVER_GONE),
   follows: true,
   demo: false
 }
@@ -80,7 +79,7 @@ export const memoryStore = (name: string, bankText: string, sources: Readonly<Re
       if (file === "bank") bank = text
       else review = text
       version += 1
-      return String(version)
+      return { ok: true, version: String(version), base: String(version) }
     },
     follows: false,
     demo: true

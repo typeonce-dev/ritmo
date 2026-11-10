@@ -1,5 +1,6 @@
 /** Reading banks and reviews, and writing what the CLI makes, through Effect's FileSystem. */
 import { Console, Data, Effect, FileSystem, Path } from "effect"
+import { writeWhole } from "../../internal/files.ts"
 import { decodeBank, type Bank } from "../core/recipe.ts"
 import { decodeReview, emptyReview, reviewPath, type Review } from "../core/review.ts"
 
@@ -17,17 +18,16 @@ const ensureDir = Effect.fn("ensureDir")(function* (file: string) {
   yield* fs.makeDirectory(path.dirname(file), { recursive: true }).pipe(Effect.mapError(() => new CliFailure({ message: `cannot make the folder for ${file}` })))
 })
 
+/** Writes a file whole (`writeWhole`): a review page reading it meanwhile never sees half of it. */
 export const writeText = Effect.fn("writeText")(function* (file: string, text: string) {
-  const fs = yield* FileSystem.FileSystem
   yield* ensureDir(file)
-  yield* fs.writeFileString(file, text).pipe(Effect.mapError(() => new CliFailure({ message: `cannot write ${file}` })))
+  yield* Effect.tryPromise({ try: () => writeWhole(file, text), catch: () => new CliFailure({ message: `cannot write ${file}` }) })
   return file
 })
 
 export const writeBytes = Effect.fn("writeBytes")(function* (file: string, bytes: Uint8Array) {
-  const fs = yield* FileSystem.FileSystem
   yield* ensureDir(file)
-  yield* fs.writeFile(file, bytes).pipe(Effect.mapError(() => new CliFailure({ message: `cannot write ${file}` })))
+  yield* Effect.tryPromise({ try: () => writeWhole(file, bytes), catch: () => new CliFailure({ message: `cannot write ${file}` }) })
   return file
 })
 

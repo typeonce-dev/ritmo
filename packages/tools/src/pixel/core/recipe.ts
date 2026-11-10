@@ -6,6 +6,7 @@
  * hand.
  */
 import { parseHex, toHex, type Metric, type Rgb } from "./color.ts"
+import { unknownKeys } from "../../internal/keys.ts"
 import { defaultBackgroundOptions, type BackgroundOptions } from "./background.ts"
 import type { Edit } from "./edits.ts"
 import { defaultLostThreshold } from "./lost.ts"
@@ -138,6 +139,10 @@ export type Decoded<A> = { readonly ok: true; readonly value: A } | { readonly o
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
 
+/** Every key a recipe has; any other is a mistake, said with the nearest of these. */
+const RECIPE_KEYS = ["version", "grid", "follow", "outlines", "moved", "sample", "palette", "metric", "dither", "ditherStrength", "cleanup", "cleanKeep", "targetWidth", "reduceMode", "removeBackground", "crop", "background", "lostThreshold", "edits", "sheet"]
+const PART_KEYS: Readonly<Record<string, ReadonlyArray<string>>> = { sample: ["inset", "alphaThreshold"], cleanup: ["size", "strength"], background: ["tolerance", "enclosed", "specks", "shadow"] }
+
 /**
  * Reads a recipe written by `encodeRecipe` (or by hand). Missing settings
  * take their defaults, so a recipe can be as short as `{"palette": "sweetie-16"}`:
@@ -151,7 +156,8 @@ export const decodeRecipe = (text: string): Decoded<Recipe> => {
     return { ok: false, error: `not JSON: ${error instanceof Error ? error.message : String(error)}` }
   }
   if (!isRecord(raw)) return { ok: false, error: "a recipe is a JSON object" }
-  const errors: Array<string> = []
+  const errors: Array<string> = unknownKeys(raw, RECIPE_KEYS)
+  for (const [key, known] of Object.entries(PART_KEYS)) if (isRecord(raw[key])) errors.push(...unknownKeys(raw[key], known, `${key}.`))
   const number = (value: unknown, name: string, fallback: number): number => {
     if (value === undefined) return fallback
     if (typeof value === "number" && Number.isFinite(value)) return value

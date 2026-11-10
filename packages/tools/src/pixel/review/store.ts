@@ -3,6 +3,7 @@
  * API `ritmo-tools pixel review` serves beside the page (`cli/serve.ts`).
  * The server reads, hashes, and lints every asset; the page only draws.
  */
+import { putChecked } from "../../internal/save.ts"
 import type { Issue } from "../core/lint.ts"
 import type { Frame } from "../core/review.ts"
 import type { SheetAnimationRead } from "../core/spritesheet.ts"
@@ -116,13 +117,11 @@ export const serverStore: Store = {
     return { text: answer.text, version: answer.version }
   },
   save: async (text, base) => {
-    const response = await fetch(`/api/review?base=${encodeURIComponent(base)}`, { method: "PUT", body: text }).catch(() => {
-      throw new Error(SERVER_GONE)
-    })
-    const answer: unknown = await response.json()
-    if (response.status === 409 && isRecord(answer) && typeof answer.text === "string" && typeof answer.version === "string") return { ok: false, text: answer.text, version: answer.version }
-    if (!response.ok || !isRecord(answer) || typeof answer.version !== "string") throw new Error(failure(answer, response.statusText))
-    return { ok: true, version: answer.version, ignored: Array.isArray(answer.ignored) ? answer.ignored.filter((id): id is string => typeof id === "string") : [] }
+    const saved = await putChecked("/api/review", text, base, SERVER_GONE)
+    if (!saved.ok) return saved
+    const { version, ignored } = saved.answer
+    if (typeof version !== "string") throw new Error("the server answered a save with no version")
+    return { ok: true, version, ignored: Array.isArray(ignored) ? ignored.filter((id): id is string => typeof id === "string") : [] }
   },
   detail: async (id) => {
     try {

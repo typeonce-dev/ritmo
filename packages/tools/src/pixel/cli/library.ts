@@ -16,11 +16,12 @@
  * file named outright is always taken.
  */
 import { existsSync, statSync } from "node:fs"
-import { readFile, writeFile } from "node:fs/promises"
+import { readFile } from "node:fs/promises"
 import { basename, dirname, extname, join, relative, resolve } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Option } from "effect"
-import { idOf, posix, rootOf, walk } from "../../internal/files.ts"
+import { idOf, posix, rootOf, walk, writeWhole } from "../../internal/files.ts"
+import { goneEntry, type Gone } from "../../internal/review.ts"
 import { hashText } from "../../internal/hash.ts"
 import { mtime } from "../../internal/serve.ts"
 import { toRgba } from "../core/export.ts"
@@ -413,7 +414,7 @@ export const writeReviews = (assets: ReadonlyArray<PixelAsset>, review: Review):
       const text = encodeReview({ assets: kept })
       const now = await textOf(reviews)
       // Nothing said yet makes no file.
-      if (text !== now && !(now === null && text === encodeReview(emptyReview))) await writeFile(reviews, text)
+      if (text !== now && !(now === null && text === encodeReview(emptyReview))) await writeWhole(reviews, text)
     }
   })
   writing = write.catch(() => undefined)
@@ -427,7 +428,7 @@ export const writeReview = (asset: PixelAsset, said: AssetReview): Promise<void>
 export const goneOf = async (assets: ReadonlyArray<PixelAsset>, paths: ReadonlyArray<string>) => {
   const found = new Set(assets.map((asset) => asset.file))
   const folders = paths.map((path) => resolve(path)).filter((path) => existsSync(path) && statSync(path).isDirectory())
-  const gone: Array<{ readonly file: string; readonly review: string; readonly key: string; readonly status: AssetReview["status"]; readonly note: string | undefined; readonly comments: number }> = []
+  const gone: Array<{ readonly file: string; readonly review: string; readonly key: string } & Gone> = []
   for (const reviews of filesOf(assets).keys()) {
     const root = dirname(reviews)
     for (const [key, said] of Object.entries((await readReviewFile(reviews)).assets)) {
@@ -435,7 +436,7 @@ export const goneOf = async (assets: ReadonlyArray<PixelAsset>, paths: ReadonlyA
       if (found.has(file)) continue
       // Gone: deleted, or no longer an asset inside a folder under review. A review of art elsewhere is not this review's.
       if (existsSync(file) && !folders.some((folder) => !relative(folder, file).startsWith(".."))) continue
-      gone.push({ file: idOf(file), review: idOf(reviews), key, status: statusSaid(said), note: said.note === "" ? undefined : said.note, comments: said.comments.filter((comment) => comment.resolved !== true).length })
+      gone.push({ file: idOf(file), review: idOf(reviews), key, ...goneEntry({ status: statusSaid(said), note: said.note, comments: said.comments.filter((comment) => comment.resolved !== true).length }, "file", idOf(reviews)) })
     }
   }
   return gone

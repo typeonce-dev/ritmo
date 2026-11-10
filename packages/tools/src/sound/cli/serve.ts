@@ -3,12 +3,15 @@
  * writes the bank and its review, so what the person picks and notes lands
  * in the files the agent reads. The page checks the files' versions every
  * moment, so takes the agent writes while the page is open show up in it.
+ * Every write carries the version the page read (`internal/save.ts`).
  */
-import { readFile, writeFile } from "node:fs/promises"
+import { readFile } from "node:fs/promises"
 import type { IncomingMessage, ServerResponse } from "node:http"
 import { basename, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import { body, mtime, send, servePage, type Address } from "../../internal/serve.ts"
+import { writeWhole } from "../../internal/files.ts"
+import { textVersion } from "../../internal/save.ts"
+import { body, mtime, heldFile, send, servePage, writeChecked, type Address, type Handler } from "../../internal/serve.ts"
 import { decodeBank, encodeBank } from "../core/recipe.ts"
 import { decodeReview, encodeReview, reviewPath } from "../core/review.ts"
 
@@ -18,7 +21,8 @@ export interface ServeOptions {
   readonly host: boolean
 }
 
-const api = (bank: string) => {
+/** The API over one bank and its review. */
+export const api = (bank: string): Handler => {
   const review = reviewPath(bank)
   const version = async (): Promise<string> => `${await mtime(bank)}:${await mtime(review)}`
   return async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
@@ -32,14 +36,20 @@ const api = (bank: string) => {
       if (route === "PUT /bank") {
         const decoded = decodeBank((await body(request)).toString("utf8"))
         if (!decoded.ok) return send(response, 400, { error: decoded.error })
-        await writeFile(bank, encodeBank(decoded.value))
-        return send(response, 200, { version: await version() })
+        const text = encodeBank(decoded.value)
+        return writeChecked(request, response, heldFile(bank), async () => {
+          await writeWhole(bank, text)
+          return { version: await version(), base: textVersion(text) }
+        })
       }
       if (route === "PUT /review") {
         const decoded = decodeReview((await body(request)).toString("utf8"))
         if (!decoded.ok) return send(response, 400, { error: decoded.error })
-        await writeFile(review, encodeReview(decoded.value))
-        return send(response, 200, { version: await version() })
+        const text = encodeReview(decoded.value)
+        return writeChecked(request, response, heldFile(review), async () => {
+          await writeWhole(review, text)
+          return { version: await version(), base: textVersion(text) }
+        })
       }
       return send(response, 404, { error: `no ${route}` })
     } catch (error) {
