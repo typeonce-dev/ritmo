@@ -69,7 +69,7 @@
  */
 import * as DescriptorModule from "./Descriptor.ts"
 import type { Descriptor, StateDefinitions, EntityStateDescriptor, SchemaIssues, StateEncodedOf, StateName, StateValueOf } from "./Descriptor.ts"
-import type { EntityId, EntityRef } from "./Entity.ts"
+import type { EntityId, EntityRef, ProvenKey } from "./Entity.ts"
 import type * as Result from "./Result.ts"
 import type * as Relation from "./Relation.ts"
 import type { Schema } from "./Schema.ts"
@@ -580,7 +580,7 @@ export interface ReadCell<T> {
  * `Descriptor.ConstructedComponent` / `ConstructedResource` and write with
  * `setRaw` / `updateRaw` on its {@link ConstructedWriteCell}.
  */
-export interface WriteCell<T> extends ReadCell<T> {
+export interface WriteCell<T, Name extends string = string> extends ReadCell<T> {
   /**
    * Replaces the current value. Takes the readonly shape reads return, so a
    * value read from any slot or cell can be written back as it is.
@@ -593,9 +593,10 @@ export interface WriteCell<T> extends ReadCell<T> {
   /**
    * Updates the current value based on the previous one. Return a new value
    * (`(body) => ({ ...body, x: body.x + 1 })`); the world owns it, as with
-   * `set`.
+   * `set`. A field the value does not have does not compile, spread or not
+   * (see {@link ExactUpdate}).
    */
-  update(f: (current: ReadonlyValue<T>) => ReadonlyValue<T>): void
+  update<Next extends ReadonlyValue<T>>(f: ((current: ReadonlyValue<T>) => Next) & ExactUpdate<T, Next, Name>): void
 }
 
 /**
@@ -604,7 +605,7 @@ export interface WriteCell<T> extends ReadCell<T> {
  * This extends the normal write-cell surface with explicit raw-validation
  * helpers. It never appears for plain descriptors.
  */
-export interface ConstructedWriteCell<T, Raw, Error> extends WriteCell<T> {
+export interface ConstructedWriteCell<T, Raw, Error, Name extends string = string> extends WriteCell<T, Name> {
   /**
    * Validates one raw candidate and writes it only on success.
    *
@@ -631,8 +632,35 @@ export interface ConstructedWriteCell<T, Raw, Error> extends WriteCell<T> {
    * }))
    * ```
    */
-  updateRaw(f: (current: ReadonlyValue<T>) => Raw): Result.Result<void, Error>
+  updateRaw<Next extends Raw>(f: ((current: ReadonlyValue<T>) => Next) & ExactUpdate<Raw, Next, Name>): Result.Result<void, Error>
 }
+
+/** Every key of every member of a union (a union of shapes has only their shared keys). */
+type KeysOfAny<T> = T extends unknown ? keyof T : never
+
+/**
+ * The fields of `Next` that no shape of `T` has: `never` unless `Next` is a
+ * plain object and `T` has fixed keys (no index signature).
+ */
+type ExtraFields<T, Next> =
+  0 extends 1 & Next ? never
+  : unknown extends T ? never
+  : Next extends ReadonlyArray<unknown> | ((...args: ReadonlyArray<any>) => unknown) | ReadonlyMap<unknown, unknown> | ReadonlySet<unknown> ? never
+  : Next extends object
+    ? string extends KeysOfAny<T> ? never : Exclude<keyof Next, KeysOfAny<T>>
+  : never
+
+/**
+ * Rejects an `update` (or `updateRaw`) callback of a component or resource
+ * whose result has a field the value does not have. A spread in a callback's
+ * result escapes TypeScript's excess property check, so `({ ...p, xx: 1 })`
+ * would store `xx` next to the value's own fields, and a save holding it
+ * would fail to restore against a strict schema. `Name` is the component or
+ * resource.
+ */
+export type ExactUpdate<T, Next, Name extends string> =
+  [ExtraFields<T, Next>] extends [never] ? unknown
+    : { readonly __fixUpdate__: `${Name} has no field ${ExtraFields<T, Next> & string}: return only its own fields` }
 
 /**
  * A `transition` or `update` found the entity state in another state, so
@@ -686,7 +714,7 @@ export type StateExactFields<States extends StateDefinitions, State extends Stat
 
 /** What a slot of a query's `data` asks of an entity: that its query proves `D`. */
 export interface EntityProving<in D> {
-  readonly __entity: (_: D) => void
+  readonly __entity: { readonly [Key in ProvenKey<D>]: true }
 }
 
 /**
@@ -736,7 +764,10 @@ export interface WriteSlot<T, D> extends ReadSlot<T, D> {
    * (`(body) => ({ ...body, x: body.x + 1 })`); the world owns it, as with
    * `set`.
    */
-  update(entity: EntityProving<D>, f: (current: ReadonlyValue<T>) => ReadonlyValue<T>): void
+  update<Next extends ReadonlyValue<T>>(
+    entity: EntityProving<D>,
+    f: ((current: ReadonlyValue<T>) => Next) & ExactUpdate<T, Next, DescriptorName<D>>
+  ): void
 }
 
 /**
@@ -777,7 +808,10 @@ export interface ConstructedWriteSlot<T, Raw, Error, D> extends WriteSlot<T, D> 
    * })
    * ```
    */
-  updateRaw(entity: EntityProving<D>, f: (current: ReadonlyValue<T>) => Raw): Result.Result<void, Error>
+  updateRaw<Next extends Raw>(
+    entity: EntityProving<D>,
+    f: ((current: ReadonlyValue<T>) => Next) & ExactUpdate<Raw, Next, DescriptorName<D>>
+  ): Result.Result<void, Error>
 }
 
 /**

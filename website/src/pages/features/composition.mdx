@@ -238,7 +238,7 @@ const Follow = Game.System(
   },
   ({ queries, lookup, relationFailures }) => {
     for (const item of queries.held.each()) {
-      const hand = lookup.parent(item.id, ChildOf)
+      const hand = lookup.related(item.id, ChildOf)
       if (!hand.ok) {
         const missing = hand.error._tag
         //    ^?

@@ -1282,7 +1282,6 @@ const makeValidatedRuntime = <
       }
       return Result.success(world.relatedSourceIds(relation, target).map(entityId))
     },
-    parent: relatedTarget,
     ancestors(target, relation) {
       if (!world.records.has(target)) {
         return Result.failure(RelationErrors.missingEntityError(target))

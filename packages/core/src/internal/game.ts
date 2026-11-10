@@ -10,6 +10,7 @@ import type * as Snapshot from "../Snapshot.ts"
 import type { Descriptor, StateDefinitions } from "../Descriptor.ts"
 import * as Condition from "../Condition.ts"
 import * as Entity from "../Entity.ts"
+import { makeEntityId } from "./entity.ts"
 import * as EntityScope from "../EntityScope.ts"
 import * as Inspector from "../Inspector.ts"
 import * as Machine from "../Machine.ts"
@@ -99,7 +100,7 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
       Inspector.make(name, { schema, ...spec } as never, read),
     Entity: {
       handle: Entity.handle,
-      id: (handle: number) => Entity.makeEntityId(handle)
+      id: (handle: number) => makeEntityId(handle)
     },
     Query: Object.assign((spec: never) => QueryModule.Query(spec), {
       read: QueryModule.read,

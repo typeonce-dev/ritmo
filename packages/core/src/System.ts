@@ -544,8 +544,8 @@ export interface ResourceChangedView<T> extends ReadCell<T> {
  */
 export type ResourceWriteView<D extends Descriptor<"resource", string, any>> =
   D extends import("./Descriptor.ts").ConstructedDescriptor<"resource", string, infer Value, infer Raw, infer Error>
-    ? ConstructedWriteCell<Value, Raw, Error>
-    : WriteCell<Descriptor.Value<D>>
+    ? ConstructedWriteCell<Value, Raw, Error, D["name"]>
+    : WriteCell<Descriptor.Value<D>, D["name"]>
 
 /**
  * A read-only event stream view.
@@ -1065,22 +1065,43 @@ export interface QueryLookups<S extends Schema.Any, Q extends Query.Any> {
  * - hierarchy traversal is available only for hierarchy relations
  */
 export interface LookupApi<S extends Schema.Any, Root = unknown> {
+  /**
+   * The entity's target in `relation`: its parent for a hierarchy
+   * (`lookup.related(id, ChildOf)`), the one it points at otherwise. Fails
+   * with `MissingEntity` when the entity is gone and `MissingRelation` when it
+   * has no target. For every entity of a query, select
+   * `Game.Query.readRelation(R)` instead.
+   */
   related<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Any>>(
     entityId: Entity.EntityId<S, Root>,
     relation: R
   ): Result.Result<Entity.EntityId<S, Root>, Relation.Relation.LookupError>
+  /**
+   * The entities whose target in `relation` is this one: a hierarchy parent's
+   * children in stored order, everyone targeting it otherwise. An entity with
+   * none gives an empty list. To read the children through a query, use the
+   * query handle's `children`; for every entity of a query, select
+   * `Game.Query.readRelated(R)`.
+   */
   relatedSources<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Any>>(
     entityId: Entity.EntityId<S, Root>,
     relation: R
   ): Result.Result<ReadonlyArray<Entity.EntityId<S, Root>>, Relation.Relation.MissingEntityError>
-  parent<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Hierarchy>>(
-    entityId: Entity.EntityId<S, Root>,
-    relation: R
-  ): Result.Result<Entity.EntityId<S, Root>, Relation.Relation.LookupError>
+  /**
+   * The entity's hierarchy ancestors, nearest first: its parent, the
+   * parent's parent, up to the root. Use {@link root} for the last one alone
+   * and {@link related} for the first.
+   */
   ancestors<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Hierarchy>>(
     entityId: Entity.EntityId<S, Root>,
     relation: R
   ): Result.Result<ReadonlyArray<Entity.EntityId<S, Root>>, Relation.Relation.MissingEntityError>
+  /**
+   * Every hierarchy descendant's id, in `options.order` (depth-first by
+   * default). The query handle's `descendants` returns only the ones that
+   * match that query, ready to read; {@link relatedSources} gives the direct
+   * children alone.
+   */
   descendants<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Hierarchy>>(
     entityId: Entity.EntityId<S, Root>,
     relation: R,
@@ -1088,6 +1109,10 @@ export interface LookupApi<S extends Schema.Any, Root = unknown> {
       readonly order?: "breadth" | "depth"
     }
   ): Result.Result<ReadonlyArray<Entity.EntityId<S, Root>>, Relation.Relation.MissingEntityError>
+  /**
+   * The top of the entity's hierarchy: the ancestor with no parent, or the
+   * entity itself when it has none. {@link ancestors} gives the whole path.
+   */
   root<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Hierarchy>>(
     entityId: Entity.EntityId<S, Root>,
     relation: R
@@ -1184,8 +1209,12 @@ export type SystemAccessSpec = SystemAccessInput
 
 /** Rejects unknown system access categories, and redundant resource and event slots, at a bound constructor. */
 export type ExactAccess<Access extends SystemAccessInput> = Access & {
-  readonly [Key in Exclude<keyof Access, keyof SystemAccessInput>]: never
+  readonly [Key in Exclude<keyof Access, keyof SystemAccessInput>]: UnknownCategory<Key>
 } & RedundantSlotsFix<Access, "resources", "read"> & RedundantSlotsFix<Access, "events", never> & RedundantSlotsFix<Access, "machines", "read">
+
+/** The message for a spec key that is not an access category. Kept in step with `SystemAccessInput` by a type test. */
+type UnknownCategory<Key extends PropertyKey> =
+  `${Key & string} is not a system spec key: use queries, resources, events, services, machines, nextMachines, transitionEvents, removed, despawned, relationFailures, droppedRelations, commands, when, pauseWhen, transitions, or local`
 
 type SlotOf<A> =
   A extends { readonly mode: infer Mode extends string; readonly descriptor: { readonly name: infer Name extends string } } ? readonly [Mode, Name]
@@ -1533,6 +1562,18 @@ export interface SystemDefinition<
 export type SystemRun<Spec extends AnySystemSpec, E = never> =
   (context: SystemContext<Spec>) => Result.Result<unknown, E> | void
 
+/**
+ * The body `Game.System(...)` takes: a {@link SystemRun}, whose return type
+ * also has a member no value has. It names the fix when a body returns a
+ * value (an expression body, `({ commands }) => commands.spawn(draft)`) or a
+ * promise (an `async` body).
+ */
+export type SystemBody<Spec extends AnySystemSpec, E = never> =
+  (context: SystemContext<Spec>) =>
+    | Result.Result<unknown, E>
+    | void
+    | { readonly __fixSystem__: "a system returns nothing or Result.failure(...), and runs synchronously: wrap an expression body in braces, and drop async"; readonly __never__: never }
+
 const requirementValuesFromRecord = (
   record: Record<string, unknown> | undefined
 ): ReadonlyArray<Requirement.RequirementValue> => {
@@ -1602,15 +1643,15 @@ export function System<
 >(
   name: Name,
   spec: Access & {
-    readonly [Key in Exclude<keyof Access, keyof SystemAccessInput | "schema">]: never
+    readonly [Key in Exclude<keyof Access, keyof SystemAccessInput | "schema">]: UnknownCategory<Key>
   },
-  run: SystemRun<SystemSpec<Access["schema"], Access, Root>, E>
+  run: SystemBody<SystemSpec<Access["schema"], Access, Root>, E>
 ): SystemDefinition<SystemSpec<Access["schema"], Access, Root>, E, Root, Name, SystemAccessNeeds<Access>>
 
 export function System(
   name: string,
   spec: { readonly schema: Schema.Any } & SystemAccessInput,
-  run: (context: any) => Result.Result<any, any> | void
+  run: SystemBody<any, any>
 ): SystemDefinition<any, any, any, any, any> {
   type Spec = SystemSpec<Schema.Any>
 
