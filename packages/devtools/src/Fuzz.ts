@@ -241,7 +241,7 @@ export interface InvalidOptions {
   readonly message: string
 }
 
-/** The world after setup cannot be saved (a `"~encode"` rejected it), so no replay could start there. */
+/** The world after setup cannot be saved (a `"~encode"` rejected it, or setup left commands queued: end it with `applyDeferred()`), so no replay could start there. */
 export interface Unreplayable {
   readonly _tag: "Unreplayable"
   readonly error: Snapshot.SnapshotError

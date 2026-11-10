@@ -227,6 +227,14 @@ const appendLog = (log: TickLog, id: number, tick: number): void => {
   log.ticks.push(tick)
 }
 
+/** Drops every entry of `log` with no mark held: nothing can bring them back. */
+const forgetLog = (log: TickLog): void => {
+  log.base += log.ids.length
+  log.ids.length = 0
+  log.ticks.length = 0
+  log.grave = undefined
+}
+
 /**
  * Index of the first entry recorded after `since`.
  */
@@ -538,6 +546,13 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
   const despawnedLog = makeLog()
   const removedReaders: Array<Set<LifecycleCursor> | undefined> = []
   const despawnedReaders = new Set<LifecycleCursor>()
+  /**
+   * The tick of the last {@link replaceAll}: every removal and despawn
+   * record before it was dropped, so a reader that ran before it is lagged.
+   */
+  let replacedAt = 0
+  /** Whether despawns and removals are recorded: not while {@link replaceAll} clears the world. */
+  let recording = true
   let retainedAfter = 0
   let frameStart = 0
 
@@ -1608,13 +1623,13 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       clearSlot(record, ordinal)
       members[ordinal]!.delete(record)
       bumpMembership(record, ordinal)
-      appendLog(logFor(removedLogs, ordinal), id, tick)
+      if (recording) appendLog(logFor(removedLogs, ordinal), id, tick)
     }
     // `held` and `heldBits` stay as they were: the record is dead from here
     // (`alive` is false, and it leaves `records`), and resetting an array's
     // length is a runtime call per entity.
     clearEntityScope(id)
-    appendLog(despawnedLog, id, tick)
+    if (recording) appendLog(despawnedLog, id, tick)
     record.alive = false
     records.delete(id)
     entitiesVersion += 1
@@ -1712,16 +1727,24 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       .map(([key, members]) => [key, [...members].sort((left, right) => left - right)] as const)
 
   /**
-   * Despawns every live entity (recorded like normal despawns).
+   * Despawns every live entity for `restore`, and drops every removal and
+   * despawn record, those of these despawns too: nothing of the replaced
+   * world reaches a reader, and every reader that ran before reports lagged.
+   * Hold no mark across it.
    */
-  const despawnAll = (): void => {
+  const replaceAll = (): void => {
     // Clearing the whole world drops no edge a system should react to.
     const listener = droppedEdge
     droppedEdge = undefined
+    for (const log of removedLogs) if (log !== undefined) forgetLog(log)
+    forgetLog(despawnedLog)
+    recording = false
     for (const id of [...records.keys()]) {
       destroyEntity(id)
     }
+    recording = true
     droppedEdge = listener
+    replacedAt = tick
   }
 
   const nextEntityValue = (): number => nextEntity
@@ -1813,7 +1836,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     exportEntities,
     exportRelations,
     exportScopes,
-    despawnAll,
+    replaceAll,
     nextEntityValue,
     setNextEntity,
     forEachJournaled,
@@ -1910,10 +1933,10 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
      */
     removedLagged: (ordinal: number, since: number, registeredAt: number): boolean => {
       const log = removedLogs[ordinal]
-      return log !== undefined && log.droppedThrough > Math.max(since, registeredAt)
+      return Math.max(log?.droppedThrough ?? 0, replacedAt) > Math.max(since, registeredAt)
     },
     /** Like `removedLagged`, for despawn records. */
     despawnedLagged: (since: number, registeredAt: number): boolean =>
-      despawnedLog.droppedThrough > Math.max(since, registeredAt)
+      Math.max(despawnedLog.droppedThrough, replacedAt) > Math.max(since, registeredAt)
   }
 }

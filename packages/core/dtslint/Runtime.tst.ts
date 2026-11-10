@@ -365,6 +365,39 @@ describe("Runtime snapshots", () => {
   })
 })
 
+describe("Snapshot save format and errors", () => {
+  it("saves queued next states next to the committed ones", () => {
+    expect<Snapshot.WorldSnapshot["nextStates"]>().type.toBe<Readonly<Record<string, Snapshot.NextStateSnapshot>>>()
+    expect<Snapshot.NextStateSnapshot>().type.toBe<{ readonly state: unknown; readonly ifChanged: boolean; readonly from?: string }>()
+    const save: Snapshot.WorldSnapshot = {
+      version: 3, gameVersion: 0, nextEntity: 1, entities: [], relations: {}, resources: {}, machines: {}, scopes: {},
+      nextStates: { "Game/Round": { state: { _tag: "Live" }, ifChanged: false, from: "Lobby" } }
+    }
+    expect(save.nextStates).type.toBe<Readonly<Record<string, Snapshot.NextStateSnapshot>>>()
+    // @ts-expect-error Property 'nextStates' is missing
+    const older: Snapshot.WorldSnapshot = { version: 3, gameVersion: 0, nextEntity: 1, entities: [], relations: {}, resources: {}, machines: {}, scopes: {} }
+    // @ts-expect-error Property 'ifChanged' is missing
+    const queued: Snapshot.NextStateSnapshot = { state: { _tag: "Live" } }
+    void older
+    void queued
+  })
+
+  it("names queued commands and queued next states in the errors", () => {
+    expect<Extract<Snapshot.SnapshotError, { readonly _tag: "QueuedCommands" }>>().type.toBe<{ readonly _tag: "QueuedCommands"; readonly count: number }>()
+    expect<Extract<Snapshot.SnapshotError, { readonly _tag: "UnencodableNextState" }>>().type.toBe<
+      { readonly _tag: "UnencodableNextState"; readonly name: string; readonly error: Descriptor.SchemaIssues }
+    >()
+    expect<Extract<Snapshot.RestoreError, { readonly _tag: "InvalidNextState" }>>().type.toBe<
+      { readonly _tag: "InvalidNextState"; readonly name: string; readonly error: Descriptor.SchemaIssues }
+    >()
+    const failed = (error: Snapshot.SnapshotError) => error._tag === "QueuedCommands" ? error.count : undefined
+    expect(failed).type.toBe<(error: Snapshot.SnapshotError) => number | undefined>()
+    // @ts-expect-error Property 'count' does not exist
+    const misread = (error: Snapshot.SnapshotError) => error._tag === "UnencodableNextState" && error.count
+    void misread
+  })
+})
+
 describe("Codecs", () => {
   it("infers descriptor values from codecs", () => {
     const Stats = Descriptor.ConstructedComponent(Codecs.struct({ level: Codecs.integer, tags: Codecs.array(Codecs.string) }))("DecodeTypes/Stats")

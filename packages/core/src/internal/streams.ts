@@ -111,8 +111,11 @@ export interface Streams<T> {
   trim(windowBoundary: number): void
   /** Drops every batch stamped after `tick` (what a rolled-back phase published). */
   retract(tick: number): void
-  /** Clears simulation messages; unread host messages survive world restore. */
-  clear(): void
+  /**
+   * Clears simulation messages for a world restore at `tick`; unread host
+   * messages survive it. Every reader that ran before `tick` reports lagged.
+   */
+  clear(tick: number): void
   /** Marks where every log stands; until the mark is released, dropped batches are kept for {@link rewind}. */
   mark(): StreamMark
   /**
@@ -133,6 +136,8 @@ export interface Streams<T> {
 export const make = <T>(capacity: number): Streams<T> => {
   const logs = new Map<symbol, Log<T>>()
   const readers = new Map<symbol, Set<Cursor>>()
+  /** The tick of the last `clear`: a reader that ran before it missed what it dropped. */
+  let clearedAt = 0
 
   const firstAfter = (ticks: ReadonlyArray<number>, since: number): number => {
     let low = 0
@@ -208,8 +213,7 @@ export const make = <T>(capacity: number): Streams<T> => {
       return values
     },
     lagged(key, since, registeredAt) {
-      const log = logs.get(key)
-      return log !== undefined && log.droppedThrough > Math.max(since, registeredAt)
+      return Math.max(logs.get(key)?.droppedThrough ?? 0, clearedAt) > Math.max(since, registeredAt)
     },
     trim(windowBoundary) {
       for (const [key, log] of logs) {
@@ -243,7 +247,8 @@ export const make = <T>(capacity: number): Streams<T> => {
         log.surviveRestore.length = start
       }
     },
-    clear() {
+    clear(tick) {
+      clearedAt = tick
       for (const [key, log] of logs) {
         const ticks: Array<number> = []
         const batches: Array<ReadonlyArray<T>> = []

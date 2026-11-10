@@ -58,7 +58,7 @@ describe("documented semantics", () => {
     expect(seen).toEqual([true, true])
   })
 
-  it("restore keeps a current resource the save lacks", () => {
+  it("restore gives a resource the save lacks the value the runtime was made with", () => {
     const runtime = makeRuntime()
     const Gems2 = Game.System("Documented/Gems", { resources: { gems: Game.System.writeResource(Gems) } }, ({ resources }) => {
       resources.gems.set(7)
@@ -67,6 +67,6 @@ describe("documented semantics", () => {
     delete saved.resources["Documented/Gems"]
     runtime.tick(Game.Schedule(Gems2))
     expect(runtime.restore(saved)).toEqual({ ok: true, value: undefined })
-    expect(runtime.inspect(Game.Inspector("Documented/Read", { resources: { gems: Game.System.readResource(Gems) } }, ({ resources }) => resources.gems.get()))).toBe(7)
+    expect(runtime.inspect(Game.Inspector("Documented/Read", { resources: { gems: Game.System.readResource(Gems) } }, ({ resources }) => resources.gems.get()))).toBe(1)
   })
 })

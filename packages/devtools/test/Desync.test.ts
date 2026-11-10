@@ -13,6 +13,7 @@ const save = (overrides: Partial<Snapshot.WorldSnapshot>): Snapshot.WorldSnapsho
   relations: {},
   resources: { "Game/Score": [0, 1] },
   machines: { "Game/Round": { _tag: "Playing" } },
+  nextStates: {},
   scopes: {},
   ...overrides
 })
@@ -46,6 +47,14 @@ describe("Desync.compare", () => {
     ])
     expect(compared.text).toContain("7 differences (mine -> theirs):")
     expect(compared.text).toContain("  e1 Game/Position.y: 2 -> 3")
+  })
+
+  it("lists a queued next state one save holds and the other does not", () => {
+    const theirs = save({ nextStates: { "Game/Round": { state: { _tag: "Over", winner: 1 }, ifChanged: false, from: "Playing" } } })
+    const compared = Desync.compare(save({}), theirs)
+    expect(compared.data).toEqual([
+      { path: "next state Game/Round", entity: undefined, mine: undefined, theirs: { state: { _tag: "Over", winner: 1 }, ifChanged: false, from: "Playing" } }
+    ])
   })
 
   it("prints -0 with its sign, so a -0 / 0 difference does not read 0 -> 0", () => {
