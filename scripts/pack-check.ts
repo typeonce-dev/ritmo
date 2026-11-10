@@ -111,7 +111,7 @@ writeFileSync(path.join(consumer, "tsconfig.json"), JSON.stringify({
 }, null, 2))
 
 const program = `
-import { Clock, Descriptor, FixedLoop, HostClock, Ops, Random, Schema } from "@typeonce/ritmo"
+import { Clock, Descriptor, Entity, FixedLoop, HostClock, Ops, Random, Schema } from "@typeonce/ritmo"
 import * as Result from "@typeonce/ritmo/Result"
 import { Angle, Collide2, FlowField, Segment2, Vec2 } from "@typeonce/ritmo-math"
 import { BrowserHostClock, BrowserTickSource, Controls, Keyboard } from "@typeonce/ritmo-browser"
@@ -169,12 +169,13 @@ loop.value.stop()
 if ("FixedLoop" in Browser) throw new Error("Browser publishes the moved FixedLoop")
 if (!moved.blocked || !field.ok || FlowField.make(0).ok || Angle.wrap(Math.PI) !== -Math.PI || Vec2.angle({ x: 0, y: 0 }) !== 0 || Random.make(42).next() !== 0.6011037519201636 || Ops.hypot(3, 4) !== 5 || Ops.sin(0) !== 0) throw new Error("math helpers misbehave when packed")
 if ("NodeRegistry" in Pixi || "RenderSync" in Pixi) throw new Error("Pixi publishes removed compatibility exports")
+if ("makeEntityId" in Entity || "makeHandle" in Entity || "draft" in Entity) throw new Error("core publishes the runtime's entity constructors")
 const seats = Netcode.seats({ "~standard": { version: 1, vendor: "consumer", validate: (value: unknown) => ({ value: value as { readonly fire: boolean } }) } }, { count: 2, idle: { fire: false } })
 const links = MemoryNetworkLink.make({ peers: 2, hostClock, seed: 1, latencyMS: 16 })
 const saved = runtime.snapshot()
 if (!seats.ok || !links.ok || !saved.ok || typeof WebSocketNetworkLink.make !== "function" || Desync.compare(saved.value, saved.value).data.length !== 0) throw new Error("netcode misbehaves when packed")
 console.log(JSON.stringify({
-  ok: ran.data.ok && Result.isSuccess(Result.success(1)),
+  ok: ran.data.ok && Result.success(1).ok,
   entities: session.dump().data.entityCount,
   jump: controls.snapshot().actions.jump.pressed,
   nodes: registry.size + sprites.size

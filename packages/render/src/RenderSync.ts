@@ -361,7 +361,7 @@ export const system = <
 
 // The lookups `reattach` uses, with the generic ids erased.
 interface HierarchyLookup {
-  parent(entity: number, relation: unknown): { readonly ok: boolean }
+  related(entity: number, relation: unknown): { readonly ok: boolean }
   ancestors(entity: number, relation: unknown): { readonly ok: true; readonly value: ReadonlyArray<number> } | { readonly ok: false }
 }
 
@@ -398,7 +398,7 @@ const reattach = (
   if (stillParented < registry.parents.size) {
     const toRoot: Array<number> = []
     for (const [entity] of registry.parents) {
-      if (!lookup.parent(entity, hierarchy).ok) toRoot.push(entity)
+      if (!lookup.related(entity, hierarchy).ok) toRoot.push(entity)
     }
     for (const entity of toRoot) registry.reparent(entity, undefined)
   }

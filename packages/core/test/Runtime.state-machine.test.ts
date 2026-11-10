@@ -668,6 +668,49 @@ describe("Runtime state machine", () => {
     ])
   })
 
+  it("drops a request queued before the marker when a transition schedule resets it", () => {
+    const LocalGame = Schema.bind(schema)
+    const LocalAppState = LocalGame.StateMachine("LocalAppStateReset", { Menu: {}, Playing: {}, Paused: {} })
+    const LocalRoundState = LocalGame.StateMachine("LocalRoundStateReset", { Warmup: {}, Live: {}, SuddenDeath: {} })
+
+    const queueBoth = LocalGame.System("StateMachineRuntime/QueueBothReset", {
+      nextMachines: { app: System.nextState(LocalAppState), round: System.nextState(LocalRoundState) }
+    }, ({ nextMachines }) => {
+      nextMachines.app.set({ _tag: "Playing" })
+      nextMachines.round.set({ _tag: "Live" })
+    })
+    const resetRoundDuringEnter = LocalGame.System("StateMachineRuntime/ResetRoundDuringEnter", {
+      nextMachines: { round: System.nextState(LocalRoundState) }
+    }, ({ nextMachines }) => {
+      nextMachines.round.reset()
+    })
+    const observe = LocalGame.System("StateMachineRuntime/ObserveResetRound", {
+      machines: { round: System.machine(LocalRoundState) },
+      nextMachines: { round: System.nextState(LocalRoundState) },
+      resources: { log: System.writeResource(Log) }
+    }, ({ machines, nextMachines, resources }) => {
+      resources.log.update((entries) => [...entries, `round:${machines.round.get()._tag} pending:${nextMachines.round.getPending()?._tag}`])
+    })
+
+    // LocalAppState is defined first, so its onEnter runs before the round request is applied.
+    const transitions = LocalGame.Schedule.transitions(
+      LocalGame.Schedule.onEnter(LocalAppState, "Playing", [resetRoundDuringEnter])
+    )
+    const runtime = LocalGame.Runtime.make({
+      services: Runtime.services(),
+      resources: { Counter: 0, Log: [] },
+      machines: Runtime.machines(Runtime.machine(LocalAppState, { _tag: "Menu" }), Runtime.machine(LocalRoundState, { _tag: "Warmup" }))
+    }).value
+
+    runtime.tick(LocalGame.Schedule(queueBoth, LocalGame.Schedule.applyStateTransitions(transitions), observe))
+    runtime.tick(LocalGame.Schedule(LocalGame.Schedule.applyStateTransitions(), observe))
+
+    expect(readResourceValue(runtime, schema, Log)).toEqual([
+      "round:Warmup pending:undefined",
+      "round:Warmup pending:undefined"
+    ])
+  })
+
   it("reports a transition schedule's machine as a missing requirement in tryTick", () => {
     const LocalGame = Schema.bind(schema)
     const LocalAppState = LocalGame.StateMachine("LocalAppStateMissing", { Menu: {}, Playing: {} })

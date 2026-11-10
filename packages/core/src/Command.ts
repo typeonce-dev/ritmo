@@ -71,6 +71,7 @@ import type * as EntityScope from "./EntityScope.ts"
 import type * as Relation from "./Relation.ts"
 import * as Result from "./Result.ts"
 import { constructionOf } from "./internal/schema.ts"
+import { makeDraft, makeEntityId } from "./internal/entity.ts"
 import type { ReadonlyValue } from "./Query.ts"
 import type { RequirementPair, Schema } from "./Schema.ts"
 
@@ -283,7 +284,7 @@ export interface InternalWorld<S extends Schema.Any> {
 /**
  * Placeholder id carried by drafts; `commands.spawn(...)` reserves the real id.
  */
-const unspawnedId = Entity.makeEntityId<any, any>(-1)
+const unspawnedId = makeEntityId<any, any>(-1)
 
 /**
  * Creates a typed component entry, the same as a `[Descriptor, value]`
@@ -386,9 +387,9 @@ const build = (
     components.push(resolved)
   }
   if (errors === undefined) {
-    return Entity.draft(id, proof, components, relations)
+    return makeDraft(id, proof, components, relations)
   }
-  return failed ? Result.failure(errors) : Result.success(Entity.draft(id, proof, components, relations))
+  return failed ? Result.failure(errors) : Result.success(makeDraft(id, proof, components, relations))
 }
 
 /**
@@ -440,7 +441,7 @@ export const relate = <
   relation: R,
   target: Entity.EntityId<S, Root>
 ): Entity.EntityDraft<S, P, Root, Relates | R> =>
-  Entity.draft(draft.id, draft.proof, draft.components, [
+  makeDraft(draft.id, draft.proof, draft.components, [
     ...draft.relations,
     {
       relation,

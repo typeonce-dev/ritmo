@@ -29,12 +29,14 @@ type AnyQuery = Query.Query.Any<any>
 /**
  * What a rewind changed for one reader that did not rewind, per component
  * ordinal: the entities whose component it should see as added, and as
- * changed, on top of what their change ticks say. Only entities that hold
- * the component when the reader runs count.
+ * changed, on top of what their change ticks say, and those whose component
+ * it had seen before the rewind took it away, which it never sees as added
+ * again. Only entities that hold the component when the reader runs count.
  */
 export interface Reverts {
   readonly added: Map<number, Set<number>>
   readonly changed: Map<number, Set<number>>
+  readonly seen: Map<number, Set<number>>
 }
 
 type SlotPlan =
@@ -236,9 +238,17 @@ export const makeQueryEngine = (world: World) => {
     return true
   }
 
-  const reverted = (reverts: Reverts, member: LifecycleFilterPlan, record: EntityRecord): boolean =>
-    (member.kind === "added" ? reverts.added : reverts.changed).get(member.ordinal)?.has(record.id) === true
-      && world.has(record, member.ordinal)
+  /**
+   * Whether a filter member matches for a reader with changes from a rewind,
+   * given whether the change ticks say it does (`ticked`). A component the
+   * reader had seen before a rewind took it away is not added when it is
+   * brought back.
+   */
+  const reverted = (reverts: Reverts, member: LifecycleFilterPlan, record: EntityRecord, ticked: boolean): boolean => {
+    if (member.kind === "added" && reverts.seen.get(member.ordinal)?.has(record.id) === true) return false
+    return ticked || ((member.kind === "added" ? reverts.added : reverts.changed).get(member.ordinal)?.has(record.id) === true
+      && world.has(record, member.ordinal))
+  }
 
   const matchesFilters = (state: QueryState, record: EntityRecord, since: number, reverts: Reverts | undefined): boolean => {
     for (const filter of state.filters) {
@@ -247,7 +257,7 @@ export const makeQueryEngine = (world: World) => {
         matched = member.kind === "added"
           ? world.addedSince(record, member.ordinal, since)
           : world.changedSince(record, member.ordinal, since)
-        if (!matched && reverts !== undefined) matched = reverted(reverts, member, record)
+        if (reverts !== undefined) matched = reverted(reverts, member, record, matched)
         if (matched) break
       }
       if (!matched) return false
@@ -525,8 +535,10 @@ export const makeQueryEngine = (world: World) => {
    * component but matches none of the system's queries was kept from an
    * earlier run and has left its query since (through `without`, `with`, or a
    * relation filter): reading it would return a value the query no longer
-   * proves, so it throws. A despawned entity, one that lost the component, and
-   * one from another runtime go on to the slot, whose own error names the cause.
+   * proves, so it throws. So does a despawned entity: its id may belong to
+   * another entity since (after a restore, or a rewind and a spawn), whose slot
+   * the accessor would use. One that lost the component, and one from another
+   * runtime go on to the slot, whose own error names the cause.
    */
   /**
    * `matchesStructure` for one query, made once: the components it requires
@@ -561,12 +573,13 @@ export const makeQueryEngine = (world: World) => {
       const holds = plan.mode === "read" || plan.mode === "write"
       // Off the hot path: the entity left the slot's own query, or is not one of this runtime's.
       const recheck = (record: EntityRecord): void => {
-        if (!record.alive || (holds && !world.has(record, plan.ordinal))) return
+        const used = "relation" in plan ? plan.relation.name : record.nameAt(plan.ordinal)
+        if (!record.alive) Cells.staleEntity(used, record)
+        if (holds && !world.has(record, plan.ordinal)) return
         for (const other of others) {
           if (other(record)) return
         }
         if (world.records.get(record.id) !== record) return
-        const used = "relation" in plan ? plan.relation.name : record.nameAt(plan.ordinal)
         throw new Error(
           `${system} used ${used} of entity ${record.id}, which matches none of its queries: an entity kept from an earlier run is not checked against its query again. `
           + "Keep entity.id and resolve it with queries.x.get(id) in each run, which is fallible"
@@ -591,9 +604,10 @@ const entityMethods = ["get", "has", "set", "update", "setRaw", "updateRaw", "tr
 type SlotAccessor = Record<(typeof entityMethods)[number], (entity: unknown, argument?: unknown) => unknown>
 
 /**
- * A slot of a debug runtime's `data`: checks the entity against the slot's own
- * query (bit masks), and only when that fails against the system's other
- * queries, then calls the slot. One class for every slot keeps the calls cheap.
+ * A slot of a debug runtime's `data`: checks that the entity is alive and
+ * matches the slot's own query (bit masks), and only when that fails against
+ * the system's other queries, then calls the slot. One class for every slot
+ * keeps the calls cheap.
  */
 class GuardedSlot {
   readonly accessor: SlotAccessor
@@ -607,7 +621,7 @@ class GuardedSlot {
   }
 
   check(entity: unknown): void {
-    if (typeof entity === "object" && entity !== null && !this.matches(entity as EntityRecord)) this.recheck(entity as EntityRecord)
+    if (typeof entity === "object" && entity !== null && (!(entity as EntityRecord).alive || !this.matches(entity as EntityRecord))) this.recheck(entity as EntityRecord)
   }
 
   get(entity: unknown): unknown {

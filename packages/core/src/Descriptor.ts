@@ -462,6 +462,14 @@ type CheckedValue<Kind extends string, Value, Make> = [ValueRejection<Kind, Valu
   : (name: ValueRejection<Kind, Value>) => never
 
 /**
+ * The first call of `Descriptor.Component<Value>()` and its siblings takes no
+ * argument: the name goes in the second call. No value has this type; it
+ * names the fix when the name is passed to the first call.
+ */
+type NameInSecondCall<Constructor extends string> =
+  `the name goes in the second call: Descriptor.${Constructor}<Value>()(name)` & { readonly __never__: never }
+
+/**
  * Defines a component descriptor.
  *
  * Use this when declaring per-entity data that should participate in queries
@@ -481,7 +489,7 @@ type CheckedValue<Kind extends string, Value, Make> = [ValueRejection<Kind, Valu
  * const EnemyKind = Descriptor.Component<"grunt" | "boss">()("Game/EnemyKind", { immutable: true })
  * ```
  */
-export const Component = <Value>(): CheckedValue<"component", Value, <const Name extends string, const Options extends ComponentOptions = {}>(
+export const Component = <Value>(_name?: NameInSecondCall<"Component">): CheckedValue<"component", Value, <const Name extends string, const Options extends ComponentOptions = {}>(
   name: Name,
   options?: Options & CheckedOptions<Value, Options>
 ) => WithComponentOptions<Descriptor<"component", Name, Value>, Options>> =>
@@ -529,7 +537,7 @@ export const ConstructedComponent = <const S extends Codec<any, any>>(
  * const SpriteRef = Descriptor.TransientComponent<{ frame: number }>()("Game/SpriteRef")
  * ```
  */
-export const TransientComponent = <Value>(): CheckedValue<"component", Value, <const Name extends string, const Options extends ComponentOptions = {}>(
+export const TransientComponent = <Value>(_name?: NameInSecondCall<"TransientComponent">): CheckedValue<"component", Value, <const Name extends string, const Options extends ComponentOptions = {}>(
   name: Name,
   options?: Options & CheckedOptions<Value, Options>
 ) => WithComponentOptions<TransientDescriptor<"component", Name, Value>, Options>> =>
@@ -750,7 +758,7 @@ export const isEntityState = (
  * const Tuning = Descriptor.Resource<{ speed: number }>()("Game/Tuning", { meta: { speed: { unit: "px/s", range: [0, 400] } } })
  * ```
  */
-export const Resource = <Value>(): CheckedValue<"resource", Value, <const Name extends string, const Options extends ResourceOptions = {}>(
+export const Resource = <Value>(_name?: NameInSecondCall<"Resource">): CheckedValue<"resource", Value, <const Name extends string, const Options extends ResourceOptions = {}>(
   name: Name,
   options?: Options & CheckedOptions<Value, Options>
 ) => Descriptor<"resource", Name, Value>> =>
@@ -784,7 +792,7 @@ export const ConstructedResource = <const S extends Codec<any, any>>(
  * const DeltaTime = Descriptor.TransientResource<number>()("Game/DeltaTime")
  * ```
  */
-export const TransientResource = <Value>(): CheckedValue<"resource", Value, <const Name extends string, const Options extends ResourceOptions = {}>(
+export const TransientResource = <Value>(_name?: NameInSecondCall<"TransientResource">): CheckedValue<"resource", Value, <const Name extends string, const Options extends ResourceOptions = {}>(
   name: Name,
   options?: Options & CheckedOptions<Value, Options>
 ) => TransientDescriptor<"resource", Name, Value>> =>
@@ -808,7 +816,7 @@ export const TransientResource = <Value>(): CheckedValue<"resource", Value, <con
  * const Hit = Descriptor.Event<{ target: number; amount: number }>()("Game/Hit")
  * ```
  */
-export const Event = <Value>(): CheckedValue<"event", Value, <const Name extends string>(
+export const Event = <Value>(_name?: NameInSecondCall<"Event">): CheckedValue<"event", Value, <const Name extends string>(
   name: Name
 ) => Descriptor<"event", Name, Value>> => ((name: string) => makeDescriptor("event", name)) as never
 
@@ -832,7 +840,7 @@ export const Event = <Value>(): CheckedValue<"event", Value, <const Name extends
  * const Logger = Descriptor.Service<{ log: (message: string) => void }>()("Game/Logger")
  * ```
  */
-export const Service = <Value>(): CheckedValue<"service", Value, <const Name extends string>(
+export const Service = <Value>(_name?: NameInSecondCall<"Service">): CheckedValue<"service", Value, <const Name extends string>(
   name: Name
 ) => Descriptor<"service", Name, Value>> => ((name: string) => makeDescriptor("service", name)) as never
 

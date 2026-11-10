@@ -35,7 +35,7 @@ type QueryWriteAccess<Q extends AnyQuery> =
   Extract<Q["selection"][keyof Q["selection"]], { readonly mode: "write" }>
 
 type ReadonlyQuery<Q extends AnyQuery> =
-  [QueryWriteAccess<Q>] extends [never] ? Q : never
+  [QueryWriteAccess<Q>] extends [never] ? Q : "an inspector only reads: select with Game.Query.read (or optional) instead of Game.Query.write"
 
 type ReadonlyQueries<Queries extends Record<string, AnyQuery>> = {
   readonly [K in keyof Queries]: ReadonlyQuery<Queries[K]>

@@ -13,9 +13,18 @@
  * character (W pressed, then Option, then W released as "∑") still releases
  * its action.
  *
- * Some combinations never reach the page: browsers reserve shortcuts such as
- * Ctrl+W / Cmd+W (close tab), Ctrl+T / Cmd+T, and Cmd+Q, and pages cannot
- * prevent them. Avoid Ctrl and Cmd as held modifiers in games.
+ * Browser shortcuts are left to the browser: a key pressed with Cmd held, or
+ * with Ctrl held, presses no action and is not `preventDefault`-ed, so Ctrl+R
+ * still reloads and Ctrl+F still finds while R and F are bound. AltGr reports
+ * Ctrl and Alt together and types characters on many layouts, so a key
+ * pressed with both is not a shortcut. A game that binds Control or Meta to
+ * an action (`"Control"`, `Keyboard.code("ControlLeft")`, ...) keeps every
+ * key pressed with them instead, for as long as its bindings hold one; some
+ * combinations still never reach the page (Ctrl+W / Cmd+W, Ctrl+T / Cmd+T,
+ * Cmd+Q). macOS sends no keyup for a key released while Cmd is down, so
+ * Cmd's own release lets go of every held key but the modifiers. A key still
+ * down after that, or after a window blur, is pressed again at its next
+ * auto-repeat.
  *
  * Keys typed into a form field are left to the field: a key that goes down
  * in an `<input>` (any type), `<textarea>`, `<select>`, or contenteditable
@@ -88,9 +97,12 @@ import type { Direction, Vector } from "./internal/vectors.ts"
 export type { Direction }
 
 /**
- * The subset of `KeyboardEvent` the module reads. `code` (the physical key)
- * and `target` (the element the key was typed into) are optional so simple
- * test hosts can omit them; browsers always provide them.
+ * The subset of `KeyboardEvent` the module reads. `code` (the physical key),
+ * the modifiers, and `target` (the element the key was typed into) are
+ * optional so simple test hosts can omit them; browsers always provide them.
+ * `ctrlKey` and `metaKey` mark a browser shortcut, which {@link actions}
+ * leaves to the browser, and `altKey` tells AltGr (Ctrl and Alt together)
+ * from Ctrl.
  *
  * A target is a form field, whose key presses {@link actions} and
  * {@link presses} leave to it, when its `tagName` is `INPUT` (any type,
@@ -103,6 +115,9 @@ export interface KeyEvent {
   readonly key: string
   readonly code?: string
   readonly repeat: boolean
+  readonly ctrlKey?: boolean
+  readonly metaKey?: boolean
+  readonly altKey?: boolean
   readonly target?: object | null
   preventDefault(): void
 }
@@ -118,6 +133,19 @@ const isEditableTarget = (target: object | null | undefined): boolean => {
   const { tagName, isContentEditable } = target as { readonly tagName?: unknown; readonly isContentEditable?: unknown }
   return isContentEditable === true || (typeof tagName === "string" && editableTags.has(tagName.toUpperCase()))
 }
+
+const modifierKeys: ReadonlySet<string> = new Set(["Shift", "Control", "Alt", "AltGraph", "Meta"])
+const modifierCodes: ReadonlySet<string> = new Set(["ShiftLeft", "ShiftRight", "ControlLeft", "ControlRight", "AltLeft", "AltRight", "MetaLeft", "MetaRight"])
+
+/**
+ * Whether a key goes down as a browser shortcut: with Cmd, or with Ctrl
+ * without Alt (AltGr reports both and types characters), and not a
+ * modifier itself.
+ */
+const isShortcut = (event: KeyEvent): boolean =>
+  (event.metaKey === true || (event.ctrlKey === true && event.altKey !== true)) && !modifierKeys.has(event.key)
+
+const isMeta = (event: KeyEvent): boolean => event.key === "Meta" || event.code === "MetaLeft" || event.code === "MetaRight"
 
 /**
  * The event target the module listens on, usually `window`.
@@ -326,11 +354,25 @@ const bindingLabel = (binding: KeyBinding): string => typeof binding === "string
 const labelsOf = (flat: Readonly<Record<string, Keys>>): ReadonlyArray<string> =>
   [...new Set(Object.values(flat).flatMap((keys) => keys.map(bindingLabel)))]
 
+const modifierTokens: ReadonlySet<string> = new Set([...[...modifierKeys].map(keyToken), ...[...modifierCodes].map(codeToken)])
+
+/** The tokens of Ctrl and Cmd: a game that binds one keeps the keys pressed with them. */
+const shortcutModifierTokens = [
+  keyToken("Control"),
+  keyToken("Meta"),
+  codeToken("ControlLeft"),
+  codeToken("ControlRight"),
+  codeToken("MetaLeft"),
+  codeToken("MetaRight")
+]
+
 /**
  * Starts tracking bound keys on `host`, usually `window`, until `dispose()`.
  * When the window loses focus every held action is released. A key pressed
- * in a form field (see {@link KeyEvent}) is left to the field: it
- * presses no action and is not `preventDefault`-ed. Each call is
+ * in a form field (see {@link KeyEvent}) is left to the field, and a browser
+ * shortcut (a key pressed with Cmd or Ctrl, unless the bindings use Control
+ * or Meta) to the browser: it presses no action and is not
+ * `preventDefault`-ed. Each call is
  * its own device: build one per source (one `Controls` merge, one player
  * of a pool). Use {@link scripted} for tests and headless runs, and
  * {@link presses} to capture an unbound key on a settings screen.
@@ -346,6 +388,8 @@ export const actions = <const B extends Bindings>(
   const names = Object.keys(flatten(initial))
   let bindings = flatten(initial)
   const actionsByToken = new Map<string, Array<string>>()
+  // Off while the bindings use Ctrl or Cmd as a button: then every key pressed with them is the game's.
+  let leavesShortcuts = true
   const index = (): void => {
     actionsByToken.clear()
     for (const name of names) {
@@ -356,6 +400,7 @@ export const actions = <const B extends Bindings>(
         else actionsByToken.set(token, [name])
       }
     }
+    leavesShortcuts = !shortcutModifierTokens.some((token) => actionsByToken.has(token))
   }
   index()
 
@@ -368,27 +413,33 @@ export const actions = <const B extends Bindings>(
   /**
    * The character token each physical key produced when it went down, so its
    * release matches even if a modifier changed the character meanwhile
-   * (W pressed, Option pressed, W released as "∑").
+   * (W pressed, Option pressed, W released as "∑"). It also holds the keys
+   * known to be down, form fields and shortcuts included: their repeats
+   * press nothing.
    */
   const keyTokenByCode = new Map<string, string>()
   const pressed = new Set<string>()
   const released = new Set<string>()
 
   const onKeyDown = (event: KeyEvent): void => {
-    // Typed into a form field: the key belongs to the field. Its release is
-    // still processed by `onKeyUp`.
-    if (isEditableTarget(event.target)) return
     const tokens = [keyToken(event.key)]
+    // A repeat of a key known to be down presses nothing; one whose release
+    // was missed (a blur, or Cmd on macOS) presses it again. Without `code`,
+    // a repeat presses any key that is not held.
+    const known = event.code !== undefined && keyTokenByCode.has(event.code)
     if (event.code !== undefined) {
-      if (!keyTokenByCode.has(event.code)) keyTokenByCode.set(event.code, tokens[0]!)
+      if (!known) keyTokenByCode.set(event.code, tokens[0]!)
       tokens.push(codeToken(event.code))
     }
+    // Typed into a form field, the key belongs to the field; a shortcut
+    // belongs to the browser. Their releases are still processed by `onKeyUp`.
+    if (isEditableTarget(event.target) || (leavesShortcuts && isShortcut(event))) return
     let handled = false
     for (const token of tokens) {
       const bound = actionsByToken.get(token)
       if (!bound) continue
       handled = true
-      if (event.repeat || heldTokens.has(token)) continue
+      if (heldTokens.has(token) || (event.repeat && known)) continue
       heldTokens.set(token, new Set(bound))
       for (const name of bound) pressed.add(name)
     }
@@ -411,6 +462,15 @@ export const actions = <const B extends Bindings>(
       heldTokens.delete(token)
       for (const name of holding) released.add(name)
     }
+    // macOS sends no keyup for a key released while Cmd is down: Cmd's own
+    // release lets go of every key but the modifiers, which do get theirs.
+    if (!isMeta(event)) return
+    for (const [token, holding] of heldTokens) {
+      if (modifierTokens.has(token)) continue
+      heldTokens.delete(token)
+      for (const name of holding) released.add(name)
+    }
+    for (const code of keyTokenByCode.keys()) if (!modifierCodes.has(code)) keyTokenByCode.delete(code)
   }
 
   const onBlur = (): void => {
@@ -490,7 +550,9 @@ export interface Presses extends System.Consumes<"snapshot"> {
  * Starts collecting every key press on `host`, whatever the bindings, for a
  * settings screen that waits for the key to bind. Use {@link actions} for
  * gameplay. It never calls `preventDefault()`, and skips keys pressed in a
- * form field (see {@link KeyEvent}).
+ * form field (see {@link KeyEvent}) and browser shortcuts (a key pressed with
+ * Cmd or Ctrl), so Ctrl+R on the settings screen binds nothing; Control and
+ * Meta pressed alone are offered.
  *
  * @example
  * ```ts
@@ -509,7 +571,7 @@ export interface Presses extends System.Consumes<"snapshot"> {
 export const presses = (host: KeyboardHost): Presses => {
   let pending: Array<KeyPress> = []
   const onKeyDown = (event: KeyEvent): void => {
-    if (event.repeat || isEditableTarget(event.target)) return
+    if (event.repeat || isEditableTarget(event.target) || isShortcut(event)) return
     pending.push({ key: event.key, code: event.code ?? null })
   }
   host.addEventListener("keydown", onKeyDown)

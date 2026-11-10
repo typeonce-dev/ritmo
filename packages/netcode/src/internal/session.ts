@@ -43,7 +43,7 @@ import * as Events from "./events.ts"
 import { isHalted } from "./halted.ts"
 import * as Hidden from "./hidden.ts"
 import type { NetworkLink } from "../NetworkLink.ts"
-import { canonical, decode, encode, stateOf } from "./seats.ts"
+import { canonical, decode, encode, send, stateOf, type Sent } from "./seats.ts"
 import * as Wire from "./wire.ts"
 
 /** What a session calls on its runtime. The public constructors check the real types. */
@@ -78,8 +78,6 @@ export interface MakeOptions {
 
 type Mode = "rollback" | "lockstep"
 
-/** Most inputs one message carries: a peer far behind catches up over several frames. */
-const maxInputsPerMessage = 64
 const pingEveryMS = 250
 const resendSyncEveryMS = 500
 /** Below this, `rate` would stretch a frame too far for a player to miss. */
@@ -125,6 +123,22 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     if (hiddenOptions.then !== "stall" && hiddenOptions.then !== "resync-on-return") return invalid("hidden.then", hiddenOptions.then, "\"stall\" or \"resync-on-return\"")
   }
   const maxRollback = options.maxRollback ?? 8
+  /**
+   * How far past this peer's `localNext` an honest peer's input or checksum
+   * can be. A peer runs at most `maxRollback` past the inputs it has of
+   * this seat, which end before `localNext`, and records its own input up
+   * to `saveDelay` ahead of the tick it runs. Before this peer restores a
+   * save, seat 0 may already run from it: the save's tick is at most
+   * `maxRollback` past this seat's inputs, and its idle ticks reach
+   * `saveDelay` further, so both terms count twice. A message's worth of
+   * inputs on top is margin. Lockstep runs nothing on guesses, so its
+   * peers stay within `2 * saveDelay`. Further ahead is not an honest peer:
+   * dropped, so a peer cannot make this one keep inputs and checksums
+   * without bound. (A peer given a larger `maxRollback` than this one can
+   * be further: its inputs are dropped until they are in reach, and it
+   * sends them again until acknowledged.)
+   */
+  const furthestAhead = 2 * (maxRollback + saveDelay) + Wire.maxInputsPerMessage
   if (mode === "rollback") {
     if (!wholeNumber(maxRollback, 1)) return invalid("maxRollback", maxRollback, "a whole number of ticks, 1 or more")
     // The runtime must hold `maxRollback` checkpoints: take that many and go back to the first.
@@ -137,7 +151,9 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   seatsState.owner = {}
 
   const { codec } = seatsState
-  const idle = options.seats.idle
+  // Idle as the other peers decode it, like every local input.
+  const idleSent = seatsState.idle
+  const idle = idleSent.value
   const predict = options.predict ?? ((previous: unknown) => previous)
   const clock = options.hostClock
   const stepMS = options.step.dt * 1000
@@ -147,11 +163,6 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     return encoded.ok ? canonical(encoded.value) : `unencodable:${canonical(value)}`
   }
   const idleKey = keyOf(idle)
-  const encodeLocal = (value: unknown): unknown => {
-    const encoded = encode(codec, value)
-    if (!encoded.ok) throw new Error(`Netcode: the local input does not encode with the input schema: ${encoded.error}`)
-    return encoded.value
-  }
 
   // Match state.
   let epoch = 0
@@ -400,7 +411,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       extend(other)
       lastHeard[other] = now
     }
-    for (let at = tick; at < floorTick; at++) sent.set(at, encodeLocal(idle))
+    for (let at = tick; at < floorTick; at++) sent.set(at, idleSent.wire)
     localNext = Math.max(localNext, floorTick)
     Hidden.synced(tracker, returned, floorTick)
     for (let other = 0; other < count; other++) wasAway[other] = playedAround(other)
@@ -430,6 +441,11 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     broadcast(syncMessage)
   }
 
+  /** A message for ticks no honest peer is at yet. Not counted while this seat is played around: the others ran on without it, and the save that ends it moves this seat to them. */
+  const tooFarAhead = (): void => {
+    if (!Hidden.away(tracker, seat)) dropped += 1
+  }
+
   const receive = (message: Wire.Message): void => {
     const other = message.from
     if (other === seat) return
@@ -451,6 +467,11 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
         for (let index = 0; index < message.inputs.length; index++) {
           const tick = message.start + index
           if (tick <= contiguous[other]! || inputs[other]!.has(tick)) continue
+          // The rest are further still: an honest peer sends them again once they are in reach.
+          if (tick > localNext + furthestAhead) {
+            tooFarAhead()
+            return
+          }
           const decoded = decode(codec, message.inputs[index])
           if (!decoded.ok) {
             dropped += 1
@@ -462,6 +483,10 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       }
       case "sum": {
         if (message.epoch !== epoch || message.tick < syncTick) return
+        if (message.tick > localNext + furthestAhead) {
+          tooFarAhead()
+          return
+        }
         let bySeat = remoteSums.get(message.tick)
         if (bySeat === undefined) remoteSums.set(message.tick, bySeat = new Map())
         bySeat.set(other, message.sum)
@@ -540,7 +565,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     for (let other = 0; other < count; other++) if (other !== seat && !playedAround(other)) acked = Math.min(acked, acks[other]![seat]!)
     const start = Math.max(floorTick, acked + 1)
     const payload: Array<unknown> = []
-    for (let tick = start; tick < localNext && payload.length < maxInputsPerMessage; tick++) {
+    for (let tick = start; tick < localNext && payload.length < Wire.maxInputsPerMessage; tick++) {
       const input = sent.get(tick)
       if (input === undefined) break
       payload.push(input)
@@ -615,7 +640,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   }
 
   /** Records `local` for the tick `inputDelay` ahead, and returns that tick (`undefined`: already that far ahead). */
-  const record = (local: unknown): number | undefined => {
+  const record = (local: Sent): number | undefined => {
     const delay = policy.delay()
     if (localNext > next + delay) return undefined
     // After a rise, the ticks between the old delay and the new one get no input from this seat: idle, as after a save.
@@ -623,12 +648,12 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     raised = 0
     for (let index = 0; index < skipped; index++) {
       inputs[seat]!.set(localNext, idle)
-      sent.set(localNext, encodeLocal(idle))
+      sent.set(localNext, idleSent.wire)
       localNext += 1
     }
     const tick = localNext
-    inputs[seat]!.set(tick, local)
-    sent.set(tick, encodeLocal(local))
+    inputs[seat]!.set(tick, local.value)
+    sent.set(tick, local.wire)
     extend(seat)
     localNext += 1
     return tick
@@ -647,8 +672,12 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     return slowest === Infinity ? 0 : next - slowest
   }
 
-  const advance = (local: unknown): Result.Result<Advanced, SessionError<unknown>> => {
+  const advance = (pressed: unknown): Result.Result<Advanced, SessionError<unknown>> => {
     if (ended !== undefined) return Result.failure(ended)
+    // This peer simulates what every other peer will: the input as it decodes from its message.
+    const sentInput = send(codec, pressed)
+    if (!sentInput.ok) throw new Error(`Netcode: the local input ${sentInput.error}`)
+    const local = sentInput.value
     // Read before correct() and performSync(): the ticks they run again are this advance's too
     const before = again
     readLinks()
@@ -741,7 +770,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     }),
     events: (descriptor) => {
       let ledger = ledgers.get(descriptor)
-      if (ledger === undefined) ledgers.set(descriptor, ledger = Events.make({ schema: runtime.schema, inspect: runtime.inspect, settled: () => settled }, descriptor))
+      if (ledger === undefined) ledgers.set(descriptor, ledger = Events.make({ schema: runtime.schema, inspect: runtime.inspect, settled: () => settled, resyncReach: saveDelay }, descriptor))
       return ledger.reader(next) as never
     }
   }

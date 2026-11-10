@@ -44,10 +44,6 @@ export const failure = <Error>(error: Error): Failure<Error> => ({
   error
 })
 
-export const isSuccess = <Value, Error>(result: Result<Value, Error>): result is Success<Value> => result.ok
-
-export const isFailure = <Value, Error>(result: Result<Value, Error>): result is Failure<Error> => !result.ok
-
 export const match = <Value, Error, SuccessReturn, FailureReturn>(
   result: Result<Value, Error>,
   handlers: MatchHandlers<Value, Error, SuccessReturn, FailureReturn>

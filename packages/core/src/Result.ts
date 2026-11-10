@@ -5,8 +5,8 @@
  *
  * - construction failures stay explicit in the return type
  * - no helper ever throws to surface ordinary validation failure
- * - the public surface stops at simple creation, refinement, folding, and
- *   structural aggregation helpers
+ * - the public surface stops at simple creation, folding, and structural
+ *   aggregation helpers: `result.ok` narrows a result to one branch
  *
  * Use this when an operation can fail because of runtime data, but that
  * failure should remain visible and typed instead of being hidden behind
@@ -36,9 +36,6 @@
  *
  * @categoryDescription Constructors
  * Small helpers that create explicit success or failure values.
- *
- * @categoryDescription Refinements
- * Type guards that narrow one result to its successful or failed branch.
  *
  * @categoryDescription Operations
  * Pure helpers that fold or aggregate explicit result values.
@@ -101,18 +98,6 @@ export const success: <Value>(value: Value) => Success<Value> = internal.success
  * @category Constructors
  */
 export const failure: <Error>(error: Error) => Failure<Error> = internal.failure
-/**
- * Narrows one {@link Result} to its successful branch.
- *
- * @category Refinements
- */
-export const isSuccess: <Value, Error>(result: Result<Value, Error>) => result is Success<Value> = internal.isSuccess
-/**
- * Narrows one {@link Result} to its failed branch.
- *
- * @category Refinements
- */
-export const isFailure: <Value, Error>(result: Result<Value, Error>) => result is Failure<Error> = internal.isFailure
 /**
  * Folds one {@link Result} into a plain value.
  *

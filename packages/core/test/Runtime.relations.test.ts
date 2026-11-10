@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { Descriptor, Entity, Schema } from "@typeonce/ritmo"
-import { readResourceValue } from "./utils/fixtures.ts"
+import { readResourceValue, unknownEntityId } from "./utils/fixtures.ts"
 
 const Name = Descriptor.Component<{ value: string }>()("Name")
 const Summary = Descriptor.Resource<string>()("Summary")
@@ -499,7 +499,7 @@ describe("Runtime relationships", () => {
           const children = queries.named.children(rootId, ChildOf)
           const descendants = queries.named.descendants(rootId, ChildOf, { order: "breadth" })
           const missing = queries.named.descendants(
-            Entity.makeEntityId<typeof schema, typeof Game.schema>(999),
+            unknownEntityId<typeof schema, typeof Game.schema>(999),
             ChildOf
           )
 
@@ -641,7 +641,7 @@ describe("Runtime relationships", () => {
           }
           commands.unrelate(alphaId, Targeting)
           commands.unrelate(alphaId, Targeting)
-          commands.unrelate(Entity.makeEntityId<typeof schema, typeof Game.schema>(999), Targeting)
+          commands.unrelate(unknownEntityId<typeof schema, typeof Game.schema>(999), Targeting)
         }
     )
 
@@ -702,7 +702,7 @@ describe("Runtime relationships", () => {
           if (!alphaId || !betaId) {
             return
           }
-          commands.relate(alphaId, Targeting, Entity.makeEntityId<typeof schema, typeof Game.schema>(999))
+          commands.relate(alphaId, Targeting, unknownEntityId<typeof schema, typeof Game.schema>(999))
           commands.relate(alphaId, ChildOf, betaId)
           commands.relate(betaId, ChildOf, alphaId)
         }
@@ -746,7 +746,7 @@ describe("Runtime relationships", () => {
           const targetingFailures = relationFailures.targeting.all()
           const hierarchyFailures = relationFailures.childOf.all()
           const alphaTarget = lookup.related(alphaId, Targeting)
-          const betaParent = lookup.parent(betaId, ChildOf)
+          const betaParent = lookup.related(betaId, ChildOf)
 
           resources.summary.set([
             targetingFailures.map((failure) => failure.error._tag).join(","),
@@ -813,7 +813,7 @@ describe("Runtime relationships", () => {
           commands.reorderChildren(rootId, ChildOf, [secondId, secondId])
           commands.reorderChildren(rootId, ChildOf, [firstId])
           commands.reorderChildren(rootId, ChildOf, [firstId, unrelatedId])
-          commands.reorderChildren(Entity.makeEntityId<typeof schema, typeof Game.schema>(999), ChildOf, [firstId, secondId])
+          commands.reorderChildren(unknownEntityId<typeof schema, typeof Game.schema>(999), ChildOf, [firstId, secondId])
         }
     )
 

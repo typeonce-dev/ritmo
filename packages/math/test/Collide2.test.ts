@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { Random } from "@typeonce/ritmo"
-import { Box2, Collide2, Segment2 } from "@typeonce/ritmo-math"
+import { Box2, Collide2, Segment2, type Vec2 } from "@typeonce/ritmo-math"
 
 describe("Collide2", () => {
   const thin: Box2.Box2 = { minX: 100, minY: -1000, maxX: 102, maxY: 1000 }
@@ -312,6 +312,209 @@ describe("Collide2", () => {
         position = Collide2.moveCircle(position, delta, radius, { boxes, segments }).position
         for (const segment of segments) expect(Segment2.overlapsCircle(segment, position, radius - 1e-6)).toBe(false)
         for (const box of boxes) expect(Box2.overlapsCircle(box, position, radius - 1e-6)).toBe(false)
+      }
+    })
+  })
+
+  describe("walls closing in", () => {
+    // A crate 9 from a wall, with a circle 12 wide: no room between them.
+    const wall: Box2.Box2 = { minX: -20, minY: -1000, maxX: 0, maxY: 1000 } // the room is x > 0
+    const crate: Box2.Box2 = { minX: 9, minY: 70, maxX: 60, maxY: 120 }
+
+    it("does not pass through a wall after a slide brings it beside a neighbouring one", () => {
+      const boxes = [wall, crate]
+      const start = { x: 6.01, y: 64.79 } // resting on the wall, not overlapping
+      expect(boxes.some((box) => Box2.overlapsCircle(box, start, 6))).toBe(false)
+      const slid = Collide2.moveCircle(start, { x: -10, y: 10 }, 6, { boxes })
+      for (const box of boxes) expect(Box2.overlapsCircle(box, slid.position, 6 - 1e-6)).toBe(false)
+      const pushed = Collide2.moveCircle(slid.position, { x: -30, y: 0 }, 6, { boxes })
+      expect(pushed.position.x).toBeGreaterThan(0)
+    })
+
+    it("does not pass through a wall when it starts inside the gap, with no room to push it out", () => {
+      // Overlapping the crate: pushed out of it, it lands in the wall.
+      const moved = Collide2.moveCircle({ x: 6.01, y: 74.79 }, { x: -30, y: 0 }, 6, { boxes: [wall, crate] })
+      expect(moved.position.x).toBeGreaterThan(0)
+      expect(moved.blocked).toBe(true)
+    })
+
+    it("stays inside an acute wedge, stopping where it no longer fits", () => {
+      const angle = (20 * Math.PI) / 180
+      const floor = Segment2.between({ x: 0, y: 0 }, { x: 400, y: 0 })
+      const slope = Segment2.between({ x: 0, y: 0 }, { x: 400 * Math.cos(angle), y: 400 * Math.sin(angle) })
+      // Above the floor and below the slope, at least the radius from both.
+      const inside = (at: Vec2.Vec2) => at.y >= 5 - 1e-6 && at.x * Math.sin(angle) - at.y * Math.cos(angle) >= 5 - 1e-6
+      let position: Vec2.Vec2 = { x: 200, y: 30 }
+      let moved: Collide2.MoveResult | undefined
+      for (let step = 0; step < 20; step++) {
+        moved = Collide2.moveCircle(position, { x: -20, y: -3 }, 5, { segments: [floor, slope] })
+        position = moved.position
+        expect(inside(position)).toBe(true)
+      }
+      // Wedged where the walls are 10 apart: 5 / sin(10°) from the apex, along the middle.
+      expect(moved!.blocked).toBe(true)
+      expect(Math.hypot(position.x, position.y)).toBeCloseTo(5 / Math.sin(angle / 2), 1)
+    })
+
+    it("pushes a circle out of both walls of an acute corner", () => {
+      const angle = (30 * Math.PI) / 180
+      const segments = [
+        Segment2.between({ x: 0, y: 0 }, { x: 400, y: 0 }),
+        Segment2.between({ x: 0, y: 0 }, { x: 400 * Math.cos(angle), y: 400 * Math.sin(angle) })
+      ]
+      // Overlapping both: out of the floor is deeper into the slope, and back.
+      const out = Collide2.pushOut({ x: 12, y: 2 }, 5, { segments })
+      for (const segment of segments) expect(Segment2.overlapsCircle(segment, out, 5 - 1e-6)).toBe(false)
+      // Still between them, where the walls are 10 apart.
+      expect(out.y).toBeGreaterThan(0)
+      expect(out.x * Math.sin(angle) - out.y * Math.cos(angle)).toBeGreaterThan(0)
+      expect(Math.hypot(out.x, out.y)).toBeCloseTo(5.01 / Math.sin(angle / 2), 6)
+    })
+
+    it("pushes a center inside a crate against a wall out through a side with room", () => {
+      const flush: Box2.Box2 = { minX: 0, minY: 100, maxX: 40, maxY: 140 }
+      // The nearest side is the one against the wall: leave through the next nearest.
+      const out = Collide2.pushOut({ x: 8, y: 125 }, 6, { boxes: [wall, flush] })
+      expect(out).toEqual({ x: 8, y: 146.01 })
+    })
+
+    it("never lets a moved circle overlap or cross a wall where walls close in", () => {
+      // Each trial starts a circle clear of every wall and moves it 300
+      // times. Half the moves are shorter than the radius: a move that short
+      // cannot cross a wall without ending inside it, so checking the end
+      // checks the whole path. The rest are long (up to dashes of 200).
+      const random = Random.make(42)
+      const tolerance = 1e-6
+      const deltaOf = (radius: number): Vec2.Vec2 => {
+        const pick = random.next()
+        const length = pick < 0.5 ? random.range(0, radius * 0.99) : pick < 0.9 ? random.range(0, 30) : random.range(0, 200)
+        const angle = random.range(0, 2 * Math.PI)
+        return { x: length * Math.cos(angle), y: length * Math.sin(angle) }
+      }
+      const clearOf = (walls: Collide2.Walls, at: Vec2.Vec2, radius: number) =>
+        (walls.boxes ?? []).every((box) => !Box2.overlapsCircle(box, at, radius)) &&
+        (walls.segments ?? []).every((segment) => !Segment2.overlapsCircle(segment, at, radius))
+      const distanceTo = (closest: Vec2.Vec2, at: Vec2.Vec2) => Math.hypot(at.x - closest.x, at.y - closest.y)
+      /** Crates in a 400 by 300 room, half of them a gap narrower than the circle from a wall or each other. */
+      const crates = (count: number, radius: number): Array<Box2.Box2> =>
+        Array.from({ length: count }, () => {
+          const width = random.range(5, 80)
+          const height = random.range(5, 80)
+          let minX = random.range(0, 400 - width)
+          let minY = random.range(0, 300 - height)
+          if (random.next() < 0.5) {
+            const gap = random.range(0.5, 2 * radius - 0.5)
+            if (random.next() < 0.5) minX = gap
+            else minY = 300 - height - gap
+          }
+          return { minX, minY, maxX: minX + width, maxY: minY + height }
+        })
+
+      interface Scene {
+        readonly walls: Collide2.Walls
+        readonly radius: number
+        readonly start: () => Vec2.Vec2
+        readonly delta: (at: Vec2.Vec2) => Vec2.Vec2
+        /** How far `at` is past a wall (0 or less when it is clear of all). */
+        readonly past: (at: Vec2.Vec2) => number
+      }
+      const room = (): Scene => {
+        const radius = 6
+        const boxes = [
+          { minX: -20, minY: -20, maxX: 420, maxY: 0 },
+          { minX: -20, minY: 300, maxX: 420, maxY: 320 },
+          { minX: -20, minY: 0, maxX: 0, maxY: 300 },
+          { minX: 400, minY: 0, maxX: 420, maxY: 300 },
+          ...crates(8, radius)
+        ]
+        return {
+          walls: { boxes },
+          radius,
+          start: () => ({ x: random.range(0, 400), y: random.range(0, 300) }),
+          delta: () => deltaOf(radius),
+          past: (at) =>
+            at.x <= 0 || at.x >= 400 || at.y <= 0 || at.y >= 300 ? Infinity : Math.max(...boxes.map((box) => radius - distanceTo(Box2.closestPoint(box, at), at)))
+        }
+      }
+      const triangle = (): Scene => {
+        // Two sides of 400 from an apex of 5° to 65°, pushed toward the apex half the time.
+        const radius = 5
+        const apexAngle = (random.range(5, 65) * Math.PI) / 180
+        const turn = random.range(0, 2 * Math.PI)
+        const a = { x: random.range(-50, 50), y: random.range(-50, 50) }
+        const b = { x: a.x + 400 * Math.cos(turn), y: a.y + 400 * Math.sin(turn) }
+        const c = { x: a.x + 400 * Math.cos(turn + apexAngle), y: a.y + 400 * Math.sin(turn + apexAngle) }
+        const segments = [Segment2.between(a, b), Segment2.between(b, c), Segment2.between(c, a)]
+        const middle = { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3 }
+        const side = (segment: Segment2.Segment2, at: Vec2.Vec2) =>
+          ((segment.bx - segment.ax) * (at.y - segment.ay) - (segment.by - segment.ay) * (at.x - segment.ax)) / Math.hypot(segment.bx - segment.ax, segment.by - segment.ay)
+        // The distance inside each edge's line: every triangle here is acute, so it is the distance to the edge.
+        const inward = (at: Vec2.Vec2) => Math.min(...segments.map((segment) => side(segment, at) * Math.sign(side(segment, middle))))
+        return {
+          walls: { segments },
+          radius,
+          start: () => {
+            const u = random.next()
+            const v = random.next() * (1 - u)
+            const at = { x: a.x + (b.x - a.x) * u + (c.x - a.x) * v, y: a.y + (b.y - a.y) * u + (c.y - a.y) * v }
+            return inward(at) > radius + 0.02 ? at : { x: Infinity, y: Infinity }
+          },
+          delta: (at) => {
+            if (random.next() < 0.5) return deltaOf(radius)
+            const speed = random.range(1, 40)
+            const length = Math.hypot(a.x - at.x, a.y - at.y) || 1
+            return { x: ((a.x - at.x) / length) * speed + random.range(-3, 3), y: ((a.y - at.y) / length) * speed + random.range(-3, 3) }
+          },
+          past: (at) => radius - inward(at)
+        }
+      }
+      const mixed = (): Scene => {
+        // A room of segments, with crates and loose segment walls inside.
+        const radius = 6
+        const inner = Array.from({ length: 4 }, () => {
+          const from = { x: random.range(0, 400), y: random.range(0, 300) }
+          const angle = random.range(0, 2 * Math.PI)
+          const length = random.range(20, 150)
+          return Segment2.between(from, { x: from.x + length * Math.cos(angle), y: from.y + length * Math.sin(angle) })
+        })
+        const boxes = crates(6, radius)
+        const corners = [{ x: 0, y: 0 }, { x: 400, y: 0 }, { x: 400, y: 300 }, { x: 0, y: 300 }]
+        const segments = [...corners.map((corner, index) => Segment2.between(corner, corners[(index + 1) % 4]!)), ...inner]
+        return {
+          walls: { boxes, segments },
+          radius,
+          start: () => ({ x: random.range(0, 400), y: random.range(0, 300) }),
+          delta: () => deltaOf(radius),
+          past: (at) =>
+            Math.max(
+              radius - Math.min(at.x, 400 - at.x, at.y, 300 - at.y),
+              ...boxes.map((box) => radius - distanceTo(Box2.closestPoint(box, at), at)),
+              ...inner.map((segment) => radius - distanceTo(Segment2.closestPoint(segment, at), at))
+            )
+        }
+      }
+
+      for (const make of [room, triangle, mixed]) {
+        let trials = 0
+        for (let trial = 0; trial < 300; trial++) {
+          const scene = make()
+          let start: Vec2.Vec2 | undefined
+          for (let tries = 0; tries < 200 && start === undefined; tries++) {
+            const at = scene.start()
+            if (clearOf(scene.walls, at, scene.radius + Collide2.defaultSkin)) start = at
+          }
+          if (start === undefined) continue
+          trials++
+          let position = start
+          for (let move = 0; move < 300; move++) {
+            const delta = scene.delta(position)
+            const moved = Collide2.moveCircle(position, delta, scene.radius, scene.walls).position
+            const past = scene.past(moved)
+            if (past > tolerance) expect({ scene: make.name, trial, from: position, delta, to: moved, past }).toBeUndefined()
+            position = moved
+          }
+        }
+        expect(trials).toBeGreaterThan(250)
       }
     })
   })

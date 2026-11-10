@@ -167,6 +167,50 @@ describe("host events and pause gates", () => {
     expect(runtime.restore(saved)).toEqual({ ok: true, value: undefined })
   })
 
+  it("rejects a tick or tryTick inside a running tick or tryTick, and rolls the outer failure back", () => {
+    const Gold = Descriptor.ConstructedResource(Codecs.number)("Host/Gold")
+    const Nested = Schema.bind(Schema.fragment({ resources: { Gold, Count } }))
+    const made = Nested.Runtime.make({ services: Nested.Runtime.services(), resources: { Gold: 0, Count: 0 } })
+    if (!made.ok) throw new Error("invalid fixture")
+    const runtime = made.value
+    const Bump = Nested.System("Host/Bump", { resources: { count: Nested.System.writeResource(Count) } }, ({ resources }) => {
+      resources.count.update((count) => count + 1)
+    })
+    const inner = Nested.Schedule(Bump)
+    const nested: Array<string> = []
+    const enter = (entry: "tick" | "tryTick") => {
+      try {
+        if (entry === "tick") runtime.tick(inner)
+        else runtime.tryTick(inner)
+        nested.push("ran")
+      } catch (error) {
+        nested.push(String(error))
+      }
+    }
+    // The nested run used to commit its own system and clear the outer one's rollback journal.
+    const Spend = (entry: "tick" | "tryTick") => Nested.System(`Host/Spend/${entry}`, { resources: { gold: Nested.System.writeResource(Gold) } }, ({ resources }) => {
+      resources.gold.set(1)
+      enter(entry)
+      return Result.failure("outer fails after nesting" as const)
+    })
+    for (const outer of ["tick", "tryTick"] as const) {
+      for (const entry of ["tick", "tryTick"] as const) {
+        const result = outer === "tick" ? runtime.tick(Nested.Schedule(Spend(entry))) : runtime.tryTick(Nested.Schedule(Spend(entry)))
+        expect(result.ok).toBe(false)
+      }
+    }
+    expect(nested).toEqual([
+      "Error: runtime.tick cannot run inside another tick",
+      "Error: runtime.tryTick cannot run inside another tick",
+      "Error: runtime.tick cannot run inside another tick",
+      "Error: runtime.tryTick cannot run inside another tick"
+    ])
+    const State = Nested.Inspector("Host/NestedState", {
+      resources: { gold: Nested.System.readResource(Gold), count: Nested.System.readResource(Count) }
+    }, ({ resources }) => ({ gold: resources.gold.get(), count: resources.count.get() }))
+    expect(runtime.inspect(State)).toEqual({ gold: 0, count: 0 })
+  })
+
   it("preserves unread host sends through restore without replaying already consumed sends or simulation events", () => {
     const runtime = make()
     const fastLog: Array<ReadonlyArray<number>> = []
@@ -312,7 +356,10 @@ describe("system local state", () => {
 
 describe("numeric handles", () => {
   it("brands without allocating and compares by entity identity in sets", () => {
-    const id = Entity.makeEntityId(7)
+    // A number from a save or a message: the guard makes it a handle, the game names its id.
+    const raw: unknown = JSON.parse("7")
+    if (!Entity.isHandle(Game.schema)(raw)) throw new Error("not a handle")
+    const id = Game.Entity.id(raw)
     const first = Entity.handle(id)
     const second = Entity.handle(id)
     expect(first).toBe(id)

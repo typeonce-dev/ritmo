@@ -109,8 +109,8 @@ export interface Handle<S extends Schema.Any = Schema.Any, Root = unknown> {
   readonly observe: (listener: (event: TraceEvent) => void) => () => void
   /**
    * Delivers what the host does to the runtime, until the returned function
-   * is called: each tick's start and end (with the schedule values it runs)
-   * and each `runtime.send`. Unlike `observe`, it turns no tracing on, so a
+   * is called: each tick's start and end (with the schedule values it runs),
+   * each `runtime.send`, and each `runtime.rewind`. Unlike `observe`, it turns no tracing on, so a
    * tool can listen for a whole play session (replay recorders do).
    */
   readonly observeHost: (listener: (event: HostEvent<S, Root>) => void) => () => void
@@ -792,6 +792,21 @@ export interface RestoreEvent {
   readonly ok: boolean
 }
 
+/**
+ * A `rewind` to a checkpoint; `ok` is `false` when it was rejected. Ticks
+ * are change ticks: the frames that started at or after `toTick` were
+ * undone, and the ticks the game runs next run in their place.
+ */
+export interface RewindEvent {
+  readonly type: "rewind"
+  readonly frame: number
+  /** The tick rewound from. */
+  readonly tick: number
+  /** The checkpoint's tick; `tick` when the value is not a checkpoint of this runtime. */
+  readonly toTick: number
+  readonly ok: boolean
+}
+
 /** What `observeHost` delivers. */
 export type HostEvent<S extends Schema.Any = Schema.Any, Root = unknown> =
   | {
@@ -799,6 +814,8 @@ export type HostEvent<S extends Schema.Any = Schema.Any, Root = unknown> =
       /** The schedule values passed to this `tick(...)` (or `tryTick`) call, in order. */
       readonly schedules: ReadonlyArray<ExecutableScheduleDefinition<S, any, Root, any, any>>
       readonly frame: number
+      /** The change tick it starts at: a later `rewind` whose `toTick` is at or before it undoes it. */
+      readonly tick: number
     }
   | {
       readonly type: "tick.end"
@@ -809,6 +826,7 @@ export type HostEvent<S extends Schema.Any = Schema.Any, Root = unknown> =
       readonly error?: unknown
     }
   | { readonly type: "send"; readonly event: string; readonly value: unknown }
+  | RewindEvent
   | FailureIgnoredEvent
 
 /**
@@ -842,6 +860,7 @@ export type TraceEvent =
   | DeferredEvent
   | TransitionEvent
   | RestoreEvent
+  | RewindEvent
   | FailureIgnoredEvent
 
 /**

@@ -56,6 +56,12 @@ const makeTarget = (rect = { left: 10, top: 20 }) => {
       for (const listener of listeners.get("pointermove") ?? []) listener({ clientX: 10, clientY: 20, movementX, movementY, button: -1, pointerId: 1, preventDefault: () => {} })
     },
     prevented: () => prevented,
+    /** A pointer event as browsers send it, with the `buttons` bitmask of what is down. */
+    chord: (type: "pointerdown" | "pointermove" | "pointerup", button: number, buttons: number, pointerType = "mouse") => {
+      for (const listener of listeners.get(type) ?? []) {
+        listener({ clientX: 10, clientY: 20, button, buttons, pointerId: 1, pointerType, preventDefault: () => prevented++ })
+      }
+    },
     move: (x: number, y: number) => dispatch("pointermove", x, y),
     down: (x: number, y: number, button = 0) => dispatch("pointerdown", x, y, button),
     up: (x: number, y: number, button = 0) => dispatch("pointerup", x, y, button),
@@ -169,6 +175,157 @@ describe("Pointer.actions", () => {
     const pointer = Pointer.actions(fake.target, fake.blurHost, {})
     fake.down(10, 20, 1)
     expect(pointer.snapshot()).toMatchObject({ actions: {}, position: { x: 0, y: 0 }, used: true })
+  })
+})
+
+describe("Pointer chords", () => {
+  // `buttons` bits: 1 primary, 2 secondary, 4 middle. `button`: 0 primary, 1 middle, 2 secondary.
+  const chordBindings = { fire: ["primary"], aim: ["secondary"], zoom: ["middle"] } as const
+  const idle = { held: false, pressed: false, released: false }
+
+  it("presses a button that goes down while another is held, which arrives as a pointermove", () => {
+    const fake = makeTarget()
+    const mouse = Pointer.actions(fake.target, fake.blurHost, chordBindings)
+    fake.chord("pointerdown", 2, 2)
+    expect(mouse.snapshot().actions.aim).toEqual({ held: true, pressed: true, released: false })
+    fake.chord("pointermove", 0, 3)
+    const chorded = mouse.snapshot()
+    expect(chorded.actions.fire).toEqual({ held: true, pressed: true, released: false })
+    expect(chorded.actions.aim).toEqual({ held: true, pressed: false, released: false })
+    fake.chord("pointermove", 0, 2)
+    expect(mouse.snapshot().actions.fire).toEqual({ held: false, pressed: false, released: true })
+    fake.chord("pointerup", 2, 0)
+    expect(mouse.snapshot().actions.aim).toEqual({ held: false, pressed: false, released: true })
+    expect(fake.captured).toEqual([])
+  })
+
+  it("releases the first button let go while another is held, so it does not stay stuck", () => {
+    const fake = makeTarget()
+    const mouse = Pointer.actions(fake.target, fake.blurHost, chordBindings)
+    fake.chord("pointerdown", 0, 1)
+    fake.chord("pointermove", 2, 3)
+    expect(mouse.snapshot().actions).toMatchObject({ fire: { held: true }, aim: { held: true } })
+    fake.chord("pointermove", 0, 2)
+    expect(mouse.snapshot().actions.fire).toEqual({ held: false, pressed: false, released: true })
+    // The last button up is a pointerup for the other button.
+    fake.chord("pointerup", 2, 0)
+    const after = mouse.snapshot()
+    expect(after.actions.aim).toEqual({ held: false, pressed: false, released: true })
+    expect(mouse.snapshot().actions).toEqual({ fire: idle, aim: idle, zoom: idle })
+    expect(fake.captured).toEqual([])
+  })
+
+  it("tracks three buttons, capturing the pointer once and releasing it when none is held", () => {
+    const fake = makeTarget()
+    const mouse = Pointer.actions(fake.target, fake.blurHost, chordBindings)
+    fake.chord("pointerdown", 0, 1)
+    fake.chord("pointermove", 2, 3)
+    fake.chord("pointermove", 1, 7)
+    const all = mouse.snapshot()
+    expect(all.buttons.middle).toEqual({ held: true, pressed: true, released: false })
+    expect(all.actions).toMatchObject({ fire: { held: true }, aim: { held: true }, zoom: { held: true } })
+    expect(fake.captured).toEqual([1])
+    fake.chord("pointermove", 2, 5)
+    fake.chord("pointermove", 0, 4)
+    const middle = mouse.snapshot()
+    expect(middle.actions).toMatchObject({ fire: { released: true }, aim: { released: true }, zoom: { held: true, pressed: false } })
+    expect(fake.captured).toEqual([1])
+    fake.chord("pointerup", 1, 0)
+    expect(mouse.snapshot().actions.zoom.released).toBe(true)
+    expect(fake.captured).toEqual([])
+  })
+
+  it("keeps a tap of a second button shorter than a frame, reporting it once", () => {
+    const fake = makeTarget()
+    const mouse = Pointer.actions(fake.target, fake.blurHost, chordBindings)
+    fake.chord("pointerdown", 0, 1)
+    mouse.snapshot()
+    fake.chord("pointermove", 2, 3)
+    fake.chord("pointermove", 2, 1)
+    fake.chord("pointermove", -1, 1)
+    const tap = mouse.snapshot()
+    expect(tap.actions.aim).toEqual({ held: false, pressed: true, released: true })
+    expect(tap.buttons.secondary).toEqual({ held: false, pressed: true, released: true })
+    expect(tap.actions.fire).toEqual({ held: true, pressed: false, released: false })
+    expect(mouse.snapshot().actions.aim).toEqual(idle)
+  })
+
+  it("chords while the pointer is locked, and the click that locks stays no press while it is held", () => {
+    const fake = makeTarget()
+    const mouse = Pointer.actions(fake.target, fake.blurHost, chordBindings, { lock: fake.lock })
+    fake.chord("pointerdown", 0, 1)
+    expect(fake.lockRequests()).toBe(1)
+    // Locked while the click that asked for it is still down.
+    fake.setLocked(true)
+    fake.chord("pointermove", -1, 1)
+    expect(mouse.snapshot().actions.fire).toEqual(idle)
+    fake.chord("pointermove", 2, 3)
+    expect(mouse.snapshot().actions).toMatchObject({ fire: idle, aim: { held: true, pressed: true } })
+    fake.chord("pointermove", 2, 1)
+    fake.chord("pointerup", 0, 0)
+    expect(mouse.snapshot().actions).toMatchObject({ fire: idle, aim: { released: true } })
+
+    fake.chord("pointerdown", 0, 1)
+    fake.chord("pointermove", 2, 3)
+    expect(mouse.snapshot().actions).toMatchObject({ fire: { held: true, pressed: true }, aim: { held: true, pressed: true } })
+    fake.chord("pointermove", 0, 2)
+    fake.chord("pointerup", 2, 0)
+    expect(mouse.snapshot().actions).toMatchObject({ fire: { released: true }, aim: { released: true } })
+    expect(fake.lockRequests()).toBe(1)
+  })
+
+  it("presses nothing while the pointer is not locked, chorded buttons included", () => {
+    const fake = makeTarget()
+    const mouse = Pointer.actions(fake.target, fake.blurHost, chordBindings, { lock: fake.lock })
+    fake.chord("pointerdown", 0, 1)
+    fake.chord("pointermove", 2, 3)
+    expect(mouse.snapshot().actions).toEqual({ fire: idle, aim: idle, zoom: idle })
+    fake.chord("pointermove", 0, 2)
+    fake.chord("pointerup", 2, 0)
+    expect(mouse.snapshot().actions).toEqual({ fire: idle, aim: idle, zoom: idle })
+  })
+
+  it("presses a button still down after a blur again on the next event that reports it", () => {
+    const fake = makeTarget()
+    const mouse = Pointer.actions(fake.target, fake.blurHost, chordBindings)
+    fake.chord("pointerdown", 0, 1)
+    mouse.snapshot()
+    fake.blur()
+    expect(mouse.snapshot().actions.fire.released).toBe(true)
+    fake.chord("pointermove", -1, 1)
+    expect(mouse.snapshot().actions.fire).toEqual({ held: true, pressed: true, released: false })
+    fake.chord("pointerup", 0, 0)
+    expect(mouse.snapshot().actions.fire.released).toBe(true)
+  })
+
+  it("reads a pen's tip and barrel button as primary and secondary, and ignores its eraser", () => {
+    const fake = makeTarget()
+    const pen = Pointer.actions(fake.target, fake.blurHost, chordBindings)
+    // Tip down, barrel button pressed, then the eraser (button 5, bit 32) flipped on.
+    fake.chord("pointerdown", 0, 1, "pen")
+    fake.chord("pointermove", 2, 3, "pen")
+    fake.chord("pointermove", 5, 35, "pen")
+    expect(pen.snapshot().actions).toMatchObject({ fire: { held: true }, aim: { held: true }, zoom: idle })
+    fake.chord("pointerup", 0, 0, "pen")
+    expect(pen.snapshot().actions).toMatchObject({ fire: { released: true }, aim: { released: true } })
+    // Touches are left to Touch: their buttons press nothing.
+    fake.chord("pointerdown", 0, 1, "touch")
+    expect(pen.snapshot().actions.fire).toEqual(idle)
+  })
+
+  it("keeps a host that sends no buttons working as before: a chord reaches it only as downs and ups", () => {
+    const fake = makeTarget()
+    const mouse = Pointer.actions(fake.target, fake.blurHost, chordBindings)
+    fake.down(10, 20, 2)
+    fake.down(10, 20, 0)
+    fake.move(12, 22)
+    expect(mouse.snapshot().actions).toMatchObject({ fire: { held: true, pressed: true }, aim: { held: true, pressed: true } })
+    fake.up(10, 20, 2)
+    expect(mouse.snapshot().actions).toMatchObject({ fire: { held: true, pressed: false }, aim: { released: true } })
+    expect(fake.captured.length).toBeGreaterThan(0)
+    fake.up(10, 20, 0)
+    expect(mouse.snapshot().actions.fire.released).toBe(true)
+    expect(fake.captured).toEqual([])
   })
 })
 
