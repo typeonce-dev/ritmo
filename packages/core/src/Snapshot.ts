@@ -2,7 +2,8 @@
  * Save and load the world as plain data.
  *
  * `runtime.snapshot()` captures entities (with their ids), component values,
- * relation edges, resources, and committed state-machine values, keyed by
+ * relation edges, resources, committed state-machine values, and the next
+ * states queued for the following `applyStateTransitions`, keyed by
  * descriptor, relation, and machine names. A bound schema guarantees those
  * names are unique, so they are stable save keys. Each value is saved in its
  * schema's saved form: a schema with a `"~encode"` (an `Option`, a `Map`)
@@ -24,20 +25,39 @@
  * Otherwise calling them is a compile error naming the descriptors without a
  * schema, so no unvalidated value can enter the world through a save file.
  *
- * Restoring despawns every current entity and spawns the saved ones with their
- * original ids, so change detection and renderer sync see a restore as normal
- * despawns and spawns. The next id is the save's too: the same save restored
- * in two runtimes allocates the same ids from then on, whatever each held
- * before (peers of a networked game rely on it). Pending commands and events emitted by systems are
- * dropped; events the host sent with `runtime.send` and no system has read
- * yet are kept, since they are input that has not been handled. Transient
- * components are absent from restored entities; transient resources keep their
- * current value.
+ * A load leaves nothing of the world it replaced, so the same save restored
+ * in two runtimes gives the same world, whatever each held before (peers of
+ * a networked game rely on it):
+ *
+ * - The saved entities are spawned with their original ids, and readers see
+ *   them as added. The next id is the save's too, so both runtimes allocate
+ *   the same ids from then on.
+ * - Nothing about the replaced world is published: no removal or despawn of
+ *   its entities, and none of the events, transition events, or relation
+ *   failures it published reaches a reader. A system or inspector that read
+ *   any of these before the load finds nothing from before it, and its next
+ *   read reports `lagged()`: it missed everything, so it rebuilds what it
+ *   mirrored from queries (a render sync rebuilds its nodes). A reader whose
+ *   first run comes after the load missed nothing and is not lagged.
+ * - Every transient resource, and every resource and machine the save does
+ *   not hold, takes the value the runtime was made with
+ *   (`Game.Runtime.make({ resources, machines })`), or has none when it was
+ *   made without one. A transient resource a capture system fills each tick
+ *   (`InputCapture.system`) is filled again by that system's next run; a game
+ *   that keeps anything else in one sets it again after the load. Transient
+ *   components are absent from restored entities.
+ * - Next states queued for the following `applyStateTransitions` are saved,
+ *   and `restore` queues them again. Queued commands cannot be saved (a
+ *   command is a function), so `snapshot()` and `checksum()` fail with
+ *   `QueuedCommands` while one is queued: end the tick with
+ *   `Game.Schedule.applyDeferred()`. Events the host sent with
+ *   `runtime.send` and no system has read yet are kept, since they are input
+ *   that has not been handled.
  *
  * A save is not a rewind: to go back a few ticks in memory and run them
  * again (rollback netcode, prediction), use `runtime.checkpoint` and
  * `runtime.rewind` (see the `Checkpoint` module), which keep ids, queued
- * work, and every reader's position. To compare worlds, use
+ * commands, and every reader's position. To compare worlds, use
  * `runtime.checksum()`: a snapshot's JSON lists an entity's components in
  * the order they were added, so equal worlds can serialize differently.
  *
@@ -109,9 +129,24 @@ export interface EntitySnapshot {
  * A version 2 save from a game with no machines is a version 3 save with
  * the old number: set `version: 3` before `restore`. A game with machines
  * also rewrites each machine name to `{ _tag: name }`, adding the fields of
- * states that have them.
+ * states that have them. A version 3 save written before queued next states
+ * were saved has no `nextStates`, and loads with nothing queued.
  */
 export const version = 3
+
+/**
+ * A next state queued in a {@link WorldSnapshot}, applied by the following
+ * `applyStateTransitions` of the runtime that restores it, as in the one
+ * that wrote it.
+ */
+export interface NextStateSnapshot {
+  /** The queued state's name in `_tag`, next to its fields, in the machine's saved form. */
+  readonly state: unknown
+  /** Queued with `setIfChanged`: skipped when it equals the committed value. */
+  readonly ifChanged: boolean
+  /** Queued with `transition`: the state the move must still start from when it is applied. */
+  readonly from?: string
+}
 
 /** What `runtime.snapshot()` writes and `runtime.restore(...)` reads: the world as plain data. */
 export interface WorldSnapshot {
@@ -141,6 +176,12 @@ export interface WorldSnapshot {
    */
   readonly machines: Readonly<Record<string, unknown>>
   /**
+   * Next states queued for the following `applyStateTransitions`, by machine
+   * name. A save written before queued states were saved has none: `restore`
+   * reads it as nothing queued.
+   */
+  readonly nextStates: Readonly<Record<string, NextStateSnapshot>>
+  /**
    * Entity scope membership: per scope name, the ids of the entities spawned
    * into it (`commands.spawnIn`), so `despawnScope` still finds them after a
    * restore. An entity is in at most one scope.
@@ -149,13 +190,23 @@ export interface WorldSnapshot {
 }
 
 /**
- * Why `runtime.snapshot()` could not save the world: a value its schema's
- * `"~encode"` rejected.
+ * Why `runtime.snapshot()` could not save the world: commands still queued,
+ * or a value its schema's `"~encode"` rejected.
  */
 export type SnapshotError =
+  /**
+   * `count` commands are queued for a marker that has not run: a command is
+   * a function, which no save can hold, so a world loaded from this save
+   * would run differently. End the tick's schedule with
+   * `Game.Schedule.applyDeferred()` (or `applyStateTransitions(...)`), and
+   * take the save after it.
+   */
+  | { readonly _tag: "QueuedCommands"; readonly count: number }
   | { readonly _tag: "UnencodableComponent"; readonly entityId: number; readonly name: string; readonly error: SchemaIssues }
   | { readonly _tag: "UnencodableResource"; readonly name: string; readonly error: SchemaIssues }
   | { readonly _tag: "UnencodableMachineState"; readonly name: string; readonly error: SchemaIssues }
+  /** A queued next state its machine's state schema rejected. */
+  | { readonly _tag: "UnencodableNextState"; readonly name: string; readonly error: SchemaIssues }
 
 /**
  * Why a snapshot could not be restored.
@@ -176,8 +227,18 @@ export type RestoreError =
   | { readonly _tag: "UnknownMachine"; readonly name: string }
   /** A saved machine value that is not one of its states with that state's data; each issue's `path` says where. */
   | { readonly _tag: "InvalidMachineState"; readonly name: string; readonly error: SchemaIssues }
-  /** A saved sub-state value while its parent machine is not in the state the sub-state exists in. */
+  /**
+   * A saved sub-state value, committed (`machines`) or queued (`nextStates`),
+   * while its parent machine is not in the state the sub-state exists in.
+   */
   | { readonly _tag: "InactiveSubState"; readonly name: string; readonly parent: string; readonly requires: string }
+  /**
+   * A queued next state that is not one of its machine's states with that
+   * state's data, or a move its machine's `transitions` graph does not allow
+   * (a queued state without `from`, on a machine that declares one); each
+   * issue's `path` says where.
+   */
+  | { readonly _tag: "InvalidNextState"; readonly name: string; readonly error: SchemaIssues }
   | { readonly _tag: "DuplicateEntity"; readonly entityId: number }
   /** A scope name that no `Game.EntityScope(...)` of this game defines. */
   | { readonly _tag: "UnknownScope"; readonly name: string }
@@ -224,12 +285,23 @@ export const parse = (data: unknown): Result.Result<WorldSnapshot, RestoreError>
   }
   if (!isRecord(data["resources"])) return invalid("$.resources")
   if (!isRecord(data["machines"])) return invalid("$.machines")
+  const nextStates = data["nextStates"] ?? {}
+  if (!isRecord(nextStates)) return invalid("$.nextStates")
+  for (const [name, next] of Object.entries(nextStates)) {
+    const valid = isRecord(next)
+      && Object.hasOwn(next, "state")
+      && typeof next["ifChanged"] === "boolean"
+      && (next["from"] === undefined || typeof next["from"] === "string")
+      // `transition` never skips an unchanged value.
+      && !(next["ifChanged"] === true && next["from"] !== undefined)
+    if (!valid) return invalid(`$.nextStates.${name}`)
+  }
   const scopes = data["scopes"]
   if (!isRecord(scopes)) return invalid("$.scopes")
   for (const [name, members] of Object.entries(scopes)) {
     if (!Array.isArray(members) || !members.every(isEntityId)) return invalid(`$.scopes.${name}`)
   }
-  return Result.success({ ...data, gameVersion } as unknown as WorldSnapshot)
+  return Result.success({ ...data, gameVersion, nextStates } as unknown as WorldSnapshot)
 }
 
 /**

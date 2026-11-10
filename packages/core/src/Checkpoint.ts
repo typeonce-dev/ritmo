@@ -28,8 +28,9 @@
  * To persist, use `runtime.snapshot()`: a checkpoint is a value of this
  * runtime only, with nothing in it to save (`JSON.stringify` gives `{}`),
  * and `restore` rejects it. To rewind in-process, use checkpoints:
- * `restore` is for loading saves, and gives new ids, drops queued work, and
- * restarts every reader.
+ * `restore` is for loading saves: it drops queued commands, and every reader
+ * that ran before it reads nothing from before the load and reports
+ * `lagged()`.
  *
  * What `simulate` may use is checked when the checkpoint is taken:
  *

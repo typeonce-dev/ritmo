@@ -306,7 +306,7 @@ const runtime = Game.Runtime.make({
   resources: { Stock: [["potion", 3]] }
 })
 if (runtime.ok) {
-  // Encoding can fail, so a snapshot is a Result
+  // Encoding can fail, and queued commands cannot be saved, so a snapshot is a Result
   const saved = runtime.value.snapshot()
   //    ^?
 }

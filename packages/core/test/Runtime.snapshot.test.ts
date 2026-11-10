@@ -205,21 +205,26 @@ describe("Runtime snapshots", () => {
     expect(readWorld(runtime)).toEqual(before)
   })
 
-  it("reports a restore to change detection as despawns and spawns", () => {
+  it("reports the restored entities as added, and the replaced world's despawns only as lagged", () => {
     const runtime = makeRuntime(0)
     populate(runtime)
-    const seen: Array<{ added: number; despawned: number }> = []
+    const seen: Array<{ added: number; despawned: number; lagged: boolean }> = []
     const Observe = Game.System("Snapshot/Observe", {
       queries: { added: Game.Query({ selection: { name: Game.Query.read(Name) }, filters: [Game.Query.added(Name)] }) },
       despawned: { entities: Game.System.readDespawned() }
     }, ({ queries, despawned }) => {
-      seen.push({ added: queries.added.each().length, despawned: despawned.entities.all().length })
+      seen.push({ added: queries.added.each().length, despawned: despawned.entities.all().length, lagged: despawned.entities.lagged() })
     })
     runtime.tick(Game.Schedule(Observe))
     runtime.restore(worldOf(runtime.snapshot()))
     runtime.tick(Game.Schedule(Observe))
+    runtime.tick(Game.Schedule(Observe))
 
-    expect(seen).toEqual([{ added: 3, despawned: 0 }, { added: 3, despawned: 4 }])
+    expect(seen).toEqual([
+      { added: 3, despawned: 0, lagged: false },
+      { added: 3, despawned: 0, lagged: true },
+      { added: 0, despawned: 0, lagged: false }
+    ])
   })
 
   it("skips transient components and resources", () => {
