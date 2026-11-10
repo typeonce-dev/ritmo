@@ -7,6 +7,22 @@
  * goal. Cells are blocked where a body of `clearance` would touch a wall, so
  * the ways it gives keep bodies off the walls.
  *
+ * A cell is blocked by its center alone, so a step between two open cells
+ * can pass over a wall more than `clearance` from every center the step
+ * needs open. A wall `width` by `height` can be stepped through somewhere
+ * exactly when
+ * `hypot(max(0, cellSize - width), max(0, cellSize - height)) > 2 * clearance`:
+ * a fence thinner than `cellSize - 2 * clearance` between two cell centers,
+ * or a post smaller than a cell where four open cells meet, which the
+ * diagonal step crosses (the corner rule lets it only between four open
+ * cells). No step crosses a wall at least `cellSize - clearance * √2` thick
+ * both ways, and none crosses any wall when `cellSize <= clearance * √2`. At
+ * cells of a body's diameter (`2 * clearance`), no wall a cell long or more
+ * can be stepped through, only a shorter one. A game with thinner walls
+ * (fences, pillars, thin boxes) makes the cells smaller or the clearance
+ * larger until the rule holds; otherwise a way can lead a body into such a
+ * wall, where `Collide2.moveCircle` stops it.
+ *
  * The grid covers the area the walls span. The walls are taken again only
  * when they change, and distances are worked out again only when the goal
  * moves to another cell, so calling `setWalls` and `setGoal` every step is
@@ -53,6 +69,13 @@ export interface FlowField {
    * Takes `boxes` as the walls, blocking every cell whose center is within
    * `clearance` of one, over the area the walls span. Does nothing when the
    * walls and clearance are the same as last time.
+   *
+   * A wall at least `cellSize - clearance * √2` thick both ways stops every
+   * step, and every wall does when `cellSize <= clearance * √2`. A thinner
+   * one can fall between the centers of open cells and be stepped through:
+   * a fence under `cellSize - 2 * clearance` thick, or a post smaller than a
+   * cell where four open cells meet (the module docs give the exact rule).
+   * For thin walls, use smaller cells or a larger clearance.
    */
   setWalls(boxes: ReadonlyArray<Box2>, clearance: number): void
   /**
@@ -71,9 +94,20 @@ export interface FlowField {
    * goal is the way). From a blocked cell with no open neighbor to step to (a
    * body pressed into a corner) it leads to the nearest open cells it can see
    * in a straight line, to the one closest to the goal.
+   *
+   * It agrees with {@link distance}: `way` gives a direction exactly where
+   * `distance` is a number, except where the body is already there.
    */
   way(at: Vec2): Vec2 | undefined
-  /** The path distance from the cell holding `at` to the goal, or `undefined` outside the grid or when walled off. */
+  /**
+   * The path distance, in cells, from the cell holding `at` to the goal, or
+   * `undefined` outside the grid or when walled off. From a blocked cell
+   * other than the goal's (a body pressed against a wall or into a corner),
+   * which the search does not cross, it is the distance out along the steps
+   * {@link way} takes: to the nearest open cells it can head for, plus their
+   * distance, so it is more than theirs. It is `undefined` exactly where
+   * `way` is, except where the body is already there.
+   */
   distance(at: Vec2): number | undefined
 }
 
@@ -385,8 +419,36 @@ class Field implements FlowField {
   distance(at: Vec2): number | undefined {
     const cell = this.cellOf(at)
     if (cell < 0) return undefined
-    const distance = this.distances[cell]!
+    let distance = this.distances[cell]!
+    if (distance === Infinity && this.blocked[cell] === 1) distance = this.distanceOut(at, cell)
     return distance === Infinity ? undefined : distance
+  }
+
+  /**
+   * The path distance from a blocked cell, which the search does not cross,
+   * out through the cells `way` heads for: the shortest step to an open
+   * neighbor plus its distance, as the search gives an open cell, or else
+   * the steps to the open cell `cellOut` picks plus its distance. Infinity
+   * where `way` gives no direction. Kept out of `distance`, like `cellOut`
+   * out of `way`.
+   */
+  private distanceOut(at: Vec2, cell: number): number {
+    const columns = this.columns
+    const distances = this.distances
+    const column = cell % columns
+    const row = (cell - column) / columns
+    let through = Infinity
+    for (let step = 0; step < 8; step++) {
+      const dx = stepX[step]!
+      const dy = stepY[step]!
+      if (!this.open(column, row, dx, dy)) continue
+      through = Math.min(through, distances[(row + dy) * columns + column + dx]! + stepCost[step]!)
+    }
+    if (through < Infinity) return through
+    const out = this.cellOut(at, cell)
+    if (out < 0) return Infinity
+    const outColumn = out % columns
+    return pathLength(outColumn - column, (out - outColumn) / columns - row) + distances[out]!
   }
 
   /** Queues `cell` at `key` (a cell queued again with a shorter distance leaves its old entry behind, skipped when popped). */

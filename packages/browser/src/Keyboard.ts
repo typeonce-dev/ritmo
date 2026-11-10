@@ -11,7 +11,9 @@
  * Bind by character (`"w"`) or by physical key (`Keyboard.code("KeyW")`);
  * see {@link KeyBinding}. A key released while a modifier changed its
  * character (W pressed, then Option, then W released as "∑") still releases
- * its action.
+ * its action. Keys that type the same character (both Shift keys, a digit on
+ * the row and on the numpad) are one key to a character binding: it is
+ * pressed when the first goes down and released when the last comes up.
  *
  * Browser shortcuts are left to the browser: a key pressed with Cmd held, or
  * with Ctrl held, presses no action and is not `preventDefault`-ed, so Ctrl+R
@@ -174,7 +176,10 @@ export interface PhysicalKey {
  * Character bindings follow the keyboard layout and are what a menu should
  * show. Physical bindings keep a position fixed: WASD stays under the left
  * hand on AZERTY keyboards, and modifiers cannot change the match (with
- * Option held on macOS, W types "∑"; with Shift, 1 types "!").
+ * Option held on macOS, W types "∑"; with Shift, 1 types "!"). A character
+ * binding matches every key that types it: `"Shift"` is both Shift keys,
+ * held while either is down, and `"1"` is the digit row and the numpad;
+ * bind `Keyboard.code("ShiftLeft")` for one of them.
  */
 export type KeyBinding = string | PhysicalKey
 
@@ -418,8 +423,30 @@ export const actions = <const B extends Bindings>(
    * press nothing.
    */
   const keyTokenByCode = new Map<string, string>()
+  /**
+   * The physical keys holding each held character token, so a character two
+   * keys type (both Shifts, a digit on the row and on the numpad) stays held
+   * until the last of them comes up. A token held through a host that sends
+   * no `code` has no entry, and its first release lets go of it.
+   */
+  const codesByToken = new Map<string, Set<string>>()
   const pressed = new Set<string>()
   const released = new Set<string>()
+
+  const release = (token: string): void => {
+    const holding = heldTokens.get(token)
+    if (!holding) return
+    heldTokens.delete(token)
+    codesByToken.delete(token)
+    for (const name of holding) released.add(name)
+  }
+
+  /** Lets go of `code`'s hold on a character token, releasing it when no other key holds it. */
+  const letGo = (token: string, code: string): void => {
+    const codes = codesByToken.get(token)
+    if (codes === undefined || !codes.delete(code) || codes.size > 0) return
+    release(token)
+  }
 
   const onKeyDown = (event: KeyEvent): void => {
     const tokens = [keyToken(event.key)]
@@ -428,7 +455,13 @@ export const actions = <const B extends Bindings>(
     // a repeat presses any key that is not held.
     const known = event.code !== undefined && keyTokenByCode.has(event.code)
     if (event.code !== undefined) {
-      if (!known) keyTokenByCode.set(event.code, tokens[0]!)
+      if (!event.repeat || !known) {
+        // A new press: the key went up unseen if it was known down, so it no
+        // longer holds what it typed then, and its release matches what it types now.
+        const before = keyTokenByCode.get(event.code)
+        if (before !== undefined && before !== tokens[0]) letGo(before, event.code)
+        keyTokenByCode.set(event.code, tokens[0]!)
+      }
       tokens.push(codeToken(event.code))
     }
     // Typed into a form field, the key belongs to the field; a shortcut
@@ -439,7 +472,14 @@ export const actions = <const B extends Bindings>(
       const bound = actionsByToken.get(token)
       if (!bound) continue
       handled = true
-      if (heldTokens.has(token) || (event.repeat && known)) continue
+      if (event.repeat && known) continue
+      // Another key typing the same character joins its hold: one press for both.
+      if (event.code !== undefined && token === tokens[0]) {
+        const codes = codesByToken.get(token)
+        if (codes) codes.add(event.code)
+        else if (!heldTokens.has(token)) codesByToken.set(token, new Set([event.code]))
+      }
+      if (heldTokens.has(token)) continue
       heldTokens.set(token, new Set(bound))
       for (const name of bound) pressed.add(name)
     }
@@ -449,27 +489,17 @@ export const actions = <const B extends Bindings>(
   // Releases are processed wherever the key was released, form fields
   // included, so a key held before focus moved into a field still releases.
   const onKeyUp = (event: KeyEvent): void => {
-    const tokens = [keyToken(event.key)]
+    const character = event.code === undefined ? keyToken(event.key) : keyTokenByCode.get(event.code) ?? keyToken(event.key)
+    if (event.code === undefined || !codesByToken.has(character)) release(character)
+    else letGo(character, event.code)
     if (event.code !== undefined) {
-      const downAs = keyTokenByCode.get(event.code)
       keyTokenByCode.delete(event.code)
-      if (downAs !== undefined) tokens[0] = downAs
-      tokens.push(codeToken(event.code))
-    }
-    for (const token of tokens) {
-      const holding = heldTokens.get(token)
-      if (!holding) continue
-      heldTokens.delete(token)
-      for (const name of holding) released.add(name)
+      release(codeToken(event.code))
     }
     // macOS sends no keyup for a key released while Cmd is down: Cmd's own
     // release lets go of every key but the modifiers, which do get theirs.
     if (!isMeta(event)) return
-    for (const [token, holding] of heldTokens) {
-      if (modifierTokens.has(token)) continue
-      heldTokens.delete(token)
-      for (const name of holding) released.add(name)
-    }
+    for (const token of heldTokens.keys()) if (!modifierTokens.has(token)) release(token)
     for (const code of keyTokenByCode.keys()) if (!modifierCodes.has(code)) keyTokenByCode.delete(code)
   }
 
@@ -478,6 +508,7 @@ export const actions = <const B extends Bindings>(
       for (const name of holding) released.add(name)
     }
     heldTokens.clear()
+    codesByToken.clear()
     keyTokenByCode.clear()
   }
 

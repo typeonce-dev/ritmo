@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { Random, Result } from "@typeonce/ritmo"
-import { type Box2, Collide2, FlowField, type Vec2 } from "@typeonce/ritmo-math"
+import { Box2, Collide2, FlowField, type Vec2 } from "@typeonce/ritmo-math"
 
 const fieldOf = (cellSize: number): FlowField.FlowField => {
   const made = FlowField.make(cellSize)
@@ -16,6 +16,14 @@ const room: ReadonlyArray<Box2.Box2> = [
   { minX: -20, minY: 0, maxX: 0, maxY: 600 },
   { minX: 600, minY: 0, maxX: 620, maxY: 600 },
   { minX: 290, minY: 0, maxX: 310, maxY: 480 }
+]
+
+/** A 200 by 200 room with 20-thick walls: with 20-unit cells, their centers are at 10, 30, ... */
+const square: ReadonlyArray<Box2.Box2> = [
+  { minX: -20, minY: -20, maxX: 220, maxY: 0 },
+  { minX: -20, minY: 200, maxX: 220, maxY: 220 },
+  { minX: -20, minY: -20, maxX: 0, maxY: 220 },
+  { minX: 200, minY: -20, maxX: 220, maxY: 220 }
 ]
 
 /** Follows the field from `from` in steps of `stride` until within `reach` of `goal`; the path taken. */
@@ -81,14 +89,6 @@ describe("FlowField", () => {
   })
 
   describe("a goal in a blocked cell", () => {
-    /** A 200 by 200 room with 20-thick walls. */
-    const square: ReadonlyArray<Box2.Box2> = [
-      { minX: -20, minY: -20, maxX: 220, maxY: 0 },
-      { minX: -20, minY: 200, maxX: 220, maxY: 220 },
-      { minX: -20, minY: -20, maxX: 0, maxY: 220 },
-      { minX: 200, minY: -20, maxX: 220, maxY: 220 }
-    ]
-
     it("finds a way to a goal in a room corner", () => {
       // Cells of a body's diameter: a radius-10 player pushed into the corner
       // stands in a blocked cell whose straight neighbours are blocked too.
@@ -147,6 +147,31 @@ describe("FlowField", () => {
       expect(way!.y).toBeGreaterThan(0)
     })
 
+    it("gives a body in a blocked corner cell the distance of the way out, more than the open cell it heads for", () => {
+      const field = fieldOf(20)
+      field.setWalls(square, 10)
+      field.setGoal({ x: 150, y: 150 })
+      // Every straight neighbour of the corner cell is blocked too: the way leads to the diagonal one.
+      const corner = { x: 10.01, y: 10.01 }
+      const out = field.distance({ x: 30, y: 30 })!
+      expect(field.way(corner)).toBeDefined()
+      expect(field.distance(corner)).toBeCloseTo(out + Math.SQRT2, 12)
+      // Against a wall with an open neighbour: one step plus that neighbour's distance.
+      const wall = { x: 100, y: 5 }
+      expect(field.way(wall)).toBeDefined()
+      expect(field.distance(wall)).toBeCloseTo(field.distance({ x: 110, y: 30 })! + 1, 12)
+    })
+
+    it("has neither a way nor a distance from a blocked cell walled off from the goal", () => {
+      // A wall across the room, the goal on the far side: the corner body has open cells, none reaching the goal.
+      const field = fieldOf(20)
+      field.setWalls([...square, { minX: -20, minY: 95, maxX: 220, maxY: 105 }], 10)
+      field.setGoal({ x: 150, y: 150 })
+      expect(field.way({ x: 10.01, y: 10.01 })).toBeUndefined()
+      expect(field.distance({ x: 10.01, y: 10.01 })).toBeUndefined()
+      expect(field.distance({ x: 50, y: 50 })).toBeUndefined()
+    })
+
     it("does not lead through a thin wall to a goal standing against it", () => {
       // A wall 1 thick: the cells either side are blocked, and the goal can see only its own side.
       const field = fieldOf(20)
@@ -156,6 +181,41 @@ describe("FlowField", () => {
       // From the far side, the way leads around the end of the wall, not up to it.
       const path = walk(field, { x: 50, y: 150 }, { x: 50, y: 89.49 })
       expect(Math.max(...path.map((at) => at.x))).toBeGreaterThan(160)
+    })
+  })
+
+  describe("walls thinner than a cell", () => {
+    // Cells of 20 and a clearance of 5: a wall can be stepped through exactly when
+    // hypot(max(0, 20 - width), max(0, 20 - height)) > 2 * 5.
+    it("steps through a fence thinner than cellSize - 2 * clearance, and through no thicker one", () => {
+      // A fence across the room on the line between the cell centers at x 90 and 110.
+      const fence = (thickness: number) => ({ minX: 100 - thickness / 2, minY: 0, maxX: 100 + thickness / 2, maxY: 200 })
+      const field = fieldOf(20)
+      field.setWalls([...square, fence(9.9)], 5)
+      field.setGoal({ x: 50, y: 100 })
+      // Straight through it, as if it were not there.
+      expect(field.distance({ x: 150, y: 100 })).toBe(5)
+      expect(field.way({ x: 110, y: 110 })).toEqual({ x: -1, y: 0 })
+      field.setWalls([...square, fence(10)], 5)
+      field.setGoal({ x: 50, y: 100 })
+      expect(field.distance({ x: 150, y: 100 })).toBeUndefined()
+      expect(field.way({ x: 110, y: 110 })).toBeUndefined()
+    })
+
+    it("steps diagonally over a post under cellSize - clearance * √2 across where four cells meet, and over no larger one", () => {
+      // 20 - 5 * √2 is 12.93.
+      const post = (size: number) => ({ minX: 100 - size / 2, minY: 100 - size / 2, maxX: 100 + size / 2, maxY: 100 + size / 2 })
+      const crosses = (size: number) => {
+        const field = fieldOf(20)
+        field.setWalls([...square, post(size)], 5)
+        field.setGoal({ x: 110, y: 110 })
+        return [10, 30, 50, 70, 90, 110, 130, 150, 170, 190].some((x) => [10, 30, 50, 70, 90, 110, 130, 150, 170, 190].some((y) => {
+          const way = field.way({ x, y })
+          return way !== undefined && Collide2.sweepCircle({ x, y }, { x: way.x * 20 * Math.SQRT2, y: way.y * 20 * Math.SQRT2 }, 0, { boxes: [post(size)] }) !== undefined
+        }))
+      }
+      expect(crosses(12.9)).toBe(true)
+      expect(crosses(12.95)).toBe(false)
     })
   })
 
@@ -193,6 +253,37 @@ describe("FlowField", () => {
         }
       }
     }
+  })
+
+  it("has a distance exactly where it has a way or the body is already there, and the same distance in every open cell", () => {
+    const random = Random.make(5)
+    // The open cells' distances summed over every room, as the field gave them before blocked cells had one.
+    let openTotal = 0
+    for (let trial = 0; trial < 20; trial++) {
+      const field = fieldOf(20)
+      const walls = [...room, ...Array.from({ length: 8 }, () => {
+        const x = random.range(0, 560)
+        const y = random.range(0, 560)
+        return { minX: x, minY: y, maxX: x + random.range(20, 60), maxY: y + random.range(20, 60) }
+      })]
+      const clearance = random.range(5, 35)
+      field.setWalls(walls, clearance)
+      const goal = Collide2.pushOut({ x: random.range(0, 600), y: random.range(0, 600) }, clearance + 0.01, { boxes: walls })
+      field.setGoal(goal)
+      // Already there: in the goal's cell, or in the open cells around a blocked one that the search starts from.
+      const near = Math.ceil(clearance / 20) + 2
+      for (let x = 10; x < 600; x += 20) {
+        for (let y = 10; y < 600; y += 20) {
+          const way = field.way({ x, y })
+          const distance = field.distance({ x, y })
+          if (way !== undefined) expect(distance).toBeDefined()
+          else if (distance !== undefined) expect(Math.max(Math.abs(x - goal.x), Math.abs(y - goal.y))).toBeLessThan((near + 1) * 20)
+          const open = !walls.some((box) => Box2.overlapsCircle(box, { x, y }, clearance))
+          if (open && distance !== undefined) openTotal += distance
+        }
+      }
+    }
+    expect(openTotal).toBe(280101.98239274)
   })
 
   it("fails with InvalidCellSize unless the cell size is finite and above 0", () => {
