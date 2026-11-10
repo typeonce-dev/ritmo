@@ -649,6 +649,12 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
    * same state with other fields re-enters, like `set`.
    */
   setIfChanged(value: ReadonlyValue<Machine.StateOf<M>>): Machine.SetResult<M>
+  /**
+   * Drops the queued value, if any, so the next `applyStateTransitions(...)`
+   * commits nothing for this machine. Called from a transition schedule, it
+   * cancels a value queued before the current marker that the marker has not
+   * applied yet.
+   */
   reset(): void
 }
 

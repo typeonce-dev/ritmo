@@ -3,11 +3,11 @@
  *
  * Types catch wrong calls and devtools catch wrong runs; these rules catch
  * the source patterns neither can see: simulation code that reads the wall
- * clock, `Math.random`, engine-dependent math, or the page, timers counted
- * in floats, data that cannot be saved, casts that skip a brand's check,
- * state values that keep a previous state's fields, query entities and data
- * kept past their run, and runtime results that are dropped. Every report
- * names the Ritmo API to use instead.
+ * clock, `Math.random`, engine-dependent math, or the page, or plays sound,
+ * timers counted in floats, data that cannot be saved, casts that skip a
+ * brand's check, state values that keep a previous state's fields, query
+ * entities and data kept past their run, and runtime results that are
+ * dropped. Every report names the Ritmo API to use instead.
  *
  * Register the plugin in `.oxlintrc.json` with `"jsPlugins":
  * ["@typeonce/oxlint-plugin-ritmo"]`. Its rules are named `ritmo/<rule>`.

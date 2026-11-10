@@ -85,18 +85,20 @@ const staleRun = (name: string): never => {
  * A required slot is empty only when its entity outlived what the query proved:
  * it was despawned, or lost the component. Reading would hand out the internal
  * marker as a value, and writing would put the component back without the insert
- * path, so both fail loudly instead.
+ * path, so both fail loudly instead. `name` is the slot's component or relation;
+ * a debug runtime's `data` throws it too for a despawned entity whose id is used
+ * again.
  */
-const staleEntity = (record: EntityRecord, ordinal: number): never => {
+export const staleEntity = (name: string, record: EntityRecord): never => {
   throw new Error(
-    `${record.nameAt(ordinal)} was used for an entity ${record.alive ? "that lost it" : "that was despawned"}: `
+    `${name} was used for an entity ${record.alive ? "that lost it" : "that was despawned"}: `
     + "to follow an entity across runs, keep its id and resolve it again with queries.x.get(id), which is fallible"
   )
 }
 
 /** A slot access that failed its one hot-path check: the component is gone, or the slot is from another run. */
 const invalid = (record: EntityRecord, ordinal: number, value: unknown): never =>
-  value === ABSENT ? staleEntity(record, ordinal) : staleRun(record.nameAt(ordinal))
+  value === ABSENT ? staleEntity(record.nameAt(ordinal), record) : staleRun(record.nameAt(ordinal))
 
 // `typeof` first: an object or string value skips the comparison with the imported marker.
 const isPresent = (value: unknown): boolean => typeof value === "symbol" && value === PRESENT
@@ -170,17 +172,27 @@ const noSaved = new Uint32Array(PAGE_SIZE >>> 5)
 const noValues: Array<unknown> = Array.from({ length: PAGE_SIZE }, () => ABSENT)
 
 /**
+ * An entity whose page is not in the store: a page leaves its store when it
+ * empties, so an entity kept past its run that was despawned or lost the
+ * component finds none; one that holds the component is from another runtime.
+ * Kept out of `pageOfEntity` so the accessors' hot path stays small enough to
+ * inline.
+ */
+const missingPage = (record: EntityRecord, ordinal: number): never => {
+  if (!record.alive || (record.heldBits[ordinal >>> 5]! & (1 << (ordinal & 31))) === 0) staleEntity(record.nameAt(ordinal), record)
+  throw new Error(`An entity was used with the data of ${record.nameAt(ordinal)} of a runtime it does not belong to: an entity is valid in the runtime whose query produced it`)
+}
+
+/**
  * The page of an entity, for an accessor entering it: the one place a slot kept
  * past its run fails, since the end of a run makes every accessor forget its
- * page. An entity from another runtime may name a page this one does not have.
+ * page.
  */
 const pageOfEntity = (pages: Array<Page | undefined>, index: number, record: EntityRecord, ordinal: number, stamp: Stamp): Page => {
   if (!stamp.live) staleRun(record.nameAt(ordinal))
   const page = pages[index]
-  if (page === undefined) {
-    throw new Error(`An entity was used with the data of ${record.nameAt(ordinal)} of a runtime it does not belong to: an entity is valid in the runtime whose query produced it`)
-  }
-  return page
+  if (page === undefined) missingPage(record, ordinal)
+  return page!
 }
 
 /*
@@ -532,9 +544,7 @@ export const relationAccessor = <T>(stamp: Stamp, name: string, required: boolea
   return {
     get: (record) => {
       const value = held(record)
-      if (value === undefined && required) {
-        throw new Error(`${name} was used for an entity ${record.alive ? "that lost it" : "that was despawned"}: to follow an entity across runs, keep its id and resolve it again with queries.x.get(id), which is fallible`)
-      }
+      if (value === undefined && required) staleEntity(name, record)
       return value
     },
     has: (record) => held(record) !== undefined

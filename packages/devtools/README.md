@@ -179,6 +179,12 @@ f186 update  -                   transition Game/Flow Playing -> Paused applied
 - `skipped: <condition> is false`: a run condition held the system back;
   `discarded N Event` means messages published meanwhile are lost to it.
 - `missed ...`: the system could not see entries dropped before it ran.
+- `rewind to tick 141, undoing f12-f14`: `runtime.rewind` put the world back
+  to a checkpoint (a rollback peer does this when late input arrives), so
+  what frames 12 to 14 changed is gone and the ticks after it run in their
+  place. `why`, `journal`, and every other filter show it between the lines
+  it separates, so a value whose `before` is not the previous line's `after`
+  has the rewind above it. `report()` counts the rewinds.
 - Lines that change nothing are hidden by default; pass `verbose: true` to
   see them, marked `(unchanged)`.
 - Large objects print only their changed paths:
@@ -349,7 +355,9 @@ plugins: [ReplayVitePlugin.plugin()]
   data (input) or plain data (rules); anything else is a compile error that
   names the service. Time and randomness live in the world, so the file holds
   everything the simulation read: periodic snapshots, each tick's source
-  values (as changes), and every `runtime.send`.
+  values (as changes), and every `runtime.send`. On a rollback peer a
+  `runtime.rewind` undoes recorded ticks; the recorder forgets them, so the
+  file holds each tick as it last ran and replays like the session played.
 - Sinks deliver files: `Replay.memorySink()` (tests), `ReplayNodeSink`
   (files, for headless runs), `ReplayViteSink` + `ReplayVitePlugin` (dev
   server). The generic modules call no platform API; wall time comes from

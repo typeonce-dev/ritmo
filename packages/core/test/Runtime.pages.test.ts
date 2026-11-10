@@ -134,6 +134,29 @@ describe("component storage in pages", () => {
     expect(ids[3]! >> 8).toBe(ids[0]! >> 8)
     expect(runtime.inspect(AllHealth)).toEqual([1, 3])
   })
+
+  it("serves a page emptied and filled again by one marker, and rolls back a failed write to it", () => {
+    const runtime = makeRuntime()
+    const Swap = Game.System("Pages/Swap", {
+      queries: { all: Healths },
+      commands: Game.System.commands(Game.System.removes(Health), Game.System.inserts(Health))
+    }, ({ queries, commands }) => {
+      const entities = queries.all.each()
+      // Every holder loses Health, then gets it back, in one applyDeferred: the page empties in between.
+      for (const entity of entities) commands.remove(entity, Health)
+      for (const entity of entities) commands.insert(entity, [Health, queries.all.data.health.get(entity) + 10])
+    })
+    const Fail = Game.System("Pages/FailAfterSwap", { queries: { all: Healths } }, ({ queries }) => {
+      for (const entity of queries.all.each()) queries.all.data.health.set(entity, -1)
+      return Result.failure("Rejected" as const)
+    })
+    const watch = watcher()
+    runtime.tick(Game.Schedule(spawner(3), Game.Schedule.applyDeferred(), watch.system))
+    runtime.tick(Game.Schedule(Swap, Game.Schedule.applyDeferred(), watch.system))
+    expect(runtime.tick(Game.Schedule(Fail)).ok).toBe(false)
+    expect(runtime.inspect(AllHealth)).toEqual([10, 11, 12])
+    expect(watch.runs).toEqual([[0, 1, 2], [10, 11, 12]])
+  })
 })
 
 describe("data and entities from an earlier run", () => {

@@ -80,4 +80,15 @@ describe("Pointer", () => {
     const element = {} as HTMLCanvasElement
     expect(Pointer.actions(element, window, bindings, { lock: document })).type.toBe<Pointer.Actions<typeof bindings>>()
   })
+
+  it("reads the buttons bitmask of a real PointerEvent, optional for hosts that send none", () => {
+    expect<PointerEvent>().type.toBeAssignableTo<Pointer.PointerEventLike>()
+    expect<Pointer.PointerEventLike["buttons"]>().type.toBe<number | undefined>()
+    const chord: Pointer.PointerEventLike = { clientX: 0, clientY: 0, button: 0, buttons: 3, pointerId: 1, preventDefault() {} }
+    const old: Pointer.PointerEventLike = { clientX: 0, clientY: 0, button: 0, pointerId: 1, preventDefault() {} }
+    void [chord, old]
+    // @ts-expect-error Type 'string' is not assignable to type 'number'
+    const named: Pointer.PointerEventLike = { clientX: 0, clientY: 0, button: 0, buttons: "primary", pointerId: 1, preventDefault() {} }
+    void named
+  })
 })
