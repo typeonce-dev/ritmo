@@ -4,7 +4,8 @@
  * (`memoryStore`, the website's demo, one song).
  */
 import { putFile, type Written } from "../../internal/save.ts"
-import { changedOf, decodeReview, emptyReview, type Status } from "../core/review.ts"
+import { changedOf, decodeReview, emptyReview } from "../core/review.ts"
+import type { Status } from "../../internal/review.ts"
 import { decodeSong } from "../core/song.ts"
 
 /** One song or plain audio file on the page's list. */

@@ -127,7 +127,7 @@ describe("reviews", () => {
   })
 
   it("sum up what is left to do", () => {
-    const summary = reviewSummary({ sounds: { hit, swing: hit } }, { sounds: { hit: { status: "approved", note: "", takes: [] } } })
+    const summary = reviewSummary({ sounds: { hit, swing: hit } }, { sounds: { hit: { status: "approved", note: "", takes: [], approved: approvalOf(hit, undefined) } } })
     expect(summary.summary).toBe("1 approved, 0 with changes asked, 1 not reviewed yet (of 2).")
   })
 
@@ -149,7 +149,7 @@ describe("reviews", () => {
     expect(changedSince(approvalOf(hit, undefined), hit, 1)).toBeUndefined()
   })
 
-  it("list a sound that changed since it was approved, and leave an older approval alone", () => {
+  it("list a sound that changed since it was approved, and one approved with no record of what was heard", () => {
     const summary = reviewSummary(
       { master: 0.6, sounds: { hit: { ...hit, reverb: 0.3 }, swing: hit } },
       {
@@ -159,8 +159,9 @@ describe("reviews", () => {
         }
       }
     )
-    expect(summary.summary).toBe("2 approved (1 changed since: ask the person to listen again), 0 with changes asked, 0 not reviewed yet (of 2).")
+    expect(summary.summary).toBe("1 approved (1 changed since: ask the person to listen again), 1 approved with no record of what was seen: ask the person to listen again, 0 with changes asked, 0 not reviewed yet (of 2).")
     expect(summary.sounds.map((sound) => sound.changedSinceApproved)).toEqual(["its recipe changed", undefined])
+    expect(summary.sounds.map((sound) => sound.unrecorded)).toEqual([undefined, true])
   })
 })
 

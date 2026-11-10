@@ -1,7 +1,7 @@
 /** The inspector's review and comments, the same for a song and a plain audio file. */
 import { button, callout, group, hint, section, segmented } from "../../pixel/ui/kit.ts"
 import { h } from "../../pixel/ui/dom.ts"
-import type { Status } from "../core/review.ts"
+import type { Status } from "../../internal/review.ts"
 
 type Child = Node | string | null | undefined | false
 

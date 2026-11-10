@@ -43,6 +43,7 @@
  * frame of a draft ("this pixel, here"), and, once approved, what they
  * approved (`approval.ts`), so a later change to it shows.
  */
+import { approvedSaid, goneEntry, goneSaid, statuses, unrecordedOf, type Status } from "../../internal/review.ts"
 import type { Decoded, Palette, Ramps } from "./effect.ts"
 
 export interface Draft {
@@ -83,9 +84,6 @@ export interface Bank {
   readonly backdrops?: Readonly<Record<string, string>> | undefined
   readonly effects: Readonly<Record<string, EffectEntry>>
 }
-
-export type Status = "new" | "approved" | "changes"
-export const statuses: ReadonlyArray<Status> = ["new", "approved", "changes"]
 
 /**
  * A comment the person pinned to one pixel of one frame of a draft. Frames
@@ -353,15 +351,19 @@ export const resolveComments = (review: Review, effect: string, numbers: Readonl
 /**
  * What the agent needs from a review: every effect's status, note, open
  * comments, and chosen draft, the changes first. `changed` says, by effect,
- * what is different from what the person approved (`approval.ts`).
+ * what is different from what the person approved (`approval.ts`); an
+ * approval that kept nothing of what was seen is `unrecorded`. `gone` is
+ * what was said about effects the bank no longer has, and `where` the
+ * review's path, as `notes` names it.
  */
-export const reviewSummary = (bank: Bank, review: Review, changed: Readonly<Record<string, string>> = {}) => {
+export const reviewSummary = (bank: Bank, review: Review, changed: Readonly<Record<string, string>> = {}, where = "the review") => {
+  const openOf = (said: EffectReview) => said.comments.flatMap((comment, index) => (comment.resolved === true ? [] : [{ number: index + 1, ...comment }]))
   const effects = Object.entries(bank.effects).map(([name, entry]) => {
     const said = review.effects[name] ?? newEffect
     const use = usedDraft(entry)
     const tune = use === undefined ? undefined : entry.drafts[use]?.tune
     // Open comments only, each with its number (what `fx resolve` takes): resolved ones are done.
-    const open = said.comments.flatMap((comment, index) => (comment.resolved === true ? [] : [{ number: index + 1, ...comment }]))
+    const open = openOf(said)
     const resolved = said.comments.length - open.length
     return {
       name,
@@ -372,14 +374,18 @@ export const reviewSummary = (bank: Bank, review: Review, changed: Readonly<Reco
       use,
       tune,
       drafts: Object.keys(entry.drafts).length,
-      changedSinceApproved: said.status === "approved" ? changed[name] : undefined
+      changedSinceApproved: said.status === "approved" ? changed[name] : undefined,
+      ...unrecordedOf(said.status, said.approved)
     }
   })
+  const gone = Object.entries(review.effects)
+    .filter(([name, said]) => !(name in bank.effects) && (said.status !== "new" || said.note !== "" || openOf(said).length > 0))
+    .map(([name, said]) => ({ name, ...goneEntry({ status: said.status, note: said.note, comments: openOf(said).length }, "effect", where) }))
   const count = (status: Status): number => effects.filter((effect) => effect.status === status).length
-  const stale = effects.filter((effect) => effect.changedSinceApproved !== undefined).length
   return {
-    summary: `${count("approved")} approved${stale === 0 ? "" : ` (${stale} changed since: ask the person to look again)`}, ${count("changes")} with changes asked, ${count("new")} not reviewed yet (of ${effects.length}).`,
+    summary: `${approvedSaid(effects, "look")}, ${count("changes")} with changes asked, ${count("new")} not reviewed yet (of ${effects.length}).${goneSaid(gone.length)}`,
     changes: effects.filter((effect) => effect.status === "changes"),
-    effects
+    effects,
+    gone
   }
 }

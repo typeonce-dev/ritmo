@@ -899,14 +899,11 @@ const notes = Command.make(
       entries.push({ file: asset.id, ...source, ...reviewSummary(said, { frames: got.frames, animations: got.animations, normal: got.normal?.hash }), ...lint })
     }
     const gone = yield* promised("cannot read the review", () => goneOf(found, flags.paths))
-    yield* printJson({
-      ...pixelSummary(entries),
-      gone: gone.map((entry) => ({ ...entry, next: `Its file is gone. If it was renamed, move its review to the new name's key in ${entry.review}; if it was deleted, remove it there.` }))
-    })
+    yield* printJson({ ...pixelSummary(entries, gone.length), gone })
   })
 ).pipe(
   Command.withDescription(
-    "What the person said in the review of the art under the paths: a summary of what is left, then each asset's status, note, open comments (numbered, each on an area of one frame, with `about: \"map\"` on those about its normal map), how many are resolved, and, for an approved asset that no longer looks as the person saw it, `changedSinceApproved`. An asset with several parts (a sheet's animations, a normal map) also lists `parts`, each with its own status and note, and `goneParts` for reviewed parts it no longer has. Changes asked come first. `gone` lists reviews whose file is no longer found. Exit 0 whatever the art's lint says."
+    "What the person said in the review of the art under the paths: a summary of what is left, then each asset's status, note, open comments (numbered, each on an area of one frame, with `about: \"map\"` on those about its normal map), how many are resolved, and, for an approved asset that no longer looks as the person saw it, `changedSinceApproved` (`unrecorded` when nothing of what they saw was kept). An asset with several parts (a sheet's animations, a normal map) also lists `parts`, each with its own status and note, and `goneParts` for reviewed parts it no longer has. Changes asked come first. `gone` lists reviews whose file is no longer found. Exit 0 whatever the art's lint says."
   )
 )
 

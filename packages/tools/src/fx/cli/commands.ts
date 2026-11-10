@@ -286,11 +286,11 @@ const notes = Command.make(
       if (change !== undefined) changed[name] = change
     }
     // The palette and ramps too: the person can change them on the page, and every draft draws with them.
-    yield* printJson({ file: flags.bank, review: reviewPath(flags.bank), ...reviewSummary(bank, review, changed), palette: bank.palette, ramps: bank.ramps ?? {} })
+    yield* printJson({ file: flags.bank, review: reviewPath(flags.bank), ...reviewSummary(bank, review, changed, reviewPath(flags.bank)), palette: bank.palette, ramps: bank.ramps ?? {} })
   })
 ).pipe(
   Command.withDescription(
-    "What the person said in the review: each effect's status (new, approved, changes asked), note, open comments (each numbered, on a draft, a frame, and a pixel), chosen draft, tune, and, for an approved effect that no longer matches what the person saw, `changedSinceApproved`, the changes first; and the bank's palette and ramps as they are now (the person can change them on the page)."
+    "What the person said in the review: each effect's status (new, approved, changes asked), note, open comments (each numbered, on a draft, a frame, and a pixel), chosen draft, tune, and, for an approved effect that no longer matches what the person saw, `changedSinceApproved` (`unrecorded` when nothing of what they saw was kept), the changes first; `gone`, what was said about effects the bank no longer has; and the bank's palette and ramps as they are now (the person can change them on the page)."
   )
 )
 

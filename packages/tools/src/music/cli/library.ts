@@ -13,8 +13,10 @@ import { readFile } from "node:fs/promises"
 import { basename, dirname, extname, join, relative, resolve } from "node:path"
 import { idOf, posix, rootOf, walk, writeWhole } from "../../internal/files.ts"
 import { hashBytes } from "../../internal/hash.ts"
+import { goneEntry, type Gone } from "../../internal/review.ts"
 import { mtime } from "../../internal/serve.ts"
-import { audioChangedOf, AUDIO_REVIEWS, changedOf, decodeAudioReviews, decodeReview, emptyAudioReview, emptyReview, encodeAudioReviews, reviewPath, type AudioReview, type Review, type Status } from "../core/review.ts"
+import { audioChangedOf, AUDIO_REVIEWS, changedOf, decodeAudioReviews, decodeReview, emptyAudioReview, emptyReview, encodeAudioReviews, reviewPath, type AudioReview, type Review } from "../core/review.ts"
+import type { Status } from "../../internal/review.ts"
 import { decodeSong, lengthInSeconds, type Song } from "../core/song.ts"
 import type { Entry } from "../ui/store.ts"
 
@@ -86,6 +88,41 @@ export const writeAudioReview = (file: string, review: AudioReview): Promise<voi
   const write = writing.then(async () => writeWhole(reviews, encodeAudioReviews({ ...(await readAudioReviews(reviews)), [key]: review })))
   writing = write.catch(() => undefined)
   return write
+}
+
+/**
+ * Reviews of music no longer found under `paths` (renamed or deleted), so
+ * the agent can move them: a song's review with no song beside it, and a
+ * plain file's review in `music.review.json` whose file is gone. A review of
+ * a file that is still there, outside the folders named, is not this
+ * review's.
+ */
+export const goneOf = async (found: ReadonlyArray<MusicFile>, paths: ReadonlyArray<string>) => {
+  const known = new Set(found.map((music) => music.file))
+  const folders = paths.map((path) => resolve(path)).filter((path) => existsSync(path) && statSync(path).isDirectory())
+  const gone: Array<{ readonly file: string; readonly review: string; readonly key?: string } & Gone> = []
+  for (const folder of folders) {
+    for (const file of await walk(folder, isStems)) {
+      const song = file.endsWith(".song.review.json") ? `${file.slice(0, -".review.json".length)}.json` : undefined
+      if (song === undefined || existsSync(song)) continue
+      const read = decodeReview(await readFile(file, "utf8"))
+      if (!read.ok) throw new Error(`${file}: ${read.error}`)
+      const said = read.value
+      if (said.status === "new" && said.note === "" && said.comments.length === 0) continue
+      gone.push({ file: idOf(song), review: idOf(file), ...goneEntry({ status: said.status, note: said.note, comments: said.comments.length }, "song", idOf(file), true) })
+    }
+  }
+  const shared = new Set([...found.filter((music) => music.kind === "audio").map((music) => audioReviewPlace(music.file).reviews), ...folders.map((folder) => join(rootOf(join(folder, AUDIO_REVIEWS)), AUDIO_REVIEWS))])
+  for (const reviews of [...shared].sort()) {
+    const root = dirname(reviews)
+    for (const [key, said] of Object.entries(await readAudioReviews(reviews))) {
+      const file = join(root, key)
+      if (known.has(file) || (existsSync(file) && !folders.some((folder) => !relative(folder, file).startsWith("..")))) continue
+      if (said.status === "new" && said.note === "" && said.comments.length === 0) continue
+      gone.push({ file: idOf(file), review: idOf(reviews), key, ...goneEntry({ status: said.status, note: said.note, comments: said.comments.length }, "file", idOf(reviews)) })
+    }
+  }
+  return gone
 }
 
 /** A hash of the file, kept while the file does not change: a long track takes a moment to hash. */

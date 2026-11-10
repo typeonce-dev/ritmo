@@ -152,9 +152,9 @@ const notes = Command.make(
   Effect.fn("notes")(function* (flags) {
     const bank = yield* readBank(flags.bank)
     const review = yield* readReview(flags.bank)
-    yield* printJson({ file: flags.bank, review: reviewPath(flags.bank), ...reviewSummary(bank, review) })
+    yield* printJson({ file: flags.bank, review: reviewPath(flags.bank), ...reviewSummary(bank, review, reviewPath(flags.bank)) })
   })
-).pipe(Command.withDescription("What the person said in the review: each sound's status (new, approved, changes asked), its note, and, for an approved sound that no longer matches what the person heard, `changedSinceApproved`, the changes first."))
+).pipe(Command.withDescription("What the person said in the review: each sound's status (new, approved, changes asked), its note, and, for an approved sound that no longer matches what the person heard, `changedSinceApproved` (`unrecorded` when nothing of what they heard was kept), the changes first. `gone` lists what was said about sounds the bank no longer has."))
 
 const STARTER: Bank = {
   master: 0.6,

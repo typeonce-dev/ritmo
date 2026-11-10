@@ -20,7 +20,7 @@ import { renderSong } from "../core/render.ts"
 import { audioReviewSummary, changedOf, musicSummary, reviewPath, reviewSummary } from "../core/review.ts"
 import { encodeSong, nameOf, scaleNames, type Song } from "../core/song.ts"
 import { readBytes, readReview, readSong } from "./io.ts"
-import { audioReviewPlace, AUDIO_FILES, findMusic, readMusic, type MusicFile } from "./library.ts"
+import { audioReviewPlace, AUDIO_FILES, findMusic, goneOf, readMusic, type MusicFile } from "./library.ts"
 import { serve } from "./serve.ts"
 
 const exitWith = (code: number): Effect.Effect<void, Exit> => (code === 0 ? Effect.void : Effect.fail(new Exit({ code })))
@@ -203,11 +203,12 @@ const notes = Command.make(
       else if (read.kind === "song") entries.push({ file: music.id, kind: music.kind, review: reviewPath(music.id), ...reviewSummary(read.song, read.review) })
       else entries.push({ file: music.id, kind: music.kind, review: path.relative(process.cwd(), audioReviewPlace(music.file).reviews), ...audioReviewSummary(read.review, read.hash) })
     }
-    yield* printJson(musicSummary(entries))
+    const gone = yield* Effect.tryPromise({ try: () => goneOf(found, flags.paths), catch: (error) => new CliFailure({ message: `cannot read the reviews: ${error instanceof Error ? error.message : String(error)}` }) })
+    yield* printJson({ ...musicSummary(entries, gone.length), gone })
   })
 ).pipe(
   Command.withDescription(
-    "What the person said in the review of the music under the paths: a summary of what is left, then each piece's status, note, comments (on bars and tracks of a song, on times of an audio file), the edits they made by hand on a song, and, for an approved piece that no longer matches what the person heard, `changedSinceApproved`. Changes asked come first."
+    "What the person said in the review of the music under the paths: a summary of what is left, then each piece's status, note, comments (on bars and tracks of a song, on times of an audio file), the edits they made by hand on a song, and, for an approved piece that no longer matches what the person heard, `changedSinceApproved` (`unrecorded` when nothing of what they heard was kept). Changes asked come first. `gone` lists reviews whose music is no longer found."
   )
 )
 
