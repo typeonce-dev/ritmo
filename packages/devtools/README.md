@@ -372,7 +372,7 @@ const make = (playback: Replay.Playback) => {
 }
 const file = Replay.parse(JSON.parse(readFileSync(".replays/....json", "utf8")))
 const replay = file.ok ? Replay.session(make, file.value) : file
-replay.value.play()                       // run the ticks; reports checkpoint divergence
+replay.value.play()                       // run the ticks; compares checkpoints from tick 0 (below)
 replay.value.session.why(12, Position)    // a normal Session over the replayed frames
 Replay.session(make, file.value, { labels: Labels }) // names entities, as in Session.make
 await Verify.acrossEngines(make, file.value) // replays twice here and against the recording
@@ -381,6 +381,27 @@ Replay.extract(make, file.value, { from: 1400, to: 1412 }) // a small replay for
 
 `Replay.session(make, file, { invariants })` checks invariants after every
 replayed tick, so `play()` stops where one breaks, as a `Session` run does.
+
+A replay is for reproducing and inspecting a bug. Whether `play()` also
+checks determinism depends on where the file starts (`play().data.checkpoints`):
+
+- `{ _tag: "Compared", diverged }`: the file starts at tick 0, the world
+  when the recorder started, so the replay starts where the recorded run
+  did. Each checkpoint hash in `diverged` differs (`DIVERGED at tick 16`):
+  the simulation is not deterministic, the code changed since recording, or
+  the recorder started after a schedule left an event in flight. Empty
+  prints `checkpoints match`.
+- `{ _tag: "NotCompared", reason }`: the window rolled past tick 0 (a run
+  longer than `keep`, or a `Replay.extract`), so it starts from a save. A
+  save does not hold events in flight or what each `added()` / `changed()`
+  reader had already seen, so an ordinary game replays to other checksums
+  from it, and none are compared: `starts from a save at tick 14: checksums
+  are not compared (...)`. The replay still plays; stepping, `why`, and
+  invariants work as in any session.
+
+Determinism is verified by `Determinism.check`, by `ritmo-devtools verify`
+and `Verify.acrossEngines` (Node twice, and browser engines, compared run
+against run), and by a replay recorded from tick 0.
 
 `playback.source(descriptor)` takes any `snapshot()`-only source service:
 `Schedule.Source<T>`, `Netcode.Source<T>`, or browser input declared as
@@ -427,8 +448,10 @@ export const replayTarget = (playback: Replay.Playback) => {
 ```
 
 - Node always runs, as the reference: twice (a difference is
-  nondeterminism here) and against the recording's checkpoints (a
-  difference is a code change since recording, or the recording engine).
+  nondeterminism here) and against the recording's checkpoints when the
+  replay starts at tick 0 (a difference is a code change since recording,
+  or the recording engine). A replay from a later save says the recording
+  was not compared, and why (`recording: "notCompared"` in the result).
   `--engines node`, the default, needs no other dependency.
 - Browser engines run headless through Playwright, with the entry served by
   a bare Vite dev server (the game's `vite.config` is not read). Install
@@ -532,6 +555,10 @@ if (!found.ok && found.error._tag === "Found") {
 - Shrinking drops ranges of frames, then moves each remaining value to
   `neutral` (whole, then one field at a time), re-running the simulation for
   every candidate. `shrinkAttempts` (500) bounds it.
+- After `setup`, each run loads its own save of the world before the first
+  fuzzed frame, because that save is where its replay starts: what setup
+  left in flight (an event no system has read yet) is in neither, and
+  transient components setup added are gone from both.
 - The error side is `Found` (with the shrunk `replay`, `seed`, `frame`, and
   `reproduces`: whether `Replay.session` replays it to the same violation),
   `Flaky` (the same input did not fail again: run `Determinism.check`),
