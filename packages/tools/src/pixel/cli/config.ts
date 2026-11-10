@@ -17,7 +17,8 @@
  * (`.hex` or `.gpl`) relative to the config. `recipe` holds recipe settings
  * every fix starts from.
  */
-import { Data, Effect, FileSystem, Option, Path, Schema } from "effect"
+import { Data, Effect, FileSystem, Option, Path } from "effect"
+import { unknownKeys } from "../../internal/keys.ts"
 import { defaultBakeSetup, parseBakeSetup, type BakeSetup } from "../core/bake.ts"
 import type { LintRules } from "../core/lint.ts"
 import { parsePalette } from "../core/palette.ts"
@@ -28,16 +29,34 @@ export const CONFIG_FILE = "pixel.config.json"
 /** A failure the CLI reports and exits on: a missing file, a bad setting. */
 export class CliFailure extends Data.TaggedError("CliFailure")<{ readonly message: string; readonly details?: Readonly<Record<string, unknown>> }> {}
 
-const Size = Schema.String.check(Schema.isPattern(/^\d+x\d+$/, { message: 'a size is "WIDTHxHEIGHT", like "16x16"' }))
+interface ConfigFile {
+  readonly palette?: string | ReadonlyArray<string>
+  readonly sizes?: ReadonlyArray<string>
+  readonly maxColors?: number
+  readonly transparentBackground?: boolean
+  readonly recipe?: Readonly<Record<string, unknown>>
+  readonly bake?: unknown
+}
 
-const ConfigSchema = Schema.Struct({
-  palette: Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])),
-  sizes: Schema.optionalKey(Schema.Array(Size)),
-  maxColors: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))),
-  transparentBackground: Schema.optionalKey(Schema.Boolean),
-  recipe: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
-  bake: Schema.optionalKey(Schema.Unknown)
-})
+const CONFIG_KEYS = ["palette", "sizes", "maxColors", "transparentBackground", "recipe", "bake"]
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
+
+/** The config's settings, or every problem in it: a key it does not know (a typo would turn its rule off), or a value of the wrong kind. */
+const decodeConfig = (raw: unknown): { readonly ok: true; readonly value: ConfigFile } | { readonly ok: false; readonly problems: ReadonlyArray<string> } => {
+  if (!isRecord(raw)) return { ok: false, problems: ['a config is {"palette": ..., "sizes": ["16x16"], "maxColors": 16, ...}'] }
+  const problems = unknownKeys(raw, CONFIG_KEYS)
+  const { palette, sizes, maxColors, transparentBackground, recipe } = raw
+  if (palette !== undefined && typeof palette !== "string" && !(Array.isArray(palette) && palette.every((color) => typeof color === "string")))
+    problems.push("palette must be a preset's name, a palette file, or a list of hex colors")
+  if (sizes !== undefined && !(Array.isArray(sizes) && sizes.every((size) => typeof size === "string")))
+    problems.push('sizes must be a list of sizes, like ["16x16", "32x32"]')
+  else for (const size of sizes ?? []) if (!/^\d+x\d+$/.test(size)) problems.push(`sizes: "${size}" is not a size; a size is "WIDTHxHEIGHT", like "16x16"`)
+  if (maxColors !== undefined && !(Number.isInteger(maxColors) && (maxColors as number) >= 1)) problems.push("maxColors must be a whole number, 1 or more")
+  if (transparentBackground !== undefined && typeof transparentBackground !== "boolean") problems.push("transparentBackground must be true or false")
+  if (recipe !== undefined && !isRecord(recipe)) problems.push("recipe must be an object of recipe settings")
+  return problems.length > 0 ? { ok: false, problems } : { ok: true, value: raw }
+}
 
 export interface Config {
   /** Where the config was read from; undefined when there is none. */
@@ -100,9 +119,9 @@ export const loadConfig = Effect.fn("loadConfig")(function* (explicit: Option.Op
     try: (): unknown => JSON.parse(text),
     catch: (error) => new CliFailure({ message: `${file.value} is not JSON: ${String(error)}` })
   })
-  const config = yield* Schema.decodeUnknownEffect(ConfigSchema)(raw).pipe(
-    Effect.mapError((error) => new CliFailure({ message: `${file.value}: ${error.message}` }))
-  )
+  const decoded = decodeConfig(raw)
+  if (!decoded.ok) return yield* new CliFailure({ message: `${file.value} has ${decoded.problems.length} problem${decoded.problems.length === 1 ? "" : "s"}`, details: { file: file.value, problems: decoded.problems } })
+  const config = decoded.value
   const base = path.dirname(file.value)
   const bake = parseBakeSetup(config.bake)
   if (!bake.ok) return yield* new CliFailure({ message: `${file.value} has ${bake.problems.length} problem${bake.problems.length === 1 ? "" : "s"} in \`bake\``, details: { file: file.value, problems: bake.problems } })

@@ -10,11 +10,9 @@
  * approved, what they heard, so a later change to it shows.
  */
 import { hashText } from "../../internal/hash.ts"
+import { approvedSaid, goneEntry, goneSaid, statuses, unrecordedOf, type Status } from "../../internal/review.ts"
 import { decodeRecipeValue, recipeValue, type Bank, type Decoded, type Recipe } from "./recipe.ts"
 import { towards, type Take, type Toward } from "./takes.ts"
-
-export type Status = "new" | "approved" | "changes"
-export const statuses: ReadonlyArray<Status> = ["new", "approved", "changes"]
 
 /** What the person heard when they approved a sound: a hash of its recipe, and the bank's master volume. */
 export interface Approved {
@@ -124,19 +122,27 @@ export const encodeReview = (review: Review): string => {
   return JSON.stringify({ version: 1, sounds }, null, 2) + "\n"
 }
 
-/** What the agent needs from a review: every sound's status and note, what changed since it was approved, and what is still to do. */
-export const reviewSummary = (bank: Bank, review: Review) => {
+/**
+ * What the agent needs from a review: every sound's status and note, what
+ * changed since it was approved (or that nothing of what was heard was
+ * kept), what is still to do, and under `gone` what was said about sounds
+ * the bank no longer has. `where` is the review's path, as `notes` names it.
+ */
+export const reviewSummary = (bank: Bank, review: Review, where = "the review") => {
   const names = Object.keys(bank.sounds)
   const of = (name: string): SoundReview => review.sounds[name] ?? newSound
   const sounds = names.map((name) => {
     const entry = of(name)
-    return { name, status: entry.status, note: entry.note === "" ? undefined : entry.note, picked: entry.picked, takes: entry.takes.length, changedSinceApproved: changedOf(entry, bank.sounds[name]!, bank.master) }
+    return { name, status: entry.status, note: entry.note === "" ? undefined : entry.note, picked: entry.picked, takes: entry.takes.length, changedSinceApproved: changedOf(entry, bank.sounds[name]!, bank.master), ...unrecordedOf(entry.status, entry.approved) }
   })
+  const gone = Object.entries(review.sounds)
+    .filter(([name, entry]) => !(name in bank.sounds) && (entry.status !== "new" || entry.note !== ""))
+    .map(([name, entry]) => ({ name, ...goneEntry(entry, "sound", where) }))
   const count = (status: Status): number => sounds.filter((sound) => sound.status === status).length
-  const stale = sounds.filter((sound) => sound.changedSinceApproved !== undefined).length
   return {
-    summary: `${count("approved")} approved${stale === 0 ? "" : ` (${stale} changed since: ask the person to listen again)`}, ${count("changes")} with changes asked, ${count("new")} not reviewed yet (of ${names.length}).`,
+    summary: `${approvedSaid(sounds, "listen")}, ${count("changes")} with changes asked, ${count("new")} not reviewed yet (of ${names.length}).${goneSaid(gone.length)}`,
     changes: sounds.filter((sound) => sound.status === "changes"),
-    sounds
+    sounds,
+    gone
   }
 }

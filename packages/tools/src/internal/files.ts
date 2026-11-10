@@ -5,8 +5,8 @@
  * that must not ship with the game is kept.
  */
 import { existsSync } from "node:fs"
-import { readdir } from "node:fs/promises"
-import { basename, dirname, join, relative, sep } from "node:path"
+import { readdir, realpath, rename, rm, writeFile } from "node:fs/promises"
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 
 /** A path with `/` between folders, whatever the platform: how review files and the page name files. */
 export const posix = (path: string): string => path.split(sep).join("/")
@@ -48,4 +48,38 @@ export const rootOf = (file: string): string => {
   }
   roots.set(start, folder)
   return folder
+}
+
+/**
+ * The real path of `file` (from `folder`, links followed) when it is inside
+ * `folder`, else `undefined`: a file that is not there, and one a path or a
+ * link leads out of the folder to. What a page asks for by a path someone
+ * can write (a bank's drafts) is read only through this.
+ */
+export const inside = async (folder: string, file: string): Promise<string | undefined> => {
+  try {
+    const [root, real] = await Promise.all([realpath(folder), realpath(resolve(folder, file))])
+    const from = relative(root, real)
+    return from !== "" && from !== ".." && !from.startsWith(`..${sep}`) && !isAbsolute(from) ? real : undefined
+  } catch {
+    return undefined
+  }
+}
+
+let temps = 0
+
+/**
+ * Writes a file whole or not at all: to a hidden file beside it, then
+ * renamed over it, so a page or a command reading it meanwhile never sees
+ * half of it.
+ */
+export const writeWhole = async (file: string, data: string | Uint8Array): Promise<void> => {
+  const temp = join(dirname(file), `.${basename(file)}.${process.pid}-${++temps}.tmp`)
+  try {
+    await writeFile(temp, data)
+    await rename(temp, file)
+  } catch (error) {
+    await rm(temp, { force: true })
+    throw error
+  }
 }

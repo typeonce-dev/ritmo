@@ -43,6 +43,8 @@
  * frame of a draft ("this pixel, here"), and, once approved, what they
  * approved (`approval.ts`), so a later change to it shows.
  */
+import { unknownKeys } from "../../internal/keys.ts"
+import { approvedSaid, goneEntry, goneSaid, statuses, unrecordedOf, type Status } from "../../internal/review.ts"
 import type { Decoded, Palette, Ramps } from "./effect.ts"
 
 export interface Draft {
@@ -83,9 +85,6 @@ export interface Bank {
   readonly backdrops?: Readonly<Record<string, string>> | undefined
   readonly effects: Readonly<Record<string, EffectEntry>>
 }
-
-export type Status = "new" | "approved" | "changes"
-export const statuses: ReadonlyArray<Status> = ["new", "approved", "changes"]
 
 /**
  * A comment the person pinned to one pixel of one frame of a draft. Frames
@@ -148,13 +147,18 @@ const parse = (text: string): Decoded<unknown> => {
   }
 }
 
+/** Whether a path in a bank stays inside its folder: not absolute, and no `..` in it. The review page reads what a bank names, and the page writes the bank. */
+const staysInside = (file: string): boolean => !/^([\\/]|[a-zA-Z]:)/.test(file) && !file.split(/[\\/]/).includes("..")
+
+const INSIDE = 'must be a path inside the bank\'s folder, not absolute and with no "..": keep the bank in a folder that holds its drafts and art'
+
 export const decodeBank = (text: string): Decoded<Bank> => {
   const parsed = parse(text)
   if (!parsed.ok) return parsed
   const raw = parsed.value
   if (!isRecord(raw) || !isRecord(raw.palette) || !isRecord(raw.effects))
     return { ok: false, error: 'an effects bank is {"version": 1, "palette": {"name": "#rrggbb"}, "effects": {"name": {"drafts": {"a": {"file": "..."}}}}}' }
-  const errors: Array<string> = []
+  const errors: Array<string> = unknownKeys(raw, ["version", "palette", "ramps", "backdrops", "standIn", "effects"])
   const palette: Record<string, string> = {}
   for (const [name, hex] of Object.entries(raw.palette)) {
     if (typeof hex !== "string" || !/^#[0-9a-f]{6}$/i.test(hex)) errors.push(`palette.${name} must be a #rrggbb color`)
@@ -185,6 +189,8 @@ export const decodeBank = (text: string): Decoded<Bank> => {
   if (raw.standIn !== undefined) {
     if (!isRecord(raw.standIn) || typeof raw.standIn.file !== "string" || raw.standIn.file === "" || !pixel(raw.standIn.anchor))
       errors.push('standIn must be {"file": "a PNG of one of the game\'s sprites", "anchor": [x, y] (its feet)}')
+    else if (unknownKeys(raw.standIn, ["file", "anchor"]).length > 0) errors.push(...unknownKeys(raw.standIn, ["file", "anchor"], "standIn."))
+    else if (!staysInside(raw.standIn.file)) errors.push(`standIn.file ${INSIDE}`)
     else standIn = { file: raw.standIn.file, anchor: [raw.standIn.anchor[0], raw.standIn.anchor[1]] }
   }
   const effects: Record<string, EffectEntry> = {}
@@ -193,12 +199,15 @@ export const decodeBank = (text: string): Decoded<Bank> => {
       errors.push(`effects.${name} needs drafts: {"a": {"file": "..."}}`)
       continue
     }
+    errors.push(...unknownKeys(value, ["about", "standIn", "drafts", "use"], `effects.${name}.`))
     const drafts: Record<string, Draft> = {}
     for (const [id, draft] of Object.entries(value.drafts)) {
       if (!isRecord(draft) || typeof draft.file !== "string" || draft.file === "") {
         errors.push(`effects.${name}.drafts.${id} needs a file`)
         continue
       }
+      errors.push(...unknownKeys(draft, ["file", "seed", "tune", "accept", "recolor"], `effects.${name}.drafts.${id}.`))
+      if (!staysInside(draft.file)) errors.push(`effects.${name}.drafts.${id}.file ${INSIDE}`)
       if (draft.seed !== undefined && !Number.isInteger(draft.seed)) errors.push(`effects.${name}.drafts.${id}.seed must be a whole number`)
       const tune: Record<string, number> = {}
       if (draft.tune !== undefined && !isRecord(draft.tune)) errors.push(`effects.${name}.drafts.${id}.tune must be an object of numbers`)
@@ -346,15 +355,19 @@ export const resolveComments = (review: Review, effect: string, numbers: Readonl
 /**
  * What the agent needs from a review: every effect's status, note, open
  * comments, and chosen draft, the changes first. `changed` says, by effect,
- * what is different from what the person approved (`approval.ts`).
+ * what is different from what the person approved (`approval.ts`); an
+ * approval that kept nothing of what was seen is `unrecorded`. `gone` is
+ * what was said about effects the bank no longer has, and `where` the
+ * review's path, as `notes` names it.
  */
-export const reviewSummary = (bank: Bank, review: Review, changed: Readonly<Record<string, string>> = {}) => {
+export const reviewSummary = (bank: Bank, review: Review, changed: Readonly<Record<string, string>> = {}, where = "the review") => {
+  const openOf = (said: EffectReview) => said.comments.flatMap((comment, index) => (comment.resolved === true ? [] : [{ number: index + 1, ...comment }]))
   const effects = Object.entries(bank.effects).map(([name, entry]) => {
     const said = review.effects[name] ?? newEffect
     const use = usedDraft(entry)
     const tune = use === undefined ? undefined : entry.drafts[use]?.tune
     // Open comments only, each with its number (what `fx resolve` takes): resolved ones are done.
-    const open = said.comments.flatMap((comment, index) => (comment.resolved === true ? [] : [{ number: index + 1, ...comment }]))
+    const open = openOf(said)
     const resolved = said.comments.length - open.length
     return {
       name,
@@ -365,14 +378,18 @@ export const reviewSummary = (bank: Bank, review: Review, changed: Readonly<Reco
       use,
       tune,
       drafts: Object.keys(entry.drafts).length,
-      changedSinceApproved: said.status === "approved" ? changed[name] : undefined
+      changedSinceApproved: said.status === "approved" ? changed[name] : undefined,
+      ...unrecordedOf(said.status, said.approved)
     }
   })
+  const gone = Object.entries(review.effects)
+    .filter(([name, said]) => !(name in bank.effects) && (said.status !== "new" || said.note !== "" || openOf(said).length > 0))
+    .map(([name, said]) => ({ name, ...goneEntry({ status: said.status, note: said.note, comments: openOf(said).length }, "effect", where) }))
   const count = (status: Status): number => effects.filter((effect) => effect.status === status).length
-  const stale = effects.filter((effect) => effect.changedSinceApproved !== undefined).length
   return {
-    summary: `${count("approved")} approved${stale === 0 ? "" : ` (${stale} changed since: ask the person to look again)`}, ${count("changes")} with changes asked, ${count("new")} not reviewed yet (of ${effects.length}).`,
+    summary: `${approvedSaid(effects, "look")}, ${count("changes")} with changes asked, ${count("new")} not reviewed yet (of ${effects.length}).${goneSaid(gone.length)}`,
     changes: effects.filter((effect) => effect.status === "changes"),
-    effects
+    effects,
+    gone
   }
 }

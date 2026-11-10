@@ -34,7 +34,17 @@ const program = Command.run(tools, { version: toolsVersion }).pipe(
     })
   ),
   // A usage mistake: the CLI has already printed what went wrong and the help.
-  Effect.catchIf(CliError.isCliError, () => Effect.fail(new Exit({ code: 2 })))
+  Effect.catchIf(CliError.isCliError, () => Effect.fail(new Exit({ code: 2 }))),
+  // Anything else thrown was not expected (a draft's own code, or a bug): said in one line, with no stack, and exit 1.
+  Effect.catchDefect((defect) =>
+    Effect.gen(function* () {
+      const command = process.argv.slice(2).filter((arg) => !arg.startsWith("-")).slice(0, 2).join(" ")
+      const message = `${command === "" ? "ritmo-tools" : command} failed: ${defect instanceof Error ? defect.message : String(defect)}`
+      yield* Console.error(`ritmo-tools: ${message}`)
+      yield* printJson({ error: message, next: "Not a failure the tool expected: the error says what threw. If it is not in your own code (a draft) or input, report it with the command and its input." })
+      return yield* new Exit({ code: 1 })
+    })
+  )
 )
 
 program.pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)

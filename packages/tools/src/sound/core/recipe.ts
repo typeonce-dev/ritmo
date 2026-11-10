@@ -19,6 +19,7 @@
  * "sounds": {...}}`): the game's sounds, one file, and the master volume the
  * game plays them at.
  */
+import { unknownKeys } from "../../internal/keys.ts"
 
 export type Wave = "sine" | "triangle" | "square" | "sawtooth"
 export const waves: ReadonlyArray<Wave> = ["sine", "triangle", "square", "sawtooth"]
@@ -162,6 +163,16 @@ const reader = (errors: Array<string>) => {
 /** The highest frequency a layer may ask for: past it, nothing is heard at 44.1 kHz. */
 const NYQUIST = 20000
 
+/** Each layer type's own keys, besides `type`, `gain`, and `delay`. */
+const LAYER_KEYS: Readonly<Record<string, ReadonlyArray<string>>> = {
+  tone: ["wave", "from", "to", "duration", "attack"],
+  noise: ["filter", "from", "to", "q", "duration", "attack"],
+  swish: ["low", "peak", "peakAt", "q", "duration"],
+  crunch: ["from", "to", "duration"],
+  metal: ["pitch", "duration"],
+  click: []
+}
+
 const decodeLayer = (raw: unknown, at: string, errors: Array<string>): Layer | undefined => {
   if (!isRecord(raw)) {
     errors.push(`${at} must be an object`)
@@ -169,6 +180,8 @@ const decodeLayer = (raw: unknown, at: string, errors: Array<string>): Layer | u
   }
   const { number, oneOf } = reader(errors)
   const type = raw.type
+  const keys = LAYER_KEYS[typeof type === "string" ? type : ""]
+  if (keys !== undefined) errors.push(...unknownKeys(raw, ["type", "gain", "delay", ...keys], `${at}.`))
   const delay = number(raw.delay, `${at}.delay`, 0, 0)
   const gain = number(raw.gain, `${at}.gain`, undefined, 0, 4)
   const hz = (key: string, fallback?: number): number => number(raw[key], `${at}.${key}`, fallback, 1, NYQUIST)
@@ -227,6 +240,7 @@ const decodeTune = (raw: unknown, at: string, errors: Array<string>): Tune | und
     return undefined
   }
   const { number } = reader(errors)
+  errors.push(...unknownKeys(raw, ["pitch", "length", "brightness", "echo", "volume"], `${at}.`))
   return {
     pitch: number(raw.pitch, `${at}.pitch`, 0, -24, 24),
     length: number(raw.length, `${at}.length`, 1, 0.25, 4),
@@ -243,6 +257,7 @@ export const decodeRecipeValue = (raw: unknown, at: string, errors: Array<string
     return undefined
   }
   const { number } = reader(errors)
+  errors.push(...unknownKeys(raw, ["about", "reverb", "heavy", "interval", "layers", "tune"], `${at}.`))
   if (!Array.isArray(raw.layers)) {
     errors.push(`${at}.layers must be a list`)
     return undefined
@@ -288,7 +303,7 @@ export const decodeBank = (text: string): Decoded<Bank> => {
   const raw = parsed.value
   if (!isRecord(raw) || !isRecord(raw.sounds)) return { ok: false, error: 'a bank is {"version": 1, "sounds": {"name": recipe, ...}}' }
   if (raw.version !== undefined && raw.version !== 1) return { ok: false, error: `bank version ${String(raw.version)} is not known (this tool reads version 1)` }
-  const errors: Array<string> = []
+  const errors: Array<string> = unknownKeys(raw, ["version", "master", "sounds"])
   const sounds: Record<string, Recipe> = {}
   for (const [name, value] of Object.entries(raw.sounds)) {
     if (!isSoundName(name)) errors.push(`"${name}" is not a sound name (letters, digits, -, _, and ., starting with a letter)`)

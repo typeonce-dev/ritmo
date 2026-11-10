@@ -334,6 +334,20 @@ export const rampsFor = (ramps: Ramps = {}, recolor: Readonly<Record<string, str
   return out
 }
 
+/**
+ * A draw stopped by the time the CLI gives each frame (`fx check`, `look`,
+ * and `render` run drafts with one): a loop that never ends is a mistake to
+ * report, not a hang. Drafts are the agent's own code, so this is a guard,
+ * not a sandbox; the page runs drafts with no limit.
+ */
+export class DrawTimedOut extends Error {
+  readonly seconds: number
+  constructor(seconds: number) {
+    super(`draw did not return within ${seconds} s`)
+    this.seconds = seconds
+  }
+}
+
 /** Draws every frame of an effect on a palette. Never throws: what goes wrong is in `errors`. */
 export const runEffect = (effect: Effect, palette: Palette, options: RunOptions = {}): Run => {
   const names = Object.keys(palette)
@@ -345,6 +359,7 @@ export const runEffect = (effect: Effect, palette: Palette, options: RunOptions 
   const ramps = options.ramps ?? {}
   const usedRamps = new Set<string>()
   const frames: Array<Uint8Array> = []
+  let timedOut = false
   const clipped: Array<number> = []
   for (let frame = 0; frame < effect.frames; frame++) {
     const pixels = new Uint8Array(w * h)
@@ -485,7 +500,11 @@ export const runEffect = (effect: Effect, palette: Palette, options: RunOptions 
     try {
       effect.draw(fx)
     } catch (error) {
-      errors.add(`draw threw on frame ${frame}: ${error instanceof Error ? error.message : String(error)}`)
+      // Stopped by the CLI's time limit: said once, on the frame it ran out on; the frames after it are not drawn.
+      if (error instanceof DrawTimedOut) {
+        if (!timedOut) errors.add(`draw did not return within ${error.seconds} s on frame ${frame}`)
+        timedOut = true
+      } else errors.add(`draw threw on frame ${frame}: ${error instanceof Error ? error.message : String(error)}`)
     }
     frames.push(pixels)
     clipped.push(outside)

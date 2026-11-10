@@ -401,13 +401,13 @@ describe("the parts of an asset", () => {
     expect(said.next).toContain('`about: "map"`')
     expect(partOfComment(review.comments[1]!)).toEqual(walkMap)
     // One part says as it always did, with nothing about parts.
-    const still = reviewSummary({ status: "approved", note: "", comments: [] }, { frames: [frames[0]!], animations: [], normal: undefined })
+    const still = reviewSummary({ status: "approved", note: "", comments: [], approved: approvalOf([frames[0]!]) }, { frames: [frames[0]!], animations: [], normal: undefined })
     expect(still).not.toHaveProperty("parts")
     expect(still.next).toContain("Leave it as it is")
   })
 
   it("say when the person approved some and has not judged the rest", () => {
-    expect(reviewSummary(withPart(newAsset, walk, { status: "approved" }), sheetShape).next).toContain("has not judged the rest")
+    expect(reviewSummary(withPart(newAsset, walk, { status: "approved", approved: approvalOfPart(sheetShape, walk) }), sheetShape).next).toContain("has not judged the rest")
     expect(pixelSummary([{ file: "a", ...reviewSummary(withPart(newAsset, walkMap, { note: "Hair" }), sheetShape) }]).summary).toContain("with a note or comments")
   })
 
