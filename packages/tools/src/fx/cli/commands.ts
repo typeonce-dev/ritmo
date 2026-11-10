@@ -14,6 +14,7 @@ import { toGif } from "../../pixel/core/gif.ts"
 import { atlasOf, played, spritesheetJson } from "../../pixel/core/spritesheet.ts"
 import { encodePng } from "../../pixel/cli/png.ts"
 import { intFlag } from "../../internal/flags.ts"
+import { untilStopped } from "../../internal/serve.ts"
 import { Exit } from "../../pixel/cli/commands.ts"
 import { changedSince } from "../core/approval.ts"
 import { encodeBank, encodeReview, newEffect, resolveComments, reviewPath, reviewSummary, standInSpot, usedDraft, type Bank, type EffectReview } from "../core/bank.ts"
@@ -269,7 +270,7 @@ const review = Command.make(
       catch: (error) => new CliFailure({ message: `cannot serve the page: ${error instanceof Error ? error.message : String(error)}` })
     })
     yield* printJson({ url: address.url, network: address.network, bank, review: reviewPath(bank), next: "Send the person the url. What they pick, tune, and note is saved to the bank and the review as they go; read it back with `ritmo-tools fx notes`." })
-    return yield* Effect.never
+    return yield* untilStopped
   })
 ).pipe(
   Command.withDescription(

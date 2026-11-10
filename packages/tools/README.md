@@ -32,6 +32,9 @@ All four tools share these rules:
   did not expect (a draft's own code that throws, or a bug): one line on
   stderr and `{"error": "<tool> <command> failed: ..."}` on stdout, never a
   stack trace.
+- **Stopping.** SIGTERM or SIGINT (`kill`, `timeout`, Ctrl-C) ends a
+  command at once, even one stuck in a draft's own code. A review page's
+  server, which runs until stopped, stops on either and exits 130.
 - **Number flags** take a range (`--count` 1 to 12, `--scale` 1 to 32, a
   `--port` 1 to 65535, ...). A value outside it is refused as a usage error,
   naming the flag, the value, and the range (exit 2), never clamped.
