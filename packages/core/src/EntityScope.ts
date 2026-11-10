@@ -21,6 +21,7 @@
  * @module EntityScope
  * @docGroup core
  */
+import type { Named } from "./Descriptor.ts"
 
 /** A nominal entity-lifetime scope tied to one bound game root. */
 export interface EntityScope<
@@ -64,12 +65,12 @@ export namespace EntityScope {
 export const make = <const Name extends string, Root = unknown>(
   name: Name,
   despawnOn: ReadonlyArray<Trigger> = []
-): EntityScope<Name, Root> => ({
+): Named<Name, EntityScope<Name, Root>> => ({
   kind: "entityScope",
   name,
   key: keyOf(name),
   despawnOn
-})
+}) as never
 
 const keyPrefix = "ritmo/entityScope/"
 

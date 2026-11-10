@@ -125,8 +125,8 @@ export type ClockResource<Name extends string, Hz extends number> =
  * (`resources: { Time: Clock.start(step) }`) is made as a `Result`, like any
  * runtime given validated resources.
  */
-export const resource = <const Name extends string, Hz extends number>(name: Name, step: Step<Hz>): ClockResource<Name, Hz> =>
-  DescriptorModule.ConstructedResource(standard<unknown>((raw) => timeOf(step, raw)))(name) as unknown as ClockResource<Name, Hz>
+export const resource = <const Name extends string, Hz extends number>(name: Name, step: Step<Hz>): DescriptorModule.Named<Name, ClockResource<Name, Hz>> =>
+  DescriptorModule.ConstructedResource(standard<unknown>((raw) => timeOf(step, raw)))(name) as never
 
 /** Seconds of simulation time since the start: `step / hz`, exact (no accumulated floats). */
 export const elapsed = (time: Time): number => time.step / time.hz

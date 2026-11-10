@@ -50,7 +50,7 @@
  * ```
  */
 import type * as Command from "./Command.ts"
-import type { CheckedStates, CheckedTransitions, ConstructedDescriptor, Descriptor, StateDefinitions, StateTransitions } from "./Descriptor.ts"
+import type { CheckedStates, CheckedTransitions, ConstructedDescriptor, Descriptor, Named, StateDefinitions, StateTransitions } from "./Descriptor.ts"
 import type * as Entity from "./Entity.ts"
 import type * as EntityScope from "./EntityScope.ts"
 import { buildSchema, emptySchema, mergeSchemas } from "./internal/fragments.ts"
@@ -726,7 +726,7 @@ export namespace Schema {
         /** Despawns every member when the machine leaves this state, after its `onExit` schedules run. */
         readonly despawnOnExit?: readonly [Exit & Machine.SameGame<Exit, Root>, Machine.StateMachine.State<Exit>]
       }
-    ) => EntityScope.EntityScope<Name, Root>
+    ) => Named<Name, EntityScope.EntityScope<Name, Root>>
     /** Declares a reusable, requirement-checked read-only world projection. */
     readonly Inspector: <
       const Name extends string,
@@ -892,7 +892,7 @@ export namespace Schema {
         name: Name,
         states: States & CheckedStates<States, "a state machine needs at least one state">,
         options?: { readonly transitions: CheckedTransitions<States, Transitions> }
-      ): Schema.BoundStateMachine<Root, Name, States, unknown, Transitions>
+      ): Named<Name, Schema.BoundStateMachine<Root, Name, States, unknown, Transitions>>
       /**
        * Declares a sub-state: a machine that exists only while `within[0]` is
        * in state `within[1]` (a battle phase that only means something while
@@ -936,7 +936,7 @@ export namespace Schema {
           readonly within: readonly [Parent & Machine.SameGame<Parent, Root>, Machine.StateMachine.State<Parent>]
           readonly transitions?: CheckedTransitions<States, Transitions>
         }
-      ): Schema.BoundStateMachine<Root, Name, States, Parent, Transitions>
+      ): Named<Name, Schema.BoundStateMachine<Root, Name, States, Parent, Transitions>>
     }
     readonly Condition: {
       /**
