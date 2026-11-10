@@ -19,7 +19,7 @@ const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats
 const Capture = InputCapture.system(Game, { name: "Game/Capture", source: Seats, resource: Inputs })
 const simulate = Game.Schedule(Capture, Move, Fire)
 
-// PlayerInput here is the game's own Standard Schema: remote input is decoded with it.
+// PlayerInput here is the game's own Standard Schema: every seat's input, the local one too, is decoded with it.
 const seats = Netcode.seats(PlayerInput, { count: 2, idle: { dx: 0, fire: false } })
 if (!seats.ok) throw new Error(seats.error.reason)
 const runtime = Game.Runtime.make({
