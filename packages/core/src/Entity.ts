@@ -37,6 +37,7 @@
  * Explicit helpers for constructing and refining entity ids and handles.
  */
 import type { Brand } from "./internal/brand.ts"
+import { makeHandle } from "./internal/entity.ts"
 import type { Descriptor } from "./Descriptor.ts"
 import type { StagedRelation } from "./Relation.ts"
 import type { Schema } from "./Schema.ts"
@@ -180,6 +181,19 @@ export interface EntityDraft<S extends Schema.Any, out P extends ComponentProof,
 export type StagedComponent = readonly [Descriptor<"component", string, any>, unknown]
 
 /**
+ * What a query proves about its entities, as one key per component or
+ * relation (`"proves component Game/Position"`). `__entity` holds these keys,
+ * and a slot of a query's `data` asks for its own key, so an entity from a
+ * query that does not prove the slot's component fails with
+ * `Property '"proves component Game/Position"' is missing`. More proof is
+ * more keys, so an entity proving more is a subtype. The object holding the
+ * keys is written out at each use: under a type alias, TypeScript would
+ * compare two of them by its type argument instead of by their keys.
+ */
+export type ProvenKey<D> =
+  D extends { readonly kind: infer Kind extends string; readonly name: infer Name extends string } ? `proves ${Kind} ${Name}` : never
+
+/**
  * One entity from a query: `queries.x.each()`, `single()`, or `get(id)`. It
  * carries its `id` and what the query proves about it, and goes to the query's
  * `data` (`data.position.get(entity)`) and to `commands`.
@@ -214,37 +228,17 @@ export interface EntityRef<S extends Schema.Any, Root = unknown, in Proves = nev
   readonly __lacks?: (_: Lacks) => void
   /**
    * What a slot of a query's `data` asks of an entity: the components and
-   * relations the query proves. Type-level only, and what makes an entity one:
-   * an id or a hand-written object is not.
+   * relations the query proves, one key each (see {@link ProvenKey}).
+   * Type-level only, and what makes an entity one: an id or a hand-written
+   * object is not.
    */
-  readonly __entity: (_: Proves | Relates) => void
+  readonly __entity: { readonly [Key in ProvenKey<Proves | Relates>]: true }
   /**
    * The schema-bound entity identity.
    */
   readonly id: EntityId<S, Root>
   readonly __schemaRoot?: Root | undefined
 }
-
-/**
- * Brands a runtime integer id as an entity id.
- *
- * This is a low-level constructor used by the runtime and command system. It
- * allocates nothing: the id is the number.
- */
-export const makeEntityId = <S extends Schema.Any, Root = unknown>(value: number): EntityId<S, Root> =>
-  value as EntityId<S, Root>
-
-/**
- * Creates a durable handle from a runtime entity id.
- *
- * This is a low-level constructor used by the bound `Game.Entity` helpers and
- * by runtime lookup resolution.
- */
-export const makeHandle = <
-  Root,
-  Intent extends Descriptor<"component", string, any> | undefined = undefined
->(value: number): Handle<Root, Intent> =>
-  value as Handle<Root, Intent>
 
 /**
  * Anything that identifies one current-runtime entity: an id, or an entity
@@ -317,21 +311,3 @@ export const isHandle = <
   _intent?: Intent
 ): (raw: unknown) => raw is Handle<Root, Intent> =>
   (raw: unknown): raw is Handle<Root, Intent> => typeof raw === "number" && Number.isInteger(raw) && raw > 0
-
-/**
- * Creates a typed entity draft from an id and a proof.
- */
-export const draft = <S extends Schema.Any, P extends ComponentProof, Root = unknown>(
-  id: EntityId<S, Root>,
-  proof: P,
-  components: ReadonlyArray<StagedComponent> = [],
-  relations: ReadonlyArray<StagedRelation<S, Root>> = []
-): EntityDraft<S, P, Root> => ({
-  kind: "EntityDraft",
-  id,
-  __schemaRoot: undefined,
-  proof,
-  components,
-  relations
-})
-

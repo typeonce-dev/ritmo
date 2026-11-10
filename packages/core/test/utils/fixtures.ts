@@ -2,6 +2,7 @@ import * as Runtime from "@typeonce/ritmo/Runtime"
 import * as Schedule from "@typeonce/ritmo/Schedule"
 import * as System from "@typeonce/ritmo/System"
 import type { Descriptor } from "@typeonce/ritmo/Descriptor"
+import type * as Entity from "@typeonce/ritmo/Entity"
 import type { Schema } from "@typeonce/ritmo/Schema"
 
 /**
@@ -35,3 +36,11 @@ export const readResourceValue = <
 
   return captured
 }
+
+/**
+ * An id no runtime has given out, for tests of lookups and commands that name
+ * an entity which never existed. Games cannot brand one: the constructor is
+ * the runtime's own.
+ */
+export const unknownEntityId = <S extends Schema.Any, Root = unknown>(value: number): Entity.EntityId<S, Root> =>
+  value as Entity.EntityId<S, Root>

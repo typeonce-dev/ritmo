@@ -30,6 +30,7 @@
  */
 import type { Descriptor } from "../Descriptor.ts"
 import * as Entity from "../Entity.ts"
+import { makeEntityId } from "./entity.ts"
 import * as Relation from "../Relation.ts"
 import * as RelationErrors from "./relations.ts"
 import * as Result from "../Result.ts"
@@ -741,10 +742,10 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     relationVersions.set(key, (relationVersions.get(key) ?? 0) + 1)
   }
 
-  const entityIdOf = (id: number): Entity.EntityId<any, any> => Entity.makeEntityId(id)
+  const entityIdOf = (id: number): Entity.EntityId<any, any> => makeEntityId(id)
 
   const allocateEntity = (): Entity.EntityId<any, any> => {
-    const id = Entity.makeEntityId(nextEntity)
+    const id = makeEntityId(nextEntity)
     nextEntity += 1
     return id
   }

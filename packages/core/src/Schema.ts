@@ -83,7 +83,10 @@ type Article<Kind extends string> = Kind extends "event" ? "an" : "a"
  * Rejects descriptors of another kind in a fragment's `components`,
  * `resources`, or `events`, naming where each belongs.
  */
-type RegistryOfKind<R, Expected extends string> = {
+type RegistryOfKind<R, Expected extends string> = string extends keyof R
+  // Not a record literal: an array (`components: [Position]`) fails the constraint and leaves only its index.
+  ? { readonly [K in keyof R]: { readonly __fixSchema__: `${Expected}s takes a record keyed by name, not an array: ${Expected}s: { ${RegistryExample<Expected>} }` } }
+  : {
   readonly [K in keyof R]: R[K] extends { readonly kind: Expected }
     ? unknown
     : R[K] extends { readonly kind: infer Actual extends string }
@@ -94,6 +97,24 @@ type RegistryOfKind<R, Expected extends string> = {
       }
       : unknown
 }
+
+type RegistryExample<Kind extends string> = Kind extends "component" ? "Position, Health" : Kind extends "resource" ? "Score" : "Hit"
+
+/**
+ * What `Descriptor.Hierarchy(...)` and `Descriptor.Relation(...)` return.
+ * Accepted where a relation goes, so passing the pair instead of its
+ * `relation` gets a message naming the fix.
+ */
+type RelationPair = { readonly relation: Relation.Relation.Any; readonly related: unknown }
+
+/** Rejects a relation pair in a fragment's `relations`, naming its `relation`. */
+type RelationsOfPairs<R> = {
+  readonly [K in keyof R]: R[K] extends Relation.Relation.Any ? unknown
+    : { readonly __fixSchema__: `${K & string} is the pair Descriptor.${R[K] extends { readonly relation: Relation.Relation.Hierarchy } ? "Hierarchy" : "Relation"}(...) returns: register its relation, ${K & string}.relation` }
+}
+
+/** The relations of a fragment once pairs are rejected. */
+type OnlyRelations<R> = R extends Record<string, Relation.Relation.Any> ? R : never
 
 /**
  * A closed schema: the components, resources, events, and relations a world
@@ -358,22 +379,23 @@ export const fragment = <
   const Components extends Registry = {},
   const Resources extends Registry = {},
   const Events extends Registry = {},
-  const Relations extends Record<string, Relation.Relation.Any> = {},
+  const Relations extends Record<string, Relation.Relation.Any | RelationPair> = {},
   const Requires extends ReadonlyArray<ComponentRequirement> = readonly []
 >(definition: {
   readonly components?: Components & RegistryOfKind<Components, "component">
   readonly resources?: Resources & RegistryOfKind<Resources, "resource">
   readonly events?: Events & RegistryOfKind<Events, "event">
-  readonly relations?: Relations
+  readonly relations?: Relations & RelationsOfPairs<Relations>
   readonly requires?: Requires
-} & ValidateFragments<[SchemaDefinition<Components, Resources, Events, Relations>]>): SchemaDefinition<Components, Resources, Events, Relations, PairsOf<Requires[number]>> =>
+} & ValidateFragments<[SchemaDefinition<Components, Resources, Events, OnlyRelations<Relations>>]>): SchemaDefinition<Components, Resources, Events, OnlyRelations<Relations>, PairsOf<Requires[number]>> =>
   mergeSchemas(emptySchema(), {
     components: definition.components ?? {},
     resources: definition.resources ?? {},
     events: definition.events ?? {},
-    relations: definition.relations ?? {},
+    // A pair in `relations` does not compile (`RelationsOfPairs`), so every value is a relation.
+    relations: (definition.relations ?? {}) as Record<string, Relation.Relation.Any>,
     requires: definition.requires ?? []
-  }) as SchemaDefinition<Components, Resources, Events, Relations, PairsOf<Requires[number]>>
+  }) as SchemaDefinition<Components, Resources, Events, OnlyRelations<Relations>, PairsOf<Requires[number]>>
 
 /**
  * Composes one or more fragments and returns one bound `Game` surface.
@@ -455,6 +477,13 @@ type ComponentDescriptor<S extends Schema.Any> = Schema.ComponentDescriptor<S>
 type ResourceDescriptor<S extends Schema.Any> = Schema.ResourceDescriptor<S>
 type EventDescriptor<S extends Schema.Any> = Schema.EventDescriptor<S>
 type RelationDescriptor<S extends Schema.Any> = Schema.RelationDescriptor<S>
+
+/** Rejects a relation pair passed to `Game.System.relates(...)`, naming its `relation`. */
+type RelatesPairs<Relations extends ReadonlyArray<unknown>> = {
+  readonly [I in keyof Relations]: Relations[I] extends { readonly relation: { readonly name: infer Name extends string } }
+    ? { readonly __fixSystem__: `${Name} is passed as the pair Descriptor.Hierarchy/Relation(...) returns: pass the relation itself, the pair's .relation` }
+    : Relations[I]
+}
 
 type QuerySelectionAccess<S extends Schema.Any, Root> =
   | QueryModule.Access<ComponentDescriptor<S>>
@@ -926,7 +955,7 @@ export namespace Schema {
       >(
         name: Name,
         spec: System.ExactAccess<Access>,
-        run: System.SystemRun<System.SystemSpec<S, Access, Root>, E>
+        run: System.SystemBody<System.SystemSpec<S, Access, Root>, E>
       ): BoundSystem<S, Root, System.SystemSpec<S, Access, Root>, E, Name, System.SystemAccessNeeds<Access>>
       /** A read-only resource slot (`resources`). Use `changedResource` to skip work when it did not change. */
       readResource: <D extends ResourceDescriptor<S>>(descriptor: D) => System.ResourceRead<D>
@@ -1002,7 +1031,9 @@ export namespace Schema {
        * Allows `relate`, `unrelate`, and `reorderChildren` of these relations,
        * and spawning drafts that stage them with `Game.Command.relate(...)`.
        */
-      relates: <const Relations extends NonEmpty<RelationDescriptor<S>>>(...relations: Relations) => Command.Permission<"relates", Relations[number]>
+      relates: <const Relations extends NonEmpty<RelationDescriptor<S> | RelationPair>>(
+        ...relations: RelatesPairs<Relations>
+      ) => Command.Permission<"relates", Extract<Relations[number], RelationDescriptor<S>>>
     }
     readonly Schedule: {
       /**

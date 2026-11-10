@@ -103,7 +103,7 @@ describe("Runtime snapshots", () => {
         named: Named
       }
     }, ({ queries }) => {
-      const matches = queries.named.children(Entity.makeEntityId(parent), ChildOf)
+      const matches = queries.named.children(parent, ChildOf)
       children = matches.ok ? matches.value.map((entity) => queries.named.data.name.get(entity)) : []
       const handle = queries.targets.data.target.get(queries.targets.each()[0]!).handle
       const match = queries.named.getHandle(handle)
@@ -244,7 +244,7 @@ describe("Runtime snapshots", () => {
 
   it("decodes stored handles and rejects malformed ones", () => {
     const isHandle = Entity.isHandle(Root)
-    expect(isHandle(JSON.parse(JSON.stringify(Entity.makeHandle(4))))).toBe(true)
+    expect(isHandle(JSON.parse("4"))).toBe(true)
     for (const raw of [null, 0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, "4", { kind: "EntityHandle", value: 7 }, { kind: "EntityId", value: 4 }, { kind: "EntityHandle", value: 1.5 }, { value: 4 }]) {
       expect(isHandle(raw)).toBe(false)
     }

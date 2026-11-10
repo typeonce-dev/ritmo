@@ -62,7 +62,7 @@ describe("host APIs", () => {
   })
 
   it("keeps numeric brands, roots, ids, and intents distinct", () => {
-    const id = Entity.makeEntityId<typeof Game.schema, typeof Root>(1)
+    const id = 1 as Entity.EntityId<typeof Game.schema, typeof Root>
     const handle = Game.Entity.handle(id, Position)
     expect(id).type.toBeAssignableTo<number>()
     expect(handle).type.toBe<Entity.Handle<typeof Root, typeof Position>>()
