@@ -2276,8 +2276,11 @@ const makeValidatedRuntime = <
         // Discarded earlier in this marker: its parent left the state it exists in.
         continue
       }
-      // A transition schedule earlier in this marker may have queued a newer
-      // value for this machine: that one waits for the next marker.
+      // A transition schedule earlier in this marker may have reset this
+      // request: it is not applied.
+      if (!pendingMachines.has(machineKey)) continue
+      // It may also have queued a newer value for this machine: that one
+      // waits for the next marker.
       if (pendingMachines.get(machineKey) === pending) pendingMachines.delete(machineKey)
       /** Keeps this request queued after a failure, unless a newer one replaced it. */
       const requeue = () => {
