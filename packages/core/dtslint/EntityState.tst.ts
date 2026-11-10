@@ -115,13 +115,19 @@ describe("Descriptor.EntityState", () => {
     })
   })
 
-  it("keeps set and setRaw for resets, and drops the unscoped writes", () => {
+  it("keeps set only without a graph, keeps setRaw, and drops the unscoped writes", () => {
     Game.System("StateTypes/Reset", { queries: { bodies: Bodies } }, ({ queries }) => {
       const { data } = queries.bodies
       for (const entity of queries.bodies.each()) {
-        expect(data.contact.set(entity, { _tag: "ground", platform: null })).type.not.toRaiseError()
-        // @ts-expect-error Object literal may only specify known properties, and 'vy' does not exist in type
-        data.contact.set(entity, { _tag: "ground", platform: null, vy: 1 })
+        // Without a graph, set writes any value of the state.
+        expect(data.mode.set(entity, { _tag: "b", n: 1 })).type.toBe<void>()
+        // @ts-expect-error Object literal may only specify known properties, and 'm' does not exist in type
+        data.mode.set(entity, { _tag: "b", n: 1, m: 1 })
+        // With one, no set gets around it.
+        // @ts-expect-error this entity state declares `transitions`: move it with data.x.transition(entity, { from, to, data }), which checks the graph and the current state
+        data.contact.set(entity, { _tag: "ground", platform: null })
+        // @ts-expect-error this entity state declares `transitions`: move it with data.x.transition(entity, { from, to, data }), which checks the graph and the current state
+        data.phase.set(entity, { _tag: "ready" })
         expect(data.contact.setRaw(entity, { _tag: "crouch" })).type.not.toRaiseError()
         expect(data.contact).type.not.toHaveProperty("updateRaw")
         // Three arguments: the positional form is gone.
@@ -133,13 +139,13 @@ describe("Descriptor.EntityState", () => {
 
   it("requires states with fields, a graph listing exactly the states, and no _tag field", () => {
     // Missing state.
-    // @ts-expect-error Property 'b' is missing in type '{ a: "b"[]; }' but required in type 'EntityStateTransitions<{ readonly a: {}; readonly b: {}; }>'.
+    // @ts-expect-error Property 'b' is missing in type '{ a: "b"[]; }' but required in type 'StateTransitions<{ readonly a: {}; readonly b: {}; }>'.
     Descriptor.EntityState("StateTypes/Missing", { a: {}, b: {} }, { transitions: { a: ["b"] } })
     // Unknown target.
     // @ts-expect-error Type '"c"' is not assignable to type '"a" | "b"'.
     Descriptor.EntityState("StateTypes/Target", { a: {}, b: {} }, { transitions: { a: ["c"], b: [] } })
     // Unknown source.
-    // @ts-expect-error Type 'string[]' is not assignable to type 'never'.
+    // @ts-expect-error this key is not a state: `transitions` lists the moves of the declared states only
     Descriptor.EntityState("StateTypes/Source", { a: {}, b: {} }, { transitions: { a: ["b"], b: [], c: ["a"] } })
     // Terminal states list no moves.
     expect(Descriptor.EntityState("StateTypes/Terminal", { a: {}, b: {} }, { transitions: { a: ["b"], b: [] } })).type.not.toRaiseError()

@@ -22,7 +22,7 @@ export default defineRule({
     },
     messages: {
       spread:
-        "This sets `_tag` over a spread of `{{spread}}`: every field of the previous state survives at runtime, though the type of the new state hides it, so it comes back when the value is saved, compared, or spread again. Move an entity state with `data.state.transition(entity, { from, to, data })`, which takes the new state's fields; queue a state machine's move with the new state's fields, `nextMachines.mode.set({ _tag: \"Talking\", speaker, page: 0 })`; anywhere else, write the new state's fields out: `{ _tag: \"air\", vy, coyote }`. Spread the previous value only to change fields of the same state."
+        "This sets `_tag` over a spread of `{{spread}}`: every field of the previous state survives at runtime, though the type of the new state hides it, so it comes back when the value is saved, compared, or spread again. Move an entity state with `data.state.transition(entity, { from, to, data })`, which takes the new state's fields; queue a state machine's move with `nextMachines.mode.transition({ from, to, data })`, which takes them too; anywhere else, write the new state's fields out: `{ _tag: \"air\", vy, coyote }`. Spread the previous value only to change fields of the same state."
     },
     schema: []
   },

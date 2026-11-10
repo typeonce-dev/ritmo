@@ -50,7 +50,7 @@
  * ```
  */
 import type * as Command from "./Command.ts"
-import type { CheckedStates, ConstructedDescriptor, Descriptor, StateDefinitions } from "./Descriptor.ts"
+import type { CheckedStates, CheckedTransitions, ConstructedDescriptor, Descriptor, StateDefinitions, StateTransitions } from "./Descriptor.ts"
 import type * as Entity from "./Entity.ts"
 import type * as EntityScope from "./EntityScope.ts"
 import { buildSchema, emptySchema, mergeSchemas } from "./internal/fragments.ts"
@@ -650,8 +650,9 @@ export namespace Schema {
     Root,
     Name extends string = string,
     States extends StateDefinitions = StateDefinitions,
-    Parent = unknown
-  > = Machine.StateMachineDefinition<Name, States, Root, Parent>
+    Parent = unknown,
+    Transitions = StateTransitions<States>
+  > = Machine.StateMachineDefinition<Name, States, Root, Parent, Transitions>
 
   /**
    * A schema-bound transition schedule (`Game.Schedule.onEnter` / `onExit` /
@@ -852,22 +853,30 @@ export namespace Schema {
      * union: `_tag` is the state's name, next to that state's fields
      * (`Machine.StateOf<typeof M, "State">` is one state's value).
      *
+     * `options.transitions` declares the allowed moves, as for
+     * `Descriptor.EntityState(...)`: for every state, the states it may move
+     * to (`[]` for a state with no way out). It lists every state. A machine
+     * that declares them moves only with `nextMachines.x.transition(...)`:
+     * `set` and `setIfChanged` do not compile on it, so every move it makes
+     * is one the graph lists.
+     *
      * The state name changes only at the commit; the current state's fields
-     * change immediately. `nextMachines.x.set(...)` queues a move with all of
-     * the target's fields (nothing carries over), committed at the next
-     * `applyStateTransitions(...)`. `machines.x.update(...)`
-     * (`Game.System.updateMachine`) changes the current state's fields at
-     * once, for per-frame data, without enter or exit schedules or a
-     * transition event.
+     * change immediately. `nextMachines.x.transition({ from, to, data })`
+     * queues a move with all of `to`'s fields (nothing carries over),
+     * committed at the next `applyStateTransitions(...)`, if the machine is in
+     * `from`; `to` is checked against the graph at compile time.
+     * `machines.x.update(...)` (`Game.System.updateMachine`) changes the
+     * current state's fields at once, for per-frame data, without enter or
+     * exit schedules or a transition event.
      *
      * @example
      * ```ts
      * const Mode = Game.StateMachine("Town/Mode", {
      *   Exploring: {},
      *   Talking: z.object({ speaker: z.string(), page: z.int() })
-     * })
+     * }, { transitions: { Exploring: ["Talking"], Talking: ["Exploring"] } })
      * const Greet = Game.System("Town/Greet", { nextMachines: { mode: Game.System.nextState(Mode) } }, ({ nextMachines }) => {
-     *   nextMachines.mode.set({ _tag: "Talking", speaker: "Mira", page: 0 })
+     *   nextMachines.mode.transition({ from: "Exploring", to: "Talking", data: { speaker: "Mira", page: 0 } })
      * })
      * const TurnPage = Game.System("Town/TurnPage", { machines: { mode: Game.System.updateMachine(Mode) } }, ({ machines }) => {
      *   machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, page: talking.page + 1 }) })
@@ -877,16 +886,22 @@ export namespace Schema {
     readonly StateMachine: {
       <
         const Name extends string,
-        const States extends StateDefinitions
-      >(name: Name, states: States & CheckedStates<States, "a state machine needs at least one state">): Schema.BoundStateMachine<Root, Name, States>
+        const States extends StateDefinitions,
+        const Transitions extends StateTransitions<States> = StateTransitions<States>
+      >(
+        name: Name,
+        states: States & CheckedStates<States, "a state machine needs at least one state">,
+        options?: { readonly transitions: CheckedTransitions<States, Transitions> }
+      ): Schema.BoundStateMachine<Root, Name, States, unknown, Transitions>
       /**
        * Declares a sub-state: a machine that exists only while `within[0]` is
        * in state `within[1]` (a battle phase that only means something while
        * playing). Whenever the parent enters that state, the sub-state enters
        * the value given to `Game.Runtime.machine(...)`; when the parent leaves
        * it, the sub-state exits and has no value: `get()` is `undefined`,
-       * `Game.Condition.inState(Sub, x)` is false, and `nextMachines.sub.set(...)`
-       * and `machines.sub.update(...)` return a `SubStateInactive` failure.
+       * `Game.Condition.inState(Sub, x)` is false, and `nextMachines.sub.set(...)`,
+       * `nextMachines.sub.transition(...)`, and `machines.sub.update(...)`
+       * return a `SubStateInactive` failure.
        * So `inState(Sub, x)` alone implies the parent's state.
        *
        * The sub-state enters together with the parent's commit, before any
@@ -897,23 +912,31 @@ export namespace Schema {
        *
        * Use a second top-level machine instead when the two modes are
        * independent (each keeps its value whatever the other does).
+       * `transitions` next to `within` declares the sub-state's own moves.
        *
        * @example
        * ```ts
        * const Session = Game.StateMachine("Game/Session", { Lobby: {}, Playing: {} })
        * // ---cut---
-       * const Phase = Game.StateMachine("Game/Phase", { Setup: {}, Battle: z.object({ round: z.int() }) }, { within: [Session, "Playing"] })
+       * const Phase = Game.StateMachine("Game/Phase", { Setup: {}, Battle: z.object({ round: z.int() }) }, {
+       *   within: [Session, "Playing"],
+       *   transitions: { Setup: ["Battle"], Battle: [] }
+       * })
        * ```
        */
       <
         const Name extends string,
         const States extends StateDefinitions,
-        Parent extends Machine.StateMachine.Any
+        Parent extends Machine.StateMachine.Any,
+        const Transitions extends StateTransitions<States> = StateTransitions<States>
       >(
         name: Name,
         states: States & CheckedStates<States, "a state machine needs at least one state">,
-        options: { readonly within: readonly [Parent & Machine.SameGame<Parent, Root>, Machine.StateMachine.State<Parent>] }
-      ): Schema.BoundStateMachine<Root, Name, States, Parent>
+        options: {
+          readonly within: readonly [Parent & Machine.SameGame<Parent, Root>, Machine.StateMachine.State<Parent>]
+          readonly transitions?: CheckedTransitions<States, Transitions>
+        }
+      ): Schema.BoundStateMachine<Root, Name, States, Parent, Transitions>
     }
     readonly Condition: {
       /**
@@ -999,7 +1022,7 @@ export namespace Schema {
        * for systems in that machine's `onEnter` / `onExit` / `onTransition`
        * schedules. Use `readTransitionEvent` anywhere else.
        */
-      transition: <M extends BoundStateMachine<Root>>(machine: M) => Machine.TransitionRead<M>
+      readTransition: <M extends BoundStateMachine<Root>>(machine: M) => Machine.TransitionRead<M>
       /** The entities whose component was removed since this system's previous run (`removed`); despawns included. */
       readRemoved: <D extends ComponentDescriptor<S>>(descriptor: D) => System.RemovedRead<D>
       /** The entities despawned since this system's previous run (`despawned`). Use `readRemoved` to react to one component. */
