@@ -10,7 +10,8 @@
 - **Input is held state, read from one seats source.** Remote input never goes through `runtime.send`, and one-frame edges are lost when a frame stalls.
 - **A desync is a bug, not noise.** Log every halt; fix the determinism bug a `Desynced` names, don't retry past it.
 - **Effects come from `session.events(...)`, never from host systems reading the world's events.** Ticks rolled back publish their events again; the session hands out confirmed, predicted, and withdrawn events so nothing plays twice.
-- **A browser tab hides.** Pass the session `hidden` and draw who everyone is waiting for; without it a hidden peer times out the match.
+- **A browser tab hides.** Pass the session `hidden` and draw who everyone is waiting for (`status().hidden`, `status().waiting`); without it a hidden peer times out the match.
+- **A reloaded page ends the match.** There is no rejoin: every peer, the reloaded one too, ends with `Disconnected` `reason: "restarted"`. `onFailure` shows that the match ended and offers a new one.
 
 Order matters for the proofs, which come before shipping:
 
@@ -18,4 +19,4 @@ Order matters for the proofs, which come before shipping:
 2. A headless match over a seeded faulty `MemoryNetworkLink`, then a fuzzed one (`Fuzz.run` with `network`), which shrinks a desync to the presses that cause it.
 3. A committed replay of a scripted match, verified across engines (`ritmo-devtools verify ... --engines node,chromium,webkit,firefox`) in CI: an engine that diverges is a desync waiting to happen between players on those browsers.
 
-**Check:** the sync test passes; the headless match plays every seat with latency, jitter, and loss, rolls back (`status().rollbacks > 0` for rollback), ends with every peer's `runtime.checksum()` equal to one runtime ticked with the recorded inputs, and keeps `status().verified` climbing through a `resync()`; the cross-engine verify passes in CI.
+**Check:** the sync test passes; the headless match plays every seat with latency, jitter, and loss, rolls back (`status().rollbacks > 0` on the peer ahead, for rollback), ends with every peer's `runtime.checksum()` equal to one runtime ticked with the recorded inputs, and keeps `status().verified` climbing through a `resync()`; the cross-engine verify passes in CI.
