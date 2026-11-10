@@ -1203,8 +1203,12 @@ export type SystemAccessSpec = SystemAccessInput
 
 /** Rejects unknown system access categories, and redundant resource and event slots, at a bound constructor. */
 export type ExactAccess<Access extends SystemAccessInput> = Access & {
-  readonly [Key in Exclude<keyof Access, keyof SystemAccessInput>]: never
+  readonly [Key in Exclude<keyof Access, keyof SystemAccessInput>]: UnknownCategory<Key>
 } & RedundantSlotsFix<Access, "resources", "read"> & RedundantSlotsFix<Access, "events", never> & RedundantSlotsFix<Access, "machines", "read">
+
+/** The message for a spec key that is not an access category. Kept in step with `SystemAccessInput` by a type test. */
+type UnknownCategory<Key extends PropertyKey> =
+  `${Key & string} is not a system spec key: use queries, resources, events, services, machines, nextMachines, transitionEvents, removed, despawned, relationFailures, droppedRelations, commands, when, pauseWhen, transitions, or local`
 
 type SlotOf<A> =
   A extends { readonly mode: infer Mode extends string; readonly descriptor: { readonly name: infer Name extends string } } ? readonly [Mode, Name]
@@ -1552,6 +1556,18 @@ export interface SystemDefinition<
 export type SystemRun<Spec extends AnySystemSpec, E = never> =
   (context: SystemContext<Spec>) => Result.Result<unknown, E> | void
 
+/**
+ * The body `Game.System(...)` takes: a {@link SystemRun}, whose return type
+ * also has a member no value has. It names the fix when a body returns a
+ * value (an expression body, `({ commands }) => commands.spawn(draft)`) or a
+ * promise (an `async` body).
+ */
+export type SystemBody<Spec extends AnySystemSpec, E = never> =
+  (context: SystemContext<Spec>) =>
+    | Result.Result<unknown, E>
+    | void
+    | { readonly __fixSystem__: "a system returns nothing or Result.failure(...), and runs synchronously: wrap an expression body in braces, and drop async"; readonly __never__: never }
+
 const requirementValuesFromRecord = (
   record: Record<string, unknown> | undefined
 ): ReadonlyArray<Requirement.RequirementValue> => {
@@ -1621,15 +1637,15 @@ export function System<
 >(
   name: Name,
   spec: Access & {
-    readonly [Key in Exclude<keyof Access, keyof SystemAccessInput | "schema">]: never
+    readonly [Key in Exclude<keyof Access, keyof SystemAccessInput | "schema">]: UnknownCategory<Key>
   },
-  run: SystemRun<SystemSpec<Access["schema"], Access, Root>, E>
+  run: SystemBody<SystemSpec<Access["schema"], Access, Root>, E>
 ): SystemDefinition<SystemSpec<Access["schema"], Access, Root>, E, Root, Name, SystemAccessNeeds<Access>>
 
 export function System(
   name: string,
   spec: { readonly schema: Schema.Any } & SystemAccessInput,
-  run: (context: any) => Result.Result<any, any> | void
+  run: SystemBody<any, any>
 ): SystemDefinition<any, any, any, any, any> {
   type Spec = SystemSpec<Schema.Any>
 

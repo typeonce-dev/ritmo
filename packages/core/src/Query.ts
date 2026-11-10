@@ -69,7 +69,7 @@
  */
 import * as DescriptorModule from "./Descriptor.ts"
 import type { Descriptor, StateDefinitions, EntityStateDescriptor, SchemaIssues, StateEncodedOf, StateName, StateValueOf } from "./Descriptor.ts"
-import type { EntityId, EntityRef } from "./Entity.ts"
+import type { EntityId, EntityRef, ProvenKey } from "./Entity.ts"
 import type * as Result from "./Result.ts"
 import type * as Relation from "./Relation.ts"
 import type { Schema } from "./Schema.ts"
@@ -714,7 +714,7 @@ export type StateExactFields<States extends StateDefinitions, State extends Stat
 
 /** What a slot of a query's `data` asks of an entity: that its query proves `D`. */
 export interface EntityProving<in D> {
-  readonly __entity: (_: D) => void
+  readonly __entity: { readonly [Key in ProvenKey<D>]: true }
 }
 
 /**

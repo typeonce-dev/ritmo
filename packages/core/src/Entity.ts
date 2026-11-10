@@ -181,6 +181,19 @@ export interface EntityDraft<S extends Schema.Any, out P extends ComponentProof,
 export type StagedComponent = readonly [Descriptor<"component", string, any>, unknown]
 
 /**
+ * What a query proves about its entities, as one key per component or
+ * relation (`"proves component Game/Position"`). `__entity` holds these keys,
+ * and a slot of a query's `data` asks for its own key, so an entity from a
+ * query that does not prove the slot's component fails with
+ * `Property '"proves component Game/Position"' is missing`. More proof is
+ * more keys, so an entity proving more is a subtype. The object holding the
+ * keys is written out at each use: under a type alias, TypeScript would
+ * compare two of them by its type argument instead of by their keys.
+ */
+export type ProvenKey<D> =
+  D extends { readonly kind: infer Kind extends string; readonly name: infer Name extends string } ? `proves ${Kind} ${Name}` : never
+
+/**
  * One entity from a query: `queries.x.each()`, `single()`, or `get(id)`. It
  * carries its `id` and what the query proves about it, and goes to the query's
  * `data` (`data.position.get(entity)`) and to `commands`.
@@ -215,10 +228,11 @@ export interface EntityRef<S extends Schema.Any, Root = unknown, in Proves = nev
   readonly __lacks?: (_: Lacks) => void
   /**
    * What a slot of a query's `data` asks of an entity: the components and
-   * relations the query proves. Type-level only, and what makes an entity one:
-   * an id or a hand-written object is not.
+   * relations the query proves, one key each (see {@link ProvenKey}).
+   * Type-level only, and what makes an entity one: an id or a hand-written
+   * object is not.
    */
-  readonly __entity: (_: Proves | Relates) => void
+  readonly __entity: { readonly [Key in ProvenKey<Proves | Relates>]: true }
   /**
    * The schema-bound entity identity.
    */
