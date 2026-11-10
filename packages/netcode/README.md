@@ -73,13 +73,13 @@ const hits = session.events(Hit) // an event of the runtime's schema; one reader
 for (const { tick } of hits.withdrawn()) particles.cancel(tick) // a rollback undid this tick's hits
 for (const { tick, value } of hits.predicted()) particles.burst(tick, value.at) // may still be undone
 for (const { value } of hits.confirmed()) sounds.play(value.kind) // exactly once per hit
-const lost = hits.lost() // a reader that stopped reading: EventsLost, never silent
+const lost = hits.lost() // EventsLost: a reader that stopped reading, or a resync that replaced confirmed ticks; never silent
 ```
 
-- `confirmed()` hands out each event once, when its tick can no longer run again. A lockstep session confirms every tick it runs.
+- `confirmed()` hands out each event once, when its tick can no longer run again within the epoch. A lockstep session confirms every tick it runs. A peer ahead of seat 0 can confirm a tick or two that seat 0's next save makes idle: when the resync runs them again with other events, `lost()` reports them with `reason: "resync"`, and the new run is not handed out again.
 - `predicted()` hands out events of ticks that may still be rolled back. A tick a rollback runs again keeps what was handed out when it publishes the same events (plain data, compared by value); otherwise it is withdrawn and its new events are predicted again.
 - `withdrawn()` names those ticks, so the host cancels what it started. A resync withdraws every predicted tick. A tick waiting to be withdrawn is held back from `predicted()` until `withdrawn()` named it, so a cancel never undoes the new run.
-- A reader that does not call `confirmed()` for more than `Netcode.eventWindow` ticks loses the oldest: `lost()` reports them as `EventsLost`.
+- A reader that does not call `confirmed()` for more than `Netcode.eventWindow` ticks loses the oldest: `lost()` reports them as `EventsLost` with `reason: "unread"`. One report per call, a `"resync"` one first.
 
 When checksums differ, `advance` fails with `Desynced` until `resync()`. With `keepSnapshots: true` it carries this peer's save of that tick; `Desync.compare(mine, theirs)` from [`@typeonce/ritmo-devtools`](https://github.com/typeonce-dev/ritmo/blob/main/packages/devtools/README.md) lists what differs.
 

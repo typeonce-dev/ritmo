@@ -742,7 +742,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     }),
     events: (descriptor) => {
       let ledger = ledgers.get(descriptor)
-      if (ledger === undefined) ledgers.set(descriptor, ledger = Events.make({ schema: runtime.schema, inspect: runtime.inspect, settled: () => settled }, descriptor))
+      if (ledger === undefined) ledgers.set(descriptor, ledger = Events.make({ schema: runtime.schema, inspect: runtime.inspect, settled: () => settled, resyncReach: saveDelay }, descriptor))
       return ledger.reader(next) as never
     }
   }

@@ -290,15 +290,24 @@ export interface Withdrawn {
 }
 
 /**
- * Confirmed events dropped before the reader read them, from tick `from` up
- * to `to` (excluded): the reader did not call `confirmed()` for more than
- * {@link eventWindow} ticks, or one tick published more than the runtime's
- * `streamCapacity` events.
+ * Confirmed events of ticks `from` up to `to` (excluded) that the reader
+ * cannot rely on, and why (`reason`).
  */
 export interface EventsLost {
   readonly _tag: "EventsLost"
   readonly from: number
   readonly to: number
+  /**
+   * - `"unread"`: dropped before the reader read them: the reader did not
+   *   call `confirmed()` for more than {@link eventWindow} ticks, or one
+   *   tick published more than the runtime's `streamCapacity` events.
+   * - `"resync"`: these ticks were handed out as confirmed, then a resync
+   *   ran them again with other events (a peer ahead of seat 0 confirms
+   *   ticks that seat 0's save makes idle). The new run's events are not
+   *   handed out; undo or ignore what the old ones started if it matters
+   *   (a score sent to a server).
+   */
+  readonly reason: "unread" | "resync"
 }
 
 /** How many confirmed ticks of events a reader of `session.events(...)` that stopped reading keeps; older ones are {@link EventsLost}. */
@@ -324,7 +333,8 @@ export interface EventStreams<Value> {
   /**
    * Events of ticks that will not run again, each handed out once: a
    * rolled-back tick is handed out only as it finally ran. A lockstep
-   * session confirms every tick it runs.
+   * session confirms every tick it runs. Final within one epoch: a resync
+   * can replace ticks it handed out, which `lost()` reports.
    */
   readonly confirmed: () => ReadonlyArray<EventRecord<Value>>
   /**
@@ -339,7 +349,11 @@ export interface EventStreams<Value> {
    * previous read: the tick ran again with other events, or not at all.
    */
   readonly withdrawn: () => ReadonlyArray<Withdrawn>
-  /** Confirmed events dropped since the previous call before this reader read them: `undefined` when none. */
+  /**
+   * Confirmed events lost since the previous report: `undefined` when none.
+   * One report per call: when both reasons are pending, a `"resync"` one
+   * comes first and the `"unread"` one on the next call.
+   */
   readonly lost: () => EventsLost | undefined
 }
 
