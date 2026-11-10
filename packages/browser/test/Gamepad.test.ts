@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { Gamepad } from "@typeonce/ritmo-browser"
+import { Controls, Gamepad, Keyboard } from "@typeonce/ritmo-browser"
 
 const released = { held: false, pressed: false, released: true }
 const idle = { held: false, pressed: false, released: false }
@@ -489,5 +489,106 @@ describe("Gamepad.pads", () => {
     first.down("north")
     expect(pads.snapshot()[0]!.actions.attack.pressed).toBe(true)
     pads.dispose()
+  })
+})
+
+describe("Gamepad pads without the standard mapping", () => {
+  /** An Xbox 360 pad as a browser with no mapping for it reports it: triggers as axes 2 and 5, resting at -1. */
+  const makeUnmapped = (index = 0, id = "045e-028e-Microsoft X-Box 360 pad") => {
+    const buttons = Array.from({ length: 11 }, () => ({ pressed: false, value: 0 }))
+    const pad = { id, index, connected: true, mapping: "", buttons, axes: [0, 0, -1, 0, 0, -1, 0, 0] }
+    return {
+      pad,
+      down: (at: number) => (buttons[at] = { pressed: true, value: 1 }),
+      up: (at: number) => (buttons[at] = { pressed: false, value: 0 })
+    }
+  }
+  const unmappedHost = (pad: { readonly pad: Gamepad.PadReading }) => {
+    const connected: Array<Gamepad.PadReading | null> = [pad.pad]
+    const host: Gamepad.GamepadHost = { navigator: { getGamepads: () => connected }, requestAnimationFrame: () => 0, cancelAnimationFrame: () => {} }
+    return { host, connected }
+  }
+  const padBindings = { jump: ["south"], pause: ["start"], fire: ["rightTrigger"], aim: Gamepad.vector({ stick: "right" }) } as const
+  const keyBindings = { jump: [" "], pause: ["Escape"], fire: ["f"], aim: Keyboard.vector({ up: ["i"], down: ["k"], left: ["j"], right: ["l"] }) } as const
+  const Actions = Controls.actions({ buttons: ["jump", "pause", "fire"], vectors: ["aim"] })
+
+  it("reads an untouched pad as not in use, with its sticks and triggers at rest", () => {
+    const pad = makeUnmapped()
+    const controls = Actions.merge({ keyboard: Keyboard.scripted(keyBindings, []), gamepad: Gamepad.actions(unmappedHost(pad).host, padBindings) })
+    const snapshot = controls.snapshot()
+    expect(snapshot.lastUsed).toBe(null)
+    expect(snapshot.vectors.aim).toEqual({ x: 0, y: 0 })
+    expect(snapshot.devices.gamepad).toMatchObject({ used: false, standard: false, connected: true, left: { x: 0, y: 0 }, right: { x: 0, y: 0 }, leftTrigger: 0, rightTrigger: 0 })
+  })
+
+  it("reads its buttons by index, so a press is use and fires the action", () => {
+    const pad = makeUnmapped()
+    const controls = Actions.merge({ keyboard: Keyboard.scripted(keyBindings, []), gamepad: Gamepad.actions(unmappedHost(pad).host, padBindings) })
+    pad.down(0)
+    const snapshot = controls.snapshot()
+    expect(snapshot.lastUsed).toBe("gamepad")
+    expect(snapshot.actions.jump).toEqual({ held: true, pressed: true, released: false })
+    expect(snapshot.devices.gamepad.used).toBe(true)
+  })
+
+  it("follows a trigger bound by name only as the button at its index, never as an axis", () => {
+    const pad = makeUnmapped()
+    pad.pad.buttons.push({ pressed: false, value: 0 })
+    const input = Gamepad.actions(unmappedHost(pad).host, padBindings)
+    expect(input.snapshot().actions.fire.held).toBe(false)
+    pad.down(7)
+    const snapshot = input.snapshot()
+    expect(snapshot.actions.fire).toEqual({ held: true, pressed: true, released: false })
+    expect(snapshot.rightTrigger).toBe(0)
+  })
+
+  it("does not switch to an untouched pad's axes from a standard one", () => {
+    const standard = makePad(0)
+    const other = makeUnmapped(1)
+    const host = makeHost(standard)
+    host.connected.push(other.pad)
+    const input = Gamepad.actions(host.host, bindings)
+    standard.down("west")
+    input.snapshot()
+    standard.up("west")
+    expect(input.snapshot()).toMatchObject({ id: "pad 0", standard: true, used: false })
+  })
+
+  it("does not join a player slot with join: any by its axes alone", () => {
+    const pad = makeUnmapped()
+    const Players = Controls.players(Actions, { slots: ["p1"], join: "any" })
+    const pool = Players.pool({ pads: Gamepad.pads(unmappedHost(pad).host, padBindings, 1) })
+    pool.setJoining(true)
+    expect(pool.snapshot().p1.joined).toBe(false)
+    expect(pool.snapshot().p1.joined).toBe(false)
+    pad.down(9)
+    expect(pool.snapshot().p1).toMatchObject({ joined: true, device: "pads", event: "joined" })
+  })
+
+  it("reads a standard pad as before, and as standard with no pad", () => {
+    const pad = makePad()
+    const { host, connected } = makeHost()
+    const input = Gamepad.actions(host, bindings)
+    expect(input.snapshot()).toMatchObject({ standard: true, connected: false })
+    expect(Gamepad.idle(bindings).standard).toBe(true)
+    connected.push(pad.pad)
+    pad.tilt("right", 1, 0)
+    pad.pull("rightTrigger", 0.8)
+    expect(input.snapshot()).toMatchObject({ standard: true, used: true, right: { x: 1, y: 0 }, rightTrigger: 0.8 })
+  })
+
+  it("reads the sticks again when a standard pad replaces it at the same index", () => {
+    const other = makeUnmapped()
+    const standard = makePad(0, "standard pad")
+    standard.tilt("right", 1, 0)
+    const live = unmappedHost(other)
+    const input = Gamepad.actions(live.host, padBindings)
+    const pads = Gamepad.pads(live.host, padBindings, 1)
+    expect(input.snapshot()).toMatchObject({ standard: false, used: false, right: { x: 0, y: 0 } })
+    expect(pads.snapshot()[0]).toMatchObject({ standard: false, used: false, right: { x: 0, y: 0 } })
+    live.connected[0] = standard.pad
+    expect(input.snapshot()).toMatchObject({ id: "standard pad", standard: true, used: true, right: { x: 1, y: 0 } })
+    expect(pads.snapshot()[0]).toMatchObject({ id: "standard pad", standard: true, used: true, right: { x: 1, y: 0 } })
+    expect(input.snapshot().vectors.aim).toEqual({ x: 1, y: 0 })
   })
 })
