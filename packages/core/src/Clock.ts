@@ -201,9 +201,10 @@ export interface Duration<Hz extends number = number> {
   readonly hz: Hz
 }
 
-/** Why `durationRaw` refused a number of seconds. */
+/** Why `durationRaw` refused a number of seconds, or `durationOfStepsRaw` a count of steps. */
 export interface InvalidDuration {
   readonly _tag: "InvalidDuration"
+  /** The seconds asked for (for `durationOfStepsRaw`, the count divided by the rate). */
   readonly seconds: number
   readonly message: string
 }
@@ -275,6 +276,15 @@ export type ValidDuration<Hz extends number, Seconds extends number> =
     ? FractionReachesStep<Fraction, Hz> extends true ? Seconds : `${Seconds}s is shorter than one step (1/${Hz}s)`
     : Seconds
 
+// The nearest whole step, half up. A product that is exactly k + 0.5 in decimals often lands just
+// below it in floating point (1.025 * 60 is 61.49999...), so the half step is checked by division
+// instead: `(k + 0.5) / hz` is correctly rounded, so it equals `seconds` exactly when the decimal
+// `seconds` is that half step.
+const nearestStep = (seconds: number, hz: number): number => {
+  const below = Math.floor(seconds * hz)
+  return (below + 0.5) / hz === seconds ? below + 1 : Math.round(seconds * hz)
+}
+
 const stepsOf = (hz: number, seconds: number): Result.Result<number, InvalidDuration> => {
   if (!Number.isFinite(seconds) || seconds < 0) {
     return Result.failure({ _tag: "InvalidDuration", seconds, message: "a duration needs a finite, non-negative number of seconds" })
@@ -283,7 +293,7 @@ const stepsOf = (hz: number, seconds: number): Result.Result<number, InvalidDura
   if (seconds * hz < 1 - 1e-9) {
     return Result.failure({ _tag: "InvalidDuration", seconds, message: `${seconds}s is shorter than one step (1/${hz}s)` })
   }
-  const steps = Math.max(1, Math.round(seconds * hz))
+  const steps = Math.max(1, nearestStep(seconds, hz))
   if (!Number.isSafeInteger(steps)) return Result.failure({ _tag: "InvalidDuration", seconds, message: "a duration must fit in a safe whole number of steps" })
   return Result.success(steps)
 }
@@ -301,7 +311,10 @@ export const duration = <Hz extends number, const Seconds extends number>(step: 
   return { kind: "ClockDuration", steps: steps.value, hz: step.hz } as Duration<Hz>
 }
 
-/** Seconds from data as whole steps of `step`, the same rules as `duration`, as a `Result`. */
+/**
+ * Seconds from data as whole steps of `step`, the same rules as `duration`, as a `Result`.
+ * For a count of steps from data, use `durationOfStepsRaw`.
+ */
 export const durationRaw = <Hz extends number>(step: Step<Hz>, seconds: number): Result.Result<Duration<Hz>, InvalidDuration> => {
   const steps = stepsOf(step.hz, seconds)
   return steps.ok ? Result.success({ kind: "ClockDuration", steps: steps.value, hz: step.hz } as Duration<Hz>) : steps
@@ -309,24 +322,42 @@ export const durationRaw = <Hz extends number>(step: Step<Hz>, seconds: number):
 
 type StepsMessage = "Clock.durationOfSteps needs a positive whole number of steps"
 
-/** `N` when it is a positive whole number (or a computed `number`); otherwise the message. */
+/** `N` when it is a literal positive whole number of steps; otherwise the message. */
 export type ValidSteps<N extends number> =
-  number extends N ? N
+  number extends N ? "Clock.durationOfSteps needs a literal count of steps: use Clock.durationOfStepsRaw for data"
+  : true extends IsUnion<N> ? "Clock.durationOfSteps needs one literal count of steps: use Clock.durationOfStepsRaw for data"
   : `${N}` extends `-${string}` | `${string}.${string}` | `${string}e${string}` | "0" ? StepsMessage
+  : AtLeast<Trimmed<Reversed<`${N}`>>, Reversed<"9007199254740992">> extends true ? StepsMessage
   : N
 
+const countOf = (hz: number, steps: number): Result.Result<number, InvalidDuration> =>
+  Number.isSafeInteger(steps) && steps > 0
+    ? Result.success(steps)
+    : Result.failure({ _tag: "InvalidDuration", seconds: steps / hz, message: `a duration needs a positive whole number of steps, got ${steps}` })
+
 /**
- * A whole number of steps of `step` as a duration: `Clock.durationOfSteps(Clock.hz(60), 3)`.
+ * A literal whole number of steps of `step` as a duration: `Clock.durationOfSteps(Clock.hz(60), 3)`.
  * Use it when the length is counted in steps (an animation of 3 frames, a
- * cooldown of 8 steps); use `duration` for literal seconds and
- * `durationRaw` for seconds from data. A count cannot round, so nothing can
- * fail for a positive whole number: a literal zero, negative, or fraction is
- * a compile error, and a computed one throws.
+ * cooldown of 8 steps); use `duration` for literal seconds. A count cannot
+ * round, so a literal zero, negative, or fraction is a compile error, and so
+ * is a computed `number` ("Clock.durationOfSteps needs a literal count of
+ * steps"): for a count read from data, use `durationOfStepsRaw`.
  */
 export const durationOfSteps = <Hz extends number, const N extends number>(step: Step<Hz>, steps: ValidSteps<N>): Duration<Hz> => {
-  const count = steps as number
-  if (!Number.isSafeInteger(count) || count <= 0) throw new Error(`Clock.durationOfSteps needs a positive whole number of steps, got ${count}`)
-  return { kind: "ClockDuration", steps: count, hz: step.hz } as Duration<Hz>
+  const count = countOf(step.hz, steps as number)
+  if (!count.ok) throw new Error(`Clock.durationOfSteps needs a positive whole number of steps, got ${steps}`)
+  return { kind: "ClockDuration", steps: count.value, hz: step.hz } as Duration<Hz>
+}
+
+/**
+ * A count of steps from data as a duration of `step`, the same rules as
+ * `durationOfSteps`, as a `Result`: it fails with `InvalidDuration` for 0, a
+ * negative, a fraction, or a count past `Number.MAX_SAFE_INTEGER`. For
+ * seconds from data, use `durationRaw`.
+ */
+export const durationOfStepsRaw = <Hz extends number>(step: Step<Hz>, steps: number): Result.Result<Duration<Hz>, InvalidDuration> => {
+  const count = countOf(step.hz, steps)
+  return count.ok ? Result.success({ kind: "ClockDuration", steps: count.value, hz: step.hz } as Duration<Hz>) : count
 }
 
 /** The whole steps a duration spans. */

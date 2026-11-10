@@ -1349,7 +1349,9 @@ const makeValidatedRuntime = <
         for (let index = 0; index < pending.length; index++) {
           const nextId = pending[index]!
           descendants.push(entityId(nextId))
-          pending.push(...world.relatedSourceIds(relation, nextId))
+          // A loop, not `push(...children)`: a spread passes each child as an argument, which overflows the stack past ~100k.
+          const children = world.relatedSourceIds(relation, nextId)
+          for (let child = 0; child < children.length; child++) pending.push(children[child]!)
         }
       } else {
         const pending = [...world.relatedSourceIds(relation, target)].reverse()
