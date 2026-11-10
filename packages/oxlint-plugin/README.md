@@ -280,15 +280,19 @@ Checks the names given to `Descriptor.*`, `*.System`, `*.StateMachine`, `*.Entit
 A tagged value, such as the value of a `Descriptor.EntityState` component or of a `Game.StateMachine`, changes state with the new state's own fields. Setting `_tag` over a spread of the previous state keeps every field of that state at runtime, while the new state's type hides them: they come back when the value is saved, compared, or spread again.
 
 ```ts
-const popped = { ...ground, _tag: "air", vy: 2 }   // reported: `platform` survives in the air
+const pop = (contact: Contact): Contact =>
+  contact._tag === "ground" ? { ...contact, _tag: "air", vy: 2, coyote: 0 } : contact   // reported: `platform` survives in the air
 
 // instead
 data.contact.transition(entity, { from: "ground", to: "air", data: { vy: 2, coyote: 0 } })
 nextMachines.mode.transition({ from: "Talking", to: "Exploring" })   // a machine's move, not { ...talking, _tag: "Exploring" }
-const popped = { _tag: "air", vy: 2, coyote: 0 }   // in a pure function
+const pop = (contact: Contact): Contact =>
+  contact._tag === "ground" ? { _tag: "air", vy: 2, coyote: 0 } : contact   // in a pure function
 ```
 
-Spreading the previous value to change fields of the same state (`{ ...air, vy: air.vy - 1 }`) is not reported, nor is a `_tag` written before the spread (`{ _tag: to, ...data }`).
+The compiler already rejects an `update` callback that changes `_tag` and `set` on a state declared with `transitions`, so the rule guards the rest: a value built in a pure function, or written with `set` to a state declared without `transitions`. It reports a `_tag` set over a spread when the file shows the spread value is a state: read from a state machine (`machines.x.get()`, `nextMachines.x.getPending()`) or from an entity state's slot the same function moves (`data.contact.get(entity)` next to `data.contact.transition(...)` or `data.contact.update(entity, { state, data })`), directly or through the variable holding it, or a value whose `_tag` the same function reads (`if (body._tag === "ground")`, `switch (state._tag)`, `const { _tag } = previous`). It reads `Object.assign({}, ground, { _tag: "air" })` and `{ ...ground, ...{ _tag: "air" } }` the same way, and also reports a rest that took the tag out given a named one (`const { _tag, ...rest } = ground`, then `{ _tag: "air", ...rest }`).
+
+Not reported: a value nothing in the file shows to be a state, such as a plain value tagged for an event (`events.explosion.emit({ ...position, _tag: "Explosion" })`); spreading the previous value to change fields of the same state (`{ ...air, vy: air.vy - 1 }`); and a `_tag` written before the spread (`{ _tag: to, ...data }`).
 
 ### `ritmo/no-kept-query-values`
 
