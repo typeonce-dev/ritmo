@@ -337,10 +337,19 @@ export type ValidateRequires<S extends Schema.Any> =
       }
 
 /**
- * Creates one explicit root token for schema-bound long-lived references.
+ * Creates the root of one game, passed last to `bind`
+ * (`Schema.bind(Core, Root)`). Every system, schedule, query, entity id,
+ * handle, and runtime of the game carries it, so values of games with
+ * different roots do not mix.
  *
- * Root tokens exist before schema construction so durable entity handles can be
- * stored in descriptor payload types without widening to `Schema.Any`.
+ * A root exists before the game, so descriptors can name it: a stored entity
+ * handle is `Entity.Handle<typeof Root>`, never widened to `Schema.Any`.
+ *
+ * Declare one root per game, under a name no other game in the program uses.
+ * The name is the root's identity: two `defineRoot("Game")` calls, in one
+ * module or in two, make the same type, and games bound under them mix as if
+ * they were one game. Share the one `Root` constant instead of declaring it
+ * again.
  *
  * @example
  * ```ts
@@ -398,11 +407,24 @@ export const fragment = <
   }) as SchemaDefinition<Components, Resources, Events, OnlyRelations<Relations>, PairsOf<Requires[number]>>
 
 /**
- * Composes one or more fragments and returns one bound `Game` surface.
+ * What `bind` takes last: the game's root, made by `defineRoot`. A call
+ * without one fails with this message, which names the fix.
+ */
+type RootArgument<Root> = [Root] extends [RootToken] ? unknown : MissingRoot
+
+/** Names the fix when `bind` is called without a root. No value has this type. */
+type MissingRoot = {
+  readonly "Schema.bind takes the game's root last: const Root = Schema.defineRoot('Game'), then Schema.bind(...fragments, Root)": true
+}
+
+/**
+ * Composes one or more fragments under the game's root and returns one bound
+ * `Game` surface. The root (`Schema.defineRoot("Game")`) is passed last.
  *
- * Everything created from the returned object carries the same hidden root
- * brand, so systems, schedules, and runtimes from different bound schemas
- * cannot be connected accidentally.
+ * Everything created from the returned object carries the root's brand, so
+ * systems, schedules, queries, entity ids, handles, and runtimes of games
+ * with different roots cannot be connected. A root exists before the game,
+ * so descriptors can name it (stored handles: `Entity.Handle<typeof Root>`).
  *
  * @example
  * ```ts
@@ -413,11 +435,11 @@ export const fragment = <
  * const Game = Schema.bind(Core, Combat, Root)
  * ```
  *
- * Name the schema's type with an interface before binding it under the
- * root, so type errors print `GameSchema` instead of every component,
- * resource, and event of the game (`QueryEntity<GameSchema, ...>`), and
- * helpers type it as `GameSchema`. Bind the fragments once without a root
- * to merge them, or name a single `Schema.fragment(...)` the same way.
+ * Name the schema's type with an interface before binding the game, so type
+ * errors print `GameSchema` instead of every component, resource, and event
+ * of the game (`QueryEntity<GameSchema, ...>`), and helpers type it as
+ * `GameSchema`. Bind the fragments once to merge them, or name a single
+ * `Schema.fragment(...)` the same way.
  *
  * @example
  * ```ts
@@ -425,7 +447,7 @@ export const fragment = <
  * const Combat = Schema.fragment({ components: { Health, Enemy }, events: { Hit } })
  * const Root = Schema.defineRoot("Game")
  * // ---cut---
- * const schema = Schema.bind(Core, Combat).schema
+ * const schema = Schema.bind(Core, Combat, Root).schema
  * type SchemaOf = typeof schema
  * export interface GameSchema extends SchemaOf {}
  * const named: GameSchema = schema
@@ -433,38 +455,26 @@ export const fragment = <
  * ```
  */
 export function bind<
-  S extends Schema.Any
->(schema: S & ValidateFragments<[S]> & ValidateRequires<S>): Schema.Game<S, S>
-/**
- * Binds one fragment under an explicit root (`Schema.defineRoot("Game")`),
- * so descriptors can name the root before the game exists (stored handles:
- * `Entity.Handle<typeof Root>`). The usual way to bind a game.
- */
-export function bind<
   S extends Schema.Any,
-  const Name extends string
->(schema: S & ValidateFragments<[S]> & ValidateRequires<S>, root: RootToken<Name>): Schema.Game<S, RootToken<Name>>
+  const Root
+>(schema: S & ValidateFragments<[S]> & ValidateRequires<S>, root: Root & RootArgument<Root>): Schema.Game<S, Root>
 /**
- * Composes two or more fragments into one bound game; a descriptor
- * registered by two fragments must be the same descriptor. Pass a root last
- * to name it explicitly.
+ * Composes two or more fragments into one bound game under its root
+ * (`Schema.bind(Core, Combat, Root)`); a descriptor registered by two
+ * fragments must be the same descriptor.
  */
 export function bind<
-  const Fragments extends readonly [Schema.Any, Schema.Any, ...Array<Schema.Any>]
->(...fragments: Fragments & ValidateFragments<Fragments> & ValidateRequires<BuildFragments<Fragments>>): Schema.Game<BuildFragments<Fragments>, BuildFragments<Fragments>>
-/**
- * Composes two or more fragments into one bound game under an explicit root
- * (`Schema.bind(Core, Combat, Root)`).
- */
-export function bind<
-  const Fragments extends readonly [Schema.Any, Schema.Any, ...Array<Schema.Any>],
-  const Name extends string
->(...args: [...Fragments, RootToken<Name>] & ValidateFragments<Fragments> & ValidateRequires<BuildFragments<Fragments>>): Schema.Game<BuildFragments<Fragments>, RootToken<Name>>
-export function bind(...args: ReadonlyArray<Schema.Any | RootToken>) {
-  const maybeRoot = args[args.length - 1]
-  const fragments = (isRootToken(maybeRoot) ? args.slice(0, -1) : args) as Array<Schema.Any>
-  const schema = buildSchema(fragments)
-  return isRootToken(maybeRoot) ? makeGame(schema, maybeRoot) : makeGame(schema, schema)
+  const Fragments extends readonly [Schema.Any, ...Array<Schema.Any>],
+  const Root
+>(...args: [...Fragments, Root & RootArgument<Root>] & ValidateFragments<Fragments> & ValidateRequires<BuildFragments<Fragments>>): Schema.Game<BuildFragments<Fragments>, Root>
+/** A call without a root: it fails, and its message names the fix. */
+export function bind(schema: MissingRoot): never
+export function bind(...args: ReadonlyArray<unknown>) {
+  const root = args[args.length - 1]
+  if (!isRootToken(root)) {
+    throw new Error("Schema.bind takes the game's root last: const Root = Schema.defineRoot('Game'), then Schema.bind(...fragments, Root)")
+  }
+  return makeGame(buildSchema(args.slice(0, -1) as Array<Schema.Any>), root)
 }
 
 type RuntimeServicesOf<Provided extends Runtime.RuntimeServices<any>> =
@@ -691,7 +701,7 @@ export namespace Schema {
   /**
    * One fully bound public authoring surface.
    */
-  export interface Game<S extends Any, Root = S> {
+  export interface Game<S extends Any, Root> {
     readonly schema: S
     /**
      * Creates a typed ownership scope for scene or level entities: a flat

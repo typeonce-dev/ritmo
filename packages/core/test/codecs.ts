@@ -8,6 +8,7 @@ import type * as Brand from "@typeonce/ritmo/Brand"
 import type { Codec, StandardSchema } from "@typeonce/ritmo/Descriptor"
 import * as Entity from "@typeonce/ritmo/Entity"
 import type { Descriptor } from "@typeonce/ritmo/Descriptor"
+import type { RootToken } from "@typeonce/ritmo/Schema"
 
 type Issue = StandardSchema.Issue
 type Check<T> = (raw: unknown) => { readonly value: T } | { readonly issues: ReadonlyArray<Issue> }
@@ -93,7 +94,7 @@ export const safeVector = vector as unknown as StandardSchema<{ readonly x: numb
 export const safeSize = size as unknown as StandardSchema<{ readonly width: number; readonly height: number }, SafeSize>
 
 /** A stored entity handle for schema root `Root`, built from `Entity.isHandle`. */
-export const handle = <Root, const Intent extends Descriptor<"component", string, any> | undefined = undefined>(
+export const handle = <Root extends RootToken, const Intent extends Descriptor<"component", string, any> | undefined = undefined>(
   root: Root,
   intent?: Intent
 ): TestCodec<Entity.Handle<Root, Intent>> => {

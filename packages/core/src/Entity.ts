@@ -40,7 +40,7 @@ import type { Brand } from "./internal/brand.ts"
 import { makeHandle } from "./internal/entity.ts"
 import type { Descriptor } from "./Descriptor.ts"
 import type { StagedRelation } from "./Relation.ts"
-import type { Schema } from "./Schema.ts"
+import type { RootToken, Schema } from "./Schema.ts"
 
 /**
  * Entity identities, proofs, and long-lived handles.
@@ -318,7 +318,7 @@ export const handle = <
  * ```
  */
 export const isHandle = <
-  Root,
+  Root extends RootToken,
   const Intent extends Descriptor<"component", string, any> | undefined = undefined
 >(
   _root: Root,
