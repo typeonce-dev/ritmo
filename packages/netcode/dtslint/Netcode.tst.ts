@@ -317,3 +317,25 @@ describe("MemoryNetworkLink.setLatency", () => {
     expect(theLinks[0]!.setLatency(80)).type.toBe<Result.Result<void, MemoryNetworkLink.InvalidOptions>>()
   })
 })
+
+describe("status().waiting", () => {
+  it("names the seat and tick a stall waits for, and for how long, or nothing", () => {
+    const session = Netcode.lockstep(runtime, { ...options, simulate })
+    if (!session.ok) return
+    const waiting = session.value.status().waiting
+    expect(waiting).type.toBe<{ readonly seat: number; readonly tick: number; readonly forMS: number } | undefined>()
+    // @ts-expect-error 'waiting' is possibly 'undefined'
+    waiting.seat.toFixed()
+  })
+})
+
+describe("Disconnected", () => {
+  it("says whether a link closed, a seat went quiet, or a seat started a new session", () => {
+    expect<Netcode.Disconnected["reason"]>().type.toBe<"closed" | "timeout" | "restarted">()
+    const onFailure = (ended: Netcode.Ended): void => {
+      // @ts-expect-error and '"rejoined"' have no overlap
+      if (ended._tag === "Disconnected" && ended.reason === "rejoined") throw new Error("not a reason")
+    }
+    expect(onFailure).type.toBe<(ended: Netcode.Ended) => void>()
+  })
+})

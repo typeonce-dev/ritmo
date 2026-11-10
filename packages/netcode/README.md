@@ -43,7 +43,7 @@ FixedLoop.start({
   // Advances the session each step. A halt (a desync, a failed tick) is reported and answered with a resync.
   update: session.value.update({ input: readLocalInput, onHalted: (error) => console.error(error) }),
   render: () => runtime.tick(draw),
-  onFailure: (failure) => showDisconnected(failure) // the session ended: a peer left, or the peers run different versions
+  onFailure: (failure) => showDisconnected(failure) // the session ended: a peer left or reloaded its page, or the peers run different versions
 })
 ```
 
@@ -95,10 +95,18 @@ const session = Netcode.rollback(runtime, {
 // The HUD: session.status().hidden[seat] is true while that seat's tab is hidden ("waiting for Ada").
 ```
 
+The announcement carries the inputs the others still need, goes out several times, and every peer that heard it passes it on with its pings while the seat is hidden, so it survives a link that loses messages (a WebRTC channel with `maxRetransmits: 0`). With two seats no other peer can pass it on: it is lost only when all five copies are.
+
 - `"stall"`: the others wait for the hidden seat's input, as for a slow one (rollback runs `maxRollback` ticks on guesses, then stalls), and it goes on from where it stopped when it shows again.
 - `"resync-on-return"`: the others play on with idle input for the hidden seat after its last sent input. When it shows again, seat 0 sends a save and it restores it, as in `resync()`; until then its `advance` is `Waiting`. Seat 0 is never played around, since every save is its world: while seat 0 is hidden, the others wait for it.
 
 The bound: a hidden seat's silence counts only after `afterMS`, so a seat that hides and never returns (the tab was closed) ends the session with `Disconnected` at most `afterMS + timeoutMS` after it hid. Every peer passes the same `afterMS` and `then`; without `hidden`, a hidden peer is silent and times out as before. The session unsubscribes from the visibility once it ends. On return, `FixedLoop` drops the hidden time beyond `maxFrameSeconds` and `maxStepsPerFrame`, so the loop does not burst through the missed frames. Pausing a single-player game on a hidden tab is the game's own policy (read `BrowserVisibility` in host code).
+
+## Stalls and reloaded pages
+
+`advance` returns `Stalled` while it waits for another seat's input (lockstep at once, rollback `maxRollback` ticks past it). `status().waiting` names what it waits for, `{ seat, tick, forMS }`, or is `undefined` while it runs, so a HUD can say "waiting for seat 1" and a headless test can say why a match stopped. A seat that stays silent ends the session after `timeoutMS`.
+
+A session cannot join a match in progress. When a seat's page reloads and its new session reaches the others, every peer ends with `Disconnected` with `reason: "restarted"` and that `seat`, and so does the new session, instead of waiting for each other forever. Show that the match ended (`onFailure`) and start a new one. Sessions are told apart by their `hostClock` reading when made.
 
 ## Sync test
 

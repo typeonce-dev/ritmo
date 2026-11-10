@@ -6,7 +6,7 @@
  */
 
 /** Bumped when a message changes shape; peers on another version fail with `ProtocolMismatch`. */
-export const version = 2
+export const version = 3
 
 /** Most inputs one message carries: a peer far behind catches up over several frames. A message with more is malformed. */
 export const maxInputsPerMessage = 64
@@ -19,22 +19,30 @@ interface Base {
   readonly epoch: number
 }
 
-/** Sent until the first save arrives: the sender is here. */
+/**
+ * Sent until the first save arrives: the sender is here. `session`, here
+ * and in pings, tells this session from another one of the same seat (a
+ * reloaded page): the sender's `hostClock` reading when it was made.
+ */
 export interface Hello extends Base {
   readonly k: "hello"
+  readonly session: number
 }
 
 /**
  * From seat 0: every peer restores `save` at `tick`, and the match continues
  * from there under `epoch`. `returned` is, per seat, how many of its hidden
  * spells seat 0 had seen end when it saved: a seat away since a later one
- * stays away.
+ * stays away. `sessions` is, per seat, the session that plays it (each
+ * one's `Hello.session`): a session of the same seat with another number
+ * was not in the match.
  */
 export interface Sync extends Base {
   readonly k: "sync"
   readonly tick: number
   readonly save: unknown
   readonly returned: ReadonlyArray<number>
+  readonly sessions: ReadonlyArray<number>
 }
 
 /** Asks seat 0 for a new save. */
@@ -62,24 +70,34 @@ export interface Sum extends Base {
   readonly sum: string
 }
 
-/** `shown`: how many of the sender's hidden spells have ended. */
+/** `shown`: how many of the sender's hidden spells have ended. `session` as in {@link Hello}. */
 export interface Ping extends Base {
   readonly k: "ping"
+  readonly session: number
   readonly at: number
   readonly shown: number
 }
 
 /**
- * The sender's page went hidden, its `n`th time. Its inputs end at `last`;
- * with `away`, the others play on without it, with idle input after `last`,
- * until seat 0 answers its return with a save. Sent when it hides, and again
- * with every ping while hidden or waiting for that save.
+ * `seat`'s page went hidden, its `n`th time, in `epoch`. Its inputs end at
+ * `last`, and the message carries those from `start` on (a page that hid
+ * sends nothing again, so the announcement holds what the others still
+ * need; several messages share it when that is more than one message
+ * carries). With `away`, the others play on without it, with idle input
+ * after `last`, until seat 0 answers its return with a save. Sent by the
+ * seat when it hides, several times, and again with every ping while it
+ * waits for that save; every other peer that knows of it passes it on
+ * (`from` is then that peer) with its pings while the seat is hidden, so
+ * one peer that heard is enough.
  */
 export interface Hidden extends Base {
   readonly k: "hidden"
+  readonly seat: number
   readonly n: number
   readonly last: number
   readonly away: boolean
+  readonly start: number
+  readonly inputs: ReadonlyArray<unknown>
 }
 
 /** The answer to `to`'s ping sent at `at` (its own clock). */
@@ -119,14 +137,17 @@ export const parse = (text: string, seats: number): Parsed => {
   const base = { from: from as number, epoch }
   switch (value["k"]) {
     case "hello":
-      return { _tag: "Message", message: { k: "hello", ...base } }
+      if (!isTime(value["session"])) return malformed
+      return { _tag: "Message", message: { k: "hello", ...base, session: value["session"] } }
     case "resync":
       return { _tag: "Message", message: { k: "resync", ...base } }
     case "sync": {
       const returned = value["returned"]
+      const sessions = value["sessions"]
       if (!isTick(value["tick"]) || value["tick"] < 0 || !("save" in value)) return malformed
       if (!Array.isArray(returned) || returned.length !== seats || !returned.every(isCount)) return malformed
-      return { _tag: "Message", message: { k: "sync", ...base, tick: value["tick"], save: value["save"], returned } }
+      if (!Array.isArray(sessions) || sessions.length !== seats || !sessions.every(isTime)) return malformed
+      return { _tag: "Message", message: { k: "sync", ...base, tick: value["tick"], save: value["save"], returned, sessions } }
     }
     case "inputs": {
       const acks = value["acks"]
@@ -140,16 +161,26 @@ export const parse = (text: string, seats: number): Parsed => {
       if (!isTick(value["tick"]) || typeof value["sum"] !== "string" || value["sum"].length > sumLength) return malformed
       return { _tag: "Message", message: { k: "sum", ...base, tick: value["tick"], sum: value["sum"] } }
     case "ping":
-      if (!isTime(value["at"]) || !isCount(value["shown"])) return malformed
-      return { _tag: "Message", message: { k: "ping", ...base, at: value["at"], shown: value["shown"] } }
+      if (!isTime(value["session"]) || !isTime(value["at"]) || !isCount(value["shown"])) return malformed
+      return { _tag: "Message", message: { k: "ping", ...base, session: value["session"], at: value["at"], shown: value["shown"] } }
     case "pong": {
       const to = value["to"]
       if (!isTime(value["at"]) || !Number.isSafeInteger(to) || (to as number) < 0 || (to as number) >= seats) return malformed
       return { _tag: "Message", message: { k: "pong", ...base, to: to as number, at: value["at"] } }
     }
-    case "hidden":
+    case "hidden": {
+      const seat = value["seat"]
+      const inputs = value["inputs"]
+      if (!Number.isSafeInteger(seat) || (seat as number) < 0 || (seat as number) >= seats) return malformed
       if (!isCount(value["n"]) || value["n"] < 1 || !isTick(value["last"]) || typeof value["away"] !== "boolean") return malformed
-      return { _tag: "Message", message: { k: "hidden", ...base, n: value["n"], last: value["last"], away: value["away"] } }
+      if (!isCount(value["start"]) || !Array.isArray(inputs) || inputs.length > maxInputsPerMessage) return malformed
+      // The inputs it carries are its own, so they end at `last` at the latest.
+      if (value["start"] + inputs.length - 1 > value["last"]) return malformed
+      return {
+        _tag: "Message",
+        message: { k: "hidden", ...base, seat: seat as number, n: value["n"], last: value["last"], away: value["away"], start: value["start"], inputs }
+      }
+    }
     default:
       return malformed
   }
