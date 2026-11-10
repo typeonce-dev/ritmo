@@ -11,6 +11,16 @@
 | `[Position, { x: 1, y: "2" }]` | `Type 'string' is not assignable to type 'number & FieldOf<"Game/Position", "y">'` |
 | `[Outside, { x: 1 }]` (not in the schema) | `... is not assignable to type '"Game/Outside is not a component of this game's schema: spawn and insert take components registered in Schema.fragment({ components: { ... } })"'` |
 
+A tuple built outside the call (returned by a helper, pushed into an array) widens to an array and fails with `this entry widened to an array: ...`. Add `as const` where it is built, or annotate it with `Command.Entry` (from `@typeonce/ritmo/Command`):
+
+```diff
+-const wear = () => [[Risk, { fire: 0 }]]
++const wear = () => [[Risk, { fire: 0 }]] as const
+-const roles = []
++const roles: Array<Command.Entry<typeof Hp>> = []
+ roles.push([Hp, 1])
+```
+
 Values with an index signature, arrays, tuples, primitives (branded too), `Map`s, `Set`s, functions, `unknown`, and unions of shapes (any field of any member) are accepted as before, and a value written in place is still typed by the schema (`[Ease, (t) => t * 2]`, `[Seen, new Set()]`). Fix the field, or drop it.
 
 `Game.Command.entry(Descriptor, value)` built the same tuple, a second way to do one job that was strict where the tuple was not: write the tuple. `Game.Command.entryRaw` stays, for raw input that returns a `Result`. The message for writing an immutable component through a query now reads `replace it with commands.insert(entity, [Game/Kind, value])`.

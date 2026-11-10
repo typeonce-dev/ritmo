@@ -125,7 +125,7 @@ describe("Descriptor.EntityState", () => {
         // @ts-expect-error Object literal may only specify known properties, and 'm' does not exist in type
         data.mode.set(entity, { _tag: "b", n: 1, m: 1 })
         // With one, no set gets around it.
-        // @ts-expect-error this entity state declares `transitions`: move it with data.x.transition(entity, { from, to, data }), which checks the graph and the current state
+        // @ts-expect-error this entity state declares `transitions`: move it with data.x.transition(entity, { from, to, data }), which checks the graph and the current state, or write data from outside the simulation (a test, a level file) with data.x.setRaw(entity, raw)
         data.contact.set(entity, { _tag: "ground", platform: null })
         // @ts-expect-error this entity state declares `transitions`: move it with data.x.transition(entity, { from, to, data }), which checks the graph and the current state
         data.phase.set(entity, { _tag: "ready" })

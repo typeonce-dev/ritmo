@@ -816,7 +816,7 @@ export interface ConstructedWriteSlot<T, Raw, Error, D> extends WriteSlot<T, D> 
 export type UncheckedEntityStateWrite<States extends StateDefinitions, Transitions, D> =
   { readonly [State in StateName<States>]: ReadonlyArray<StateName<States>> } extends Transitions
     ? (entity: EntityProving<D>, value: ReadonlyValue<StateValueOf<States, StateName<States>>>) => void
-    : { readonly __fixMove__: "this entity state declares `transitions`: move it with data.x.transition(entity, { from, to, data }), which checks the graph and the current state" }
+    : { readonly __fixMove__: "this entity state declares `transitions`: move it with data.x.transition(entity, { from, to, data }), which checks the graph and the current state, or write data from outside the simulation (a test, a level file) with data.x.setRaw(entity, raw)" }
 
 /**
  * Write slot of an entity state component (`Descriptor.EntityState`).
@@ -874,12 +874,13 @@ export interface EntityStateWriteSlot<States extends StateDefinitions, Transitio
     } & StateExactFields<States, State, Next, "transition">
   ): Result.Result<void, EntityStateMismatchError<StateName<States>>>
   /**
-   * Writes any value without checking the current state: a reset, or the
-   * value a pure function computed from the current one. Use `transition`
-   * and `update` for the moves a system makes itself, so the current state
-   * is checked. On an entity state declared with `transitions` it does not
-   * compile: `transition` is the way to move it, so a system's moves are
-   * ones the graph lists.
+   * Writes any value without checking the current state: the value a pure
+   * function computed from the current one. Use `transition` and `update`
+   * for the moves a system makes itself, so the current state is checked.
+   * On an entity state declared with `transitions` it does not compile:
+   * `transition` is the way to move it, so a system's moves are ones the
+   * graph lists. To write a state there from outside the simulation (a
+   * test, a level file), use `setRaw`, which decodes it first.
    */
   readonly set: UncheckedEntityStateWrite<States, Transitions, D>
   /**
