@@ -35,6 +35,36 @@ const runtime = Game.Runtime.make({
 
 `attach` receives the node to add and the node to add it under (`undefined` for the root). It is also called to move an attached node to another parent, so it must take the node out of the parent it is in, as Three.js's `add` and Pixi's `addChild` do. Declare both parameters: a one-parameter `attach` still compiles but puts every node on the root.
 
+## What goes in the renderable
+
+A node follows its renderable. `create` builds the node from the renderable's value, and when an entity's value is no longer the one its node was made from (a system wrote another one, or after a rewind another entity holds an id already drawn), the node is destroyed and made again from the new value, then `apply` runs. Writing an equal value keeps the node: values are compared as plain data.
+
+Making a node costs more than applying one, so split the data by how often it changes:
+
+- The renderable holds what decides which node to make: a kind, a texture, a mesh, a material.
+- What changes while the node lives (an animation frame, a tint, a facing) goes in other components, listed in `redrawOn` and set by `apply`.
+
+```ts
+const Look = Descriptor.Component<{ character: Character }>()("Game/Look") // which sprite sheet
+const Frame = Descriptor.Component<number>()("Game/Frame") // changes every few ticks
+
+const Render = RenderSync.system(Game, {
+  name: "Game/Render",
+  renderable: Look,
+  transform: Position,
+  registry: Sprites,
+  select: { frame: Game.Query.read(Frame) },
+  redrawOn: [Frame],
+  create: ({ renderable }) => new AnimatedSprite(sheets[renderable.character]),
+  apply: (sprite, { transform, data }) => {
+    sprite.position.set(transform.x, transform.y)
+    sprite.gotoAndStop(data.frame.get())
+  }
+})
+```
+
+A `frame` field inside `Look` would make the sprite again each time it moved on.
+
 ## Hierarchies
 
 A part that moves with its entity (a turret on a tank, a name over a head) is a child entity in a `Descriptor.Hierarchy`. Pass the hierarchy to `RenderSync.system` and each child's node is attached under its parent's node, so the renderer composes the transforms:
