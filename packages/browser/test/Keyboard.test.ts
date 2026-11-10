@@ -625,3 +625,140 @@ describe("Keyboard vector actions", () => {
     expect(Keyboard.parseRebinding(bindings, { move: { up: ["i"], down: ["k"], left: ["j"] }, jump: [" "] })).toMatchObject({ ok: false, error: { path: "move.right" } })
   })
 })
+
+describe("Keyboard missed releases", () => {
+  /** W goes down; its keyup never arrives, and no blur or Cmd release clears it. Option goes down, and W is pressed again. */
+  const missedThenOption = () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { up: ["w"], cast: ["∑"] })
+    fake.fire("keydown", { key: "w", code: "KeyW" })
+    keyboard.snapshot()
+    fake.fire("keydown", { key: "Alt", code: "AltLeft", altKey: true })
+    fake.fire("keydown", { key: "∑", code: "KeyW", altKey: true })
+    return { fake, keyboard }
+  }
+
+  it("matches the release of a new press by the character it types now", () => {
+    const { fake, keyboard } = missedThenOption()
+    expect(keyboard.snapshot().actions.cast).toEqual({ held: true, pressed: true, released: false })
+    fake.fire("keyup", { key: "∑", code: "KeyW", altKey: true })
+    expect(keyboard.snapshot().actions.cast).toEqual({ held: false, pressed: false, released: true })
+  })
+
+  it("lets go of the character the key typed before, since it went up unseen", () => {
+    const { keyboard } = missedThenOption()
+    expect(keyboard.snapshot().actions.up).toEqual({ held: false, pressed: false, released: true })
+  })
+
+  it("keeps a repeat of a key known to be down from pressing, and a repeat after a blur pressing", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { up: ["w"], cast: ["∑"] })
+    fake.fire("keydown", { key: "w", code: "KeyW" })
+    keyboard.snapshot()
+    // A repeat is the same press, whatever it types now.
+    fake.fire("keydown", { key: "∑", code: "KeyW", altKey: true, repeat: true })
+    expect(keyboard.snapshot().actions).toMatchObject({ up: { held: true, pressed: false }, cast: { held: false, pressed: false } })
+    fake.blur()
+    keyboard.snapshot()
+    fake.fire("keydown", { key: "∑", code: "KeyW", altKey: true, repeat: true })
+    expect(keyboard.snapshot().actions.cast).toEqual({ held: true, pressed: true, released: false })
+    fake.fire("keyup", { key: "∑", code: "KeyW", altKey: true })
+    expect(keyboard.snapshot().actions.cast).toEqual({ held: false, pressed: false, released: true })
+  })
+})
+
+describe("Keyboard keys that type the same character", () => {
+  it("holds an action bound by character while either Shift is down", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { run: ["Shift"] })
+    fake.fire("keydown", { key: "Shift", code: "ShiftLeft" })
+    fake.fire("keydown", { key: "Shift", code: "ShiftRight" })
+    expect(keyboard.snapshot().actions.run).toEqual({ held: true, pressed: true, released: false })
+    fake.fire("keyup", { key: "Shift", code: "ShiftLeft" })
+    expect(keyboard.snapshot().actions.run).toEqual({ held: true, pressed: false, released: false })
+    // Pressing the first again while the other holds it is no new press.
+    fake.fire("keydown", { key: "Shift", code: "ShiftLeft" })
+    expect(keyboard.snapshot().actions.run).toEqual({ held: true, pressed: false, released: false })
+    fake.fire("keyup", { key: "Shift", code: "ShiftRight" })
+    expect(keyboard.snapshot().actions.run.held).toBe(true)
+    fake.fire("keyup", { key: "Shift", code: "ShiftLeft" })
+    expect(keyboard.snapshot().actions.run).toEqual({ held: false, pressed: false, released: true })
+    expect(fake.prevented).toEqual(["Shift", "Shift", "Shift"])
+  })
+
+  it("holds a digit bound by character while the row or the numpad key is down", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { use: ["1"], slot: [Keyboard.code("Numpad1")] })
+    fake.fire("keydown", { key: "1", code: "Digit1" })
+    fake.fire("keydown", { key: "1", code: "Numpad1" })
+    expect(keyboard.snapshot().actions).toMatchObject({ use: { held: true, pressed: true }, slot: { held: true, pressed: true } })
+    fake.fire("keyup", { key: "1", code: "Numpad1" })
+    expect(keyboard.snapshot().actions).toMatchObject({ use: { held: true, released: false }, slot: { held: false, released: true } })
+    fake.fire("keyup", { key: "1", code: "Digit1" })
+    expect(keyboard.snapshot().actions.use).toEqual({ held: false, pressed: false, released: true })
+  })
+
+  it("keeps the other key's hold when one went down in a form field", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { use: ["1"] })
+    fake.fire("keydown", { key: "1", code: "Numpad1" })
+    fake.fire("keydown", { key: "1", code: "Digit1", target: { tagName: "INPUT" } })
+    fake.fire("keyup", { key: "1", code: "Digit1", target: { tagName: "INPUT" } })
+    expect(keyboard.snapshot().actions.use).toEqual({ held: true, pressed: true, released: false })
+    fake.fire("keyup", { key: "1", code: "Numpad1" })
+    expect(keyboard.snapshot().actions.use.released).toBe(true)
+  })
+
+  it("releases at a rebind while both are down, and a newly bound action waits for the character to go up", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { run: ["Shift"], walk: ["x"] })
+    fake.fire("keydown", { key: "Shift", code: "ShiftLeft" })
+    fake.fire("keydown", { key: "Shift", code: "ShiftRight" })
+    keyboard.snapshot()
+    keyboard.rebind({ run: ["x"], walk: ["Shift"] })
+    expect(keyboard.snapshot().actions).toMatchObject({ run: { held: false, released: true }, walk: { held: false, pressed: false } })
+    fake.fire("keyup", { key: "Shift", code: "ShiftLeft" })
+    fake.fire("keydown", { key: "Shift", code: "ShiftLeft" })
+    expect(keyboard.snapshot().actions.walk).toEqual({ held: false, pressed: false, released: false })
+    fake.fire("keyup", { key: "Shift", code: "ShiftLeft" })
+    fake.fire("keyup", { key: "Shift", code: "ShiftRight" })
+    expect(keyboard.snapshot().actions.run).toEqual({ held: false, pressed: false, released: false })
+    fake.fire("keydown", { key: "Shift", code: "ShiftRight" })
+    expect(keyboard.snapshot().actions.walk).toEqual({ held: true, pressed: true, released: false })
+  })
+
+  it("keeps the rule that a rebind keeps an action both keys still hold", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { run: ["Shift"], walk: ["x"] })
+    fake.fire("keydown", { key: "Shift", code: "ShiftLeft" })
+    fake.fire("keydown", { key: "Shift", code: "ShiftRight" })
+    keyboard.snapshot()
+    keyboard.rebind({ run: ["Shift", "r"], walk: ["x"] })
+    fake.fire("keyup", { key: "Shift", code: "ShiftRight" })
+    expect(keyboard.snapshot().actions.run).toEqual({ held: true, pressed: false, released: false })
+    fake.fire("keyup", { key: "Shift", code: "ShiftLeft" })
+    expect(keyboard.snapshot().actions.run).toEqual({ held: false, pressed: false, released: true })
+  })
+
+  it("lets go of both at Cmd's release and at a blur, and treats a host without code as before", () => {
+    const fake = makeHost()
+    const keyboard = Keyboard.actions(fake.host, { use: ["1"] })
+    fake.fire("keydown", { key: "1", code: "Digit1" })
+    fake.fire("keydown", { key: "1", code: "Numpad1" })
+    fake.fire("keydown", { key: "Meta", code: "MetaLeft", metaKey: true })
+    fake.fire("keyup", { key: "Meta", code: "MetaLeft" })
+    expect(keyboard.snapshot().actions.use.released).toBe(true)
+    fake.fire("keydown", { key: "1", code: "Digit1" })
+    fake.fire("keydown", { key: "1", code: "Numpad1" })
+    keyboard.snapshot()
+    fake.blur()
+    expect(keyboard.snapshot().actions.use.released).toBe(true)
+
+    const plain = Keyboard.actions(fake.host, { use: ["1"] })
+    fake.down("1")
+    fake.down("1")
+    expect(plain.snapshot().actions.use).toEqual({ held: true, pressed: true, released: false })
+    fake.up("1")
+    expect(plain.snapshot().actions.use).toEqual({ held: false, pressed: false, released: true })
+  })
+})
