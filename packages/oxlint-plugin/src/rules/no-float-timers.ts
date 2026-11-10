@@ -1,37 +1,144 @@
 import { defineRule } from "@oxlint/plugins"
-import type { ESTree } from "@oxlint/plugins"
+import type { Context, ESTree } from "@oxlint/plugins"
 
-import { calledMethod, docsUrl, propertyName } from "../internal/ast.ts"
+import { calledMethod, docsUrl, globalPath, propertyKey, propertyName } from "../internal/ast.ts"
 
-// The names a tick's seconds go by: a local, a field (`time.dt`), or a resource read (`resources.deltaTime.get()`).
-const deltaNames = ["dt", "deltaTime", "deltaSeconds"]
+/**
+ * The names a step's length in seconds goes by, lowercased without `_`: a
+ * local, a constant (`STEP_SECONDS`), a field (`time.dt`), or a resource read
+ * (`resources.deltaTime.get()`).
+ */
+const deltaNames = new Set([
+  "dt", "deltatime", "deltaseconds", "dtseconds", "fixeddt", "fixeddelta", "fixeddeltatime", "fixeddeltaseconds",
+  "stepseconds", "fixedstepseconds", "fixedstep", "timestep", "fixedtimestep", "secondsperstep", "secondspertick", "tickseconds", "frameseconds"
+])
+/** Fields that are a step's length only on a receiver named for time: `time.delta`, `step.seconds`, but not a pointer's `delta`. */
+const timeFields = new Map([
+  ["delta", new Set(["time", "clock", "frame", "tick", "step"])],
+  ["seconds", new Set(["frame", "tick", "step"])]
+])
 
-/** `node` without the type-only wrappers TypeScript adds (`dt as number`, `dt!`). */
+const normal = (name: string): string => name.replaceAll("_", "").toLowerCase()
+
+/** `node` without the wrappers that keep its value (`dt as number`, `dt!`, `(dt)`). */
 const unwrap = (node: ESTree.Node): ESTree.Node =>
-  node.type === "TSAsExpression" || node.type === "TSNonNullExpression" || node.type === "TSSatisfiesExpression" ? unwrap(node.expression) : node
+  node.type === "TSAsExpression" || node.type === "TSNonNullExpression" || node.type === "TSSatisfiesExpression" || node.type === "ParenthesizedExpression"
+    ? unwrap(node.expression)
+    : node
 
-/** Whether `node` is a tick's seconds on their own: `dt`, `time.dt`, or `resources.deltaTime.get()`. */
-const isDelta = (raw: ESTree.Node): boolean => {
+const numberValue = (node: ESTree.Node): number | undefined => {
+  const value = unwrap(node)
+  return value.type === "Literal" && typeof value.value === "number" ? value.value : undefined
+}
+
+/** Whether `call` is the global `Math.min(...)` or `Math.max(...)`. */
+const isMinMax = (context: Context, call: ESTree.Node): call is ESTree.CallExpression => {
+  if (call.type !== "CallExpression") return false
+  const path = globalPath(context, call.callee)
+  return path === "Math.min" || path === "Math.max"
+}
+
+/**
+ * Whether `node` is a step's length in seconds: `dt`, `time.dt`,
+ * `resources.deltaTime.get()`, `1 / 60`, one of these scaled by a number
+ * (`dt * 1000`) or clamped (`Math.min(dt, 0.1)`), or a `const` that holds
+ * one. A bare `delta` counts only where a timer counts down (`countdown`).
+ */
+const isDelta = (context: Context, raw: ESTree.Node, countdown = false): boolean => {
   const node = unwrap(raw)
-  if (node.type === "Identifier") return deltaNames.includes(node.name)
-  if (node.type === "MemberExpression") return deltaNames.includes(propertyName(node) ?? "")
+  if (node.type === "Identifier") {
+    if (deltaNames.has(normal(node.name)) || (countdown && node.name === "delta")) return true
+    const init = constInit(context, node)
+    return init !== undefined && isDelta(context, init)
+  }
+  if (node.type === "MemberExpression") {
+    const name = propertyName(node)
+    if (name === undefined) return false
+    if (deltaNames.has(normal(name))) return true
+    const receivers = timeFields.get(name)
+    const receiver = unwrap(node.object)
+    const owner = receiver.type === "Identifier" ? receiver.name : receiver.type === "MemberExpression" ? propertyName(receiver) : undefined
+    return receivers !== undefined && owner !== undefined && receivers.has(normal(owner))
+  }
   if (node.type === "CallExpression" && calledMethod(node) === "get" && node.callee.type === "MemberExpression") {
     const receiver = unwrap(node.callee.object)
-    return receiver.type === "MemberExpression" && deltaNames.includes(propertyName(receiver) ?? "")
+    return receiver.type === "MemberExpression" && deltaNames.has(normal(propertyName(receiver) ?? ""))
+  }
+  if (node.type === "BinaryExpression") {
+    // `1 / 60`: one second split into steps.
+    if (node.operator === "/" && numberValue(node.left) === 1) {
+      const steps = numberValue(node.right)
+      return steps !== undefined && Number.isInteger(steps) && steps > 1
+    }
+    // `dt * 1000`, `dt / 2`: still a step's length, in other units.
+    if (node.operator === "*") return (isDelta(context, node.left) && numberValue(node.right) !== undefined) || (numberValue(node.left) !== undefined && isDelta(context, node.right))
+    if (node.operator === "/") return isDelta(context, node.left) && numberValue(node.right) !== undefined
+  }
+  if (isMinMax(context, node)) return node.arguments.some((argument) => isDelta(context, argument))
+  return false
+}
+
+/** The value a `const` holds, if `node` names one declared in the file. */
+const constInit = (context: Context, node: ESTree.Node): ESTree.Node | undefined => {
+  const variable = context.sourceCode.getScope(node).references.find((reference) => reference.identifier === node)?.resolved
+  const definition = variable?.defs.length === 1 ? variable.defs[0] : undefined
+  if (definition?.type !== "Variable" || definition.parent?.type !== "VariableDeclaration" || definition.parent.kind !== "const") return undefined
+  const declarator = definition.node
+  return declarator.type === "VariableDeclarator" && declarator.id.type === "Identifier" ? declarator.init ?? undefined : undefined
+}
+
+/** The last name of a stored value: `remaining` for `timer.remaining`, `left` for `left`. */
+const lastName = (raw: ESTree.Node): string | undefined => {
+  const node = unwrap(raw)
+  if (node.type === "Identifier") return node.name
+  if (node.type === "MemberExpression") return propertyName(node)
+  return undefined
+}
+
+/**
+ * Whether the value of `expression`, a stored value `stored` plus or minus a
+ * step, is written back where `stored` came from, so it counts across ticks:
+ * to a target of the same name (`x = x - dt`, `let cooldown =
+ * state.cooldown - dt`, `{ left: buff.left - dt }`, `resources.timer.set(timer
+ * - dt)`), or as the result of an `update` callback over it. A clamp
+ * (`Math.max(0, x - dt)`) or a branch (`a ? x - dt : 0`) passes the value on.
+ */
+const writtenBack = (context: Context, expression: ESTree.Node, stored: ESTree.Node): boolean => {
+  const name = lastName(stored)
+  if (name === undefined) return false
+  let node = expression
+  let parent = node.parent
+  while (
+    parent !== null &&
+    ((parent.type === "TSAsExpression" || parent.type === "TSNonNullExpression" || parent.type === "TSSatisfiesExpression" || parent.type === "ParenthesizedExpression") ||
+      (parent.type === "ConditionalExpression" && parent.test !== node) ||
+      parent.type === "LogicalExpression" ||
+      (isMinMax(context, parent) && parent.callee !== node))
+  ) {
+    node = parent
+    parent = node.parent
+  }
+  if (parent === null) return false
+  if (parent.type === "AssignmentExpression") return parent.operator === "=" && parent.right === node && lastName(parent.left) === name
+  if (parent.type === "VariableDeclarator") return parent.init === node && parent.id.type === "Identifier" && parent.id.name === name
+  if (parent.type === "Property") return parent.value === node && parent.parent.type === "ObjectExpression" && propertyKey(parent) === name
+  // `resources.timer.set(timer - dt)`, `data.timer.set(entity, timer - dt)`
+  if (parent.type === "CallExpression" && calledMethod(parent) === "set" && parent.callee.type === "MemberExpression" && parent.arguments.at(-1) === node) {
+    return lastName(parent.callee.object) === name
+  }
+  // `resources.timer.update((left) => left - dt)`
+  const callback = parent.type === "ArrowFunctionExpression" && parent.body === node ? parent : undefined
+  if (callback !== undefined && callback.parent.type === "CallExpression" && calledMethod(callback.parent) === "update") {
+    const param = callback.params[0]
+    return param?.type === "Identifier" && param.name === name && unwrap(stored).type === "Identifier"
   }
   return false
 }
 
-/** Whether `node` reads a stored value (a local or a field), the thing a timer counts. */
-const isStored = (raw: ESTree.Node): boolean => {
-  const node = unwrap(raw)
-  return (node.type === "Identifier" || node.type === "MemberExpression") && !isDelta(node)
-}
-
 /**
  * A timer in simulation code is a deadline in steps, never a float counted
- * down (or up) by `dt`: the float drifts, and the value it saves means
- * nothing once the fixed step changes.
+ * down (or up) by a step's seconds: the float drifts, and the value it saves
+ * means nothing once the fixed step changes.
  */
 export default defineRule({
   meta: {
@@ -49,15 +156,22 @@ export default defineRule({
   create(context) {
     const report = (node: ESTree.Node) =>
       context.report({ node, messageId: "floatTimer", data: { text: context.sourceCode.getText(node) } })
+    /** Whether `node` reads a stored value (a local or a field), the thing a timer counts. */
+    const isStored = (raw: ESTree.Node): boolean => {
+      const node = unwrap(raw)
+      return (node.type === "Identifier" || node.type === "MemberExpression") && !isDelta(context, node)
+    }
     return {
       AssignmentExpression(node) {
         // `timer -= dt`, `elapsed += time.dt`
-        if ((node.operator === "-=" || node.operator === "+=") && isDelta(node.right)) report(node)
+        if (node.operator === "-=" && isDelta(context, node.right, true)) report(node)
+        if (node.operator === "+=" && isDelta(context, node.right)) report(node)
       },
       BinaryExpression(node) {
-        // `cooldown.remaining - dt`, `time.dt + since`; `x + vx * dt` scales dt, so it is integration.
+        // `cooldown.remaining - dt` written back; `x + vx * dt` scales dt, so it is integration, and `horizon + dt` stored elsewhere is a look-ahead.
         if (node.operator !== "-" && node.operator !== "+") return
-        if ((isDelta(node.right) && isStored(node.left)) || (isDelta(node.left) && isStored(node.right))) report(node)
+        if (isDelta(context, node.right, node.operator === "-") && isStored(node.left) && writtenBack(context, node, node.left)) report(node)
+        else if (node.operator === "+" && isDelta(context, node.left) && isStored(node.right) && writtenBack(context, node, node.right)) report(node)
       }
     }
   }

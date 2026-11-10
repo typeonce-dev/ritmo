@@ -67,7 +67,7 @@ const started = performance.now()
 | [`use-ops-for-math`](#ritmouse-ops-for-math) | simulation | `Math.sin`, `Math.hypot`, `a ** b`, `const { sin } = Math`, ... | `Ops` |
 | [`keep-simulation-headless`](#ritmokeep-simulation-headless) | simulation | page globals, host I/O, audio, renderer imports | input and data from the host, drawing and sound in a render schedule |
 | [`no-infinity-in-simulation-data`](#ritmono-infinity-in-simulation-data) | simulation | `Infinity` / `NaN` in object literals | `null` |
-| [`no-float-timers`](#ritmono-float-timers) | simulation | `timer -= dt`, `cooldown - time.dt` | `Clock.deadline` / `Clock.reached` |
+| [`no-float-timers`](#ritmono-float-timers) | simulation | `timer -= dt`, `cooldown = cooldown - time.dt` | `Clock.deadline` / `Clock.reached` |
 | [`no-brand-cast`](#ritmono-brand-cast) | simulation | `raw as UserId`, `1 as Random.State` | the schema or constructor that brands it |
 | [`handle-runtime-result`](#ritmohandle-runtime-result) | everywhere | a dropped or unchecked `runtime.tick(...)` / `restore(...)` / `rewind(...)` / `snapshot()` / `checksum()` result | check `.ok` |
 | [`prefix-descriptor-and-system-names`](#ritmoprefix-descriptor-and-system-names) | everywhere | `"Position"`, `Game.System("Move", ...)` | `"Game/Position"` |
@@ -195,7 +195,14 @@ data.enemy.set(entity, { attackAt: Clock.deadline(gameplay, windup) })
 
 Time scaled by a fraction (a 0.3x slow motion) has no whole step to end on, so a float is right there: keep it and disable the line with the reason (`// oxlint-disable-next-line ritmo/no-float-timers -- scaled by slow motion`). A value counted up by `dt` is reported too, since it drifts the same way: `Clock.elapsed(time)` is the exact seconds of a clock.
 
-Catches a stored value (a local or a field) plus or minus a tick's seconds on their own: `dt`, `deltaTime`, or `deltaSeconds`, as a local, a field (`time.dt`), or a resource read (`resources.deltaTime.get()`), in `x -= dt`, `x += dt`, and `x - dt` / `x + dt` anywhere (`Math.max(0, x - dt)`, an object literal). A rate scaled by `dt` (`position.x += velocity.x * dt`) is integration and is not reported, nor is a count of whole steps (`cooldown - 1`), nor a `delta` that is not time (a pointer's).
+Catches a value updated by a step's length in seconds, so it counts across ticks: `x -= dt` and `x += dt`, and `x - dt` / `x + dt` written back where `x` came from: to a target of the same name (`x = x - dt`, `let cooldown = Math.max(0, state.cooldown - dt)`, `{ left: buff.left - dt }`, `resources.timer.set(timer - dt)`), or as an `update` callback's result (`resources.timer.update((left) => left - dt)`).
+
+A step's length is:
+- a local, a field (`time.dt`), or a resource read (`resources.deltaTime.get()`) named `dt`, `deltaTime`, `deltaSeconds`, `dtSeconds`, `fixedDt`, `fixedDelta`, `fixedDeltaTime`, `fixedDeltaSeconds`, `fixedStep`, `stepSeconds`, `fixedStepSeconds`, `timeStep`, `fixedTimeStep`, `secondsPerStep`, `secondsPerTick`, `tickSeconds`, or `frameSeconds`, in any case and with or without `_` (`STEP_SECONDS`);
+- `delta` of `time`, `clock`, `frame`, `tick`, or `step`, and `seconds` of `frame`, `tick`, or `step` (`step.seconds`); a bare `delta` only when subtracted (`x -= delta`);
+- `1 / 60` (one over a whole number), one of the above scaled by a number (`dt * 1000`) or clamped (`Math.min(dt, 0.1)`), or a `const` that holds one.
+
+Not reported: a rate scaled by `dt` (`position.x += velocity.x * dt`, integration), a step's length added and kept elsewhere (`const until = horizon + dt`, `if (accumulator - dt >= 0)`), a count of whole steps (`cooldown - 1`), and a `delta` that is not time (`pending[axis] += delta`, `pointer.delta`).
 
 ### `ritmo/no-brand-cast`
 

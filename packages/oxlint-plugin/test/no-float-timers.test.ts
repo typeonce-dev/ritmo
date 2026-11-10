@@ -19,7 +19,16 @@ tester.run("no-float-timers", rule, {
     "if (player.cooldown > 0) data.player.set({ ...player, cooldown: player.cooldown - 1 })",
     // Pointer and other deltas that are not time.
     "pending[axis] += delta",
-    "const shifted = origin + offset.delta"
+    "const shifted = origin + offset.delta",
+    "position.x -= pointer.delta",
+    // A step's seconds used without counting anything: a look-ahead, a test.
+    "const until = horizon + dt",
+    "if (accumulator - dt >= 0) drain()",
+    "const predicted = predict(body, horizon + time.dt)",
+    "spawn({ at: start + dt })",
+    // A whole count, or a fraction that is not one second's.
+    "health -= 1 / 2 + bonus",
+    "charges -= 1"
   ],
   invalid: [
     {
@@ -50,6 +59,37 @@ tester.run("no-float-timers", rule, {
     {
       code: "invulnerable.seconds -= (deltaSeconds as number)",
       errors: [{ messageId: "floatTimer", data: { text: "invulnerable.seconds -= (deltaSeconds as number)" } }]
+    },
+    // A step's length under other names and shapes.
+    { code: "x -= delta", errors: [{ messageId: "floatTimer", data: { text: "x -= delta" } }] },
+    { code: "x -= time.delta", errors: [{ messageId: "floatTimer", data: { text: "x -= time.delta" } }] },
+    { code: "elapsed += clock.delta", errors: [{ messageId: "floatTimer", data: { text: "elapsed += clock.delta" } }] },
+    { code: "x -= 1 / 60", errors: [{ messageId: "floatTimer", data: { text: "x -= 1 / 60" } }] },
+    { code: "x -= STEP_SECONDS", errors: [{ messageId: "floatTimer", data: { text: "x -= STEP_SECONDS" } }] },
+    { code: "x -= FIXED_STEP_SECONDS", errors: [{ messageId: "floatTimer", data: { text: "x -= FIXED_STEP_SECONDS" } }] },
+    { code: "x -= fixedDt", errors: [{ messageId: "floatTimer", data: { text: "x -= fixedDt" } }] },
+    { code: "x -= dtSeconds", errors: [{ messageId: "floatTimer", data: { text: "x -= dtSeconds" } }] },
+    { code: "x -= dt * 1", errors: [{ messageId: "floatTimer", data: { text: "x -= dt * 1" } }] },
+    { code: "elapsedMs += dt * 1000", errors: [{ messageId: "floatTimer", data: { text: "elapsedMs += dt * 1000" } }] },
+    { code: "x -= Math.min(dt, 0.1)", errors: [{ messageId: "floatTimer", data: { text: "x -= Math.min(dt, 0.1)" } }] },
+    { code: "x = x - step.seconds", errors: [{ messageId: "floatTimer", data: { text: "x - step.seconds" } }] },
+    {
+      // A const that holds a step's length is one.
+      code: "const tick = frame.dt\nwindow.remaining -= tick",
+      errors: [{ messageId: "floatTimer", data: { text: "window.remaining -= tick" } }]
+    },
+    {
+      // Stored back through the slot it was read from.
+      code: "resources.timer.set(Math.max(0, timer - dt))",
+      errors: [{ messageId: "floatTimer", data: { text: "timer - dt" } }]
+    },
+    {
+      code: "resources.timer.update((left) => left - dt)",
+      errors: [{ messageId: "floatTimer", data: { text: "left - dt" } }]
+    },
+    {
+      code: "const remaining = timer.remaining > 0 ? timer.remaining - dt : 0",
+      errors: [{ messageId: "floatTimer", data: { text: "timer.remaining - dt" } }]
     }
   ]
 })
