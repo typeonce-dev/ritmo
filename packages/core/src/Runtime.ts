@@ -1274,15 +1274,16 @@ const makeValidatedRuntime = <
   }
 
   const makeLookup = (): LookupApi<S, Root> => {
+    // Ids only: the entity member of `Entity.IdParameter` has no values, it only names the fix.
     const lookup: LookupApi<S, Root> = {
     related: relatedTarget,
-    relatedSources(target, relation) {
+    relatedSources(target: Entity.EntityId<S, Root>, relation) {
       if (!world.records.has(target)) {
         return Result.failure(RelationErrors.missingEntityError(target))
       }
       return Result.success(world.relatedSourceIds(relation, target).map(entityId))
     },
-    ancestors(target, relation) {
+    ancestors(target: Entity.EntityId<S, Root>, relation) {
       if (!world.records.has(target)) {
         return Result.failure(RelationErrors.missingEntityError(target))
       }
@@ -1294,7 +1295,7 @@ const makeValidatedRuntime = <
       }
       return Result.success(ancestors)
     },
-    descendants(target, relation, options) {
+    descendants(target: Entity.EntityId<S, Root>, relation, options) {
       if (!world.records.has(target)) {
         return Result.failure(RelationErrors.missingEntityError(target))
       }
@@ -1319,7 +1320,7 @@ const makeValidatedRuntime = <
       }
       return Result.success(descendants)
     },
-    root(target, relation) {
+    root(target: Entity.EntityId<S, Root>, relation) {
       if (!world.records.has(target)) {
         return Result.failure(RelationErrors.missingEntityError(target))
       }
@@ -1365,17 +1366,17 @@ const makeValidatedRuntime = <
         }
         return guarded as QueryData<Q>
       },
-      get(target) {
+      get(target: Entity.EntityId<S, Query.Query.Root<Q>>) {
         return resolve(target, query, reader)
       },
       getHandle(handle) {
         return resolve(handle as Entity.Handle<Root, any>, query, reader)
       },
-      children(target, relation) {
+      children(target: Entity.EntityId<S, Query.Query.Root<Q>>, relation) {
         if (!world.records.has(target)) return Result.failure(RelationErrors.missingEntityError(target))
         return Result.success(matching(world.relatedSourceIds(relation, target).map(entityId)))
       },
-      descendants(target, relation, options) {
+      descendants(target: Entity.EntityId<S, Query.Query.Root<Q>>, relation, options) {
         const ids = lookup.descendants(target, relation, options)
         return ids.ok ? Result.success(matching(ids.value)) : ids
       },

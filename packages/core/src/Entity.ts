@@ -241,6 +241,20 @@ export interface EntityRef<S extends Schema.Any, Root = unknown, in Proves = nev
 }
 
 /**
+ * The parameter of a lookup or command that takes an id (`queries.x.get`,
+ * `lookup.related`, `commands.relate`): the id, plus a member no value has,
+ * so passing the entity instead names the fix. Commands that check what the
+ * entity proves (`insert`, `remove`, `despawn`) take the entity itself.
+ */
+export type IdParameter<S extends Schema.Any, Root = unknown> =
+  | EntityId<S, Root>
+  | {
+      readonly kind: "EntityRef"
+      readonly __fixId__: "this takes an entity id, not an entity: pass entity.id"
+      readonly __never__: never
+    }
+
+/**
  * Anything that identifies one current-runtime entity: an id, or an entity
  * from a query.
  */

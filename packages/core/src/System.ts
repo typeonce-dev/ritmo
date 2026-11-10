@@ -1010,7 +1010,7 @@ export interface QueryLookups<S extends Schema.Any, Q extends Query.Any> {
    * declares, so its access is visible in the spec: there is no lookup that
    * takes a query at call time.
    */
-  get(entityId: import("./Entity.ts").EntityId<S, Query.Root<Q>>): Result.Result<QueryEntity<S, Q>, Query.LookupError>
+  get(entityId: Entity.IdParameter<S, Query.Root<Q>>): Result.Result<QueryEntity<S, Q>, Query.LookupError>
   /**
    * Resolves a stored durable handle back into this query's access.
    *
@@ -1032,7 +1032,7 @@ export interface QueryLookups<S extends Schema.Any, Q extends Query.Any> {
    * parent is a `MissingEntity` failure.
    */
   children<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Hierarchy>>(
-    entityId: Entity.EntityId<S, Query.Root<Q>>,
+    entityId: Entity.IdParameter<S, Query.Root<Q>>,
     relation: R
   ): Result.Result<ReadonlyArray<QueryEntity<S, Q>>, Relation.Relation.MissingEntityError>
   /**
@@ -1041,7 +1041,7 @@ export interface QueryLookups<S extends Schema.Any, Q extends Query.Any> {
    * are skipped. `lookup.descendants` returns every descendant's id instead.
    */
   descendants<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Hierarchy>>(
-    entityId: Entity.EntityId<S, Query.Root<Q>>,
+    entityId: Entity.IdParameter<S, Query.Root<Q>>,
     relation: R,
     options?: { readonly order?: "breadth" | "depth" }
   ): Result.Result<ReadonlyArray<QueryEntity<S, Q>>, Relation.Relation.MissingEntityError>
@@ -1073,7 +1073,7 @@ export interface LookupApi<S extends Schema.Any, Root = unknown> {
    * `Game.Query.readRelation(R)` instead.
    */
   related<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Any>>(
-    entityId: Entity.EntityId<S, Root>,
+    entityId: Entity.IdParameter<S, Root>,
     relation: R
   ): Result.Result<Entity.EntityId<S, Root>, Relation.Relation.LookupError>
   /**
@@ -1084,7 +1084,7 @@ export interface LookupApi<S extends Schema.Any, Root = unknown> {
    * `Game.Query.readRelated(R)`.
    */
   relatedSources<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Any>>(
-    entityId: Entity.EntityId<S, Root>,
+    entityId: Entity.IdParameter<S, Root>,
     relation: R
   ): Result.Result<ReadonlyArray<Entity.EntityId<S, Root>>, Relation.Relation.MissingEntityError>
   /**
@@ -1093,7 +1093,7 @@ export interface LookupApi<S extends Schema.Any, Root = unknown> {
    * and {@link related} for the first.
    */
   ancestors<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Hierarchy>>(
-    entityId: Entity.EntityId<S, Root>,
+    entityId: Entity.IdParameter<S, Root>,
     relation: R
   ): Result.Result<ReadonlyArray<Entity.EntityId<S, Root>>, Relation.Relation.MissingEntityError>
   /**
@@ -1103,7 +1103,7 @@ export interface LookupApi<S extends Schema.Any, Root = unknown> {
    * children alone.
    */
   descendants<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Hierarchy>>(
-    entityId: Entity.EntityId<S, Root>,
+    entityId: Entity.IdParameter<S, Root>,
     relation: R,
     options?: {
       readonly order?: "breadth" | "depth"
@@ -1114,7 +1114,7 @@ export interface LookupApi<S extends Schema.Any, Root = unknown> {
    * entity itself when it has none. {@link ancestors} gives the whole path.
    */
   root<R extends Extract<Schema.Relations<S>[keyof Schema.Relations<S>], Relation.Relation.Hierarchy>>(
-    entityId: Entity.EntityId<S, Root>,
+    entityId: Entity.IdParameter<S, Root>,
     relation: R
   ): Result.Result<Entity.EntityId<S, Root>, Relation.Relation.MissingEntityError>
 }
