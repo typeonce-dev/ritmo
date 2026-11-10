@@ -190,10 +190,8 @@ class Field implements FlowField {
     const columns = this.columns
     this.queued = 0
     distances[start] = 0
-    const goalColumn = start % columns
-    const goalRow = (start - goalColumn) / columns
-    if (this.blocked[start] === 0 || this.stepsOut(goalColumn, goalRow)) this.push(start, 0)
-    else this.pushAround(goal, goalColumn, goalRow)
+    if (this.blocked[start] === 0) this.push(start, 0)
+    else this.pushBlocked(goal, start)
     while (this.queued > 0) {
       const queued = this.keys[0]!
       const cell = this.pop()
@@ -248,14 +246,21 @@ class Field implements FlowField {
   }
 
   /**
-   * Starts the search of a goal with no open neighbor to step to (backed
-   * into a corner, or more than a cell from the open ones) from the nearest
-   * open cells it can see in a straight line: the corner rule keeps bodies
-   * from cutting past a wall, not from reaching a goal at one. Kept out of
-   * `setGoal`, like `cellOut` out of `way`, so the usual path stays small
-   * enough for the engine to optimize as before.
+   * Starts the search from a goal in a blocked cell: from the cell itself
+   * when it has an open neighbor to step to, else (backed into a corner, or
+   * more than a cell from the open ones) from the nearest open cells it can
+   * see in a straight line: the corner rule keeps bodies from cutting past a
+   * wall, not from reaching a goal at one. Kept out of `setGoal`, like
+   * `cellOut` out of `way`, so the usual path stays as small as it was:
+   * inside them, Node 22 allocated more on every call.
    */
-  private pushAround(goal: Vec2, goalColumn: number, goalRow: number): void {
+  private pushBlocked(goal: Vec2, start: number): void {
+    const goalColumn = start % this.columns
+    const goalRow = (start - goalColumn) / this.columns
+    if (this.stepsOut(goalColumn, goalRow)) {
+      this.push(start, 0)
+      return
+    }
     const distances = this.distances
     for (let ring = 1, found = false, rings = this.rings(); !found && ring <= rings; ring++) {
       // Around the ring: all of its top and bottom rows, the ends of the others.
@@ -285,7 +290,7 @@ class Field implements FlowField {
     let best = distances[cell]!
     let out = -1
     for (let ring = 1, near = false, rings = this.rings(); !near && ring <= rings; ring++) {
-      // Around the ring, as in `pushAround`.
+      // Around the ring, as in `pushBlocked`.
       for (let dy = -ring; dy <= ring; dy++) {
         for (let dx = -ring; dx <= ring; dx += dy === -ring || dy === ring ? 1 : 2 * ring) {
           const next = this.openCell(column + dx, row + dy)
