@@ -7,7 +7,8 @@ import { worldOf } from "./saved.ts"
 const Position = Descriptor.Component<{ readonly x: number }>()("Kept/Position")
 const Dead = Descriptor.Tag("Kept/Dead")
 const Enemy = Descriptor.Tag("Kept/Enemy")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Dead, Enemy } }))
+const Root = Schema.defineRoot("Kept")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Dead, Enemy } }), Root)
 
 const make = (debug: boolean) => {
   const made = Game.Runtime.make({ services: Game.Runtime.services(), ...(debug ? { debug: { hostClock: HostClock.test() } } : {}) })
@@ -146,7 +147,7 @@ describe("an entity kept past its run, on a debug runtime", () => {
 describe("a kept entity whose id is used again, on a debug runtime", () => {
   // Saved worlds and rewinds give ids out again: the kept entity must not reach the new one's slot.
   const Health = Descriptor.ConstructedComponent(Codecs.number)("Kept/Health")
-  const Saved = Schema.bind(Schema.fragment({ components: { Health } }))
+  const Saved = Schema.bind(Schema.fragment({ components: { Health } }), Root)
   const makeSaved = (debug: boolean) => {
     const made = Saved.Runtime.make({ services: Saved.Runtime.services(), checkpoints: 4, ...(debug ? { debug: { hostClock: HostClock.test() } } : {}) })
     if (!made.ok) throw new Error("runtime")

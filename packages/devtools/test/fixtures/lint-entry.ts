@@ -4,7 +4,8 @@ import { Descriptor, HostClock, Schema } from "@typeonce/ritmo"
 const hostClock = HostClock.test()
 
 const Noise = Descriptor.Event<number>()("LintFixture/Noise")
-const Game = Schema.bind(Schema.fragment({ events: { Noise } }))
+const Root = Schema.defineRoot("LintFixture")
+const Game = Schema.bind(Schema.fragment({ events: { Noise } }), Root)
 
 const Emit = Game.System("LintFixture/Emit", { events: { noise: Game.System.writeEvent(Noise) } }, ({ events }) => {
   events.noise.emit(1)

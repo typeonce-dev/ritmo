@@ -4,7 +4,8 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number }>()("Immutable/Position")
 const Kind = Descriptor.Component<"wall" | "pickup">()("Immutable/Kind", { immutable: true })
 
-const Game = Schema.bind(Schema.fragment({ components: { Position, Kind } }))
+const Root = Schema.defineRoot("Immutable")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Kind } }), Root)
 
 const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() }).value
 

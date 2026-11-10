@@ -5,7 +5,8 @@ import { describe, expect, it } from "tstyche"
 
 const Damage = Descriptor.Event<{ readonly amount: number }>()("ThisTick/Damage")
 const Score = Descriptor.Resource<number>()("ThisTick/Score")
-const Game = Schema.bind(Schema.fragment({ resources: { Score }, events: { Damage } }))
+const Root = Schema.defineRoot("ThisTick")
+const Game = Schema.bind(Schema.fragment({ resources: { Score }, events: { Damage } }), Root)
 const Flow = Game.StateMachine("ThisTick/Flow", { Playing: {}, Paused: {} })
 
 const Deal = Game.System("ThisTick/Deal", { events: { damage: Game.System.writeEvent(Damage) } }, ({ events }) => {
@@ -111,14 +112,14 @@ describe("Game.System.thisTick", () => {
   })
 
   it("fails a tick of a schedule whose order was erased by an annotation, instead of passing it", () => {
-    const erased: ExecutableScheduleDefinition<typeof Game.schema, never, typeof Game.schema> = Game.Schedule(Apply, Deal)
+    const erased: ExecutableScheduleDefinition<typeof Game.schema, never, typeof Root> = Game.Schedule(Apply, Deal)
     // @ts-expect-error the order of this tick is not statically known
     runtime.tick(erased)
   })
 
   it("does not let a schedule with thisTick reads widen into an annotation that drops them", () => {
-    const plain: Schema.Schema.BoundSchedule<typeof Game.schema, typeof Game.schema> = Game.Schedule(Deal)
-    expect(plain).type.toBeAssignableTo<Schema.Schema.BoundSchedule<typeof Game.schema, typeof Game.schema>>()
-    expect(Game.Schedule(Apply)).type.not.toBeAssignableTo<Schema.Schema.BoundSchedule<typeof Game.schema, typeof Game.schema>>()
+    const plain: Schema.Schema.BoundSchedule<typeof Game.schema, typeof Root> = Game.Schedule(Deal)
+    expect(plain).type.toBeAssignableTo<Schema.Schema.BoundSchedule<typeof Game.schema, typeof Root>>()
+    expect(Game.Schedule(Apply)).type.not.toBeAssignableTo<Schema.Schema.BoundSchedule<typeof Game.schema, typeof Root>>()
   })
 })

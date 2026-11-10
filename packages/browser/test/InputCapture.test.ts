@@ -5,11 +5,13 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 
 const bindings = { jump: [" "], left: ["ArrowLeft"] } as const
 
+const Root = Schema.defineRoot("CaptureTest")
+
 describe("InputCapture", () => {
   it("copies one snapshot per run into the resource", () => {
     const Source = Descriptor.Service<InputCapture.Source<Keyboard.Snapshot<typeof bindings>>>()("CaptureTest/Source")
     const Input = Descriptor.TransientResource<Keyboard.Snapshot<typeof bindings>>()("CaptureTest/Input")
-    const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
+    const Game = Schema.bind(Schema.fragment({ resources: { Input } }), Root)
 
     const queued: Array<Keyboard.Snapshot<typeof bindings>> = [
       { actions: { jump: { held: true, pressed: true, released: false }, left: { held: false, pressed: false, released: false } }, vectors: {}, used: true },
@@ -35,7 +37,7 @@ describe("InputCapture", () => {
   it("skips capture while its run conditions fail, keeping presses in the device", () => {
     const Source = Descriptor.Service<Keyboard.Actions<typeof bindings>>()("CaptureTest/Keys")
     const Input = Descriptor.TransientResource<Keyboard.Snapshot<typeof bindings>>()("CaptureTest/Held")
-    const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
+    const Game = Schema.bind(Schema.fragment({ resources: { Input } }), Root)
     const Pace = Game.StateMachine("CaptureTest/Pace", { Running: {}, Frozen: {} })
     const keyboard = Keyboard.scripted(bindings, [{ frame: 0, press: ["jump"], release: ["jump"] }])
     const Capture = InputCapture.system(Game, {

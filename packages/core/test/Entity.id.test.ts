@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 
 const Health = Descriptor.Component<number>()("EntityId/Health")
-const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+const Root = Schema.defineRoot("EntityId")
+const Game = Schema.bind(Schema.fragment({ components: { Health } }), Root)
 
 describe("Game.Entity.id", () => {
   it("returns the id a handle names, and handles of one entity compare by ===", () => {

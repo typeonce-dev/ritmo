@@ -11,11 +11,12 @@ const Aim = Descriptor.Resource<{ readonly target: number }>()("Why/Aim")
 const Heat = Descriptor.Resource<number>()("Why/Heat")
 const Cool = Descriptor.Resource<number>()("Why/Cool")
 const Damage = Descriptor.Event<{ readonly amount: number }>()("Why/Damage")
+const Root = Schema.defineRoot("Why")
 const Game = Schema.bind(Schema.fragment({
   components: { Health, Armor, Position },
   resources: { Aim, Heat, Cool },
   events: { Damage }
-}))
+}), Root)
 
 const Spawn = Game.System("Why/Spawn", { commands: Game.System.commands(Game.System.spawns(Health, Armor, Position)) }, ({ commands }) => {
   commands.spawn(Game.Command.spawn([Health, 100], [Armor, 5], [Position, { x: 0 }]))

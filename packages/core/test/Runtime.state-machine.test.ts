@@ -7,12 +7,13 @@ import { readResourceValue } from "./utils/fixtures.ts"
 const Counter = Descriptor.Resource<number>()("StateMachineRuntime/Counter")
 const Log = Descriptor.Resource<ReadonlyArray<string>>()("StateMachineRuntime/Log")
 
+const Root = Schema.defineRoot("StateMachineRuntime")
 const Game = Schema.bind(Schema.fragment({
   resources: {
     Counter,
     Log
   }
-}))
+}), Root)
 const schema = Game.schema
 const AppState = Game.StateMachine("AppState", { Menu: {}, Playing: {}, Paused: {} })
 const RoundState = Game.StateMachine("RoundState", { Warmup: {}, Live: {}, SuddenDeath: {} })
@@ -442,7 +443,7 @@ describe("Runtime state machine", () => {
   })
 
   it("applies multiple machine transitions in definition order", () => {
-    const LocalGame = Schema.bind(schema)
+    const LocalGame = Schema.bind(schema, Root)
     const LocalAppState = LocalGame.StateMachine("LocalAppState", { Menu: {}, Playing: {}, Paused: {} })
     const LocalRoundState = LocalGame.StateMachine("LocalRoundState", { Warmup: {}, Live: {}, SuddenDeath: {} })
 
@@ -522,7 +523,7 @@ describe("Runtime state machine", () => {
   })
 
   it("defers transitions queued during transition schedules to the next marker", () => {
-    const LocalGame = Schema.bind(schema)
+    const LocalGame = Schema.bind(schema, Root)
     const LocalAppState = LocalGame.StateMachine("LocalAppStateDeferred", { Menu: {}, Playing: {}, Paused: {} })
     const LocalRoundState = LocalGame.StateMachine("LocalRoundStateDeferred", { Warmup: {}, Live: {}, SuddenDeath: {} })
 
@@ -625,7 +626,7 @@ describe("Runtime state machine", () => {
   })
 
   it("commits a request queued before the marker even when a transition schedule queues the same machine", () => {
-    const LocalGame = Schema.bind(schema)
+    const LocalGame = Schema.bind(schema, Root)
     const LocalAppState = LocalGame.StateMachine("LocalAppStateReplaced", { Menu: {}, Playing: {}, Paused: {} })
     const LocalRoundState = LocalGame.StateMachine("LocalRoundStateReplaced", { Warmup: {}, Live: {}, SuddenDeath: {} })
 
@@ -669,7 +670,7 @@ describe("Runtime state machine", () => {
   })
 
   it("drops a request queued before the marker when a transition schedule resets it", () => {
-    const LocalGame = Schema.bind(schema)
+    const LocalGame = Schema.bind(schema, Root)
     const LocalAppState = LocalGame.StateMachine("LocalAppStateReset", { Menu: {}, Playing: {}, Paused: {} })
     const LocalRoundState = LocalGame.StateMachine("LocalRoundStateReset", { Warmup: {}, Live: {}, SuddenDeath: {} })
 
@@ -712,7 +713,7 @@ describe("Runtime state machine", () => {
   })
 
   it("reports a transition schedule's machine as a missing requirement in tryTick", () => {
-    const LocalGame = Schema.bind(schema)
+    const LocalGame = Schema.bind(schema, Root)
     const LocalAppState = LocalGame.StateMachine("LocalAppStateMissing", { Menu: {}, Playing: {} })
     const bundle = LocalGame.Schedule.transitions(LocalGame.Schedule.onEnter(LocalAppState, "Playing", []))
     const runtime = LocalGame.Runtime.make({ services: Runtime.services(), resources: { Counter: 0, Log: [] } }).value
@@ -870,7 +871,7 @@ describe("Runtime state machine", () => {
   })
 
   it("emits transition events in machine definition order", () => {
-    const LocalGame = Schema.bind(schema)
+    const LocalGame = Schema.bind(schema, Root)
     const LocalAppState = LocalGame.StateMachine("LocalAppStateEvents", { Menu: {}, Playing: {}, Paused: {} })
     const LocalRoundState = LocalGame.StateMachine("LocalRoundStateEvents", { Warmup: {}, Live: {}, SuddenDeath: {} })
 
@@ -1143,7 +1144,7 @@ describe("Runtime state machine", () => {
   })
 
   it("rejects duplicate machine names on one bound game", () => {
-    const LocalGame = Schema.bind(schema)
+    const LocalGame = Schema.bind(schema, Root)
     LocalGame.StateMachine("DuplicateMachine", { A: {}, B: {} })
 
     expect(() =>

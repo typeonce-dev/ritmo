@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest"
 
 import { Descriptor, Result, Schema } from "@typeonce/ritmo"
 
+const Root = Schema.defineRoot("Stability")
+
 describe("Runtime stabilization APIs", () => {
   it("rolls back ECS writes and commands from an expected system failure", () => {
     const Position = Descriptor.Component<{ x: number }>()("Stability/Position")
@@ -11,7 +13,7 @@ describe("Runtime stabilization APIs", () => {
       components: { Position },
       resources: { Count },
       events: { Signal }
-    }))
+    }), Root)
     const Mode = Game.StateMachine("Stability/Mode", { Ready: {}, Broken: {} })
     const Positions = Game.Query({
       selection: {
@@ -97,7 +99,7 @@ describe("Runtime stabilization APIs", () => {
 
   it("despawns one entity scope without affecting persistent entities", () => {
     const Actor = Descriptor.Component<{ name: string }>()("Scopes/Actor")
-    const Game = Schema.bind(Schema.fragment({ components: { Actor } }))
+    const Game = Schema.bind(Schema.fragment({ components: { Actor } }), Root)
     const Level = Game.EntityScope("Scopes/Level")
     const Actors = Game.Query({
       selection: { actor: Game.Query.read(Actor) }
@@ -136,7 +138,7 @@ describe("Runtime stabilization APIs", () => {
     const Game = Schema.bind(Schema.fragment({
       components: { Position },
       resources: { Score }
-    }))
+    }), Root)
 
     const spawn = Game.System("Inspector/Spawn", {
       commands: Game.System.commands(Game.System.spawns(Position))
@@ -170,7 +172,7 @@ describe("Runtime stabilization APIs", () => {
   })
 
   it("propagates an expected failure from a state-transition schedule", () => {
-    const Game = Schema.bind(Schema.fragment({}))
+    const Game = Schema.bind(Schema.fragment({}), Root)
     const Mode = Game.StateMachine("TransitionFailure/Mode", { Menu: {}, Playing: {} })
     const start = Game.System(
       "TransitionFailure/Start",

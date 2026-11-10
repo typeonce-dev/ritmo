@@ -8,11 +8,13 @@ const Health = Descriptor.Component<number>()("CheckTypes/Health")
 const Ping = Descriptor.Event<number>()("CheckTypes/Ping")
 const Clock = Descriptor.Service<{ readonly now: () => number }>()("CheckTypes/Clock")
 
-const Game = Schema.bind(Schema.fragment({ components: { Enemy, Health }, resources: { Freeze }, events: { Ping } }))
+const Root = Schema.defineRoot("CheckTypes")
+const Game = Schema.bind(Schema.fragment({ components: { Enemy, Health }, resources: { Freeze }, events: { Ping } }), Root)
 const Flow = Game.StateMachine("CheckTypes/Flow", { Playing: {}, Over: {} })
 
 const OtherFreeze = Descriptor.Resource<number>()("CheckTypes/OtherFreeze")
-const Other = Schema.bind(Schema.fragment({ resources: { OtherFreeze } }))
+const OtherRoot = Schema.defineRoot("CheckTypes/Other")
+const Other = Schema.bind(Schema.fragment({ resources: { OtherFreeze } }), OtherRoot)
 const OtherFlow = Other.StateMachine("CheckTypes/OtherFlow", { A: {}, B: {} })
 
 const Noop = Game.System("CheckTypes/Noop", {}, () => {})

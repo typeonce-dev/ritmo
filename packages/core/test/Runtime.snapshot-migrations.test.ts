@@ -4,7 +4,8 @@ import * as Codecs from "./codecs.ts"
 import { worldOf } from "./saved.ts"
 
 const Gold = Descriptor.ConstructedResource(Codecs.number)("Migrations/Gold")
-const Game = Schema.bind(Schema.fragment({ resources: { Gold } }))
+const Root = Schema.defineRoot("Migrations")
+const Game = Schema.bind(Schema.fragment({ resources: { Gold } }), Root)
 const Coins = Game.Inspector("Migrations/Coins", { resources: { gold: Game.System.readResource(Gold) } }, ({ resources }) => resources.gold.get())
 
 const saves = Snapshot.migrations(

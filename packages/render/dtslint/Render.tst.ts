@@ -11,7 +11,8 @@ const Position = Descriptor.Component<{ x: number }>()("RenderTypes/Position")
 const Sprite = Descriptor.Component<{ label: string }>()("RenderTypes/Sprite")
 const Health = Descriptor.Component<number>()("RenderTypes/Health")
 const Nodes = Descriptor.Service<NodeRegistry.NodeRegistry<Node>>()("RenderTypes/Nodes")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite } }))
+const Root = Schema.defineRoot("RenderTypes")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite } }), Root)
 
 describe("@typeonce/ritmo-render", () => {
   it("exposes the package entrypoint type through the workspace", () => {
@@ -75,7 +76,7 @@ describe("@typeonce/ritmo-render", () => {
   it("types resources as read cells and only accepts schema resources", () => {
     const Zoom = Descriptor.Resource<number>()("RenderTypes/Zoom")
     const Other = Descriptor.Resource<number>()("RenderTypes/Other")
-    const Zoomed = Schema.bind(Schema.fragment({ components: { Position, Sprite }, resources: { Zoom } }))
+    const Zoomed = Schema.bind(Schema.fragment({ components: { Position, Sprite }, resources: { Zoom } }), Root)
     RenderSync.system(Zoomed, {
       name: "RenderTypes/Zoom",
       renderable: Sprite,
@@ -172,7 +173,7 @@ describe("@typeonce/ritmo-render", () => {
     const Previous = Descriptor.Component<{ x: number; y: number }>()("RenderTypes/Previous")
     const Clock = Descriptor.Service<{ readonly alpha: number }>()("RenderTypes/Clock")
     const NoAlpha = Descriptor.Service<{ readonly now: number }>()("RenderTypes/NoAlpha")
-    const Planet = Schema.bind(Schema.fragment({ components: { Planar, Previous, Position, Health } }))
+    const Planet = Schema.bind(Schema.fragment({ components: { Planar, Previous, Position, Health } }), Root)
 
     const interpolate = RenderSync.interpolate(Planet, {
       name: "RenderTypes/Interpolate",
@@ -219,7 +220,7 @@ describe("@typeonce/ritmo-render", () => {
     const PreviousSpatial = Descriptor.Component<{ x: number; y: number; z: number }>()("RenderTypes/PreviousSpatial")
     const Labeled = Descriptor.Component<{ x: number; y: number; label: string }>()("RenderTypes/Labeled")
     const Clock = Descriptor.Service<{ readonly alpha: number }>()("RenderTypes/Clock")
-    const Space = Schema.bind(Schema.fragment({ components: { Spatial, PreviousSpatial, Labeled, Health } }))
+    const Space = Schema.bind(Schema.fragment({ components: { Spatial, PreviousSpatial, Labeled, Health } }), Root)
 
     RenderSync.interpolate(Space, {
       name: "RenderTypes/Interpolate3D",
@@ -291,7 +292,7 @@ describe("@typeonce/ritmo-render", () => {
     const { relation: Attached } = Descriptor.Hierarchy("RenderTypes/Attached", "RenderTypes/Attachments")
     const { relation: Targeting } = Descriptor.Relation("RenderTypes/Targeting", "RenderTypes/TargetedBy")
     const { relation: Foreign } = Descriptor.Hierarchy("RenderTypes/Foreign", "RenderTypes/ForeignChildren")
-    const Tree = Schema.bind(Schema.fragment({ components: { Position, Sprite }, relations: { Attached, Targeting } }))
+    const Tree = Schema.bind(Schema.fragment({ components: { Position, Sprite }, relations: { Attached, Targeting } }), Root)
     const base = {
       name: "RenderTypes/Tree",
       renderable: Sprite,

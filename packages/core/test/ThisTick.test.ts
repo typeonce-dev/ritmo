@@ -5,7 +5,8 @@ import type { ExecutableScheduleDefinition } from "@typeonce/ritmo/Schedule"
 const hostClock = HostClock.test()
 
 const Damage = Descriptor.Event<number>()("ThisTickRuntime/Damage")
-const Game = Schema.bind(Schema.fragment({ events: { Damage } }))
+const Root = Schema.defineRoot("ThisTickRuntime")
+const Game = Schema.bind(Schema.fragment({ events: { Damage } }), Root)
 
 const Deal = Game.System("ThisTickRuntime/Deal", { events: { damage: Game.System.writeEvent(Damage) } }, ({ events }) => {
   events.damage.emit(1)
@@ -18,8 +19,8 @@ const Apply = Game.System("ThisTickRuntime/Apply", {
 })
 
 /** Erases a schedule's type, as plugin boundaries and devtools do. */
-const erased = (schedule: ExecutableScheduleDefinition<any, any, any, any, any, any>): ExecutableScheduleDefinition<typeof Game.schema, never, typeof Game.schema> =>
-  schedule as ExecutableScheduleDefinition<typeof Game.schema, never, typeof Game.schema>
+const erased = (schedule: ExecutableScheduleDefinition<any, any, any, any, any, any>): ExecutableScheduleDefinition<typeof Game.schema, never, typeof Root> =>
+  schedule as ExecutableScheduleDefinition<typeof Game.schema, never, typeof Root>
 
 describe("thisTick at runtime", () => {
   it("lets tryTick run a schedule whose writers come first", () => {

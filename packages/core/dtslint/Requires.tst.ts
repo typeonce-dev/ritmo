@@ -21,7 +21,8 @@ const Gameplay = Schema.fragment({
     Schema.requires(B, A)
   ]
 })
-const Game = Schema.bind(Core, Gameplay)
+const Root = Schema.defineRoot("Req")
+const Game = Schema.bind(Core, Gameplay, Root)
 
 describe("Schema.requires", () => {
   it("carries one pair per required component", () => {
@@ -45,7 +46,7 @@ describe("Schema.requires", () => {
   it("rejects a requirement naming a component no fragment registers", () => {
     const Lonely = Schema.fragment({ components: { Player }, requires: [Schema.requires(Player, Position)] })
     // @ts-expect-error Req/Position is named in Schema.requires(...) but no fragment registers it: add it to a fragment's components
-    Schema.bind(Lonely)
+    Schema.bind(Lonely, Root)
   })
 
   it("rejects a saved component requiring a transient one", () => {
@@ -53,8 +54,9 @@ describe("Schema.requires", () => {
     const Ghost = Descriptor.Component<{}>()("Req/Ghost")
     const Shade = Descriptor.TransientComponent<{}>()("Req/Shade")
     // @ts-expect-error Req/Ghost requires Req/Trail, which is transient and not saved: make Req/Ghost transient too
-    Schema.bind(Schema.fragment({ components: { Ghost, Trail }, requires: [Schema.requires(Ghost, Trail)] }))
-    const Shades = Schema.bind(Schema.fragment({ components: { Shade, Trail }, requires: [Schema.requires(Shade, Trail)] }))
+    Schema.bind(Schema.fragment({ components: { Ghost, Trail }, requires: [Schema.requires(Ghost, Trail)] }), Root)
+    const ShadesRoot = Schema.defineRoot("Req/Shades")
+    const Shades = Schema.bind(Schema.fragment({ components: { Shade, Trail }, requires: [Schema.requires(Shade, Trail)] }), ShadesRoot)
     expect<Schema.Schema.Requires<typeof Shades.schema>>().type.toBe<readonly ["Req/Shade", "Req/Trail"]>()
   })
 
@@ -127,7 +129,7 @@ describe("commands.spawn with requirements", () => {
   it("returns the id with what the draft holds", () => {
     Game.System("Req/SpawnId", { commands: Game.System.commands(Game.System.spawns(Player)) }, ({ commands }) => {
       const id = commands.spawn(Game.Command.spawn([Player, {}], [Body, {}], [Velocity, { x: 0 }], [Position, { x: 0 }]))
-      expect(id).type.toBe<Command.SpawnedId<typeof Game.schema, typeof Game.schema, "Req/Player" | "Req/Body" | "Req/Velocity" | "Req/Position">>()
+      expect(id).type.toBe<Command.SpawnedId<typeof Game.schema, typeof Root, "Req/Player" | "Req/Body" | "Req/Velocity" | "Req/Position">>()
     })
   })
 })

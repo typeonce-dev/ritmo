@@ -10,10 +10,11 @@ const Trail = Descriptor.TransientComponent<number>()("Requires/Trail")
 // A transient requirer may require a transient component: a restore drops both.
 const Ghost = Descriptor.TransientComponent<{}>()("Requires/Ghost")
 
+const Root = Schema.defineRoot("Requires")
 const Game = Schema.bind(Schema.fragment({
   components: { Position, Velocity, Player, Trail, Ghost },
   requires: [Schema.requires(Player, Position, Velocity), Schema.requires(Ghost, Trail)]
-}))
+}), Root)
 
 const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value
 
@@ -138,7 +139,7 @@ describe("Schema.requires at runtime", () => {
     const Saved = Descriptor.Tag("Requires/Saved")
     const fragment: Schema.Schema.Any = Schema.fragment({ components: { Saved, Trail } })
     const requirement: Schema.Schema.Any = Schema.fragment({ requires: [Schema.requires(Saved, Trail)] })
-    expect(() => Schema.bind(fragment, requirement)).toThrow(
+    expect(() => Schema.bind(fragment, requirement, Root)).toThrow(
       "Requires/Saved requires Requires/Trail, which is transient and not saved: make Requires/Saved transient too, or give Requires/Trail a constructor"
     )
   })

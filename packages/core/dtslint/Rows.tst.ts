@@ -7,7 +7,8 @@ const Position = Descriptor.Component<{ x: number; y: number }>()("Rows/Position
 const Health = Descriptor.Component<number>()("Rows/Health")
 const Shield = Descriptor.Component<{ charges: number }>()("Rows/Shield")
 const Phase = Descriptor.EntityState("Rows/Phase", { idle: {}, busy: {} })
-const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Shield, Phase } }))
+const Root = Schema.defineRoot("Rows")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Shield, Phase } }), Root)
 
 const Units = Game.Query({
   selection: {
@@ -24,7 +25,7 @@ describe("queries.x.rows()", () => {
       const rows = queries.units.rows()
       expect(rows).type.toBe<ReadonlyArray<QueryRow<typeof Game.schema, typeof Units>>>()
       const row = rows[0]!
-      expect(row.id).type.toBe<EntityId<typeof Game.schema, typeof Game.schema>>()
+      expect(row.id).type.toBe<EntityId<typeof Game.schema, typeof Root>>()
       expect(row.values).type.toBe<QueryValues<typeof Units>>()
       expect(row.values.position).type.toBe<{ readonly x: number; readonly y: number }>()
       expect(row.values.health).type.toBe<number>()

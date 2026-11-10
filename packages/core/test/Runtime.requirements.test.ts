@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 
+const Root = Schema.defineRoot("RuntimeRequirements")
+
 describe("Runtime dynamic requirements", () => {
   it("reports missing nominal requirements before executing an erased schedule", () => {
     const Counter = Descriptor.Resource<number>()("RuntimeRequirements/Counter")
     const Logger = Descriptor.Service<{ readonly log: (value: number) => void }>()("RuntimeRequirements/Logger")
-    const Game = Schema.bind(Schema.fragment({ resources: { Counter } }))
+    const Game = Schema.bind(Schema.fragment({ resources: { Counter } }), Root)
     const Phase = Game.StateMachine("RuntimeRequirements/Phase", { Ready: {}, Running: {} })
 
     const run = Game.System("RuntimeRequirements/Run", {

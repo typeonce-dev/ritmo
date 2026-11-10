@@ -41,7 +41,8 @@ const Clock = Descriptor.Service<{ alpha: number }>()("RenderBench/Clock")
 
 const { relation: Attached } = Descriptor.Hierarchy("RenderBench/Attached", "RenderBench/Attachments")
 
-const Game = Schema.bind(Schema.fragment({ components: { Position, Previous, Frame, Sprite }, relations: { Attached } }))
+const Root = Schema.defineRoot("RenderBench")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Previous, Frame, Sprite }, relations: { Attached } }), Root)
 
 const Sync = RenderSync.system(Game, {
   name: "RenderBench/Sync",

@@ -63,12 +63,14 @@ const Score = Descriptor.Resource<number>()("Arena/Score")
 // An event: a message read by the systems that ask for it
 const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
 
+const Root = Schema.defineRoot("Arena")
 const Game = Schema.bind(
   Schema.fragment({
     components: { Position, Health, Enemy },
     resources: { Score },
     events: { Hit }
-  })
+  }),
+  Root
 )
 ```
 
@@ -85,7 +87,8 @@ const Health = Descriptor.Component<number>()("Arena/Health")
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 const Score = Descriptor.Resource<number>()("Arena/Score")
 const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy }, resources: { Score }, events: { Hit } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy }, resources: { Score }, events: { Hit } }), Root)
 // ---cut---
 const Damage = Game.System(
   "Arena/Damage",
@@ -127,7 +130,8 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
 const Health = Descriptor.Component<number>()("Arena/Health")
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }), Root)
 // ---cut---
 const Wounded = Game.Query({
   // The data each entity gets
@@ -153,7 +157,8 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
 const Health = Descriptor.Component<number>()("Arena/Health")
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }), Root)
 const Enemies = Game.Query({ selection: { health: Game.Query.read(Health) }, with: [Enemy] })
 // ---cut---
 const Cull = Game.System(
@@ -187,7 +192,8 @@ const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Positio
 const Health = Descriptor.Component<number>()("Arena/Health")
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy }, events: { Hit } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy }, events: { Hit } }), Root)
 const SpawnWave = Game.System("Arena/SpawnWave", { commands: Game.System.commands(Game.System.spawns(Position, Health, Enemy)) }, () => {})
 const Damage = Game.System("Arena/Damage", { queries: { enemies: Game.Query({ selection: { health: Game.Query.write(Health) }, with: [Enemy] }) }, events: { hits: Game.System.readEvent(Hit) } }, () => {})
 const Cull = Game.System("Arena/Cull", { queries: { enemies: Game.Query({ selection: { health: Game.Query.read(Health) }, with: [Enemy] }) }, commands: Game.System.commands(Game.System.despawns(Enemy)) }, () => {})
@@ -220,7 +226,8 @@ const codec = <T extends S.Top & { readonly DecodingServices: never; readonly En
   return { "~standard": S.toStandardSchemaV1(json)["~standard"], "~encode": S.toStandardSchemaV1(S.flip(json)) }
 }
 const Health = Descriptor.Component<number>()("Arena/Health")
-const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Health } }), Root)
 // ---cut---
 // A closed list of states, each with the data only it has,
 // and which states may follow which

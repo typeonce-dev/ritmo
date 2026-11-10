@@ -13,11 +13,12 @@ const Pos = Descriptor.ConstructedComponent(Codecs.number)("RewindReaders/Pos")
 const Tint = Descriptor.ConstructedComponent(Codecs.number)("RewindReaders/Tint")
 const Score = Descriptor.ConstructedResource(Codecs.number)("RewindReaders/Score")
 const Go = Descriptor.TransientResource<number>()("RewindReaders/Go")
+const Root = Schema.defineRoot("RewindReaders")
 const Game = Schema.bind(Schema.fragment({
   components: { Pos, Tint },
   resources: { Tick, Seen, Score, Go },
   events: { Ping }
-}))
+}), Root)
 const Flow = Game.StateMachine("RewindReaders/Flow", { Menu: {}, Playing: {} })
 const SeenNow = Game.Inspector("RewindReaders/SeenNow", { resources: { seen: Game.System.readResource(Seen) } }, ({ resources }) => resources.seen.get())
 

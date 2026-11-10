@@ -6,8 +6,10 @@ import type * as SchemaTypes from "@typeonce/ritmo/Schema"
 import { describe, expect, it } from "tstyche"
 
 const Position = Descriptor.Component<{ x: number; y: number }>()("MachineMoves/Position")
-const Game = Schema.bind(Schema.fragment({ components: { Position } }))
-const OtherGame = Schema.bind(Schema.fragment({ resources: {} }))
+const Root = Schema.defineRoot("MachineMoves")
+const Game = Schema.bind(Schema.fragment({ components: { Position } }), Root)
+const OtherRoot = Schema.defineRoot("MachineMoves/Other")
+const OtherGame = Schema.bind(Schema.fragment({ resources: {} }), OtherRoot)
 
 const Round = Game.StateMachine("MachineMoves/Round", {
   Lobby: {},
@@ -28,7 +30,7 @@ type RoundState = "Lobby" | "Countdown" | "Playing" | "Over"
 
 describe("Game.StateMachine transitions", () => {
   it("carries the graph in the machine's type; without one, every move", () => {
-    expect(Round).type.toBe<SchemaTypes.Schema.BoundStateMachine<typeof Game.schema, "MachineMoves/Round", typeof Round.states, unknown, {
+    expect(Round).type.toBe<SchemaTypes.Schema.BoundStateMachine<typeof Root, "MachineMoves/Round", typeof Round.states, unknown, {
       readonly Lobby: readonly ["Countdown"]
       readonly Countdown: readonly ["Playing", "Lobby"]
       readonly Playing: readonly ["Over"]
@@ -40,10 +42,10 @@ describe("Game.StateMachine transitions", () => {
       readonly Playing: readonly ["Over"]
       readonly Over: readonly ["Lobby", "Over"]
     } | undefined>()
-    expect(Free).type.toBe<SchemaTypes.Schema.BoundStateMachine<typeof Game.schema, "MachineMoves/Free", typeof Free.states>>()
+    expect(Free).type.toBe<SchemaTypes.Schema.BoundStateMachine<typeof Root, "MachineMoves/Free", typeof Free.states>>()
     expect<Machine.StateMachine.Transitions<typeof Free>>().type.toBe<{ readonly A: ReadonlyArray<"A" | "B">; readonly B: ReadonlyArray<"A" | "B"> }>()
     expect(Phase).type.toBe<SchemaTypes.Schema.BoundStateMachine<
-      typeof Game.schema,
+      typeof Root,
       "MachineMoves/Phase",
       typeof Phase.states,
       typeof Round,
@@ -54,8 +56,8 @@ describe("Game.StateMachine transitions", () => {
   it("still fits every machine bound, schedule, and condition", () => {
     expect<typeof Round>().type.toBeAssignableTo<Machine.StateMachine.Any>()
     expect<typeof Phase>().type.toBeAssignableTo<Machine.StateMachine.Any>()
-    expect<typeof Round>().type.toBeAssignableTo<SchemaTypes.Schema.BoundStateMachine<typeof Game.schema>>()
-    expect(Game.Schedule.onEnter(Round, "Playing", [])).type.toBeAssignableTo<Machine.StateMachine.AnyTransitionSchedule<typeof Game.schema, typeof Game.schema>>()
+    expect<typeof Round>().type.toBeAssignableTo<SchemaTypes.Schema.BoundStateMachine<typeof Root>>()
+    expect(Game.Schedule.onEnter(Round, "Playing", [])).type.toBeAssignableTo<Machine.StateMachine.AnyTransitionSchedule<typeof Game.schema, typeof Root>>()
     expect(Game.Condition.inState(Round, "Over")).type.toBe<Machine.InStateCondition<typeof Round>>()
     Game.Runtime.machine(Round, { _tag: "Lobby" })
   })

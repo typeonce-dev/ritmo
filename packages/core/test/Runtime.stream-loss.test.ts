@@ -3,7 +3,8 @@ import { Descriptor, HostClock, Schema } from "@typeonce/ritmo"
 import * as Runtime from "@typeonce/ritmo/Runtime"
 
 const Hit = Descriptor.Event<number>()("StreamLoss/Hit")
-const Game = Schema.bind(Schema.fragment({ events: { Hit } }))
+const Root = Schema.defineRoot("StreamLoss")
+const Game = Schema.bind(Schema.fragment({ events: { Hit } }), Root)
 const Running = Game.Condition.check("StreamLoss/Running", {}, () => true)
 
 const Emit = Game.System("StreamLoss/Emit", { events: { hit: Game.System.writeEvent(Hit) } }, ({ events }) => {

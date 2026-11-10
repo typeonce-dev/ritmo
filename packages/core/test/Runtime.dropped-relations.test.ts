@@ -8,11 +8,12 @@ const Gate = Descriptor.Resource<boolean>()("Dropped/Gate")
 const { relation: Targeting } = Descriptor.Relation("Dropped/Targeting", "Dropped/TargetedBy")
 const { relation: ChildOf } = Descriptor.Hierarchy("Dropped/ChildOf", "Dropped/Children")
 
+const Root = Schema.defineRoot("Dropped")
 const Game = Schema.bind(Schema.fragment({
   components: { Name },
   resources: { Gate },
   relations: { Targeting, ChildOf }
-}))
+}), Root)
 
 const open = Game.Condition.check("Dropped/Open", { resources: { gate: Game.System.readResource(Gate) } }, ({ resources }) => resources.gate.get())
 

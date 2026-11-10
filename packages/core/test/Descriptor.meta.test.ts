@@ -14,10 +14,11 @@ const Tuning = Descriptor.ConstructedResource(Codecs.struct({ speed: Codecs.numb
 const Wind = Descriptor.Resource<{ readonly force: number }>()("Meta/Wind", { meta: { force: { unit: "N" } } })
 const Frame = Descriptor.TransientResource<{ readonly index: number }>()("Meta/Frame", { meta: { index: { hint: "Frames since start." } } })
 
+const Root = Schema.defineRoot("Meta")
 const Game = Schema.bind(Schema.fragment({
   components: { Health, Position, Sprite, Plain },
   resources: { Tuning, Wind, Frame }
-}))
+}), Root)
 
 const makeRuntime = (speed: number) => {
   const made = Game.Runtime.make({
@@ -62,7 +63,7 @@ describe("descriptor meta", () => {
 
   it("is not saved: snapshots and restores are the same with and without it", () => {
     // Saved descriptors only: a plain resource does not snapshot.
-    const Saved = Schema.bind(Schema.fragment({ components: { Health, Sprite }, resources: { Tuning, Frame } }))
+    const Saved = Schema.bind(Schema.fragment({ components: { Health, Sprite }, resources: { Tuning, Frame } }), Root)
     const make = (speed: number) => {
       const made = Saved.Runtime.make({ services: Saved.Runtime.services(), resources: { Tuning: { speed }, Frame: { index: 0 } } })
       if (!made.ok) throw new Error("invalid fixture")

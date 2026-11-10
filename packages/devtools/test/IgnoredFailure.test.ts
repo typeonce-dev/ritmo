@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest"
 import { Clock, HostClock, Result, Schema } from "@typeonce/ritmo"
 import { Replay, Session } from "@typeonce/ritmo-devtools"
 
-const Game = Schema.bind(Schema.fragment({}))
+const Root = Schema.defineRoot("IgnoredFailure")
+const Game = Schema.bind(Schema.fragment({}), Root)
 const Load = Game.System("Ignore/Load", {}, () => Result.failure("level file missing" as const))
 const Place = Game.System("Ignore/Place", {}, () => {})
 const Decorate = Game.System("Ignore/Decorate", {}, () => {})

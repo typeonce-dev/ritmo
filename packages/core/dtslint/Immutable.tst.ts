@@ -9,7 +9,8 @@ const Kind = Descriptor.Component<"wall" | "pickup">()("ImmutableTypes/Kind", { 
 const Team = Descriptor.ConstructedComponent(Codecs.literal("red", "blue"))("ImmutableTypes/Team", { immutable: true })
 const Cache = Descriptor.TransientComponent<number>()("ImmutableTypes/Cache", { immutable: true })
 
-const Game = Schema.bind(Schema.fragment({ components: { Position, Kind, Team, Cache } }))
+const Root = Schema.defineRoot("ImmutableTypes")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Kind, Team, Cache } }), Root)
 
 describe("immutable components", () => {
   it("brands only components declared immutable", () => {

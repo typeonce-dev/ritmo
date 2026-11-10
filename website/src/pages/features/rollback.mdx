@@ -78,7 +78,8 @@ const Inputs =
   Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()(
     "Game/Inputs"
   )
-const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }))
+const Root = Schema.defineRoot("Game")
+const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }), Root)
 // ---cut---
 // Every seat's input for the tick being run
 const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("Game/Seats") // [!code highlight]
@@ -116,7 +117,8 @@ import { Netcode, WebSocketNetworkLink } from "@typeonce/ritmo-netcode"
 interface PlayerInput { readonly dx: number; readonly fire: boolean }
 const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("Game/Seats")
 const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("Game/Inputs")
-const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }))
+const Root = Schema.defineRoot("Game")
+const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }), Root)
 const Capture = InputCapture.system(Game, { name: "Game/Capture", source: Seats, resource: Inputs })
 const simulate = Game.Schedule(Capture)
 declare const seats: Netcode.Seats<PlayerInput>
@@ -190,7 +192,8 @@ import { Netcode, type NetworkLink } from "@typeonce/ritmo-netcode"
 interface PlayerInput { readonly dx: number; readonly fire: boolean }
 const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("Game/Seats")
 const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("Game/Inputs")
-const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }))
+const Root = Schema.defineRoot("Game")
+const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }), Root)
 const Capture = InputCapture.system(Game, { name: "Game/Capture", source: Seats, resource: Inputs })
 declare const seats: Netcode.Seats<PlayerInput>
 declare const link: NetworkLink.NetworkLink
@@ -228,7 +231,8 @@ declare class PhysicsWorld {
   static restoreSnapshot(bytes: Uint8Array): PhysicsWorld | undefined
 }
 declare const world: PhysicsWorld
-const Game = Schema.bind(Schema.fragment({}))
+const Root = Schema.defineRoot("Game")
+const Game = Schema.bind(Schema.fragment({}), Root)
 // ---cut---
 const physics = Checkpoint.rewindable(world, {
   save: (world) => world.takeSnapshot(),
@@ -298,7 +302,8 @@ import { Netcode, WebSocketNetworkLink } from "@typeonce/ritmo-netcode"
 interface PlayerInput { readonly dx: number; readonly fire: boolean }
 const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("Game/Seats")
 const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("Game/Inputs")
-const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }))
+const Root = Schema.defineRoot("Game")
+const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }), Root)
 const Capture = InputCapture.system(Game, { name: "Game/Capture", source: Seats, resource: Inputs })
 const simulate = Game.Schedule(Capture)
 declare const seats: Netcode.Seats<PlayerInput>

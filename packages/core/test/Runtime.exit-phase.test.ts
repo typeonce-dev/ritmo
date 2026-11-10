@@ -5,7 +5,8 @@ import * as Codecs from "./codecs.ts"
 const Name = Descriptor.ConstructedComponent(Codecs.string)("ExitPhase/Name")
 const Saved = Descriptor.Resource<number>()("ExitPhase/Saved")
 const Left = Descriptor.Event<string>()("ExitPhase/Left")
-const Game = Schema.bind(Schema.fragment({ components: { Name }, resources: { Saved }, events: { Left } }))
+const Root = Schema.defineRoot("ExitPhase")
+const Game = Schema.bind(Schema.fragment({ components: { Name }, resources: { Saved }, events: { Left } }), Root)
 const Flow = Game.StateMachine("ExitPhase/Flow", { Playing: {}, Menu: {} })
 const Music = Game.StateMachine("ExitPhase/Music", { Loud: {}, Quiet: {} })
 

@@ -6,7 +6,8 @@ const hostClock = HostClock.test()
 
 const Health = Descriptor.Component<number>()("WhyTypes/Health")
 const Score = Descriptor.Resource<number>()("WhyTypes/Score")
-const Game = Schema.bind(Schema.fragment({ components: { Health }, resources: { Score } }))
+const Root = Schema.defineRoot("WhyTypes")
+const Game = Schema.bind(Schema.fragment({ components: { Health }, resources: { Score } }), Root)
 const update = Game.Schedule(Game.System("WhyTypes/Noop", {}, () => {}))
 const session = Session.make(Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock } }).value, { hostClock, schedules: { update } })
 

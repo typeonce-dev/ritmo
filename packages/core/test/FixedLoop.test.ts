@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest"
 import { Clock, Debug, FixedLoop, HostClock, Result, Schema } from "@typeonce/ritmo"
 
-const Game = Schema.bind(Schema.fragment({}))
+const Root = Schema.defineRoot("FixedLoop")
+const Game = Schema.bind(Schema.fragment({}), Root)
 const Fail = Game.System("LoopIgnored/Fail", {}, () => Result.failure("boom" as const))
 const step = Game.Schedule(Fail)
 

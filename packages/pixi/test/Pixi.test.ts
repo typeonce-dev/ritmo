@@ -7,6 +7,8 @@ import * as Pixi from "@typeonce/ritmo-pixi"
 import { PixiNodeRegistry, packageTag } from "@typeonce/ritmo-pixi"
 import { Container } from "pixi.js"
 
+const Root = Schema.defineRoot("PixiTest")
+
 describe("@typeonce/ritmo-pixi", () => {
   it("resolves through the workspace package entrypoint", () => {
     expect(packageTag).toBe("pixi")
@@ -78,8 +80,8 @@ describe("@typeonce/ritmo-pixi", () => {
     const Body = Descriptor.Component<{}>()("PixiTest/Body")
     const { relation: Attached } = Descriptor.Hierarchy("PixiTest/Attached", "PixiTest/Attachments")
     const Nodes = Descriptor.Service<NodeRegistry.NodeRegistry<Container>>()("PixiTest/Nodes")
-    const Game = Schema.bind(Schema.fragment({ components: { Position, Body }, relations: { Attached } }))
-    type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
+    const Game = Schema.bind(Schema.fragment({ components: { Position, Body }, relations: { Attached } }), Root)
+    type Id = Entity.EntityId<typeof Game.schema, typeof Root>
 
     const render = RenderSync.system(Game, {
       name: "PixiTest/Render",

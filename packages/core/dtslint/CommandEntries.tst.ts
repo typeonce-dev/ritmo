@@ -26,10 +26,11 @@ const Config = Descriptor.Resource<{ speed: number; debug: boolean }>()("Entries
 const Tuning = Descriptor.ConstructedResource(Codecs.struct({ rate: Codecs.number }))("Entries/Tuning")
 const Rng = Descriptor.ConstructedResource(Random.codec)("Entries/Rng")
 
+const Root = Schema.defineRoot("Entries")
 const Game = Schema.bind(Schema.fragment({
   components: { Hp, Name, Phase, Position, Velocity, Path, Pair, Scores, Body, Named, Seen, Lookup, Ease, Loose, Maybe, Seed, Safe },
   resources: { Config, Tuning, Rng }
-}))
+}), Root)
 const Positions = Game.Query({ selection: { position: Game.Query.read(Position) } })
 
 describe("spawn and insert entries", () => {

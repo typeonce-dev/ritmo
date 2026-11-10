@@ -13,8 +13,10 @@ const Other = Descriptor.Component<{ readonly y: number }>()("DevtoolsTypes/Othe
 const Limit = Descriptor.Resource<number>()("DevtoolsTypes/Limit")
 const Request = Descriptor.Event<string>()("DevtoolsTypes/Request")
 const Foreign = Descriptor.Event<string>()("DevtoolsTypes/ForeignRequest")
-const Game = Schema.bind(Schema.fragment({ components: { Position }, resources: { Limit }, events: { Request } }))
-const OtherGame = Schema.bind(Schema.fragment({ components: { Other } }))
+const Root = Schema.defineRoot("DevtoolsTypes")
+const Game = Schema.bind(Schema.fragment({ components: { Position }, resources: { Limit }, events: { Request } }), Root)
+const OtherRoot = Schema.defineRoot("DevtoolsTypes/Other")
+const OtherGame = Schema.bind(Schema.fragment({ components: { Other } }), OtherRoot)
 const update = Game.Schedule(Game.System("DevtoolsTypes/Noop", {}, () => {}))
 
 describe("Session.make", () => {
@@ -172,7 +174,7 @@ describe("Replay.recorder", () => {
   const Rules = Descriptor.Service<{ readonly speed: number; readonly names: ReadonlyArray<string> }>()("DevtoolsTypes/Rules")
   const Page = Descriptor.Service<{ readonly toast: (message: string) => void }>()("DevtoolsTypes/Page")
   const Mapped = Descriptor.Service<Schedule.Source<Map<string, number>>>()("DevtoolsTypes/Mapped")
-  const Saved = Schema.bind(Schema.fragment({ components: { Place } }))
+  const Saved = Schema.bind(Schema.fragment({ components: { Place } }), Root)
   const runtime = Saved.Runtime.make({
     services: Saved.Runtime.services(
       Saved.Runtime.service(Keys, { snapshot: () => ({ left: false }) }),
@@ -205,7 +207,7 @@ describe("Replay.recorder", () => {
 
   it("requires a runtime whose world can be saved", () => {
     const Loose = Descriptor.Component<{ readonly x: number }>()("DevtoolsTypes/Loose")
-    const Unsaved = Schema.bind(Schema.fragment({ components: { Loose } }))
+    const Unsaved = Schema.bind(Schema.fragment({ components: { Loose } }), Root)
     const unsaved = Unsaved.Runtime.make({ services: Unsaved.Runtime.services(), debug: { hostClock } }).value
     const update = Unsaved.Schedule(Unsaved.System("DevtoolsTypes/Unsaved", {}, () => {}))
     expect(Replay.recorder).type.not.toBeCallableWith(unsaved, { ...base, schedule: update })
@@ -226,7 +228,7 @@ describe("Replay.recorder", () => {
 describe("Replay.session", () => {
   const Place = Descriptor.ConstructedComponent(Codecs.struct({ x: Codecs.number }))("DevtoolsTypes/ReplayPlace")
   const Cap = Descriptor.ConstructedResource(Codecs.number)("DevtoolsTypes/ReplayCap")
-  const Saved = Schema.bind(Schema.fragment({ components: { Place }, resources: { Cap } }))
+  const Saved = Schema.bind(Schema.fragment({ components: { Place }, resources: { Cap } }), Root)
   const make = () => ({
     runtime: Saved.Runtime.make({ services: Saved.Runtime.services(), debug: { hostClock } }).value,
     schedules: { update: Saved.Schedule() },

@@ -16,8 +16,9 @@ const Position = Descriptor.Component<{ x: number }>()("Membership/Position")
 const Sprite = Descriptor.Component<{ label: string }>()("Membership/Sprite")
 const Visible = Descriptor.Component<{}>()("Membership/Visible")
 const Nodes = Descriptor.Service<NodeRegistry.NodeRegistry<FakeNode>>()("Membership/Nodes")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite, Visible } }))
-type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
+const Root = Schema.defineRoot("Membership")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite, Visible } }), Root)
+type Id = Entity.EntityId<typeof Game.schema, typeof Root>
 const stepAccess = {
   commands: Game.System.commands(Game.System.spawns(Position, Sprite, Visible), Game.System.inserts(Position, Visible), Game.System.removes(Position, Visible), Game.System.despawns(Sprite)),
   queries: { sprites: Game.Query({ selection: { sprite: Game.Query.read(Sprite) } }) }

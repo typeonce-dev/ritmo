@@ -18,14 +18,16 @@ const schema = Schema.fragment({
     Counter
   }
 })
-const Game = Schema.bind(schema)
+const Root = Schema.defineRoot("StateMachine")
+const Game = Schema.bind(schema, Root)
 
 const otherSchema = Schema.fragment({
   resources: {
     Counter
   }
 })
-const OtherGame = Schema.bind(otherSchema)
+const OtherRoot = Schema.defineRoot("StateMachine/Other")
+const OtherGame = Schema.bind(otherSchema, OtherRoot)
 
 const AppState = Game.StateMachine("AppState", { Menu: {}, Playing: {}, Paused: {} })
 const RoundState = Game.StateMachine("RoundState", { Warmup: {}, Live: {}, SuddenDeath: {} })
@@ -230,7 +232,7 @@ describe("StateMachine", () => {
       )
     }).value
 
-    expect(MachineSchedule).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof schema>>()
+    expect(MachineSchedule).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof Root>>()
   })
 
   it("accepts direct inline schedule execution for disjunctive machine conditions", () => {
@@ -261,7 +263,7 @@ describe("StateMachine", () => {
       )
     }).value
 
-    expect(Game.Schedule(IncrementWithOrCondition)).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof schema>>()
+    expect(Game.Schedule(IncrementWithOrCondition)).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof Root>>()
   })
 
   it("rejects invalid multi-machine runtime initialization values", () => {
@@ -331,7 +333,7 @@ describe("StateMachine", () => {
 
     const bundle = Game.Schedule.transitions(TransitionWithService)
 
-    expect(bundle).type.toBeAssignableTo<SchemaTypes.Schema.BoundTransitionBundle<typeof schema, typeof schema>>()
+    expect(bundle).type.toBeAssignableTo<SchemaTypes.Schema.BoundTransitionBundle<typeof schema, typeof Root>>()
   })
 
   it("keeps transition event unions exact across bundled transition schedules", () => {
@@ -340,7 +342,7 @@ describe("StateMachine", () => {
       Game.Schedule.onExit(AppState, "Paused", [TransitionSystem])
     )
 
-    expect(bundle).type.toBeAssignableTo<SchemaTypes.Schema.BoundTransitionBundle<typeof schema, typeof schema>>()
+    expect(bundle).type.toBeAssignableTo<SchemaTypes.Schema.BoundTransitionBundle<typeof schema, typeof Root>>()
   })
 
   it("rejects nested transition-application markers in transition schedules", () => {
@@ -414,7 +416,7 @@ describe("StateMachine", () => {
     // @ts-expect-error Argument of type '[]' is not assignable to parameter of type 'readonly [Condition<SchemaDefinition<{ readonly
     Game.Schedule.when([], Increment)
 
-    expect(gated).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof schema>>()
+    expect(gated).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof Root>>()
   })
 })
 

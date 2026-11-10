@@ -18,6 +18,8 @@ const mouseBindings = { jump: ["primary"] } as const
 const mouse = Pointer.actions(canvas, window, mouseBindings)
 const keysWithoutPause = Keyboard.actions(host, { jump: [" "] })
 
+const Root = Schema.defineRoot("ControlsTypes")
+
 describe("Controls", () => {
   it("types merged actions by the declared names", () => {
     const input = Actions.merge({ keyboard, gamepad }).snapshot()
@@ -87,7 +89,7 @@ describe("Controls", () => {
     }) => Actions.merge(devices)
     const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("ControlsTypes/Controls")
     const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("ControlsTypes/Input")
-    const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
+    const Game = Schema.bind(Schema.fragment({ resources: { Input } }), Root)
     const Capture = InputCapture.system(Game, { name: "ControlsTypes/Capture", source: ControlsInput, resource: Input })
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(ControlsInput, makeControls({ keyboard, gamepad }))),
@@ -104,7 +106,7 @@ describe("Controls", () => {
   it("rejects snapshot() through a plain service, and keeps the other methods", () => {
     const makeControls = (devices: { readonly keyboard: Keyboard.Actions<typeof keyBindings> }) => Actions.merge(devices)
     const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("ControlsTypes/Plain")
-    const Game = Schema.bind(Schema.fragment({}))
+    const Game = Schema.bind(Schema.fragment({}), Root)
     Game.System("ControlsTypes/Settings", { services: { controls: Game.System.service(ControlsInput) } }, ({ services }) => {
       expect(services.controls.rebind.keyboard({ jump: ["w"], pause: ["p"] })).type.toBe<void>()
       // @ts-expect-error snapshot() drains ControlsTypes/Plain: declare it with Game.System.consumeService, or read the resource its capture writes
@@ -170,7 +172,7 @@ describe("Controls", () => {
       Actions.merge({ desktop: Actions.group(devices), gamepad })
     const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("ControlsTypes/Grouped")
     const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("ControlsTypes/GroupedInput")
-    const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
+    const Game = Schema.bind(Schema.fragment({ resources: { Input } }), Root)
     const services = Game.Runtime.services(Game.Runtime.service(ControlsInput, makeControls({ keyboard, mouse })))
     const idle = Actions.idle({ keyboard: Keyboard.idle(keyBindings), mouse: Pointer.idle(mouseBindings), gamepad: Gamepad.idle(padBindings) })
     Game.Runtime.make({ services, resources: { Input: idle } })
@@ -247,7 +249,7 @@ describe("one home for the shared input types", () => {
     expect(makeControls({ keyboard, gamepad })).type.toBeAssignableTo<DescriptorOf.Value<typeof ControlsInput>>()
     // @ts-expect-error Property 'rebind' does not exist
     ;({} as DescriptorOf.Value<typeof ControlsInput>).rebind
-    const Game = Schema.bind(Schema.fragment({}))
+    const Game = Schema.bind(Schema.fragment({}), Root)
     Game.System("ControlsTypes/Peek", { services: { controls: Game.System.service(ControlsInput) } }, ({ services }) => {
       // @ts-expect-error snapshot() drains ControlsTypes/Source
       services.controls.snapshot()

@@ -3,7 +3,8 @@ import { Determinism } from "@typeonce/ritmo-devtools"
 import { describe, expect, it } from "tstyche"
 
 const Count = Descriptor.Resource<number>()("DetTypes/Count")
-const Game = Schema.bind(Schema.fragment({ resources: { Count } }))
+const Root = Schema.defineRoot("DetTypes")
+const Game = Schema.bind(Schema.fragment({ resources: { Count } }), Root)
 const make = ({ hostClock }: Determinism.Context) => ({
   runtime: Game.Runtime.make({ services: Game.Runtime.services(), resources: { Count: 0 }, debug: { hostClock } }).value,
   schedules: { update: Game.Schedule() }

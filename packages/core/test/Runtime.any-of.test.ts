@@ -5,7 +5,8 @@ const Position = Descriptor.Component<{ x: number }>()("AnyOf/Position")
 const Sprite = Descriptor.Component<string>()("AnyOf/Sprite")
 const Paved = Descriptor.Component<{}>()("AnyOf/Paved")
 
-const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite, Paved } }))
+const Root = Schema.defineRoot("AnyOf")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite, Paved } }), Root)
 
 const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value
 

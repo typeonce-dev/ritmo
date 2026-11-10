@@ -6,7 +6,8 @@ const Health = Descriptor.Component<number>()("WorldPages/Health")
 const Speed = Descriptor.Component<number>()("WorldPages/Speed")
 const Name = Descriptor.Component<string>()("WorldPages/Name")
 const Armor = Descriptor.Component<{ readonly value: number }>()("WorldPages/Armor")
-const Game = Schema.bind(Schema.fragment({ components: { Health, Speed, Name, Armor } }))
+const Root = Schema.defineRoot("WorldPages")
+const Game = Schema.bind(Schema.fragment({ components: { Health, Speed, Name, Armor } }), Root)
 
 const components = [Health, Speed, Name, Armor] as const
 

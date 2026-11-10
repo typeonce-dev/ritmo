@@ -10,7 +10,8 @@ const Score = Descriptor.ConstructedResource(Codecs.number)("Changed/Score")
 const Hud = Descriptor.ConstructedResource(Codecs.struct({ label: Codecs.string, tags: Codecs.array(Codecs.string) }))("Changed/Hud")
 const Open = Descriptor.ConstructedResource(Codecs.boolean)("Changed/Open")
 
-const Game = Schema.bind(Schema.fragment({ resources: { Score, Hud, Open } }))
+const Root = Schema.defineRoot("Changed")
+const Game = Schema.bind(Schema.fragment({ resources: { Score, Hud, Open } }), Root)
 
 const unwrap = <A>(made: { readonly ok: true; readonly value: A } | { readonly ok: false }): A => {
   if (!made.ok) throw new Error("invalid fixture")

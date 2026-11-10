@@ -10,11 +10,12 @@ const Position = Descriptor.Component<{ readonly x: number }>()("Dev/Position")
 const Health = Descriptor.Component<number>()("Dev/Health")
 const Score = Descriptor.Resource<number>()("Dev/Score")
 const Hit = Descriptor.Event<number>()("Dev/Hit")
+const Root = Schema.defineRoot("Dev")
 const Game = Schema.bind(Schema.fragment({
   components: { Position, Health },
   resources: { Score },
   events: { Hit }
-}))
+}), Root)
 const Flow = Game.StateMachine("Dev/Flow", { Playing: {}, Paused: {} })
 
 const Movers = Game.Query({ selection: { position: Game.Query.write(Position) } })
@@ -418,7 +419,7 @@ describe("Session risk checks", () => {
   const Shot = Descriptor.Component<{ readonly speed: number }>()("Risk/Shot")
   const Total = Descriptor.Resource<{ readonly sum: number }>()("Risk/Total")
   const Blast = Descriptor.Event<{ readonly force: number }>()("Risk/Blast")
-  const RiskGame = Schema.bind(Schema.fragment({ components: { Velocity, Shot }, resources: { Total }, events: { Blast } }))
+  const RiskGame = Schema.bind(Schema.fragment({ components: { Velocity, Shot }, resources: { Total }, events: { Blast } }), Root)
 
   const makeRiskSession = (update: ReturnType<typeof RiskGame.Schedule>) => {
     const runtime = RiskGame.Runtime.make({ services: RiskGame.Runtime.services(), resources: { Total: { sum: 0 } }, debug: { hostClock } }).value
@@ -455,7 +456,7 @@ describe("Session risk checks", () => {
       meta: { hp: { unit: "points", range: [0, 100], hint: "Hit points left." } }
     })
     const Tuning = Descriptor.Resource<{ readonly speed: number }>()("Range/Tuning", { meta: { speed: { unit: "px/s", range: [0, 400] } } })
-    const RangeGame = Schema.bind(Schema.fragment({ components: { Health }, resources: { Tuning } }))
+    const RangeGame = Schema.bind(Schema.fragment({ components: { Health }, resources: { Tuning } }), Root)
     const SpawnHero = RangeGame.System("Range/SpawnHero", { commands: RangeGame.System.commands(RangeGame.System.spawns(Health)) }, ({ commands }) => {
       commands.spawn(RangeGame.Command.spawn([Health, { hp: 50, name: "hero" }]))
       commands.spawn(RangeGame.Command.spawn([Health, { hp: 150, name: "giant" }]))

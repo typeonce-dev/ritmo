@@ -7,8 +7,10 @@ import * as Codecs from "../test/codecs.ts"
 const Position = Descriptor.Component<{ readonly x: number }>()("DebugTypes/Position")
 const Other = Descriptor.Component<{ readonly y: number }>()("DebugTypes/Other")
 const Score = Descriptor.Resource<number>()("DebugTypes/Score")
-const Game = Schema.bind(Schema.fragment({ components: { Position }, resources: { Score } }))
-const OtherGame = Schema.bind(Schema.fragment({ components: { Other } }))
+const Root = Schema.defineRoot("DebugTypes")
+const Game = Schema.bind(Schema.fragment({ components: { Position }, resources: { Score } }), Root)
+const OtherRoot = Schema.defineRoot("DebugTypes/Other")
+const OtherGame = Schema.bind(Schema.fragment({ components: { Other } }), OtherRoot)
 
 describe("Runtime debug option", () => {
   it("adds the debug handle only when enabled", () => {
@@ -22,7 +24,7 @@ describe("Runtime debug option", () => {
 
   it("keeps the handle inside the Result of fallible runtimes", () => {
     const Viewport = Descriptor.ConstructedResource(Codecs.number)("DebugTypes/Viewport")
-    const Fallible = Schema.bind(Schema.fragment({ resources: { Viewport } }))
+    const Fallible = Schema.bind(Schema.fragment({ resources: { Viewport } }), Root)
     const made = Fallible.Runtime.make({ services: Fallible.Runtime.services(), resources: { Viewport: 1 }, debug: { hostClock: HostClock.standard } })
     if (made.ok) {
       expect(made.value.debug.frame()).type.toBe<number>()
@@ -32,7 +34,7 @@ describe("Runtime debug option", () => {
   it("types the handle as optional when the option may be undefined (a dev build)", () => {
     const dev: boolean = Math.random() > 2
     const maybe = Game.Runtime.make({ services: Game.Runtime.services(), debug: dev ? { hostClock: HostClock.standard } : undefined }).value
-    expect(maybe.debug).type.toBe<Debug.Handle<typeof Game.schema, typeof Game.schema> | undefined>()
+    expect(maybe.debug).type.toBe<Debug.Handle<typeof Game.schema, typeof Root> | undefined>()
     // @ts-expect-error 'maybe.debug' is possibly 'undefined'.
     maybe.debug.describe()
     const off = Game.Runtime.make({ services: Game.Runtime.services(), debug: undefined }).value

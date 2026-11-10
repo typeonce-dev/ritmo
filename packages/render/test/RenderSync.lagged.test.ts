@@ -7,7 +7,8 @@ import { NodeRegistry, RenderSync } from "@typeonce/ritmo-render"
 const Position = Descriptor.Component<{ x: number }>()("Lagged/Position")
 const Sprite = Descriptor.Component<{}>()("Lagged/Sprite")
 const Nodes = Descriptor.Service<NodeRegistry.NodeRegistry<{ readonly id: number }>>()("Lagged/Nodes")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite } }))
+const Root = Schema.defineRoot("Lagged")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite } }), Root)
 
 describe("RenderSync after its removal stream dropped entries", () => {
   it("destroys every node whose entity no longer matches", () => {

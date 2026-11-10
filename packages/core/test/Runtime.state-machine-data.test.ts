@@ -4,7 +4,8 @@ import * as Codecs from "./codecs.ts"
 import { worldOf } from "./saved.ts"
 
 const Log = Descriptor.TransientResource<ReadonlyArray<string>>()("MachineData/Log")
-const Game = Schema.bind(Schema.fragment({ resources: { Log } }))
+const Root = Schema.defineRoot("MachineData")
+const Game = Schema.bind(Schema.fragment({ resources: { Log } }), Root)
 
 const Mode = Game.StateMachine("MachineData/Mode", {
   Exploring: {},

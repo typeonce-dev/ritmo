@@ -2,7 +2,8 @@ import * as Core from "@typeonce/ritmo"
 import { Descriptor, Schema } from "@typeonce/ritmo"
 import { describe, expect, it } from "tstyche"
 
-const Game = Schema.bind(Schema.fragment({ components: { Position: Descriptor.Component<{ x: number }>()("OneWay/Position") } }))
+const Root = Schema.defineRoot("OneWay")
+const Game = Schema.bind(Schema.fragment({ components: { Position: Descriptor.Component<{ x: number }>()("OneWay/Position") } }), Root)
 
 // Each job has one API. These tests keep the removed second ways removed.
 describe("one way to do each thing", () => {

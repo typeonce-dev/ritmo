@@ -7,6 +7,7 @@ import { describe, it } from "tstyche"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Position")
 const Time = Descriptor.Resource<number>()("Time")
 
+const Root = Schema.defineRoot("Schedule")
 const Game = Schema.bind(Schema.fragment({
   components: {
     Position
@@ -14,7 +15,7 @@ const Game = Schema.bind(Schema.fragment({
   resources: {
     Time
   }
-}))
+}), Root)
 const schema = Game.schema
 
 const MovementSystem = System.System(

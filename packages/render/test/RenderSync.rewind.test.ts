@@ -23,7 +23,8 @@ const Position = Descriptor.Component<{ x: number }>()("Rewind/Position")
 const Sprite = Descriptor.Component<{ label: string }>()("Rewind/Sprite")
 const Plans = Descriptor.Service<Schedule.Source<Plan>>()("Rewind/Plans")
 const Nodes = Descriptor.Service<NodeRegistry.NodeRegistry<FakeNode>>()("Rewind/Nodes")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite } }))
+const Root = Schema.defineRoot("Rewind")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite } }), Root)
 
 const Step = Game.System("Rewind/Step", {
   services: { plans: Game.System.consumeService(Plans) },

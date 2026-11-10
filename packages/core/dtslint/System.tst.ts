@@ -15,6 +15,7 @@ const SafePosition = Descriptor.ConstructedComponent(Codecs.safeVector)("SafePos
 const Viewport = Descriptor.ConstructedResource(Codecs.safeSize)("Viewport")
 const Camera = Descriptor.ConstructedResource(Codecs.safeVector)("Camera")
 
+const Root = Schema.defineRoot("Slots")
 const Game = Schema.bind(Schema.fragment({
   components: {
     Position,
@@ -30,7 +31,7 @@ const Game = Schema.bind(Schema.fragment({
   events: {
     TickEvent
   }
-}))
+}), Root)
 const schema = Game.schema
 
 describe("System", () => {
@@ -174,7 +175,7 @@ describe("System", () => {
 describe("redundant resource and event slots", () => {
   const Score = Descriptor.Resource<number>()("Slots/Score")
   const Ping = Descriptor.Event<number>()("Slots/Ping")
-  const Slots = Schema.bind(Schema.fragment({ resources: { Score }, events: { Ping } }))
+  const Slots = Schema.bind(Schema.fragment({ resources: { Score }, events: { Ping } }), Root)
 
   it("rejects a read next to another slot of the same resource, and a repeated slot", () => {
     Slots.System("Slots/ReadAndWrite", {
@@ -206,7 +207,7 @@ describe("redundant resource and event slots", () => {
 
 describe("Game.System.consumeService", () => {
   it("gives the same typed access as service", () => {
-    const Bound = Schema.bind(Schema.fragment({}))
+    const Bound = Schema.bind(Schema.fragment({}), Root)
     expect(Bound.System.consumeService(Logger)).type.toBe<System.ServiceRead<typeof Logger, true>>()
     expect(Bound.System.service(Logger)).type.toBe<System.ServiceRead<typeof Logger, false>>()
     Bound.System("Consume/Drain", { services: { logger: Bound.System.consumeService(Logger) } }, ({ services }) => {
@@ -222,7 +223,7 @@ describe("Game.System.consumeService", () => {
       size(): number
     }
     const Messages = Descriptor.Service<Queue>()("Messages")
-    const Bound = Schema.bind(Schema.fragment({}))
+    const Bound = Schema.bind(Schema.fragment({}), Root)
     Bound.System("Consume/Take", { services: { queue: Bound.System.consumeService(Messages) } }, ({ services }) => {
       expect(services.queue.take()).type.toBe<ReadonlyArray<string>>()
     })

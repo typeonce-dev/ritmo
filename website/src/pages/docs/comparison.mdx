@@ -84,7 +84,8 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 const Velocity = Descriptor.Component<{ x: number; y: number }>()("Arena/Velocity")
 const Guard = Descriptor.Tag("Arena/Guard")
 const Stunned = Descriptor.Component<number>()("Arena/Stunned")
-const Game = Schema.bind(Schema.fragment({ components: { Velocity, Guard, Stunned } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Velocity, Guard, Stunned } }), Root)
 // ---cut---
 // @errors: 2345
 const Calm = Game.Query({ selection: {}, with: [Guard], without: [Stunned] })
@@ -139,8 +140,9 @@ can fail:
 import { Descriptor, Entity, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
 const Guard = Descriptor.Tag("Arena/Guard")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Guard } }))
-type GuardId = Entity.EntityId<typeof Game.schema, typeof Game.schema>
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Guard } }), Root)
+type GuardId = Entity.EntityId<typeof Game.schema, typeof Root>
 const Guards = Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Guard] })
 // ---cut---
 const Follow = Game.System("Arena/Follow", {
@@ -175,7 +177,8 @@ its failure as a value, and everything it wrote is rolled back:
 import { Descriptor, Result, Schema } from "@typeonce/ritmo"
 const Gold = Descriptor.Resource<number>()("Shop/Gold")
 const Stock = Descriptor.Resource<number>()("Shop/Stock")
-const Game = Schema.bind(Schema.fragment({ resources: { Gold, Stock } }))
+const Root = Schema.defineRoot("Shop")
+const Game = Schema.bind(Schema.fragment({ resources: { Gold, Stock } }), Root)
 const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Gold: 50, Stock: 0 } })
 if (!made.ok) throw new Error()
 const runtime = made.value
@@ -213,7 +216,8 @@ const codec = <T extends S.Top & { readonly DecodingServices: never; readonly En
   return { "~standard": S.toStandardSchemaV1(json)["~standard"], "~encode": S.toStandardSchemaV1(S.flip(json)) }
 }
 const Health = Descriptor.ConstructedComponent(codec(S.Finite))("Arena/Health")
-const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Health } }), Root)
 const made = Game.Runtime.make({ services: Game.Runtime.services() })
 if (!made.ok) throw new Error()
 const runtime = made.value
@@ -398,11 +402,13 @@ const Guard = Descriptor.Tag("Arena/Guard")
 const Stunned = Descriptor.Component<number>()("Arena/Stunned")
 const Hit = Descriptor.Event<{ amount: number }>()("Arena/Hit")
 
+const Root = Schema.defineRoot("Arena")
 const Game = Schema.bind(
   Schema.fragment({
     components: { Position, Velocity, Guard, Stunned },
     events: { Hit }
-  })
+  }),
+  Root
 )
 
 const Stun = Game.System(

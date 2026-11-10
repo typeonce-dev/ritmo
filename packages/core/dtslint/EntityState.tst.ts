@@ -20,7 +20,8 @@ type ContactValue =
   | { readonly _tag: "air"; readonly vy: number; readonly coyote: number }
 type Mismatch = Result.Result<void, EntityStateMismatchError<"ground" | "crouch" | "air">>
 
-const Game = Schema.bind(Schema.fragment({ components: { Contact, Phase, Mode } }))
+const Root = Schema.defineRoot("EntityState")
+const Game = Schema.bind(Schema.fragment({ components: { Contact, Phase, Mode } }), Root)
 const Bodies = Game.Query({
   selection: { contact: Game.Query.write(Contact), phase: Game.Query.write(Phase), mode: Game.Query.write(Mode) }
 })

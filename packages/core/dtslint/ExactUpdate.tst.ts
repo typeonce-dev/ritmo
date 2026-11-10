@@ -20,10 +20,11 @@ const Safe = Descriptor.ConstructedComponent(Codecs.struct({ x: Codecs.number, y
 const Config = Descriptor.Resource<{ speed: number; debug: boolean }>()("Exact/Config")
 const Tuning = Descriptor.ConstructedResource(Codecs.struct({ rate: Codecs.number }))("Exact/Tuning")
 
+const Root = Schema.defineRoot("Exact")
 const Game = Schema.bind(Schema.fragment({
   components: { Position, Health, Path, Pair, Scores, Body, Named, Seen, Loose, Maybe, Safe },
   resources: { Config, Tuning }
-}))
+}), Root)
 
 const Moves = Game.Query({
   selection: {

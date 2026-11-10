@@ -44,12 +44,14 @@ const Time = Clock.resource("Example/Time", step)
 const Position = Descriptor.Component<Vec>()("Example/Position")
 const Velocity = Descriptor.Component<Vec>()("Example/Velocity")
 
+const Root = Schema.defineRoot("Example")
 // Bind the schema to its game-facing APIs.
 const Game = Schema.bind(
   Schema.fragment({
     components: { Position, Velocity },
     resources: { Time }
-  })
+  }),
+  Root
 )
 
 const AdvanceTime = Clock.system(Game, {

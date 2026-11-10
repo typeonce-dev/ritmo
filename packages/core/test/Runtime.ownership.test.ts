@@ -10,11 +10,12 @@ const Samples = Descriptor.Component<{ readonly samples: Float32Array }>()("Owne
 const Tuning = Descriptor.Resource<{ speed: number }>()("Ownership/Tuning")
 const Hit = Descriptor.Event<{ x: number }>()("Ownership/Hit")
 
+const Root = Schema.defineRoot("Ownership")
 const Game = Schema.bind(Schema.fragment({
   components: { Body: BodyC, Samples },
   resources: { Tuning },
   events: { Hit }
-}))
+}), Root)
 const Mode = Game.StateMachine("Ownership/Mode", { Idle: {}, Moving: Codecs.struct({ speed: Codecs.number }) })
 
 const makeRuntime = (debug: boolean, tuning = { speed: 1 }) => Game.Runtime.make({

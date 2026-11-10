@@ -7,13 +7,14 @@ const Tag = Descriptor.Component<{}>()("Storage/Tag")
 const Log = Descriptor.Resource<ReadonlyArray<string>>()("Storage/Log")
 const { relation: ChildOf } = Descriptor.Hierarchy("Storage/ChildOf", "Storage/Children")
 
+const Root = Schema.defineRoot("Storage")
 const Game = Schema.bind(Schema.fragment({
   components: { Position, Tag },
   resources: { Log },
   relations: { ChildOf }
-}))
+}), Root)
 
-type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
+type Id = Entity.EntityId<typeof Game.schema, typeof Root>
 
 const makeRuntime = () => Game.Runtime.make({
   services: Game.Runtime.services(),

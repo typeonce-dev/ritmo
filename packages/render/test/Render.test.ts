@@ -37,8 +37,9 @@ const Position = Descriptor.Component<{ x: number; y: number }>()("RenderTest/Po
 const Sprite = Descriptor.Component<{ label: string }>()("RenderTest/Sprite")
 const Nodes = Descriptor.Service<NodeRegistry.NodeRegistry<FakeNode>>()("RenderTest/Nodes")
 
-const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite } }))
-type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
+const Root = Schema.defineRoot("RenderTest")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite } }), Root)
+type Id = Entity.EntityId<typeof Game.schema, typeof Root>
 
 describe("@typeonce/ritmo-render", () => {
   it("resolves through the workspace package entrypoint", () => {
@@ -136,7 +137,7 @@ describe("@typeonce/ritmo-render", () => {
   it("passes selected data, resources, and services to the callbacks", () => {
     const Zoom = Descriptor.Resource<number>()("RenderTest/Zoom")
     const Prefix = Descriptor.Service<string>()("RenderTest/Prefix")
-    const Zoomed = Schema.bind(Schema.fragment({ components: { Position, Sprite }, resources: { Zoom } }))
+    const Zoomed = Schema.bind(Schema.fragment({ components: { Position, Sprite }, resources: { Zoom } }), Root)
     const layer = new FakeLayer()
     const render = RenderSync.system(Zoomed, {
       name: "RenderTest/Zoomed",
@@ -169,7 +170,7 @@ describe("@typeonce/ritmo-render", () => {
 
   it("re-applies nodes when a redrawOn component changes, once per entity", () => {
     const Frame = Descriptor.Component<number>()("RenderTest/Frame")
-    const Animated = Schema.bind(Schema.fragment({ components: { Position, Sprite, Frame } }))
+    const Animated = Schema.bind(Schema.fragment({ components: { Position, Sprite, Frame } }), Root)
     const layer = new FakeLayer()
     const applied: Array<string> = []
     const render = RenderSync.system(Animated, {
@@ -307,7 +308,7 @@ describe("@typeonce/ritmo-render", () => {
   it("interpolates nodes between the previous and current positions at the clock's alpha", () => {
     const Previous = Descriptor.Component<{ x: number; y: number }>()("RenderTest/Previous")
     const Clock = Descriptor.Service<{ alpha: number }>()("RenderTest/Clock")
-    const Moving = Schema.bind(Schema.fragment({ components: { Position, Previous, Sprite } }))
+    const Moving = Schema.bind(Schema.fragment({ components: { Position, Previous, Sprite } }), Root)
     const layer = new FakeLayer()
     const clock = { alpha: 0.25 }
     const sync = RenderSync.system(Moving, {
@@ -347,7 +348,7 @@ describe("@typeonce/ritmo-render", () => {
     const Spatial = Descriptor.Component<{ x: number; y: number; z: number }>()("RenderTest/Spatial")
     const PreviousSpatial = Descriptor.Component<{ x: number; y: number; z: number }>()("RenderTest/PreviousSpatial")
     const Clock = Descriptor.Service<{ alpha: number }>()("RenderTest/Clock")
-    const Space = Schema.bind(Schema.fragment({ components: { Spatial, PreviousSpatial, Sprite } }))
+    const Space = Schema.bind(Schema.fragment({ components: { Spatial, PreviousSpatial, Sprite } }), Root)
     const layer = new FakeLayer()
     const placed: Array<[number, number, number]> = []
     const sync = RenderSync.system(Space, {

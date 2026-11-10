@@ -42,7 +42,8 @@ describe("HostClock.standard", () => {
 })
 
 const Tick = Descriptor.Service<{ readonly clock: HostClock.TestHostClock; readonly step: number }>()("HostClockTest/Tick")
-const Game = Schema.bind(Schema.fragment({}))
+const Root = Schema.defineRoot("HostClockTest")
+const Game = Schema.bind(Schema.fragment({}), Root)
 const Advance = Game.System("HostClockTest/Advance", { services: { tick: Game.System.service(Tick) } }, ({ services }) => {
   services.tick.clock.adjust(services.tick.step)
 })

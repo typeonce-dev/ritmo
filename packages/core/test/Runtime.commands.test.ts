@@ -12,6 +12,7 @@ const SafePosition = Descriptor.ConstructedComponent(Codecs.safeVector)("SafePos
 const SafeVelocity = Descriptor.ConstructedComponent(Codecs.struct({ x: Codecs.number, y: Codecs.number }))("SafeVelocity")
 const badVelocity = { _tag: "SchemaIssues", issues: [{ message: "Expected a finite number", path: ["x"] }] }
 
+const Root = Schema.defineRoot("Runtime")
 const Game = Schema.bind(Schema.fragment({
   components: {
     Position,
@@ -22,14 +23,15 @@ const Game = Schema.bind(Schema.fragment({
     Count,
     LastX
   }
-}))
+}), Root)
 const schema = Game.schema
 
+const ConstructedRoot = Schema.defineRoot("Runtime/Constructed")
 const ConstructedGame = Schema.bind(Schema.fragment({
   components: {
     SafePosition
   }
-}))
+}), ConstructedRoot)
 const makeRuntime = () =>
   Game.Runtime.make({
     services: Game.Runtime.services(),
@@ -137,7 +139,7 @@ describe("Runtime commands", () => {
   })
 
   it("despawn removes the entity and exact lookup reports MissingEntity", () => {
-    let storedId: EntityId<typeof schema, typeof schema> | undefined
+    let storedId: EntityId<typeof schema, typeof Root> | undefined
 
     const spawn = Game.System(
       "RuntimeCommands/SpawnAndStoreId",
@@ -246,7 +248,7 @@ describe("Runtime commands", () => {
   })
 
   it("insert on an existing entity becomes visible after explicit applyDeferred in the same schedule", () => {
-    let storedId: EntityId<typeof schema, typeof schema> | undefined
+    let storedId: EntityId<typeof schema, typeof Root> | undefined
 
     const spawn = Game.System(
       "RuntimeCommands/SpawnStoreForInsert",

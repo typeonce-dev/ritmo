@@ -8,7 +8,8 @@ import * as Codecs from "../../../core/test/codecs.ts"
 
 const Position = Descriptor.ConstructedComponent(Codecs.struct({ x: Codecs.number }))("VerifyFixture/Position")
 export const Input = Descriptor.Service<Schedule.Source<{ readonly dx: number }>>()("VerifyFixture/Input")
-const Game = Schema.bind(Schema.fragment({ components: { Position } }))
+const Root = Schema.defineRoot("VerifyFixture")
+const Game = Schema.bind(Schema.fragment({ components: { Position } }), Root)
 
 let builds = 0
 

@@ -3,7 +3,8 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 
 const Position = Descriptor.Component<{ readonly x: number }>()("Stale/Position")
 const Marker = Descriptor.Component<{}>()("Stale/Marker")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Marker } }))
+const Root = Schema.defineRoot("Stale")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Marker } }), Root)
 
 const Positions = Game.Query({ selection: { position: Game.Query.write(Position) } })
 

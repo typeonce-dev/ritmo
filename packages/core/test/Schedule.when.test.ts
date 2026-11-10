@@ -6,7 +6,8 @@ const Log = Descriptor.Resource<ReadonlyArray<string>>()("ScheduleWhen/Log")
 const Ping = Descriptor.Event<number>()("ScheduleWhen/Ping")
 const Marker = Descriptor.Tag("ScheduleWhen/Marker")
 
-const Game = Schema.bind(Schema.fragment({ components: { Marker }, resources: { Log }, events: { Ping } }))
+const Root = Schema.defineRoot("ScheduleWhen")
+const Game = Schema.bind(Schema.fragment({ components: { Marker }, resources: { Log }, events: { Ping } }), Root)
 const Mode = Game.StateMachine("ScheduleWhen/Mode", { Playing: {}, Paused: {} })
 const Round = Game.StateMachine("ScheduleWhen/Round", { Live: {}, Over: {} })
 

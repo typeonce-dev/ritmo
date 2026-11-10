@@ -56,7 +56,8 @@ In a system it is ordinary code with two different imports:
 import { Descriptor, Ops, Random, Schema } from "@typeonce/ritmo"
 const Rng = Descriptor.ConstructedResource(Random.codec)("Game/Rng")
 const Wind = Descriptor.Resource<{ readonly x: number; readonly y: number }>()("Game/Wind")
-const Game = Schema.bind(Schema.fragment({ resources: { Rng, Wind } }))
+const Root = Schema.defineRoot("Game")
+const Game = Schema.bind(Schema.fragment({ resources: { Rng, Wind } }), Root)
 // ---cut---
 const Gust = Game.System(
   "Game/Gust",
@@ -107,7 +108,8 @@ in the world after every frame.
 import { Descriptor, HostClock, Schema } from "@typeonce/ritmo"
 import { Determinism } from "@typeonce/ritmo-devtools"
 const Score = Descriptor.Resource<number>()("Game/Score")
-const Game = Schema.bind(Schema.fragment({ resources: { Score } }))
+const Root = Schema.defineRoot("Game")
+const Game = Schema.bind(Schema.fragment({ resources: { Score } }), Root)
 const update = Game.Schedule()
 const makeSimulation = (hostClock: HostClock.HostClock) => ({
   runtime: Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock } }).value!,

@@ -22,7 +22,8 @@ const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Positio
 const Health = Descriptor.Component<number>()("Arena/Health")
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 const Noise = Descriptor.Component<number>()("Arena/Noise")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy, Noise } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy, Noise } }), Root)
 // ---cut---
 // @errors: 2379
 Game.System(

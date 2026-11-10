@@ -20,7 +20,8 @@ const Sound = Descriptor.Service<{ readonly play: () => void }>()("NetTypes/Soun
 const Hit = Descriptor.Event<{ readonly seat: number; readonly at: { readonly x: number } }>()("NetTypes/Hit")
 const Elsewhere = Descriptor.Event<{ readonly seat: number }>()("NetTypes/Elsewhere")
 
-const Game = Schema.bind(Schema.fragment({ resources: { Inputs, Score }, events: { Hit } }))
+const Root = Schema.defineRoot("NetTypes")
+const Game = Schema.bind(Schema.fragment({ resources: { Inputs, Score }, events: { Hit } }), Root)
 const Capture = InputCapture.system(Game, { name: "NetTypes/Capture", source: Seats, resource: Inputs })
 const Fail = Game.System("NetTypes/Fail", {}, () => Result.failure("Overflow" as const))
 const Remember = Game.System("NetTypes/Remember", { local: () => ({ runs: 0 }) }, ({ local }) => {
@@ -89,7 +90,7 @@ describe("Netcode.rollback", () => {
 
   it("rejects a runtime that cannot save", () => {
     const Loose = Descriptor.Resource<number>()("NetTypes/Loose")
-    const Unsaved = Schema.bind(Schema.fragment({ resources: { Inputs, Loose } }))
+    const Unsaved = Schema.bind(Schema.fragment({ resources: { Inputs, Loose } }), Root)
     const unsaved = Unsaved.Runtime.make({ services: Unsaved.Runtime.services(Unsaved.Runtime.service(Seats, theSeats.source)), resources: { Inputs: [], Loose: 0 } }).value
     const capture = InputCapture.system(Unsaved, { name: "NetTypes/UnsavedCapture", source: Seats, resource: Inputs })
     // @ts-expect-error NetTypes/Loose needs a schema
@@ -181,7 +182,7 @@ describe("Netcode.syncTest", () => {
 
   it("rejects a runtime that cannot save", () => {
     const Loose = Descriptor.Resource<number>()("NetTypes/SyncLoose")
-    const Unsaved = Schema.bind(Schema.fragment({ resources: { Inputs, Loose } }))
+    const Unsaved = Schema.bind(Schema.fragment({ resources: { Inputs, Loose } }), Root)
     const unsaved = Unsaved.Runtime.make({ services: Unsaved.Runtime.services(Unsaved.Runtime.service(Seats, theSeats.source)), resources: { Inputs: [], Loose: 0 } }).value
     const capture = InputCapture.system(Unsaved, { name: "NetTypes/SyncUnsavedCapture", source: Seats, resource: Inputs })
     // @ts-expect-error NetTypes/SyncLoose needs a schema

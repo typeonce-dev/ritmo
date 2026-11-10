@@ -16,7 +16,8 @@ const Optional = Descriptor.TransientResource<{
 const Wide = Descriptor.TransientResource<unknown>()("CaptureTypes/Wide")
 const Declared = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof KeyboardInput>>()("CaptureTypes/Declared")
 const Clock = Descriptor.Service<{ readonly now: () => number }>()("CaptureTypes/Clock")
-const Game = Schema.bind(Schema.fragment({ resources: { Input, Wrong, Fewer, Optional, Wide, Declared } }))
+const Root = Schema.defineRoot("CaptureTypes")
+const Game = Schema.bind(Schema.fragment({ resources: { Input, Wrong, Fewer, Optional, Wide, Declared } }), Root)
 
 describe("InputCapture", () => {
   it("requires the service and resource at tick time", () => {

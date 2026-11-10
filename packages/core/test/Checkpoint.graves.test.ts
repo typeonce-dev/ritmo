@@ -11,7 +11,8 @@ import { makeWorld } from "@typeonce/ritmo/internal/world"
  */
 
 const Pos = Descriptor.Component<number>()("Graves/Pos")
-const Game = Schema.bind(Schema.fragment({ components: { Pos } }))
+const Root = Schema.defineRoot("Graves")
+const Game = Schema.bind(Schema.fragment({ components: { Pos } }), Root)
 const Hit = Symbol("Graves/Hit")
 
 describe("a held checkpoint keeps of the message log", () => {

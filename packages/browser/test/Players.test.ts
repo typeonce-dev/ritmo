@@ -13,6 +13,8 @@ const Players = Controls.players(Actions, { slots: ["p1", "p2"], join: "join", l
 
 const tap = (frame: number, name: Keyboard.TimelineName<typeof leftKeys>) => ({ frame, press: [name], release: [name] })
 
+const Root = Schema.defineRoot("PlayersTest")
+
 describe("Controls.players", () => {
   it("joins the first free slot on a join press, with that snapshot idle", () => {
     const pool = Players.pool({
@@ -183,7 +185,7 @@ describe("Controls.players", () => {
     Actions.merge({ keyboard: reused })
     const pool = Players.pool({ left: reused, right: Keyboard.scripted(rightKeys, []), other: shared })
     const PoolService = Descriptor.Service<typeof pool>()("PlayersTest/Pool")
-    const Game = Schema.bind(Schema.fragment({}))
+    const Game = Schema.bind(Schema.fragment({}), Root)
     const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(PoolService, pool)), resources: {}, debug: { hostClock: HostClock.test() } })
     if (!runtime.ok) throw new Error("runtime")
     const messages = runtime.value.debug.describe().lints.filter((lint) => lint.code === "service-lint").map((lint) => lint.message)

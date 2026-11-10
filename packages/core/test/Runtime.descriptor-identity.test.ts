@@ -4,7 +4,8 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 type ModeValue = { readonly _tag: "a" } | { readonly _tag: "b" }
 const Mode = Descriptor.Component<ModeValue>()("Identity/Mode")
 const Kind = Descriptor.Component<"tree" | "rock">()("Identity/Kind", { immutable: true })
-const Game = Schema.bind(Schema.fragment({ components: { Mode, Kind } }))
+const Root = Schema.defineRoot("Identity")
+const Game = Schema.bind(Schema.fragment({ components: { Mode, Kind } }), Root)
 
 const spawn = Game.System("Identity/Spawn", { commands: Game.System.commands(Game.System.spawns(Mode, Kind)) }, ({ commands }) => {
   commands.spawn(Game.Command.spawn([Mode, { _tag: "a" }], [Kind, "tree"]))

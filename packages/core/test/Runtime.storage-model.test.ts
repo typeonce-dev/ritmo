@@ -18,10 +18,11 @@ type Value = number | { readonly a: number } | string | symbol | null | undefine
 const Cell = Descriptor.Component<Value>()("Model/Cell")
 const Left = Descriptor.Component<true>()("Model/Left")
 const Right = Descriptor.Component<true>()("Model/Right")
-const Game = Schema.bind(Schema.fragment({ components: { Cell, Left, Right } }))
+const Root = Schema.defineRoot("Model")
+const Game = Schema.bind(Schema.fragment({ components: { Cell, Left, Right } }), Root)
 const Flow = Game.StateMachine("Model/Flow", { A: {}, B: {} })
 
-type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
+type Id = Entity.EntityId<typeof Game.schema, typeof Root>
 type Via = "left" | "right"
 type FlowState = "A" | "B"
 

@@ -60,10 +60,12 @@ const E07 = Descriptor.Event<{ readonly e7: number }>()("Stress/E07")
 const Clock = Descriptor.Service<{ readonly now: () => number }>()("Stress/Clock")
 const { relation: ChildOf } = Descriptor.Hierarchy("Stress/ChildOf", "Stress/Children")
 
+const Root = Schema.defineRoot("Stress")
 const Game = Schema.bind(
   Schema.fragment({ components: { C00, C01, C02, C03, C04, C05, C06, C07, C08, C09, C10, C11, C12, C13, C14, C15 }, resources: { R00, R01, R02, R03, R04, R05, R06, R07 }, events: { E00, E01, E02, E03 } }),
   Schema.fragment({ components: { C16, C17, C18, C19, C20, C21, C22, C23, C24, C25, C26, C27, C28, C29, C30, C31 }, resources: { R08, R09, R10, R11, R12, R13, R14, R15 }, events: { E04, E05, E06, E07 }, relations: { ChildOf } }),
-  Schema.fragment({ requires: [Schema.requires(C28, C29, C30), Schema.requires(C29, C31), Schema.requires(C30, C31)] })
+  Schema.fragment({ requires: [Schema.requires(C28, C29, C30), Schema.requires(C29, C31), Schema.requires(C30, C31)] }),
+  Root
 )
 
 const Flow = Game.StateMachine("Stress/Flow", { Menu: {}, Playing: {}, Paused: {} })

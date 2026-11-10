@@ -6,12 +6,14 @@ const Velocity = Descriptor.Component<{ x: number }>()("Requires/Velocity")
 const Body = Descriptor.Component<{}>()("Requires/Body")
 const Player = Descriptor.Component<{}>()("Requires/Player")
 
+const Root = Schema.defineRoot("Requires")
 const Game = Schema.bind(
   Schema.fragment({ components: { Position, Velocity, Body } }),
   Schema.fragment({
     components: { Player },
     requires: [Schema.requires(Player, Body, Velocity), Schema.requires(Body, Position)]
-  })
+  }),
+  Root
 )
 
 describe("Schema.requires", () => {
@@ -33,7 +35,7 @@ describe("Schema.requires", () => {
 
   it("rejects an erased requirement naming an unregistered component", () => {
     const erased = Schema.fragment({ components: { Player }, requires: [Schema.requires(Player, Position)] }) as Schema.Schema.Any
-    expect(() => Schema.bind(erased)).toThrow("Requires/Position is named in Schema.requires(...) but no fragment registers it")
+    expect(() => Schema.bind(erased, Root)).toThrow("Requires/Position is named in Schema.requires(...) but no fragment registers it")
   })
 })
 

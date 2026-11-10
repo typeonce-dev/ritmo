@@ -8,7 +8,8 @@ const hostClock = HostClock.test()
 
 const Ping = Descriptor.Event<number>()("LintTest/Ping")
 const Score = Descriptor.Component<number>()("LintTest/Score")
-const Game = Schema.bind(Schema.fragment({ components: { Score }, events: { Ping } }))
+const Root = Schema.defineRoot("LintTest")
+const Game = Schema.bind(Schema.fragment({ components: { Score }, events: { Ping } }), Root)
 const Emit = Game.System("LintTest/Emit", { events: { ping: Game.System.writeEvent(Ping) } }, ({ events }) => {
   events.ping.emit(1)
 })

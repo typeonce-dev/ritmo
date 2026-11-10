@@ -53,7 +53,8 @@ declare const readFileSync: (path: string, encoding: "utf8") => string
 type Input = { readonly dash: boolean }
 const Controls = Descriptor.Service<Schedule.Source<Input>>()("Game/Controls")
 const Dashes = Descriptor.ConstructedResource(codec(S.Finite))("Game/Dashes")
-const Game = Schema.bind(Schema.fragment({ resources: { Dashes } }))
+const Root = Schema.defineRoot("Game")
+const Game = Schema.bind(Schema.fragment({ resources: { Dashes } }), Root)
 const update = Game.Schedule()
 const makeGame = (controls: Schedule.Source<Input>, hostClock: HostClock.HostClock) => {
   const made = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Controls, controls)), resources: { Dashes: 0 }, debug: { hostClock } })
@@ -111,7 +112,8 @@ const codec = <T extends S.Top & { readonly DecodingServices: never; readonly En
 import { Invariant, Replay } from "@typeonce/ritmo-devtools"
 import * as ReplayViteSink from "@typeonce/ritmo-devtools/ReplayViteSink"
 const Score = Descriptor.ConstructedResource(codec(S.Finite))("Game/Score")
-const Game = Schema.bind(Schema.fragment({ resources: { Score } }))
+const Root = Schema.defineRoot("Game")
+const Game = Schema.bind(Schema.fragment({ resources: { Score } }), Root)
 const update = Game.Schedule()
 const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: 0 }, debug: { hostClock: HostClock.standard } })
 if (!made.ok) throw new Error("setup")

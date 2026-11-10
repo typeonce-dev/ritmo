@@ -9,10 +9,11 @@ const { relation: Targeting } = Descriptor.Relation("Dropped/Targeting", "Droppe
 const { relation: ChildOf } = Descriptor.Hierarchy("Dropped/ChildOf", "Dropped/Children")
 const { relation: Elsewhere } = Descriptor.Relation("Dropped/Elsewhere", "Dropped/ElsewhereBy")
 
+const Root = Schema.defineRoot("Dropped")
 const Game = Schema.bind(Schema.fragment({
   components: { Name, Idle },
   relations: { Targeting, ChildOf }
-}))
+}), Root)
 type S = typeof Game.schema
 
 describe("Game.System.readDroppedRelations", () => {

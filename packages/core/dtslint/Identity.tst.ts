@@ -8,6 +8,8 @@ const Label = Descriptor.Component<string>()("Identity/Position")
 const Health = Descriptor.Component<number>()("Identity/Health")
 const Score = Descriptor.Resource<number>()("Identity/Position")
 
+const Root = Schema.defineRoot("Identity")
+
 describe("descriptor identity", () => {
   it("rejects two descriptors of one kind with the same name in a fragment", () => {
     // @ts-expect-error __schemaConflicts__: "components name \"Identity/Position\""
@@ -16,23 +18,23 @@ describe("descriptor identity", () => {
 
   it("rejects the same descriptor name across bound fragments", () => {
     // @ts-expect-error __schemaConflicts__: "components name \"Identity/Position\""
-    Schema.bind(Schema.fragment({ components: { Position } }), Schema.fragment({ components: { Label } }))
+    Schema.bind(Schema.fragment({ components: { Position } }), Schema.fragment({ components: { Label } }), Root)
     // @ts-expect-error __schemaConflicts__: "components name \"Identity/Position\""
     Schema.bind(Schema.fragment({ components: { Position } }), Schema.fragment({ components: { Other: Position } }), Schema.defineRoot("Identity"))
   })
 
   it("rejects the same registry key across bound fragments", () => {
     // @ts-expect-error __schemaConflicts__: "components key \"Position\""
-    Schema.bind(Schema.fragment({ components: { Position } }), Schema.fragment({ components: { Position: Health } }))
+    Schema.bind(Schema.fragment({ components: { Position } }), Schema.fragment({ components: { Position: Health } }), Root)
   })
 
   it("allows the same name across different descriptor kinds", () => {
-    const Game = Schema.bind(Schema.fragment({ components: { Position }, resources: { Score } }))
+    const Game = Schema.bind(Schema.fragment({ components: { Position }, resources: { Score } }), Root)
     expect(Game.schema.resources.Score).type.toBe<typeof Score>()
   })
 
   it("rejects a look-alike descriptor whose value type differs from the registered one", () => {
-    const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+    const Game = Schema.bind(Schema.fragment({ components: { Health } }), Root)
     const Narrowed = Descriptor.Component<1>()("Identity/Health")
     const Widened = Descriptor.Component<number | string>()("Identity/Health")
     // @ts-expect-error Type 'number' is not assignable to type '1'.
@@ -43,7 +45,7 @@ describe("descriptor identity", () => {
   })
 
   it("allows distinct systems that share a display name", () => {
-    const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+    const Game = Schema.bind(Schema.fragment({ components: { Health } }), Root)
     const First = Game.System("Identity/Same", {}, () => {})
     const Second = Game.System("Identity/Same", {}, () => {})
     expect(Game.Schedule(First, Second).kind).type.toBe<"schedule">()

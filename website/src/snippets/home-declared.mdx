@@ -1,7 +1,8 @@
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Game = Schema.bind(Schema.fragment({ components: { Position } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Position } }), Root)
 // ---cut---
 // The query only asks to read Position
 const Moving = Game.Query({

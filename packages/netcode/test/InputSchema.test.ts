@@ -22,7 +22,8 @@ const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("NetSchema/Seats
 const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("NetSchema/Inputs")
 const Time = Clock.resource("NetSchema/Time", step)
 const Sum = Descriptor.ConstructedResource(Whole)("NetSchema/Sum")
-const Game = Schema.bind(Schema.fragment({ resources: { Inputs, Time, Sum } }))
+const Root = Schema.defineRoot("NetSchema")
+const Game = Schema.bind(Schema.fragment({ resources: { Inputs, Time, Sum } }), Root)
 const Add = Game.System("NetSchema/Add", {
   resources: { inputs: Game.System.readResource(Inputs), sum: Game.System.writeResource(Sum) }
 }, ({ resources }) => {

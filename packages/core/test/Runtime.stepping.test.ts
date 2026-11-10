@@ -6,7 +6,8 @@ const hostClock = HostClock.test()
 const Position = Descriptor.Component<{ readonly x: number }>()("Stepping/Position")
 const Ping = Descriptor.Event<number>()("Stepping/Ping")
 const Clock = Descriptor.Service<{ readonly now: () => number }>()("Stepping/Clock")
-const Game = Schema.bind(Schema.fragment({ components: { Position }, events: { Ping } }))
+const Root = Schema.defineRoot("Stepping")
+const Game = Schema.bind(Schema.fragment({ components: { Position }, events: { Ping } }), Root)
 const Flow = Game.StateMachine("Stepping/Flow", { Menu: {}, Playing: {} })
 
 const Spawn = Game.System("Stepping/Spawn", { commands: Game.System.commands(Game.System.spawns(Position)) }, ({ commands }) => {

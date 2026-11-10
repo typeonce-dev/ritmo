@@ -15,11 +15,12 @@ const Log = Descriptor.Service<{ readonly log: (line: string) => void }>()("Fix/
 const ChildOf = Descriptor.Hierarchy("Fix/ChildOf", "Fix/Children")
 const Targets = Descriptor.Relation("Fix/Targets", "Fix/TargetedBy")
 
+const Root = Schema.defineRoot("Fix")
 const Game = Schema.bind(Schema.fragment({
   components: { Position, Health },
   resources: { Score, Lives },
   relations: { ChildOf: ChildOf.relation, Targets: Targets.relation }
-}))
+}), Root)
 const Flow = Game.StateMachine("Fix/Flow", { Menu: {}, Playing: {} })
 
 describe("system bodies", () => {

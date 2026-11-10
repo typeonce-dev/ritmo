@@ -3,19 +3,21 @@ import type * as EntityScope from "@typeonce/ritmo/EntityScope"
 import { describe, expect, it } from "tstyche"
 
 const Name = Descriptor.Component<string>()("ScopeTriggersTypes/Name")
-const Game = Schema.bind(Schema.fragment({ components: { Name } }))
-const OtherGame = Schema.bind(Schema.fragment({ resources: {} }))
+const Root = Schema.defineRoot("ScopeTriggersTypes")
+const Game = Schema.bind(Schema.fragment({ components: { Name } }), Root)
+const OtherRoot = Schema.defineRoot("ScopeTriggersTypes/Other")
+const OtherGame = Schema.bind(Schema.fragment({ resources: {} }), OtherRoot)
 const Flow = Game.StateMachine("ScopeTriggersTypes/Flow", { Menu: {}, Playing: {} })
 const OtherFlow = OtherGame.StateMachine("ScopeTriggersTypes/OtherFlow", { Idle: {} })
 
 describe("Game.EntityScope triggers", () => {
   it("takes a machine of this game and one of its states", () => {
     const Run = Game.EntityScope("ScopeTriggersTypes/Run", { despawnOnExit: [Flow, "Playing"] })
-    expect(Run).type.toBe<EntityScope.EntityScope<"ScopeTriggersTypes/Run", typeof Game.schema>>()
+    expect(Run).type.toBe<EntityScope.EntityScope<"ScopeTriggersTypes/Run", typeof Root>>()
     const Both = Game.EntityScope("ScopeTriggersTypes/Both", { despawnOnEnter: [Flow, "Menu"], despawnOnExit: [Flow, "Playing"] })
-    expect(Both).type.toBe<EntityScope.EntityScope<"ScopeTriggersTypes/Both", typeof Game.schema>>()
+    expect(Both).type.toBe<EntityScope.EntityScope<"ScopeTriggersTypes/Both", typeof Root>>()
     const Plain = Game.EntityScope("ScopeTriggersTypes/Plain")
-    expect(Plain).type.toBe<EntityScope.EntityScope<"ScopeTriggersTypes/Plain", typeof Game.schema>>()
+    expect(Plain).type.toBe<EntityScope.EntityScope<"ScopeTriggersTypes/Plain", typeof Root>>()
   })
 
   it("rejects an unknown state", () => {

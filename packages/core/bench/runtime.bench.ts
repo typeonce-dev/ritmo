@@ -31,14 +31,15 @@ const Sum = Descriptor.TransientResource<number>()("Bench/Sum")
 const Ping = Descriptor.Event<number>()("Bench/Ping")
 const { relation: ChildOf } = Descriptor.Hierarchy("Bench/ChildOf", "Bench/Children")
 
+const Root = Schema.defineRoot("Bench")
 const Game = Schema.bind(Schema.fragment({
   components: { Position, Velocity, Health, Static, Player, Hot, Marker },
   resources: { Sum },
   events: { Ping },
   relations: { ChildOf }
-}))
+}), Root)
 
-type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
+type Id = Entity.EntityId<typeof Game.schema, typeof Root>
 
 const makeRuntime = () => Game.Runtime.make({
   services: Game.Runtime.services(),
@@ -642,7 +643,7 @@ const clockAdvance: BenchCase = {
   setup: () => {
     const step = Clock.hz(60)
     const Time = Clock.resource("ClockBench/Time", step)
-    const Game = Schema.bind(Schema.fragment({ resources: { Time } }))
+    const Game = Schema.bind(Schema.fragment({ resources: { Time } }), Root)
     const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Time: Clock.start(step) } })
     if (!made.ok) throw new Error("initial clock is valid")
     const update = Game.Schedule(Clock.system(Game, { name: "ClockBench/Advance", resource: Time }))
@@ -655,7 +656,8 @@ const Motion = Descriptor.EntityState("Bench/Motion", {
   ground: {},
   air: Codecs.struct({ vy: Codecs.number })
 }, { transitions: { ground: ["air"], air: ["ground"] } })
-const StateGame = Schema.bind(Schema.fragment({ components: { Motion } }))
+const StateRoot = Schema.defineRoot("Bench/State")
+const StateGame = Schema.bind(Schema.fragment({ components: { Motion } }), StateRoot)
 
 const entityStates: BenchCase = {
   name: "entity-state/update-transition-10k",
@@ -686,8 +688,9 @@ const entityStates: BenchCase = {
   }
 }
 
+const MachineRoot = Schema.defineRoot("Bench/Machine")
 // A separate schema, so adding the machine leaves every other case's world unchanged.
-const MachineGame = Schema.bind(Schema.fragment({}))
+const MachineGame = Schema.bind(Schema.fragment({}), MachineRoot)
 const Dialogue = MachineGame.StateMachine("Bench/Dialogue", {
   Closed: {},
   Open: Codecs.struct({ page: Codecs.integer, typed: Codecs.integer })

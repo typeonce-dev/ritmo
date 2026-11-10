@@ -6,7 +6,8 @@ const hostClock = HostClock.test()
 
 const Position = Descriptor.Component<number>()("TickQuery/Position")
 const Enemy = Descriptor.Component<{}>()("TickQuery/Enemy")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Enemy } }))
+const Root = Schema.defineRoot("TickQuery")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Enemy } }), Root)
 const Flow = Game.StateMachine("TickQuery/Flow", { Menu: {}, Playing: {} })
 
 const Enemies = Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Enemy] })
@@ -21,8 +22,8 @@ const Aim = Game.System("TickQuery/Aim", { queries: { enemies: Game.System.thisT
 })
 
 /** Erases a schedule's type, as plugin boundaries and devtools do. */
-const erased = (schedule: ExecutableScheduleDefinition<any, any, any, any, any, any>): ExecutableScheduleDefinition<typeof Game.schema, never, typeof Game.schema> =>
-  schedule as ExecutableScheduleDefinition<typeof Game.schema, never, typeof Game.schema>
+const erased = (schedule: ExecutableScheduleDefinition<any, any, any, any, any, any>): ExecutableScheduleDefinition<typeof Game.schema, never, typeof Root> =>
+  schedule as ExecutableScheduleDefinition<typeof Game.schema, never, typeof Root>
 
 const machines = Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Menu" }))
 const make = () => Game.Runtime.make({ services: Game.Runtime.services(), machines }).value

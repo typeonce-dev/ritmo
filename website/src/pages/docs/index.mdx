@@ -43,11 +43,13 @@ const Time = Clock.resource("Example/Time", step)
 const Position = Descriptor.Component<Vec>()("Example/Position")
 const Velocity = Descriptor.Component<Vec>()("Example/Velocity")
 
+const Root = Schema.defineRoot("Example")
 const Game = Schema.bind(
   Schema.fragment({
     components: { Position, Velocity },
     resources: { Time }
-  })
+  }),
+  Root
 )
 ```
 
@@ -64,7 +66,8 @@ const step = Clock.hz(60)
 const Time = Clock.resource("Example/Time", step)
 const Position = Descriptor.Component<Vec>()("Example/Position")
 const Velocity = Descriptor.Component<Vec>()("Example/Velocity")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }))
+const Root = Schema.defineRoot("Example")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }), Root)
 // ---cut---
 const Move = Game.System(
   "Example/Move",
@@ -106,7 +109,8 @@ const step = Clock.hz(60)
 const Time = Clock.resource("Example/Time", step)
 const Position = Descriptor.Component<Vec>()("Example/Position")
 const Velocity = Descriptor.Component<Vec>()("Example/Velocity")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }))
+const Root = Schema.defineRoot("Example")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }), Root)
 // ---cut---
 const Spawn = Game.System(
   "Example/Spawn",
@@ -138,7 +142,8 @@ const step = Clock.hz(60)
 const Time = Clock.resource("Example/Time", step)
 const Position = Descriptor.Component<Vec>()("Example/Position")
 const Velocity = Descriptor.Component<Vec>()("Example/Velocity")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }))
+const Root = Schema.defineRoot("Example")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }), Root)
 const Move = Game.System("Example/Move", { queries: { moving: Game.Query({ selection: { position: Game.Query.write(Position), velocity: Game.Query.read(Velocity) } }) }, resources: { time: Game.System.readResource(Time) } }, () => {})
 const Spawn = Game.System("Example/Spawn", { commands: Game.System.commands(Game.System.spawns(Position, Velocity)) }, () => {})
 // ---cut---
@@ -181,7 +186,8 @@ const step = Clock.hz(60)
 const Time = Clock.resource("Example/Time", step)
 const Position = Descriptor.Component<Vec>()("Example/Position")
 const Velocity = Descriptor.Component<Vec>()("Example/Velocity")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }))
+const Root = Schema.defineRoot("Example")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }), Root)
 const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Time: Clock.start(step) } })
 if (!made.ok) throw new Error()
 const runtime = made.value

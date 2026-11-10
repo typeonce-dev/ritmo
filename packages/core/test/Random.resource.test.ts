@@ -4,7 +4,8 @@ import { Descriptor, Random, Result, Schema } from "@typeonce/ritmo"
 import { worldOf } from "./saved.ts"
 
 const Rng = Descriptor.ConstructedResource(Random.codec)("RandomResource/Rng")
-const Game = Schema.bind(Schema.fragment({ resources: { Rng } }))
+const Root = Schema.defineRoot("RandomResource")
+const Game = Schema.bind(Schema.fragment({ resources: { Rng } }), Root)
 const State = Game.Inspector("RandomResource/State", { resources: { rng: Game.System.readResource(Rng) } }, ({ resources }) => resources.rng.get())
 
 const makeRuntime = () => {

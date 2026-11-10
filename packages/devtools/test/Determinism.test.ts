@@ -4,7 +4,8 @@ import { Determinism } from "@typeonce/ritmo-devtools"
 
 const Count = Descriptor.Resource<number>()("Repeat/Count")
 const Scratch = Descriptor.TransientComponent<{ value: number }>()("Repeat/Scratch")
-const Game = Schema.bind(Schema.fragment({ resources: { Count }, components: { Scratch } }))
+const Root = Schema.defineRoot("Repeat")
+const Game = Schema.bind(Schema.fragment({ resources: { Count }, components: { Scratch } }), Root)
 const options = { schedule: "update", frames: 4, hostClock: HostClock.test() } as const
 const factory = (next: (value: number) => number) => ({ hostClock }: Determinism.Context) => {
   const runtime = Game.Runtime.make({ resources: { Count: 0 }, services: Game.Runtime.services(), debug: { hostClock } }).value
@@ -50,7 +51,7 @@ describe("Determinism.check", () => {
 
   it("copies mutable values before the next run, including maps and cycles", () => {
     const Data = Descriptor.Resource<{ map: Map<string, number>; self?: unknown }>()("Repeat/Data")
-    const Mutable = Schema.bind(Schema.fragment({ resources: { Data } }))
+    const Mutable = Schema.bind(Schema.fragment({ resources: { Data } }), Root)
     let counter = 0
     const shared: { map: Map<string, number>; self?: unknown } = { map: new Map() }
     shared.self = shared

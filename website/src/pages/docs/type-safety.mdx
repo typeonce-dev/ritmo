@@ -20,7 +20,8 @@ goes.
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Health = Descriptor.Component<number>()("Arena/Health")
-const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Health } }), Root)
 // ---cut---
 // @errors: 2345
 const Logger = Descriptor.Service<{ log(message: string): void }>()(
@@ -56,7 +57,8 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
 const Health = Descriptor.Component<number>()("Arena/Health")
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }), Root)
 const SpawnWave = Game.System("Arena/SpawnWave", { commands: Game.System.commands(Game.System.spawns(Position, Health, Enemy)) }, () => {})
 const made = Game.Runtime.make({ services: Game.Runtime.services() })
 if (!made.ok) throw new Error()
@@ -97,7 +99,8 @@ const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Positio
 const Health = Descriptor.Component<number>()("Arena/Health")
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 const Noise = Descriptor.Component<number>()("Arena/Noise")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy, Noise }, requires: [Schema.requires(Enemy, Position, Health)] }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy, Noise }, requires: [Schema.requires(Enemy, Position, Health)] }), Root)
 // ---cut---
 // @errors: 2379
 Game.System(
@@ -126,7 +129,8 @@ no `set`.
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
-const Game = Schema.bind(Schema.fragment({ components: { Position } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Position } }), Root)
 // ---cut---
 // @errors: 2339
 // Declared as a read...
@@ -160,7 +164,8 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
 const Health = Descriptor.Component<number>()("Arena/Health")
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy }, requires: [Schema.requires(Enemy, Position, Health)] }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy }, requires: [Schema.requires(Enemy, Position, Health)] }), Root)
 // ---cut---
 // @errors: 2379
 Game.System(
@@ -190,7 +195,8 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
 const Health = Descriptor.Component<number>()("Arena/Health")
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Enemy } }), Root)
 // ---cut---
 // @errors: 2345
 Game.System(
@@ -220,7 +226,8 @@ presses from the first. The message is in the type: drain it with
 import { Descriptor, Schema } from "@typeonce/ritmo"
 import { InputCapture, Keyboard } from "@typeonce/ritmo-browser"
 const Health = Descriptor.Component<number>()("Arena/Health")
-const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Health } }), Root)
 const keys = { jump: [" "] } as const
 // ---cut---
 // @errors: 2684
@@ -257,7 +264,8 @@ const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Positio
 const Speed = Descriptor.Component<number>()("Arena/Position") // [!code error]
 
 // @errors: 2345
-const Game = Schema.bind(Schema.fragment({ components: { Position, Speed } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Speed } }), Root)
 ```
 
 </Claim>
@@ -275,7 +283,8 @@ const codec = <T extends S.Top & { readonly DecodingServices: never; readonly En
   return { "~standard": S.toStandardSchemaV1(json)["~standard"], "~encode": S.toStandardSchemaV1(S.flip(json)) }
 }
 const Health = Descriptor.Component<number>()("Arena/Health")
-const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Health } }), Root)
 // ---cut---
 // @errors: 2345
 // A step rate is a whole number of steps per second
@@ -305,7 +314,8 @@ Making a runtime depends on what you pass it at runtime, so it returns a
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Health = Descriptor.Component<number>()("Arena/Health")
-const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Health } }), Root)
 // ---cut---
 // Making a runtime can fail, so it returns a Result instead of throwing
 const made = Game.Runtime.make({ services: Game.Runtime.services() })
@@ -329,13 +339,15 @@ const Health = Descriptor.Component<number>()("Arena/Health")
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 const Noise = Descriptor.Component<number>()("Arena/Noise")
 
+const Root = Schema.defineRoot("Arena")
 const Game = Schema.bind(
   Schema.fragment({
     components: { Position, Health, Enemy, Noise },
 
     // Every enemy has a position and health
     requires: [Schema.requires(Enemy, Position, Health)] // [!code highlight]
-  })
+  }),
+  Root
 )
 ```
 

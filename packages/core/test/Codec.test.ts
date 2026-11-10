@@ -20,7 +20,8 @@ const Debt = Descriptor.ConstructedResource(unsigned)("Codec/Debt")
 const Player = Descriptor.Tag("Codec/Player")
 const Delayed = Descriptor.ConstructedResource(asyncNumber)("Codec/Delayed")
 
-const Game = Schema.bind(Schema.fragment({ components: { Player }, resources: { Inventory, Debt } }))
+const Root = Schema.defineRoot("Codec")
+const Game = Schema.bind(Schema.fragment({ components: { Player }, resources: { Inventory, Debt } }), Root)
 
 // A state whose data transforms: a cart of item counts, saved as its entries.
 const items = Codecs.map(Codecs.integer)
@@ -94,7 +95,7 @@ describe("Codecs", () => {
   })
 
   it("fails a schema that validates asynchronously", () => {
-    const Async = Schema.bind(Schema.fragment({ resources: { Delayed } }))
+    const Async = Schema.bind(Schema.fragment({ resources: { Delayed } }), Root)
     const made = Async.Runtime.make({ services: Async.Runtime.services(), resources: { Delayed: 1 } })
     expect(made.ok ? undefined : made.error).toEqual({
       resources: {

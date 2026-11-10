@@ -24,8 +24,9 @@ const Heavy = Descriptor.Component<{}>()("Hierarchy/Heavy")
 const { relation: Attached } = Descriptor.Hierarchy("Hierarchy/Attached", "Hierarchy/Attachments")
 const Nodes = Descriptor.Service<NodeRegistry.NodeRegistry<FakeNode>>()("Hierarchy/Nodes")
 
-const Game = Schema.bind(Schema.fragment({ components: { Position, Body, Heavy }, relations: { Attached } }))
-type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
+const Root = Schema.defineRoot("Hierarchy")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Body, Heavy }, relations: { Attached } }), Root)
+type Id = Entity.EntityId<typeof Game.schema, typeof Root>
 
 // The edits a test makes in one frame; each spawned entity's x is its label's length.
 interface Edit {

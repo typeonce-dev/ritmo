@@ -6,7 +6,8 @@ import { worldOf } from "./saved.ts"
 const step = Clock.hz(60)
 const Time = Clock.resource("ClockRun/Time", step)
 const Slow = Clock.resource("ClockRun/Slow", Clock.hz(10))
-const Game = Schema.bind(Schema.fragment({ resources: { Time, Slow } }))
+const Root = Schema.defineRoot("ClockRun")
+const Game = Schema.bind(Schema.fragment({ resources: { Time, Slow } }), Root)
 const Flow = Game.StateMachine("ClockRun/Flow", { Playing: {}, Paused: {} })
 const paused = Game.Condition.inState(Flow, "Paused")
 
@@ -133,7 +134,7 @@ describe("Clock", () => {
     runtime.tick(Game.Schedule(AdvanceTime))
     const saved = worldOf(runtime.snapshot())
     const FastTime = Clock.resource("ClockRun/Time", Clock.hz(120))
-    const Fast = Schema.bind(Schema.fragment({ resources: { Time: FastTime, Slow } }))
+    const Fast = Schema.bind(Schema.fragment({ resources: { Time: FastTime, Slow } }), Root)
     const made = Fast.Runtime.make({ services: Fast.Runtime.services(), resources: { Time: Clock.start(Clock.hz(120)), Slow: Clock.start(Clock.hz(10)) } })
     if (!made.ok) throw new Error("clock values are valid")
     expect(made.value.restore(saved)).toEqual(Result.failure({
@@ -192,7 +193,7 @@ describe("Clock.deadline", () => {
 
   const isReady = Clock.isDeadline(step)
   const Weapon = Descriptor.ConstructedComponent(z.object({ ready: z.unknown().refine(isReady).nullable() }))("ClockDeadline/Weapon")
-  const Armed = Schema.bind(Schema.fragment({ components: { Weapon }, resources: { Time } }))
+  const Armed = Schema.bind(Schema.fragment({ components: { Weapon }, resources: { Time } }), Root)
   const Flow = Armed.StateMachine("ClockDeadline/Flow", { Playing: {}, Paused: {} })
   const Advance = Clock.system(Armed, { name: "ClockDeadline/Advance", resource: Time, hold: [Armed.Condition.inState(Flow, "Paused")] })
   const cooldown = Clock.durationOfSteps(step, 3)
