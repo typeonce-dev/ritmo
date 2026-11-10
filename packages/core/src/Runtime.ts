@@ -1925,7 +1925,7 @@ const makeValidatedRuntime = <
   const makeContext = (system: SystemDefinition<any, any, any>, reader: ReaderState, queue: Command.CommandQueue<S, Root>): SystemContext<any> => {
     const spec = system.spec
     const lookup = makeLookup()
-    const paused = (spec.pauseWhen as ReadonlyArray<unknown>).length > 0
+    const paused = (spec.pauseWhile as ReadonlyArray<unknown>).length > 0
     /** On a debug runtime, records reads after a loss and calls of `lagged()`, for the `stream-loss-unread` lint. */
     const watch = <V extends { all(): unknown; lagged(): boolean }>(view: V, stream: string): V =>
       debugEnabled ? watchStreamLoss(view, system.name, stream, paused) : view
@@ -2177,8 +2177,8 @@ const makeValidatedRuntime = <
         return succeeded
       }
     }
-    for (const condition of system.spec.pauseWhen as ReadonlyArray<Machine.Condition>) {
-      if (!evaluateCondition(condition)) {
+    for (const condition of system.spec.pauseWhile as ReadonlyArray<Machine.Condition>) {
+      if (evaluateCondition(condition)) {
         // A paused system keeps its stream cursor, so it holds the messages
         // published meanwhile and reads them when the pause ends. The slot is
         // made now, so entries published before its first run are held too.

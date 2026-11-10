@@ -138,7 +138,7 @@ describe("Game.System.thisTick on queries", () => {
   })
 
   it("counts gated groups by position", () => {
-    runtime.tick(Game.Schedule(Game.Schedule.when(playing, SpawnWave), deferred, Game.Schedule.pauseWhen(playing, Aim)))
+    runtime.tick(Game.Schedule(Game.Schedule.when(playing, SpawnWave), deferred, Game.Schedule.pauseWhile([Game.Condition.inState(Flow, "Menu")], Aim)))
     // @ts-expect-error Tick/Aim needs this tick's commands for queries.enemies, but Tick/SpawnWave queues them with no applyDeferred() in between
     runtime.tick(Game.Schedule(Game.Schedule.when(playing, SpawnWave), Game.Schedule.when(playing, Aim)))
   })

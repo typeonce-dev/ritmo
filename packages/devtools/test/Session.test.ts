@@ -81,7 +81,7 @@ describe("Session", () => {
       debug: { hostClock }
     }).value
     const Read = Game.System("Dev/HeldReader", { events: { hit: Game.System.readEvent(Hit) } }, () => {})
-    const update = Game.Schedule.pauseWhen([Game.Condition.inState(Flow, "Playing")], Read)
+    const update = Game.Schedule.pauseWhile([Game.Condition.inState(Flow, "Paused")], Read)
     const session = Session.make(runtime, { hostClock, schedules: { update } })
     session.run("update")
     runtime.send(Hit, 7)

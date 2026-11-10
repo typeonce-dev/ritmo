@@ -500,7 +500,7 @@ interface BoundSystemAccess<S extends Schema.Any, Root> extends System.SystemAcc
   readonly relationFailures?: Record<string, System.RelationFailureRead<RelationDescriptor<S>>>
   readonly droppedRelations?: Record<string, System.DroppedRelationRead<RelationDescriptor<S>>>
   readonly when?: ReadonlyArray<Machine.Condition<Root>>
-  readonly pauseWhen?: ReadonlyArray<Machine.Condition<Root>>
+  readonly pauseWhile?: ReadonlyArray<Machine.Condition<Root>>
   readonly transitions?: Record<string, Machine.TransitionRead<Schema.BoundStateMachine<Root>>>
   readonly local?: () => unknown
   readonly commands?: Command.CommandAccess<ComponentDescriptor<S>, ComponentDescriptor<S>, ComponentDescriptor<S>, ComponentDescriptor<S>, EntityScope.EntityScope<string, Root>, RelationDescriptor<S>>
@@ -1113,8 +1113,8 @@ export namespace Schema {
        * passes (in addition to their own `when`). Nested schedules are
        * gated too; marker steps still run, and so do the transition schedules
        * an `applyStateTransitions(bundle)` in the group runs. Gated systems drop the events
-       * published while gated; use `pauseWhen` to keep them. For one system,
-       * use `when` in its spec.
+       * published while gated; use `pauseWhile` (with the conditions that
+       * pause) to keep them. For one system, use `when` in its spec.
        */
       when: <
         const Conditions extends readonly [Machine.Condition<Root>, ...Array<Machine.Condition<Root>>],
@@ -1125,12 +1125,14 @@ export namespace Schema {
       ) => Schedule.ConditionalScheduleBuildFor<S, Conditions, Entries, Root>
       /**
        * Builds a schedule whose systems are paused while any condition
-       * fails: unlike `when`, a paused system keeps its place in the event
-       * streams it reads and sees everything published meanwhile once it
-       * runs again. For freezes whose events stay valid (hit-stop, pause).
-       * For one system, use `pauseWhen` in its spec.
+       * holds (`pauseWhile([frozen])`), the opposite of `when`, which runs
+       * them while every condition holds. Unlike a system `when` skips, a
+       * paused system keeps its place in the event streams it reads and sees
+       * everything published meanwhile once it runs again. For freezes whose
+       * events stay valid (hit-stop, pause). For one system, use
+       * `pauseWhile` in its spec.
        */
-      pauseWhen: <
+      pauseWhile: <
         const Conditions extends readonly [Machine.Condition<Root>, ...Array<Machine.Condition<Root>>],
         const Entries extends ReadonlyArray<BoundScheduleEntry<S, Root>>
       >(

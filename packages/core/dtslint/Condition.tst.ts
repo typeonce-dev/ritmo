@@ -99,4 +99,17 @@ describe("Game.Condition.check", () => {
     }).value
     expect(ready.tick(Game.Schedule(gatedSystem, group)).ok).type.toBe<boolean>()
   })
+
+  it("makes what a pauseWhile condition reads a requirement, on a system and on Schedule.pauseWhile", () => {
+    const frozen = Game.Condition.check("frozen", { resources: { freeze: Game.System.readResource(Freeze) } }, ({ resources }) => resources.freeze.get().remaining > 0)
+    const pausedSystem = Game.System("CheckTypes/Paused", { pauseWhile: [frozen] }, () => {})
+    const pausedGroup = Game.Schedule.pauseWhile([frozen, Game.Condition.inState(Flow, "Playing")], Noop)
+    expect(pausedGroup).type.toBe(Game.Schedule.when([frozen, Game.Condition.inState(Flow, "Playing")], Noop))
+
+    const withoutFreeze = Game.Runtime.make({ services: Runtime.services(), machines: Runtime.machines(Runtime.machine(Flow, { _tag: "Playing" })) }).value
+    // @ts-expect-error the runtime is missing resource CheckTypes/Freeze
+    withoutFreeze.tick(Game.Schedule(pausedSystem))
+    // @ts-expect-error the runtime is missing resource CheckTypes/Freeze
+    withoutFreeze.tick(pausedGroup)
+  })
 })

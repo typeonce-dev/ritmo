@@ -177,7 +177,7 @@ export const system = (input: Debug.SystemDescription): string => {
   add("may relate", input.commands.relates)
   if (input.thisTick.length > 0) add("needs this tick", input.thisTick)
   add("when", input.when)
-  add("pauses when", input.pauseWhen)
+  add("pauses while", input.pauseWhile)
   if (input.local) lines.push("  local state")
   return lines.join("\n")
 }
@@ -521,7 +521,7 @@ const rawLines = (event: Debug.TraceEvent, options: ValueOptions, labels: Labels
         subject: undefined,
         noop: discarded.length === 0,
         text: event.held
-          ? `paused: ${event.condition} is false (holding its stream entries)`
+          ? `paused: ${event.condition} is true (holding its stream entries)`
           : `skipped: ${event.condition} is false${discarded.length > 0 ? `; discarded ${discarded.join(", ")}` : ""}`
       }]
     }

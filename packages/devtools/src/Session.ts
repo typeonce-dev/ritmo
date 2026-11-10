@@ -330,7 +330,7 @@ export interface SystemStats {
   readonly failures: number
   /** Runs skipped by a `when` condition (the messages published meanwhile were discarded). */
   readonly skips: number
-  /** Runs paused by a `pauseWhen` condition (the messages published meanwhile were held). */
+  /** Runs paused by a `pauseWhile` condition (the messages published meanwhile were held). */
   readonly pauses: number
   readonly totalMs: number
   readonly maxMs: number

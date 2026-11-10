@@ -851,7 +851,7 @@ export const readRelationFailures = <R extends Relation.Relation.Any>(
  * since this system's previous run, so a chaser whose target died can
  * pick another one or go idle. Like events, two readers each see every
  * record; a system skipped by `when` drops the records published meanwhile,
- * one paused by `pauseWhen` reads them when it runs again, and a reader that
+ * one paused by `pauseWhile` reads them when it runs again, and a reader that
  * fell behind by more than `Runtime.streamCapacity` records sees
  * `lagged() === true`.
  *
@@ -1234,29 +1234,34 @@ export interface SystemAccessInput {
    */
   readonly commands?: CommandAccess.Any
   /**
-   * Run conditions that skip the system: while one fails, the system does not
-   * run and the events, transition events, relation failures, and dropped
-   * relations published
+   * Run conditions that skip the system: it runs while all of them hold, and
+   * while one fails, the system does not run and the events, transition
+   * events, relation failures, and dropped relations published
    * meanwhile are dropped for it. Use it for a mode change after which those
-   * messages are stale (menu, game over); use `pauseWhen` instead for a freeze
+   * messages are stale (menu, game over); use `pauseWhile` instead for a freeze
    * whose messages stay valid. `Schedule.when(...)` adds conditions to a whole
    * group.
    *
    * Four gating forms, one rule: `when` drops the events published while
-   * gated (the system resumes on fresh messages), `pauseWhen` keeps them (the
-   * system resumes and reads the backlog). Put them on one system's spec, or
-   * on a group with `Schedule.when(...)` / `Schedule.pauseWhen(...)`.
+   * gated (the system resumes on fresh messages), `pauseWhile` keeps them (the
+   * system resumes and reads the backlog). `when` names the conditions under
+   * which the system runs, `pauseWhile` the ones under which it pauses:
+   * `{ when: [playing], pauseWhile: [frozen] }` runs when playing and pauses
+   * while frozen. Put them on one system's spec, or on a group with
+   * `Schedule.when(...)` / `Schedule.pauseWhile(...)`.
    */
   readonly when?: ReadonlyArray<Machine.Condition>
   /**
-   * Run conditions that pause the system instead of skipping it: while one
-   * fails, the system does not run but keeps its place in every event stream
+   * Conditions that pause the system instead of skipping it: while any one
+   * holds, the system does not run but keeps its place in every event stream
    * it reads, so it sees what was published meanwhile once it runs again.
+   * `pauseWhile: [frozen, cutscene]` pauses during either; this is the
+   * opposite polarity of `when`, which lists the conditions to run under.
    * Use it for a freeze whose events stay valid (hit-stop, a pause menu);
    * use `when` for a mode change, after which they are stale. Checked after
-   * `when`. `Schedule.pauseWhen(...)` adds them to a whole group.
+   * `when`. `Schedule.pauseWhile(...)` adds them to a whole group.
    */
-  readonly pauseWhen?: ReadonlyArray<Machine.Condition>
+  readonly pauseWhile?: ReadonlyArray<Machine.Condition>
   readonly transitions?: Record<string, Machine.TransitionRead>
   /**
    * Scratch state owned by the system: a broad-phase grid, a path cache, a
@@ -1266,7 +1271,7 @@ export interface SystemAccessInput {
    * The value is passed to every run as `local`. It is not
    * world data: it is not rolled back when the system fails, not saved in
    * snapshots, and not visible to other systems. A system and its gated
-   * copies (`Schedule.when`, `Schedule.pauseWhen`) share one value. Mode
+   * copies (`Schedule.when`, `Schedule.pauseWhile`) share one value. Mode
    * changes do not reset it. Rebuild scratch buffers from current world
    * data each run; keep timers, RNG state, and gameplay progress in resources.
    * Values needing cleanup belong in host-managed services.
@@ -1286,9 +1291,13 @@ export type ExactAccess<Access extends SystemAccessInput> = Access & {
   readonly [Key in Exclude<keyof Access, keyof SystemAccessInput>]: UnknownCategory<Key>
 } & RedundantSlotsFix<Access, "resources", "read"> & RedundantSlotsFix<Access, "events", never> & RedundantSlotsFix<Access, "machines", "read">
 
-/** The message for a spec key that is not an access category. Kept in step with `SystemAccessInput` by a type test. */
-type UnknownCategory<Key extends PropertyKey> =
-  `${Key & string} is not a system spec key: use queries, resources, events, services, machines, nextMachines, transitionEvents, removed, despawned, relationFailures, droppedRelations, commands, when, pauseWhen, transitions, or local`
+/**
+ * The message for a spec key that is not an access category. Kept in step with `SystemAccessInput` by a type test.
+ * `pauseWhen` gets its own: `pauseWhile` lists the conditions that pause, so a condition written for `when` is inverted.
+ */
+type UnknownCategory<Key extends PropertyKey> = Key extends "pauseWhen"
+  ? "pauseWhen is not a system spec key: use pauseWhile, which takes the conditions that pause the system, not the ones it runs under: pauseWhile: [frozen], or pauseWhile: [Game.Condition.not(playing)]"
+  : `${Key & string} is not a system spec key: use queries, resources, events, services, machines, nextMachines, transitionEvents, removed, despawned, relationFailures, droppedRelations, commands, when, pauseWhile, transitions, or local`
 
 type SlotOf<A> =
   A extends { readonly mode: infer Mode extends string; readonly descriptor: { readonly name: infer Name extends string } } ? readonly [Mode, Name]
@@ -1357,7 +1366,7 @@ export type SystemSpec<
   readonly relationFailures: AccessField<Access, "relationFailures", {}>
   readonly droppedRelations: AccessField<Access, "droppedRelations", {}>
   readonly when: AccessField<Access, "when", readonly []>
-  readonly pauseWhen: AccessField<Access, "pauseWhen", readonly []>
+  readonly pauseWhile: AccessField<Access, "pauseWhile", readonly []>
   readonly transitions: AccessField<Access, "transitions", {}>
   readonly local: LocalFactory<Access>
   readonly commands: "commands" extends keyof Access ? NonNullable<Access["commands"]> : undefined
@@ -1515,7 +1524,7 @@ export type SystemNeeds<Spec extends AnySystemSpec> =
   | Machine.MachineNeedsFromRecord<Spec["transitionEvents"]>
   | Machine.MachineNeedsFromRecord<Spec["transitions"]>
   | Machine.ConditionNeedsFromConditions<Spec["when"]>
-  | Machine.ConditionNeedsFromConditions<Spec["pauseWhen"]>
+  | Machine.ConditionNeedsFromConditions<Spec["pauseWhile"]>
 
 type AccessRecordValue<Access, Key extends PropertyKey> =
   Key extends keyof Access
@@ -1543,9 +1552,9 @@ export type SystemAccessNeeds<Access extends SystemAccessInput> =
         ? Machine.ConditionNeedsFromConditions<NonNullable<Access["when"]>>
         : never
       : never)
-  | ("pauseWhen" extends keyof Access
-      ? NonNullable<Access["pauseWhen"]> extends ReadonlyArray<Machine.Condition>
-        ? Machine.ConditionNeedsFromConditions<NonNullable<Access["pauseWhen"]>>
+  | ("pauseWhile" extends keyof Access
+      ? NonNullable<Access["pauseWhile"]> extends ReadonlyArray<Machine.Condition>
+        ? Machine.ConditionNeedsFromConditions<NonNullable<Access["pauseWhile"]>>
         : never
       : never)
 
@@ -1686,7 +1695,7 @@ const collectSystemRequirements = (
   ...requirementValuesFromRecord(spec.transitionEvents),
   ...requirementValuesFromRecord(spec.transitions),
   ...(spec.when ?? []).flatMap(requirementValuesFromCondition),
-  ...(spec.pauseWhen ?? []).flatMap(requirementValuesFromCondition)
+  ...(spec.pauseWhile ?? []).flatMap(requirementValuesFromCondition)
 ])
 
 /**
@@ -1751,7 +1760,7 @@ export function System(
     relationFailures: spec.relationFailures ?? {},
     droppedRelations: spec.droppedRelations ?? {},
     when: spec.when ?? [],
-    pauseWhen: spec.pauseWhen ?? [],
+    pauseWhile: spec.pauseWhile ?? [],
     transitions: spec.transitions ?? {},
     local: spec.local,
     commands: spec.commands,

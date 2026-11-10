@@ -163,7 +163,7 @@ export const describeSystem = (system: AnySystem, placements: ReadonlyArray<stri
   const machinesByMode = (record: Record<string, { readonly machine: Machine.StateMachine.Any; readonly mode: "read" | "update" }>, mode: "read" | "update") =>
     Object.values(record).filter((access) => access.mode === mode).map(machineName)
   // A system also reads whatever its `check` conditions read.
-  const checks = checksOf([...(spec.when as ReadonlyArray<Machine.Condition>), ...(spec.pauseWhen as ReadonlyArray<Machine.Condition>)]).map((check) => ({
+  const checks = checksOf([...(spec.when as ReadonlyArray<Machine.Condition>), ...(spec.pauseWhile as ReadonlyArray<Machine.Condition>)]).map((check) => ({
     name: check.name,
     spec: (check.projection as Inspector.InspectorDefinition).system.spec
   }))
@@ -207,7 +207,7 @@ export const describeSystem = (system: AnySystem, placements: ReadonlyArray<stri
       .map((access) => access.descriptor.name),
     commands: permissionsOf(spec.commands as CommandAccess | undefined),
     when: (spec.when as ReadonlyArray<Machine.Condition>).map(renderCondition),
-    pauseWhen: (spec.pauseWhen as ReadonlyArray<Machine.Condition>).map(renderCondition),
+    pauseWhile: (spec.pauseWhile as ReadonlyArray<Machine.Condition>).map(renderCondition),
     local: spec.local !== undefined
   }
 }
@@ -315,7 +315,7 @@ export const describe = (input: DescribeInput): Debug.Description => {
   const relations = Object.values(input.schema.relations) as ReadonlyArray<Relation.Relation.Any>
 
   const schedules = collectSchedules(input.schedules)
-  // A system gated by Schedule.when / pauseWhen is a copy pointing at its
+  // A system gated by Schedule.when / pauseWhile is a copy pointing at its
   // base: both are one system, described once with every placement.
   const baseOf = (system: AnySystem): AnySystem => (system as { readonly base?: AnySystem }).base ?? system
   const placements = new Map<AnySystem, Array<string>>()
@@ -332,17 +332,17 @@ export const describe = (input: DescribeInput): Debug.Description => {
     })
   }
   // Gates differ per placement: the description lists the conditions of all of them.
-  const gatesOf = new Map<AnySystem, { when: Set<unknown>; pauseWhen: Set<unknown> }>()
+  const gatesOf = new Map<AnySystem, { when: Set<unknown>; pauseWhile: Set<unknown> }>()
   for (const step of steps) {
     const base = baseOf(step)
-    const gates = gatesOf.get(base) ?? { when: new Set(), pauseWhen: new Set() }
+    const gates = gatesOf.get(base) ?? { when: new Set(), pauseWhile: new Set() }
     for (const condition of step.spec.when as ReadonlyArray<unknown>) gates.when.add(condition)
-    for (const condition of step.spec.pauseWhen as ReadonlyArray<unknown>) gates.pauseWhen.add(condition)
+    for (const condition of step.spec.pauseWhile as ReadonlyArray<unknown>) gates.pauseWhile.add(condition)
     gatesOf.set(base, gates)
   }
   const byBase = new Map([...placements].map(([system, where]) => {
     const gates = gatesOf.get(system)!
-    const merged = { ...system, spec: { ...system.spec, when: [...gates.when], pauseWhen: [...gates.pauseWhen] } } as AnySystem
+    const merged = { ...system, spec: { ...system.spec, when: [...gates.when], pauseWhile: [...gates.pauseWhile] } } as AnySystem
     return [system, describeSystem(merged, where)] as const
   }))
   const described = new Map<AnySystem, Debug.SystemDescription>([...steps].map((step) => [step, byBase.get(baseOf(step))!] as const))
@@ -573,7 +573,7 @@ export const describe = (input: DescribeInput): Debug.Description => {
         severity: "info",
         code: "stream-loss-unread",
         subject: loss.system,
-        message: `${loss.system} reads ${loss.stream} under pauseWhen and never checks lagged(): a long pause drops entries past the stream's capacity`
+        message: `${loss.system} reads ${loss.stream} under pauseWhile and never checks lagged(): a long pause drops entries past the stream's capacity`
       })
     }
   }

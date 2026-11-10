@@ -35,14 +35,14 @@ describe("the stream-loss-unread lint", () => {
   it("notes a paused reader that never checks lagged()", () => {
     const Paused = Game.System("StreamLoss/Paused", {
       events: { hit: Game.System.readEvent(Hit) },
-      pauseWhen: [Running]
+      pauseWhile: [Game.Condition.not(Running)]
     }, ({ events }) => {
       events.hit.all()
     })
     const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value
     runtime.tick(Game.Schedule(Paused))
     expect(lintsOf(runtime)).toEqual([
-      "info: StreamLoss/Paused reads events StreamLoss/Hit under pauseWhen and never checks lagged(): a long pause drops entries past the stream's capacity"
+      "info: StreamLoss/Paused reads events StreamLoss/Hit under pauseWhile and never checks lagged(): a long pause drops entries past the stream's capacity"
     ])
   })
 })

@@ -72,7 +72,7 @@ describe("Game.System.thisTick", () => {
   it("counts gated groups by position", () => {
     // @ts-expect-error ThisTick/Apply needs ThisTick/Damage from this tick, but its writer ThisTick/Deal runs after it
     runtime.tick(Game.Schedule(Game.Schedule.when([Game.Condition.inState(Flow, "Playing")], Apply), Deal))
-    runtime.tick(Game.Schedule(Game.Schedule.pauseWhen([Game.Condition.inState(Flow, "Playing")], Deal), Apply))
+    runtime.tick(Game.Schedule(Game.Schedule.pauseWhile([Game.Condition.inState(Flow, "Paused")], Deal), Apply))
   })
 
   it("accepts a read with no writer in the tick call (a reused reader)", () => {

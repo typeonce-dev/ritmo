@@ -17,13 +17,13 @@ const Game = Schema.bind(Schema.fragment({
 const open = Game.Condition.check("Dropped/Open", { resources: { gate: Game.System.readResource(Gate) } }, ({ resources }) => resources.gate.get())
 
 /** One reader's view of what it read, run by run. */
-const makeReader = (name: string, gating: { readonly when?: true; readonly pauseWhen?: true } = {}) => {
+const makeReader = (name: string, gating: { readonly when?: true; readonly pauseWhile?: true } = {}) => {
   const runs: Array<ReadonlyArray<string>> = []
   let lagged = false
   const system = Game.System(name, {
     droppedRelations: { lost: Game.System.readDroppedRelations(Targeting) },
     ...(gating.when ? { when: [open] } : {}),
-    ...(gating.pauseWhen ? { pauseWhen: [open] } : {})
+    ...(gating.pauseWhile ? { pauseWhile: [Game.Condition.not(open)] } : {})
   }, ({ droppedRelations }) => {
     lagged ||= droppedRelations.lost.lagged()
     runs.push(droppedRelations.lost.all().map((dropped) => `${dropped.relation.name} ${dropped.source}->${dropped.target}`))
@@ -125,10 +125,10 @@ describe("Game.System.readDroppedRelations", () => {
     expect(children).toEqual([0, 0])
   })
 
-  it("drops records published while a reader is skipped by when, and keeps them under pauseWhen", () => {
+  it("drops records published while a reader is skipped by when, and keeps them under pauseWhile", () => {
     const world = setup()
     const gated = makeReader("Dropped/Gated", { when: true })
-    const paused = makeReader("Dropped/Paused", { pauseWhen: true })
+    const paused = makeReader("Dropped/Paused", { pauseWhile: true })
     const runtime = makeRuntime()
     const SetGate = (value: boolean) => Game.System(`Dropped/SetGate/${value}`, { resources: { gate: Game.System.writeResource(Gate) } }, ({ resources }) => {
       resources.gate.set(value)
