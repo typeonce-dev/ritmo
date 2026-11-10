@@ -1,5 +1,0 @@
----
-"@typeonce/ritmo-browser": patch
----
-
-`Pointer.actions` sees mouse chords. Browsers send `pointerdown` only for the first button down and `pointerup` only for the last one up; a button pressed or released while another is held arrives as a `pointermove`, which the pointer ignored. A left click while aiming with the right button was never seen, and the first button let go during a chord stayed held until a window blur. `PointerEventLike` now has an optional `buttons` (the `PointerEvent.buttons` bitmask), and every down, up, and move that carries it holds exactly those buttons, with the same press and release edges as a down or up (a tap of the second button shorter than a frame reports `pressed` and `released` once). The click that takes the pointer lock is still no press, and neither is any button that goes down while the pointer is not locked, until it comes up. A pen's barrel button is `secondary`, as before; its eraser presses nothing. Browsers always send `buttons`, so a game needs no change; a host that sends no `buttons` behaves as before. The pointer now takes capture on the first press only.
