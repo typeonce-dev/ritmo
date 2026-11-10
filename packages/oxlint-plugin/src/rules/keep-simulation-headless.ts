@@ -1,7 +1,7 @@
 import { defineRule } from "@oxlint/plugins"
 import type { ESTree } from "@oxlint/plugins"
 
-import { docsUrl, importsOnlyTypes, isGlobalReference, stringValue } from "../internal/ast.ts"
+import { docsUrl, globalRead, importsOnlyTypes, stringValue } from "../internal/ast.ts"
 
 /** Globals that are the page: input and layout. */
 const page = new Set([
@@ -16,6 +16,13 @@ const io = new Set([
 
 /** Globals that connect to other peers: what online play goes through a netcode session for. */
 const network = new Set(["WebSocket", "RTCPeerConnection", "RTCDataChannel"])
+
+/** Globals that play sound. */
+const audio = new Set(["Audio", "AudioContext"])
+
+/** The report a listed global gets. */
+const kindOf = (name: string): "page" | "io" | "network" | "audio" | undefined =>
+  page.has(name) ? "page" : io.has(name) ? "io" : network.has(name) ? "network" : audio.has(name) ? "audio" : undefined
 
 /** Renderer and UI packages, by exact name. */
 const renderers = new Set([
@@ -32,15 +39,15 @@ interface Options {
 
 /**
  * Simulation code runs headless (tests, bots, replays, servers): it never
- * touches the page, does host I/O, or imports a renderer, not even a type,
- * so another renderer can replace the current one. The host feeds it input
- * and data, and render code draws it.
+ * touches the page, does host I/O, plays sound, or imports a renderer, not
+ * even a type, so another renderer can replace the current one. The host
+ * feeds it input and data, and render code draws it and plays its sound.
  */
 export default defineRule({
   meta: {
     type: "problem",
     docs: {
-      description: "Keep simulation code headless: no page globals, host I/O, or renderer imports.",
+      description: "Keep simulation code headless: no page globals, host I/O, audio, or renderer imports.",
       url: docsUrl("keep-simulation-headless")
     },
     messages: {
@@ -50,6 +57,8 @@ export default defineRule({
         "`{{name}}` is host I/O, which tests, bots, and replays do not have and cannot reproduce. Do the I/O in host code and pass the result in with `runtime.send(...)` or a resource; save and load the world in host code with `runtime.snapshot()` and `runtime.restore(...)`.",
       network:
         "`{{name}}` is a connection to other peers, which tests, bots, and replays do not have. For other players' input, run the simulation under a session of `@typeonce/ritmo-netcode` (`Netcode.rollback` or `Netcode.lockstep`): host code opens the connection and wraps it in a link (`WebSocketNetworkLink`, `WebRtcNetworkLink`), and remote input reaches the simulation through `Netcode.seats`, never `runtime.send(...)`, which a rollback would read on the wrong tick.",
+      audio:
+        "`{{name}}` plays sound from the simulation, which tests, bots, and servers do not have, and a replay or a rollback that runs the system again plays it again. Publish what happened as an event (`Game.System.writeEvent(Hit)`), and play the sound from a render or host system that reads it (`Game.System.readEvent(Hit)`) and requests the game's audio as a service (`Game.System.service(Audio)`), so a headless test can provide one that records.",
       renderer:
         "The simulation imports `{{source}}`, a renderer or UI package, so it no longer runs headless. Draw from a render schedule in render code: mirror entities into nodes with `RenderSync` and a `NodeRegistry` from `@typeonce/ritmo-render`, and declare its services (a node registry) there. Renderer nodes stay in the registry, never in components.",
       rendererType:
@@ -79,6 +88,19 @@ export default defineRule({
     const checkSource = (node: ESTree.Node, source: string | undefined, onlyTypes = false): void => {
       if (source !== undefined && isRenderer(source)) context.report({ node, messageId: onlyTypes ? "rendererType" : "renderer", data: { source } })
     }
+    /**
+     * Reports a listed global read here: by name (`localStorage`), as a member
+     * of a global object (`globalThis.localStorage`, `self.innerWidth`), or
+     * destructured (`const { innerWidth } = self`). A member of a listed
+     * global (`window.innerWidth`) is left to the report on that global.
+     */
+    const check = (node: ESTree.Node): void => {
+      const read = globalRead(context, node)
+      const kind = read === undefined ? undefined : kindOf(read.path)
+      if (read === undefined || kind === undefined) return
+      if (read.from !== undefined && kindOf(read.from) !== undefined) return
+      context.report({ node, messageId: kind, data: { name: read.path } })
+    }
     return {
       ImportDeclaration(node) {
         checkSource(node, node.source.value, importsOnlyTypes(node))
@@ -93,13 +115,11 @@ export default defineRule({
         checkSource(node, stringValue(node.source))
       },
       Identifier(node) {
-        const kind = page.has(node.name) ? "page" : io.has(node.name) ? "io" : network.has(node.name) ? "network" : undefined
-        if (kind === undefined) return
-        // `typeof window` in a type runs nothing.
-        if (node.parent.type === "TSTypeQuery" || node.parent.type === "TSQualifiedName") return
-        if (!isGlobalReference(context, node)) return
-        context.report({ node, messageId: kind, data: { name: node.name } })
-      }
+        if (kindOf(node.name) !== undefined) check(node)
+      },
+      MemberExpression: check,
+      Property: check
+
     }
   }
 })
