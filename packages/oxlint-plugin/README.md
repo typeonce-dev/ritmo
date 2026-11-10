@@ -66,7 +66,7 @@ const started = performance.now()
 | [`use-random-for-randomness`](#ritmouse-random-for-randomness) | simulation | `Math.random()`, `crypto` randomness | `Random.draw(resources.rng)` |
 | [`use-ops-for-math`](#ritmouse-ops-for-math) | simulation | `Math.sin`, `Math.hypot`, `a ** b`, `const { sin } = Math`, ... | `Ops` |
 | [`keep-simulation-headless`](#ritmokeep-simulation-headless) | simulation | page globals, host I/O, audio, renderer imports | input and data from the host, drawing and sound in a render schedule |
-| [`no-infinity-in-simulation-data`](#ritmono-infinity-in-simulation-data) | simulation | `Infinity` / `NaN` in object literals | `null` |
+| [`no-infinity-in-simulation-data`](#ritmono-infinity-in-simulation-data) | simulation | `Infinity` / `NaN` in object and array literals | `null` |
 | [`no-float-timers`](#ritmono-float-timers) | simulation | `timer -= dt`, `cooldown = cooldown - time.dt` | `Clock.deadline` / `Clock.reached` |
 | [`no-brand-cast`](#ritmono-brand-cast) | simulation | `raw as UserId`, `1 as Random.State` | the schema or constructor that brands it |
 | [`handle-runtime-result`](#ritmohandle-runtime-result) | everywhere | a dropped or unchecked `runtime.tick(...)` / `restore(...)` / `rewind(...)` / `snapshot()` / `checksum()` result | check `.ok` |
@@ -162,7 +162,9 @@ dash: { remaining: 0, since: null }                              // since: numbe
 { timer: null }                                                  // timer: { remaining: number; duration: number } | null
 ```
 
-Catches `Infinity`, `-Infinity`, `NaN`, and `Number.POSITIVE_INFINITY` / `NEGATIVE_INFINITY` / `NaN` as a property value in any object literal in simulation files, including values built in helpers before they are spawned. Search seeds in locals (`let best = Infinity`) are not reported.
+Catches `Infinity`, `-Infinity`, `NaN`, `Number.POSITIVE_INFINITY` / `NEGATIVE_INFINITY` / `NaN`, `1 / 0`, and `Math.min()` / `Math.max()` of nothing, as a property value of an object literal or an element of an array literal in simulation files, including values built in helpers before they are spawned. In the same places it also catches a call given one of them (`{ dash: make(Infinity) }`; `Math.*` and `Number.*` calls give finite numbers back), a `const` declared as one (`{ max: LIMIT }`), and a search seed stored unchecked (`{ distance: best }` after `let best = Infinity`), which stays Infinity when the search finds nothing; comparing the seed with `Infinity` or passing it to `Number.isFinite` anywhere in the file counts as the check.
+
+Local scratch is not reported: a search seed in a `let`, a literal one too (`let nearest = { distance: Infinity, id: -1 }`); a fallback in a function whose fields are only compared (`const hit = sweep ?? { time: Infinity }`, then `hit.time < limit`); and values a `for...of` tries one by one (`for (const size of [0, Infinity])`). A value passed straight to a write (`resources.best.set(best)`) is not checked.
 
 ### `ritmo/no-float-timers`
 
