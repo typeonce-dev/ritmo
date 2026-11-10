@@ -260,8 +260,14 @@ export const recorder = <S extends Schema.Any, Root, const Recorded extends AnyS
   let tick = 0
   let sent: Array<{ readonly event: string; readonly value: unknown }> = []
   let ticks: Array<TickRecord> = []
-  /** Snapshot points still needed: the newest one at or before the window start, and every later one. */
-  let points: Array<{ readonly tick: number; readonly snapshot: Snapshot.WorldSnapshot; readonly pendingCommands: number }> = []
+  /**
+   * Snapshot points still needed: the newest one at or before the window
+   * start, and every later one. `at` is the runtime's change tick then, for
+   * `rewind`.
+   */
+  let points: Array<{ readonly tick: number; readonly snapshot: Snapshot.WorldSnapshot; readonly pendingCommands: number; readonly at: number }> = []
+  /** The change tick each recorded tick of the window started at, for `rewind`. */
+  let starts: Array<{ readonly tick: number; readonly at: number }> = []
   let checkpoints: Array<{ readonly tick: number; readonly hash: string }> = []
   const previous = new Map<string, string>()
   const broken = new Set<string>()
@@ -270,7 +276,8 @@ export const recorder = <S extends Schema.Any, Root, const Recorded extends AnyS
     const snapshot = runtime.snapshot()
     // A tick whose world a `"~encode"` rejects is no starting point; the window keeps the previous one.
     if (!snapshot.ok) return
-    points.push({ tick, snapshot: snapshot.value, pendingCommands: runtime.debug.dump({ limit: 0 }).pendingCommands.length })
+    const dumped = runtime.debug.dump({ limit: 0 })
+    points.push({ tick, snapshot: snapshot.value, pendingCommands: dumped.pendingCommands.length, at: dumped.tick })
     const checksum = runtime.checksum()
     checkpoints.push({ tick, hash: worldHash(checksum) })
     const windowStart = tick - keepTicks
@@ -285,6 +292,7 @@ export const recorder = <S extends Schema.Any, Root, const Recorded extends AnyS
       const carried: Record<string, ReadonlyArray<unknown>> = {}
       for (const record of ticks) if (record.tick <= start && record.services !== undefined) Object.assign(carried, record.services)
       ticks = ticks.filter((record) => record.tick > start)
+      starts = starts.filter((entry) => entry.tick > start)
       const first = ticks[0]
       if (first !== undefined && Object.keys(carried).length > 0) {
         ticks[0] = { ...first, services: { ...carried, ...first.services } }
@@ -294,9 +302,41 @@ export const recorder = <S extends Schema.Any, Root, const Recorded extends AnyS
   }
   takePoint()
 
+  /**
+   * A rewind to a checkpoint at change tick `toTick` undid the recorded
+   * ticks that started at or after it, and the game runs them again: forget
+   * them, so the file keeps each tick's last run. The host's sends they
+   * carried are still unread after the rewind, so the next tick carries
+   * them. A rewind past every snapshot point starts the window again here.
+   */
+  const rewind = (toTick: number): void => {
+    const undone = starts.findIndex((entry) => entry.at >= toTick)
+    if (undone === -1) return
+    const back = starts[undone]!.tick - 1
+    sent = [...ticks.filter((record) => record.tick > back).flatMap((record) => record.sent ?? []), ...sent]
+    tick = back
+    ticks = ticks.filter((record) => record.tick <= back)
+    starts = starts.slice(0, undone)
+    checkpoints = checkpoints.filter((checkpoint) => checkpoint.tick <= back)
+    points = points.filter((point) => point.tick <= back && point.at <= toTick)
+    // Service values are stored as changes from the previous kept tick.
+    previous.clear()
+    for (const record of ticks) {
+      for (const [name, values] of Object.entries(record.services ?? {})) previous.set(name, JSON.stringify(values))
+    }
+    if (points.length === 0) {
+      ticks = []
+      starts = []
+      checkpoints = []
+      previous.clear()
+      takePoint()
+    }
+  }
+
   const save = (reason: string): ReplayFile => {
-    const start = points[0]
-    if (start === undefined) throw new Error("no tick of this run could be saved: a `~encode` rejected the world every time (see runtime.snapshot())")
+    const point = points[0]
+    if (point === undefined) throw new Error("no tick of this run could be saved: a `~encode` rejected the world every time (see runtime.snapshot())")
+    const start = { tick: point.tick, snapshot: point.snapshot, pendingCommands: point.pendingCommands }
     const file: ReplayFile = {
       format: "ritmo-replay",
       version: 1,
@@ -325,9 +365,14 @@ export const recorder = <S extends Schema.Any, Root, const Recorded extends AnyS
       if (options.saveOn?.failure === true) save(Format.ignoredFailure(event))
       return
     }
+    if (event.type === "rewind") {
+      if (event.ok) rewind(event.toTick)
+      return
+    }
     if (!event.schedules.includes(options.schedule)) return
     if (event.type === "tick.start") {
       tick += 1
+      starts.push({ tick, at: event.tick })
       current = new Map()
       return
     }

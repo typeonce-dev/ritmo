@@ -137,7 +137,22 @@ const OnRush = Game.System("Checkpoint/OnRush", {
   note(resources.log, `rush spawns ${id}`)
 })
 
-const transitions = Game.Schedule.transitions(Game.Schedule.onEnter(Phase, "Rush", [OnRush]))
+// First runs when the phase first goes back to Calm, ticks into the game, so
+// rewinds go back to before its first run: it must read what it reads in a
+// runtime that never rewound.
+const OnCalm = Game.System("Checkpoint/OnCalm", {
+  resources: { log: Game.System.writeResource(Log) },
+  events: { hit: Game.System.readEvent(Hit) },
+  removed: { shield: Game.System.readRemoved(Shield) },
+  despawned: { all: Game.System.readDespawned() }
+}, ({ resources, events, removed, despawned }) => {
+  note(resources.log, `calm after hits ${events.hit.all().length}, unshielded ${removed.shield.all().length}, despawned ${despawned.all.all().length}`)
+})
+
+const transitions = Game.Schedule.transitions(
+  Game.Schedule.onEnter(Phase, "Rush", [OnRush]),
+  Game.Schedule.onEnter(Phase, "Calm", [OnCalm])
+)
 const simulate = Game.Schedule(
   Capture, Spawner, Mover, Damager, Flip, Game.Schedule.applyStateTransitions(transitions), Watcher
 )
@@ -207,8 +222,12 @@ const truth = (tick: number) => (tick * 7 + (tick >> 2)) % 11
 
 describe("Runtime checkpoints", () => {
   it("re-runs ticks after a rewind exactly like a runtime that never rewound", () => {
+    // Both draw after every tick, so a reader's first run sees the same frames.
     const reference = makeGame()
-    for (let tick = 0; tick < 120; tick++) reference.step(truth(tick))
+    for (let tick = 0; tick < 120; tick++) {
+      reference.step(truth(tick))
+      expectOk(reference.runtime.tick(render))
+    }
 
     // Input arrives `delay` ticks late; until then the last known input is the guess.
     const delay = 5
@@ -226,6 +245,7 @@ describe("Runtime checkpoints", () => {
           history[at] = peer.runtime.checkpoint(simulate)
           guessed[at] = at <= confirmed ? truth(at) : truth(confirmed)
           peer.step(guessed[at]!)
+          expectOk(peer.runtime.tick(render))
         }
       }
       if (tick >= 120) continue
@@ -236,6 +256,7 @@ describe("Runtime checkpoints", () => {
       expectOk(peer.runtime.tick(render))
     }
     expect(rewinds).toBeGreaterThan(10)
+    expect((peer.state().resources[Log.name] as ReadonlyArray<string>).filter((line) => line.startsWith("calm")).length).toBeGreaterThan(3)
     expect(peer.state()).toEqual(reference.state())
     // One more spawn gets the same id on both: the next id rewound too.
     reference.step(1)
