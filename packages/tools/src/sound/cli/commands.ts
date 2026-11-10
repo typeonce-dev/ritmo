@@ -10,6 +10,7 @@
 import { Data, Effect, Option, Path, Runtime } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { intFlag, numberFlag } from "../../internal/flags.ts"
+import { untilStopped } from "../../internal/serve.ts"
 import { checkBank } from "../core/measure.ts"
 import { encodeBank, type Bank } from "../core/recipe.ts"
 import { render, renderSequence } from "../core/render.ts"
@@ -139,7 +140,7 @@ const review = Command.make(
       catch: (error) => new CliFailure({ message: `cannot serve the page: ${error instanceof Error ? error.message : String(error)}` })
     })
     yield* printJson({ url: address.url, network: address.network, bank, review: reviewPath(bank), next: "Send the person the url. What they pick, tune, and note is saved to the bank and the review as they go; read it back with `ritmo-tools sound notes`." })
-    return yield* Effect.never
+    return yield* untilStopped
   })
 ).pipe(
   Command.withDescription(

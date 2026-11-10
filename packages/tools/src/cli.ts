@@ -10,8 +10,8 @@
  * Every command prints JSON on stdout and exits with what to do next (see
  * each tool's `--help`). Built on Effect; nothing a game imports depends on it.
  */
-import { NodeRuntime, NodeServices } from "@effect/platform-node"
-import { Console, Effect } from "effect"
+import { NodeServices } from "@effect/platform-node"
+import { Console, Effect, Runtime } from "effect"
 import { CliError, Command } from "effect/cli"
 import { toolsVersion } from "./internal/version.ts"
 import { fx } from "./fx/cli/commands.ts"
@@ -30,7 +30,7 @@ const program = Command.run(tools, { version: toolsVersion }).pipe(
     Effect.gen(function* () {
       yield* Console.error(`ritmo-tools: ${failure.message}`)
       if (failure.details !== undefined) yield* printJson({ error: failure.message, ...failure.details })
-      return yield* new Exit({ code: 2 })
+      return yield* new Exit({ code: failure.code ?? 2 })
     })
   ),
   // A usage mistake: the CLI has already printed what went wrong and the help.
@@ -47,4 +47,20 @@ const program = Command.run(tools, { version: toolsVersion }).pipe(
   )
 )
 
-program.pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain)
+/**
+ * Runs the CLI as `NodeRuntime.runMain` does, without its SIGINT and SIGTERM
+ * listeners: a listener runs on the event loop, so a command stuck in
+ * synchronous work (a draft that loops as it loads, a large bake) would never
+ * hear the signal, and would outlive `kill` and `timeout`. Every command keeps
+ * Node's default (the signal ends it); a review server, the one command with
+ * something to stop, listens for them itself (`untilStopped`).
+ */
+const runMain = Runtime.makeRunMain(({ fiber, teardown }) => {
+  fiber.addObserver((exit) =>
+    teardown(exit, (code) => {
+      if (code !== 0) process.exit(code)
+    })
+  )
+})
+
+program.pipe(Effect.provide(NodeServices.layer), runMain)

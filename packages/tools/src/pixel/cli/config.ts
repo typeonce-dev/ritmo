@@ -26,8 +26,8 @@ import { decodeRecipe, defaultRecipe, presetPalette, type Recipe, type RecipePal
 
 export const CONFIG_FILE = "pixel.config.json"
 
-/** A failure the CLI reports and exits on: a missing file, a bad setting. */
-export class CliFailure extends Data.TaggedError("CliFailure")<{ readonly message: string; readonly details?: Readonly<Record<string, unknown>> }> {}
+/** A failure the CLI reports and exits on: a missing file, a bad setting. Exits 2 unless `code` says otherwise (3 for an fx draft that does not draw cleanly, as `fx check` exits). */
+export class CliFailure extends Data.TaggedError("CliFailure")<{ readonly message: string; readonly details?: Readonly<Record<string, unknown>>; readonly code?: 2 | 3 | undefined }> {}
 
 interface ConfigFile {
   readonly palette?: string | ReadonlyArray<string>

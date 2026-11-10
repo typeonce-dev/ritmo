@@ -16,6 +16,7 @@ import { createServer as createHttpServer, type IncomingMessage, type ServerResp
 import { networkInterfaces } from "node:os"
 import { dirname, extname, join, normalize, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { Effect } from "effect"
 import { STALE, textVersion } from "./save.ts"
 
 /** Answers a request under `/api`, with `/api` taken off its URL. */
@@ -196,3 +197,20 @@ export const servePage = (options: PageOptions, handler: Handler): Promise<Addre
   const built = resolve(options.from, "../page")
   return existsSync(join(built, "index.html")) ? serveBuilt(built, options, handler) : serveSource(resolve(options.from, options.source ?? "../ui"), options, handler)
 }
+
+/**
+ * A review command's wait once its page is served: until the process is
+ * told to stop (SIGINT or SIGTERM), then the command ends as interrupted
+ * (exit 130). Only a running server listens for the signals; every other
+ * command keeps Node's default, so `kill` and `timeout` end it even mid
+ * synchronous work (`cli.ts`).
+ */
+export const untilStopped: Effect.Effect<never> = Effect.callback<never>((resume) => {
+  const stop = (): void => resume(Effect.interrupt)
+  process.once("SIGINT", stop)
+  process.once("SIGTERM", stop)
+  return Effect.sync(() => {
+    process.removeListener("SIGINT", stop)
+    process.removeListener("SIGTERM", stop)
+  })
+})

@@ -14,6 +14,7 @@ import { toGif } from "../../pixel/core/gif.ts"
 import { atlasOf, played, spritesheetJson } from "../../pixel/core/spritesheet.ts"
 import { encodePng } from "../../pixel/cli/png.ts"
 import { intFlag } from "../../internal/flags.ts"
+import { untilStopped } from "../../internal/serve.ts"
 import { Exit } from "../../pixel/cli/commands.ts"
 import { changedSince } from "../core/approval.ts"
 import { encodeBank, encodeReview, newEffect, resolveComments, reviewPath, reviewSummary, standInSpot, usedDraft, type Bank, type EffectReview } from "../core/bank.ts"
@@ -42,6 +43,19 @@ const pick = (bank: Bank, chosen: ReadonlyArray<string>): Effect.Effect<Readonly
   const missing = chosen.filter((name) => !all.includes(name))
   return missing.length === 0 ? Effect.succeed(chosen) : Effect.fail(new CliFailure({ message: `no effect named ${missing.join(", ")}`, details: { effects: all } }))
 }
+
+/**
+ * A draft that does not load, or whose `draw` goes wrong (throws, names a
+ * color or ramp the bank does not have, runs past the time limit): `look`
+ * and `render` refuse it with exit 3, as `check` exits for the same draft.
+ */
+const brokenDraft = (effect: string, draft: string, errors: ReadonlyArray<string>, loads = true): CliFailure =>
+  new CliFailure({
+    code: 3,
+    // A load error already says what is wrong ("does not load", "cannot read", a field of the module).
+    message: `${effect} (draft ${draft})${loads ? " does not draw cleanly" : ""}: ${errors.join("; ")}`,
+    details: { effect, draft, errors, next: `Fix draft ${draft}'s module (\`ritmo-tools fx check\` lists every error), then run this again.` }
+  })
 
 /** Frames per row in a sprite sheet `fx render` writes: a long effect stays within what a device can hold as one texture. */
 const SHEET_COLUMNS = 8
@@ -132,14 +146,10 @@ const look = Command.make(
       const draft = entry.drafts[id]
       if (draft === undefined) return yield* new CliFailure({ message: `${flags.name} has no draft ${id}`, details: { drafts: Object.keys(entry.drafts) } })
       const loaded = yield* loadDraft(flags.bank, draft)
-      if (!loaded.ok) return yield* new CliFailure({ message: loaded.error })
+      if (!loaded.ok) return yield* brokenDraft(flags.name, id, [loaded.error], false)
       const run = runEffect(loaded.effect, bank.palette, { seed: draft.seed, tune: draft.tune, ramps: rampsFor(bank.ramps, draft.recolor) })
-      // A draw that never returned was stopped: its frames from there are blank, so the picture would mislead.
-      const stopped = run.errors.find((error) => error.startsWith("draw did not return"))
-      if (stopped !== undefined) {
-        yield* printJson({ effect: flags.name, draft: id, errors: [stopped], next: `Fix draft ${id}'s draw so it returns on every frame (a loop that never ends), then look again.` })
-        return yield* exitWith(3)
-      }
+      // A frame whose draw threw or was stopped is blank from there, and a color the palette lacks is left out, so the picture would mislead.
+      if (run.errors.length > 0) return yield* brokenDraft(flags.name, id, run.errors)
       const mine = comments.filter((comment) => comment.draft === id)
       const marks = flags.marks === "comments" ? mine : flags.marks === "none" ? [] : flags.marks === "flicker" ? flicker(run).spots : { jaggies, doubles, holes }[flags.marks](run)
       if (flags.marks === "comments") for (const comment of mine) ringed.push({ number: comment.number, draft: id, frame: comment.frame, x: comment.x, y: comment.y, text: comment.text })
@@ -187,9 +197,9 @@ const renderCommand = Command.make(
       const id = usedDraft(entry)!
       const draft = entry.drafts[id]!
       const loaded = yield* loadDraft(flags.bank, draft)
-      if (!loaded.ok) return yield* new CliFailure({ message: loaded.error })
+      if (!loaded.ok) return yield* brokenDraft(name, id, [loaded.error], false)
       const run = runEffect(loaded.effect, bank.palette, { seed: draft.seed, tune: draft.tune, ramps: rampsFor(bank.ramps, draft.recolor) })
-      if (run.errors.length > 0) return yield* new CliFailure({ message: `${name} (draft ${id}) does not draw cleanly: ${run.errors.join("; ")}` })
+      if (run.errors.length > 0) return yield* brokenDraft(name, id, run.errors)
       const frames = framesOf(run, bank.palette)
       const clip = { name, frames, anchor: run.anchor, fps: run.fps, beats: frames.map(() => 1), loop: "forward" as const }
       const atlas = atlasOf([clip], { columns: SHEET_COLUMNS, spacing: 0 })
@@ -260,7 +270,7 @@ const review = Command.make(
       catch: (error) => new CliFailure({ message: `cannot serve the page: ${error instanceof Error ? error.message : String(error)}` })
     })
     yield* printJson({ url: address.url, network: address.network, bank, review: reviewPath(bank), next: "Send the person the url. What they pick, tune, and note is saved to the bank and the review as they go; read it back with `ritmo-tools fx notes`." })
-    return yield* Effect.never
+    return yield* untilStopped
   })
 ).pipe(
   Command.withDescription(

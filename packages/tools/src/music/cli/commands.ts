@@ -10,6 +10,7 @@
 import { Effect, FileSystem, Option, Path } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { intFlag, numberFlag } from "../../internal/flags.ts"
+import { untilStopped } from "../../internal/serve.ts"
 import { Exit } from "../../sound/cli/commands.ts"
 import { CliFailure, printJson, readText, writeBytes, writeText } from "../../sound/cli/io.ts"
 import { monoWav, readWav, stereoWav } from "../core/audio.ts"
@@ -183,7 +184,7 @@ const review = Command.make(
       music: found.map((music) => music.id),
       next: "Send the person the url. What they edit, record, approve, and comment is saved as they go; read it back with `ritmo-tools music notes`, with the same paths."
     })
-    return yield* Effect.never
+    return yield* untilStopped
   })
 ).pipe(
   Command.withDescription(
