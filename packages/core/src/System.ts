@@ -460,7 +460,7 @@ export const thisTick = <
  */
 export const machine = <M extends Machine.StateMachine.Any>(
   stateMachine: M
-): Machine.MachineRead<M> => Machine.read(stateMachine)
+): Machine.MachineRead<M> => ({ machine: stateMachine, mode: "read" })
 
 /**
  * Declares access that reads a machine and changes the fields of its current
@@ -473,7 +473,7 @@ export const machine = <M extends Machine.StateMachine.Any>(
  */
 export const updateMachine = <M extends Machine.StateMachine.Any>(
   stateMachine: M
-): Machine.MachineUpdate<M> => Machine.update(stateMachine)
+): Machine.MachineUpdate<M> => ({ machine: stateMachine, mode: "update" })
 
 /**
  * Declares queued write access to the next value of a finite-state machine.
@@ -488,7 +488,7 @@ export const updateMachine = <M extends Machine.StateMachine.Any>(
  */
 export const nextState = <M extends Machine.StateMachine.Any>(
   stateMachine: M
-): Machine.NextMachineWrite<M> => Machine.write(stateMachine)
+): Machine.NextMachineWrite<M> => ({ machine: stateMachine })
 
 /**
  * Declares read access to the transition being applied to a machine, for
@@ -496,9 +496,9 @@ export const nextState = <M extends Machine.StateMachine.Any>(
  * `get()` is `undefined`: from a regular schedule, use
  * {@link readTransitionEvent}.
  */
-export const transition = <M extends Machine.StateMachine.Any>(
+export const readTransition = <M extends Machine.StateMachine.Any>(
   stateMachine: M
-): Machine.TransitionRead<M> => Machine.transition(stateMachine)
+): Machine.TransitionRead<M> => ({ machine: stateMachine })
 
 /**
  * Declares read access to committed transition events for one machine.
@@ -511,7 +511,7 @@ export const transition = <M extends Machine.StateMachine.Any>(
  */
 export const readTransitionEvent = <M extends Machine.StateMachine.Any>(
   stateMachine: M
-): Machine.TransitionEventRead<M> => Machine.readTransitionEvent(stateMachine)
+): Machine.TransitionEventRead<M> => ({ machine: stateMachine })
 
 /**
  * Internal union for all supported resource access declarations.
@@ -722,12 +722,12 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
    * cancels a value queued before the current marker that the marker has not
    * applied yet.
    */
-  reset(): void
+  cancelPending(): void
 }
 
 /**
  * A read-only view over the transition being applied for one machine, given
- * to systems that declare `transitions: { x: Game.System.transition(M) }`.
+ * to systems that declare `transitions: { x: Game.System.readTransition(M) }`.
  *
  * `get()` returns the transition only while one is applied: inside the
  * machine's transition schedules (`onEnter` / `onExit` / `onTransition`).

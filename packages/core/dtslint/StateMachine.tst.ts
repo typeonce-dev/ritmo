@@ -74,7 +74,7 @@ const TransitionSystem = Game.System(
   "StateMachine/TransitionReader",
   {
     transitions: {
-      app: System.transition(AppState)
+      app: System.readTransition(AppState)
     }
   },
   ({ transitions }) =>
@@ -316,7 +316,7 @@ describe("StateMachine", () => {
         "StateMachine/TransitionServiceRequirement",
         {
           transitions: {
-            app: System.transition(AppState)
+            app: System.readTransition(AppState)
           },
           services: {
             logger: System.service(Logger)
@@ -467,7 +467,7 @@ describe("per-state data", () => {
     Game.System("StateMachine/UpdateMode", { machines: { mode: System.updateMachine(Mode) } }, ({ machines }) => {
       expect(machines.mode.get()._tag).type.toBe<"Exploring" | "Talking">()
       const updated = machines.mode.update({ state: "Talking", data: (talking) => ({ ...talking, page: talking.page + 1 }) })
-      expect(updated).type.toBe<Result.Result<void, Machine.MachineStateMismatch<"Exploring" | "Talking">>>()
+      expect(updated).type.toBe<Result.Result<void, Machine.MachineStateMismatchError<"Exploring" | "Talking">>>()
       machines.mode.update({ state: "Talking", data: (talking) => {
         expect(talking).type.toBe<{ readonly _tag: "Talking"; readonly speaker: string; readonly pages: ReadonlyArray<string>; readonly page: number }>()
         return { speaker: talking.speaker, pages: talking.pages, page: 0 }

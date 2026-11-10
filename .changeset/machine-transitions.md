@@ -17,13 +17,25 @@ const Round = Game.StateMachine("Game/Round", {
 +nextMachines.round.transition({ from: "Playing", to: "Over", data: { winner: 0 } })
 ```
 
-Breaking, for code that names these types or calls the low-level constructor:
+Breaking:
 
+- An entity state declared with `transitions` has no `set`, like a machine: move it with `data.x.transition(entity, { from, to, data })`, or change the current state's fields with `update`. `setRaw` stays, for data from outside the simulation. An entity state without `transitions` keeps `set`.
+- `nextMachines.x.reset()` is `nextMachines.x.cancelPending()`: it drops the queued value, next to `getPending()`; it never reset the machine.
+- `Game.System.transition(M)` is `Game.System.readTransition(M)` (and `System.transition` is `System.readTransition`), like `readTransitionEvent`: it declares read access to the transition being applied, and `transition` now names the move.
+- `Machine.MachineStateMismatch` is `Machine.MachineStateMismatchError` and `Machine.SubStateInactive` is `Machine.SubStateInactiveError`, like `EntityStateMismatchError`. The `_tag` values are unchanged.
 - `Machine.UpdateResult<M>` is `Machine.CompareAndSetResult<M>`: it is what both `machines.x.update(...)` and `nextMachines.x.transition(...)` return.
 - `Descriptor.EntityStateTransitions<States>` is `Descriptor.StateTransitions<States>`: it is the graph of both kinds of state.
-- `Machine.StateMachine(name, states, within)` takes an options object: `Machine.StateMachine(name, states, { within, transitions })`. Games declare machines with `Game.StateMachine(...)`, which is unchanged for code without a graph.
+- `Machine.StateMachine(...)`, `Machine.read`, `Machine.update`, `Machine.write`, `Machine.transition`, and `Machine.readTransitionEvent` are removed: they duplicated `Game.StateMachine(...)` and `Game.System.machine` / `updateMachine` / `nextState` / `readTransition` / `readTransitionEvent` under other names, and nothing else called them.
 
 ```diff
+-data.contact.set(entity, { _tag: "air", vy: 2, coyote: 0 })
++data.contact.transition(entity, { from: "ground", to: "air", data: { vy: 2, coyote: 0 } })
+-nextMachines.round.reset()
++nextMachines.round.cancelPending()
+-transitions: { round: Game.System.transition(Round) }
++transitions: { round: Game.System.readTransition(Round) }
+-type Failed = Machine.MachineStateMismatch<"Lobby" | "Playing">
++type Failed = Machine.MachineStateMismatchError<"Lobby" | "Playing">
 -type Updated = Machine.UpdateResult<typeof Mode>
 +type Updated = Machine.CompareAndSetResult<typeof Mode>
 -type Moves = Descriptor.EntityStateTransitions<typeof Contact["states"]>

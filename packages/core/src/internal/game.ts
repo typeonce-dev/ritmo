@@ -43,10 +43,14 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
     if (definedMachineNames.has(name)) {
       throw new Error(`Duplicate state machine name: ${name}`)
     }
-    const machine = Machine.StateMachine(name, states, {
-      within: options?.within === undefined ? undefined : { machine: options.within[0], state: options.within[1] },
-      transitions: options?.transitions
-    })
+    const machine: Machine.StateMachine.Any = {
+      kind: "stateMachine",
+      name,
+      key: Symbol.for(`ritmo/stateMachine/${name}`),
+      states,
+      ...(options?.within === undefined ? {} : { within: { machine: options.within[0], state: options.within[1] } }),
+      ...(options?.transitions === undefined ? {} : { transitions: options.transitions })
+    }
     definedMachines.push(machine)
     definedMachineNames.add(name)
     return machine
@@ -159,7 +163,7 @@ export const makeGame = <S extends Schema.Any, Root>(schema: S, _root: Root): Sc
         updateMachine: System.updateMachine,
         nextState: System.nextState,
         readTransitionEvent: System.readTransitionEvent,
-        transition: System.transition,
+        readTransition: System.readTransition,
         readRemoved: System.readRemoved,
         readDespawned: System.readDespawned,
         readRelationFailures: System.readRelationFailures,

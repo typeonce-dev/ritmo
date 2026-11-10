@@ -1022,7 +1022,7 @@ export namespace Schema {
        * for systems in that machine's `onEnter` / `onExit` / `onTransition`
        * schedules. Use `readTransitionEvent` anywhere else.
        */
-      transition: <M extends BoundStateMachine<Root>>(machine: M) => Machine.TransitionRead<M>
+      readTransition: <M extends BoundStateMachine<Root>>(machine: M) => Machine.TransitionRead<M>
       /** The entities whose component was removed since this system's previous run (`removed`); despawns included. */
       readRemoved: <D extends ComponentDescriptor<S>>(descriptor: D) => System.RemovedRead<D>
       /** The entities despawned since this system's previous run (`despawned`). Use `readRemoved` to react to one component. */

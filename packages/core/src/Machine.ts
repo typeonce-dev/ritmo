@@ -128,7 +128,7 @@ export type CurrentState<M extends StateMachine.Any> =
  * Why queuing or updating a sub-state failed: its parent machine is not in
  * the state the sub-state exists in, so there is nothing to change.
  */
-export interface SubStateInactive {
+export interface SubStateInactiveError {
   readonly _tag: "SubStateInactive"
   /** The sub-state's name. */
   readonly machine: string
@@ -142,7 +142,7 @@ export interface SubStateInactive {
  * An `update` or a `transition` found the machine in another state, so
  * nothing was written or queued.
  */
-export interface MachineStateMismatch<State extends string = string> {
+export interface MachineStateMismatchError<State extends string = string> {
   readonly _tag: "MachineStateMismatch"
   /** The machine's name. */
   readonly machine: string
@@ -166,7 +166,7 @@ export type DeclaresTransitions<M extends StateMachine.Any> =
  * parent is in another state.
  */
 export type SetResult<M extends StateMachine.Any> =
-  IsSubState<M> extends true ? Result.Result<void, SubStateInactive> : void
+  IsSubState<M> extends true ? Result.Result<void, SubStateInactiveError> : void
 
 /**
  * What the compare-and-set writes `machines.x.update(...)` and
@@ -176,7 +176,7 @@ export type SetResult<M extends StateMachine.Any> =
  */
 export type CompareAndSetResult<M extends StateMachine.Any> = Result.Result<
   void,
-  MachineStateMismatch<StateMachine.State<M>> | (IsSubState<M> extends true ? SubStateInactive : never)
+  MachineStateMismatchError<StateMachine.State<M>> | (IsSubState<M> extends true ? SubStateInactiveError : never)
 >
 
 /**
@@ -423,80 +423,6 @@ export type MachineNeedsFromRecord<R extends Record<string, unknown>> =
 /** Extracts the machine-token union carried by a condition list. */
 export type MachineNeedsFromConditions<C extends ReadonlyArray<Condition>> =
   MachineNeedsFromCondition<C[number]>
-
-/**
- * Creates a schema-bound finite-state machine definition: one game-wide mode.
- * Games declare machines with `Game.StateMachine(...)`, whose JSDoc describes
- * the states, their data, `within`, and `transitions`.
- *
- * Use `Descriptor.EntityState(...)` instead when every entity carries its own
- * state (per-entity, written immediately, no enter/exit schedules).
- */
-export const StateMachine = <
-  const Name extends string,
-  const States extends StateDefinitions,
-  Root = unknown,
-  const Transitions extends StateTransitions<States> = StateTransitions<States>
->(
-  name: Name,
-  states: States,
-  options?: { readonly within?: SubStateParent | undefined; readonly transitions?: Transitions | undefined }
-): StateMachineDefinition<Name, States, Root, unknown, Transitions> => ({
-  kind: "stateMachine",
-  name,
-  key: Symbol.for(`ritmo/stateMachine/${name}`),
-  states,
-  ...(options?.within === undefined ? {} : { within: options.within }),
-  ...(options?.transitions === undefined ? {} : { transitions: options.transitions })
-})
-
-/**
- * Declares that a system wants to read the current committed state.
- *
- * Use this for the current committed phase value. Queued updates remain hidden
- * until the schedule reaches `applyStateTransitions(...)`.
- */
-export const read = <M extends StateMachine.Any>(machine: M): MachineRead<M> => ({
-  machine,
-  mode: "read"
-})
-
-/**
- * Declares that a system wants to change the fields of the current state
- * immediately, without leaving it. The state name changes only at the commit;
- * the current state's fields change immediately.
- */
-export const update = <M extends StateMachine.Any>(machine: M): MachineUpdate<M> => ({
-  machine,
-  mode: "update"
-})
-
-/**
- * Declares that a system wants to queue the next state.
- *
- * This is the machine equivalent of "request a phase change later". The change
- * becomes committed only at `applyStateTransitions(...)`.
- */
-export const write = <M extends StateMachine.Any>(machine: M): NextMachineWrite<M> => ({
-  machine
-})
-
-/**
- * Declares that a system wants access to the last applied transition payload.
- */
-export const transition = <M extends StateMachine.Any>(machine: M): TransitionRead<M> => ({
-  machine
-})
-
-/**
- * Declares that a system wants to read committed transition events for one machine.
- *
- * Use this when later systems need to observe that a transition happened after
- * the schedule has already committed it.
- */
-export const readTransitionEvent = <M extends StateMachine.Any>(machine: M): TransitionEventRead<M> => ({
-  machine
-})
 
 /**
  * Creates a condition that only passes in one machine state, whatever its

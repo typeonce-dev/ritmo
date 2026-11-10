@@ -65,7 +65,7 @@ describe("Game.StateMachine transitions", () => {
       nextMachines: { round: Game.System.nextState(Round), free: Game.System.nextState(Free) }
     }, ({ nextMachines }) => {
       expect(nextMachines.round.transition({ from: "Countdown", to: "Playing", data: { round: 1 } })).type.toBe<
-        Result.Result<void, Machine.MachineStateMismatch<RoundState>>
+        Result.Result<void, Machine.MachineStateMismatchError<RoundState>>
       >()
       expect(nextMachines.round.transition({ from: "Over", to: "Lobby" })).type.not.toRaiseError()
       // A move the graph lists from a state to itself re-enters it.
@@ -90,7 +90,7 @@ describe("Game.StateMachine transitions", () => {
       nextMachines.round.transition({ from: "Countdown", to: "Lobby", data: { until: 3 } })
       // Without a graph any pair of states is accepted, unknown states are not.
       expect(nextMachines.free.transition({ from: "A", to: "B", data: { n: 1 } })).type.toBe<
-        Result.Result<void, Machine.MachineStateMismatch<"A" | "B">>
+        Result.Result<void, Machine.MachineStateMismatchError<"A" | "B">>
       >()
       expect(nextMachines.free.transition({ from: "B", to: "B", data: { n: 2 } })).type.not.toRaiseError()
       expect(nextMachines.free.transition({ from: "B", to: "A" })).type.not.toRaiseError()
@@ -108,7 +108,7 @@ describe("Game.StateMachine transitions", () => {
       // Countdown and Over both list Lobby.
       if (round._tag === "Countdown" || round._tag === "Over") {
         expect(nextMachines.round.transition({ from: round._tag, to: "Lobby" })).type.toBe<
-          Result.Result<void, Machine.MachineStateMismatch<RoundState>>
+          Result.Result<void, Machine.MachineStateMismatchError<RoundState>>
         >()
         // Only Countdown lists Playing.
         expect(nextMachines.round.transition).type.not.toBeCallableWith({ from: round._tag, to: "Playing", data: { round: 1 } })
@@ -137,14 +137,14 @@ describe("Game.StateMachine transitions", () => {
       nextMachines.phase.set({ _tag: "Battle", wave: 1 })
       // Reading and cancelling what is queued stay.
       expect(nextMachines.round.getPending()).type.not.toRaiseError()
-      expect(nextMachines.round.reset()).type.toBe<void>()
+      expect(nextMachines.round.cancelPending()).type.toBe<void>()
     })
   })
 
   it("fails a sub-state's move while its parent is elsewhere", () => {
     Game.System("MachineMoves/SubMove", { nextMachines: { phase: Game.System.nextState(Phase) } }, ({ nextMachines }) => {
       expect(nextMachines.phase.transition({ from: "Setup", to: "Battle", data: { wave: 1 } })).type.toBe<
-        Result.Result<void, Machine.MachineStateMismatch<"Setup" | "Battle"> | Machine.SubStateInactive>
+        Result.Result<void, Machine.MachineStateMismatchError<"Setup" | "Battle"> | Machine.SubStateInactiveError>
       >()
       // Battle has no way out.
       expect(nextMachines.phase.transition).type.not.toBeCallableWith({ from: "Battle", to: "Setup" })

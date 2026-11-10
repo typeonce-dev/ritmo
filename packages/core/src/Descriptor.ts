@@ -696,7 +696,8 @@ type StateRejection<Definition> = Definition extends StandardSchema<infer _Encod
  * a compare-and-set: they write only while the entity is still in `from` (or
  * `state`), and otherwise return an `EntityStateMismatch` failure. With
  * `transitions`, `to` is checked against the graph at compile time; the graph
- * lists every state (`[]` for one with no way out). Writes are ordinary
+ * lists every state (`[]` for one with no way out), and the slot's unchecked
+ * `set` does not compile, so a system's moves are ones the graph lists. Writes are ordinary
  * component writes: immediate, visible to later systems, rolled back with a
  * failed system. There are no per-state schedules: branch on `get()._tag` in
  * the system that owns the component, and emit an event on a transition

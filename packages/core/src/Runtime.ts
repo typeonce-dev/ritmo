@@ -1739,7 +1739,7 @@ const makeValidatedRuntime = <
   } as MachineUpdateView<M>)
 
   /** The failure of a write to a sub-state while its parent is in another state. */
-  const subStateInactive = (stateMachine: Machine.StateMachine.Any): Result.Result<never, Machine.SubStateInactive> =>
+  const subStateInactive = (stateMachine: Machine.StateMachine.Any): Result.Result<never, Machine.SubStateInactiveError> =>
     Result.failure({
       _tag: "SubStateInactive",
       machine: stateMachine.name,
@@ -1795,7 +1795,7 @@ const makeValidatedRuntime = <
       queueMachine(stateMachine, move.data === undefined ? { _tag: move.to } : { _tag: move.to, ...move.data }, false, move.from)
       return succeeded
     },
-    reset() {
+    cancelPending() {
       journalMachine(stateMachine.key)
       pendingMachines.delete(stateMachine.key)
     }
@@ -2300,8 +2300,8 @@ const makeValidatedRuntime = <
         // Discarded earlier in this marker: its parent left the state it exists in.
         continue
       }
-      // A transition schedule earlier in this marker may have reset this
-      // request: it is not applied.
+      // A transition schedule earlier in this marker may have cancelled this
+      // request (`cancelPending`): it is not applied.
       if (!pendingMachines.has(machineKey)) continue
       // It may also have queued a newer value for this machine: that one
       // waits for the next marker.
