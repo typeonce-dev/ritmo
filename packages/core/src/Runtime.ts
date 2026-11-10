@@ -2618,7 +2618,7 @@ const makeValidatedRuntime = <
     run: () => Result.Result<void, SystemFailure>
   ): Result.Result<void, SystemFailure> => {
     if (hostListeners.size === 0) return run()
-    emitHost({ type: "tick.start", schedules, frame: frameCount })
+    emitHost({ type: "tick.start", schedules, frame: frameCount, tick: world.currentTick() })
     let result: Result.Result<void, SystemFailure>
     try {
       result = run()
@@ -3141,6 +3141,18 @@ const makeValidatedRuntime = <
     return succeeded
   }
 
+  const tracedRewind = (value: Checkpoint.Checkpoint<Root>): Result.Result<void, Checkpoint.RewindError> => {
+    const from = world.currentTick()
+    const mark = CheckpointInternal.internalOf(value) as RuntimeMark | undefined
+    const result = rewind(value)
+    if (tracing || hostListeners.size > 0) {
+      const event: Debug.RewindEvent = { type: "rewind", frame: frameCount, tick: from, toTick: mark?.owner === checkpointOwner ? mark.world.tick : from, ok: result.ok }
+      if (tracing) emit(event)
+      emitHost(event)
+    }
+    return result
+  }
+
   const runtime: Runtime<S, Services, Resources, Root, Machines> = {
     schema: options.schema,
     services: providedServices,
@@ -3156,7 +3168,7 @@ const makeValidatedRuntime = <
     restore: tracedRestore as unknown as Snapshot.Gate<S, typeof restore>,
     checkpoint: checkpoint as Runtime<S, Services, Resources, Root, Machines>["checkpoint"],
     // Restore failures are typed per service in the interface; the runtime only knows their names.
-    rewind: rewind as Runtime<S, Services, Resources, Root, Machines>["rewind"],
+    rewind: tracedRewind as Runtime<S, Services, Resources, Root, Machines>["rewind"],
     inspect,
     send: send as Runtime<S, Services, Resources, Root, Machines>["send"]
   }
@@ -3301,7 +3313,7 @@ const makeValidatedRuntime = <
     }
     const frame = frameCount
     const hosted = hostListeners.size > 0
-    if (hosted) emitHost({ type: "tick.start", schedules: [schedule], frame })
+    if (hosted) emitHost({ type: "tick.start", schedules: [schedule], frame, tick: world.currentTick() })
     changedMachines = new Set()
     const label = scheduleName(schedule)
     // Like `traceSchedule`: the schedule events are emitted when tracing was on at its start.

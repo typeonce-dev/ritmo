@@ -79,6 +79,30 @@ describe("Ignored tick failures", () => {
   })
 })
 
+describe("Rewinds", () => {
+  it("are trace and host events, and a tick's start says the change tick a rewind compares with", () => {
+    expect<Extract<Debug.TraceEvent, { readonly type: "rewind" }>>().type.toBe<Debug.RewindEvent>()
+    expect<Extract<Debug.HostEvent, { readonly type: "rewind" }>>().type.toBe<Debug.RewindEvent>()
+    expect<Debug.RewindEvent>().type.toBe<{
+      readonly type: "rewind"
+      readonly frame: number
+      readonly tick: number
+      readonly toTick: number
+      readonly ok: boolean
+    }>()
+    expect<Extract<Debug.HostEvent, { readonly type: "tick.start" }>["tick"]>().type.toBe<number>()
+  })
+
+  it("carry no schedules: a host listener narrows by type before reading them", () => {
+    expect<Debug.RewindEvent>().type.not.toHaveProperty("schedules")
+    const listener = (event: Debug.HostEvent) => {
+      // @ts-expect-error Property 'schedules' does not exist on type 'RewindEvent'
+      void event.schedules
+    }
+    void listener
+  })
+})
+
 describe("Debug.serviceLints", () => {
   it("types the findings a service reports", () => {
     const Reporting = Descriptor.Service<Debug.ReportsLints>()("DebugTypes/Reporting")
