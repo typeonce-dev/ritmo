@@ -312,7 +312,10 @@ describe("system local state", () => {
 
 describe("numeric handles", () => {
   it("brands without allocating and compares by entity identity in sets", () => {
-    const id = Entity.makeEntityId(7)
+    // A number from a save or a message: the guard makes it a handle, the game names its id.
+    const raw: unknown = JSON.parse("7")
+    if (!Entity.isHandle(Game.schema)(raw)) throw new Error("not a handle")
+    const id = Game.Entity.id(raw)
     const first = Entity.handle(id)
     const second = Entity.handle(id)
     expect(first).toBe(id)

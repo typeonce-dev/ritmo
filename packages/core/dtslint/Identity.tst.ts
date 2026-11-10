@@ -1,4 +1,6 @@
+import * as Ritmo from "@typeonce/ritmo"
 import { Descriptor, Schema } from "@typeonce/ritmo"
+import * as Entity from "@typeonce/ritmo/Entity"
 import { describe, expect, it } from "tstyche"
 
 const Position = Descriptor.Component<{ x: number; y: number }>()("Identity/Position")
@@ -64,5 +66,16 @@ describe("Game.Entity.id", () => {
         Other.Entity.id(Game.Entity.handle(entity))
       }
     })
+  })
+})
+
+describe("Entity constructors", () => {
+  it("stay the runtime's own: games spawn drafts and make handles through the game", () => {
+    // An id, a handle, or a draft made from a bare number would carry a proof
+    // nothing checked. `Game.Command.spawn(...)`, `Game.Entity.handle(...)`,
+    // and `Entity.isHandle(...)` with `Game.Entity.id(...)` are the public ways.
+    expect<keyof typeof Entity & ("makeEntityId" | "makeHandle" | "draft")>().type.toBe<never>()
+    expect<keyof typeof Ritmo.Entity & ("makeEntityId" | "makeHandle" | "draft")>().type.toBe<never>()
+    expect<keyof typeof Entity>().type.toBe<"handle" | "isHandle">()
   })
 })

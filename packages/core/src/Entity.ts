@@ -37,6 +37,7 @@
  * Explicit helpers for constructing and refining entity ids and handles.
  */
 import type { Brand } from "./internal/brand.ts"
+import { makeHandle } from "./internal/entity.ts"
 import type { Descriptor } from "./Descriptor.ts"
 import type { StagedRelation } from "./Relation.ts"
 import type { Schema } from "./Schema.ts"
@@ -226,27 +227,6 @@ export interface EntityRef<S extends Schema.Any, Root = unknown, in Proves = nev
 }
 
 /**
- * Brands a runtime integer id as an entity id.
- *
- * This is a low-level constructor used by the runtime and command system. It
- * allocates nothing: the id is the number.
- */
-export const makeEntityId = <S extends Schema.Any, Root = unknown>(value: number): EntityId<S, Root> =>
-  value as EntityId<S, Root>
-
-/**
- * Creates a durable handle from a runtime entity id.
- *
- * This is a low-level constructor used by the bound `Game.Entity` helpers and
- * by runtime lookup resolution.
- */
-export const makeHandle = <
-  Root,
-  Intent extends Descriptor<"component", string, any> | undefined = undefined
->(value: number): Handle<Root, Intent> =>
-  value as Handle<Root, Intent>
-
-/**
  * Anything that identifies one current-runtime entity: an id, or an entity
  * from a query.
  */
@@ -317,21 +297,3 @@ export const isHandle = <
   _intent?: Intent
 ): (raw: unknown) => raw is Handle<Root, Intent> =>
   (raw: unknown): raw is Handle<Root, Intent> => typeof raw === "number" && Number.isInteger(raw) && raw > 0
-
-/**
- * Creates a typed entity draft from an id and a proof.
- */
-export const draft = <S extends Schema.Any, P extends ComponentProof, Root = unknown>(
-  id: EntityId<S, Root>,
-  proof: P,
-  components: ReadonlyArray<StagedComponent> = [],
-  relations: ReadonlyArray<StagedRelation<S, Root>> = []
-): EntityDraft<S, P, Root> => ({
-  kind: "EntityDraft",
-  id,
-  __schemaRoot: undefined,
-  proof,
-  components,
-  relations
-})
-

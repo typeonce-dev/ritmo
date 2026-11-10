@@ -456,7 +456,7 @@ describe("Schema", () => {
       }
     })
     const Game = Schema.bind(schema)
-    const entityId = Entity.makeEntityId<typeof schema, typeof Game.schema>(1)
+    const entityId = 1 as Entity.EntityId<typeof schema, typeof Game.schema>
 
     const query = Game.Query({
       selection: {
@@ -551,7 +551,7 @@ describe("Schema", () => {
       }
     }), Root)
     const schema = Game.schema
-    const entityId = Entity.makeEntityId<typeof schema, typeof Root>(1)
+    const entityId = 1 as Entity.EntityId<typeof schema, typeof Root>
 
     const CameraTargetQuery = Game.Query({
       selection: {
@@ -705,7 +705,7 @@ describe("Schema", () => {
   it("cannot write through a query the system did not declare", () => {
     const Hp = Descriptor.Component<number>()("UndeclaredWrite/Hp")
     const Game = Schema.bind(Schema.fragment({ components: { Hp } }))
-    const entityId = Entity.makeEntityId<typeof Game.schema, typeof Game.schema>(1)
+    const entityId = 1 as Entity.EntityId<typeof Game.schema, typeof Game.schema>
     Game.System("UndeclaredWrite/Probe", {
       queries: { readers: Game.Query({ selection: { hp: Game.Query.read(Hp) } }) }
     }, ({ queries, lookup }) => {

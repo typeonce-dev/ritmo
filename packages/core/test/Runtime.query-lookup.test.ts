@@ -6,7 +6,7 @@ import * as Query from "@typeonce/ritmo/Query"
 import * as Runtime from "@typeonce/ritmo/Runtime"
 import * as Schedule from "@typeonce/ritmo/Schedule"
 import * as System from "@typeonce/ritmo/System"
-import { readResourceValue } from "./utils/fixtures.ts"
+import { readResourceValue, unknownEntityId } from "./utils/fixtures.ts"
 
 const Position = Descriptor.Component<{ x: number; y: number }>()("Position")
 const Velocity = Descriptor.Component<{ x: number; y: number }>()("Velocity")
@@ -331,7 +331,7 @@ describe("Runtime query and lookup", () => {
             resources.lastError.set("MissingSetup")
             return
           }
-          const missing = queries.positions.get(Entity.makeEntityId<typeof schema>(9999))
+          const missing = queries.positions.get(unknownEntityId<typeof schema>(9999))
           const mismatch = queries.velocities.get(existingId)
           resources.lastError.set(`${missing.ok ? "ok" : missing.error._tag}/${mismatch.ok ? "ok" : mismatch.error._tag}`)
         }
