@@ -101,7 +101,7 @@ describe("Fuzz.run", () => {
       schedules: { update },
       hostClock
     })
-    // @ts-expect-error __fixInvariantRequirements__: { readonly __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "FuzzTypes/Limit"
+    // @ts-expect-error the runtime is missing resource FuzzTypes/Limit
     Fuzz.run(bare, { schedule: "update", inputs: [Pads], invariants: [UnderLimit], frames: 10, seed: 1 })
   })
 
@@ -189,7 +189,7 @@ describe("Replay.session", () => {
       schedules: { update },
       hostClock
     })
-    // @ts-expect-error __fixInvariantRequirements__: { readonly __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "FuzzTypes/Limit"
+    // @ts-expect-error the runtime is missing resource FuzzTypes/Limit
     Replay.session(bare, file, { invariants: [UnderLimit] })
   })
 })

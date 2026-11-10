@@ -87,9 +87,9 @@ describe("Game.Condition.check", () => {
     const group = Game.Schedule.when([Game.Condition.and(frozen, Game.Condition.inState(Flow, "Playing"))], Noop)
 
     const withoutFreeze = Game.Runtime.make({ services: Runtime.services(), machines: Runtime.machines(Runtime.machine(Flow, { _tag: "Playing" })) }).value
-    // @ts-expect-error __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "CheckTypes/Freeze"
+    // @ts-expect-error the runtime is missing resource CheckTypes/Freeze
     withoutFreeze.tick(Game.Schedule(gatedSystem))
-    // @ts-expect-error __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "CheckTypes/Freeze"
+    // @ts-expect-error the runtime is missing resource CheckTypes/Freeze
     withoutFreeze.tick(group)
 
     const ready = Game.Runtime.make({

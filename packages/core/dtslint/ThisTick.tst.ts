@@ -103,10 +103,10 @@ describe("Game.System.thisTick", () => {
       events: { damage: Game.System.thisTick(Game.System.readEvent(Damage)) },
       services: { clock: Game.System.service(Clock) }
     }, () => {})
-    // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "ThisTick/Clock"
+    // @ts-expect-error the runtime is missing service ThisTick/Clock
     runtime.tick(Game.Schedule(Deal, Timed))
     const bare = Game.Runtime.make({ services: Game.Runtime.services() }).value
-    // @ts-expect-error __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "ThisTick/Score"
+    // @ts-expect-error the runtime is missing resource ThisTick/Score
     bare.tick(Game.Schedule(Count, Show))
   })
 

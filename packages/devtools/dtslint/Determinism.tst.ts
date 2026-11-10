@@ -22,7 +22,7 @@ describe("Determinism.check", () => {
       runtime: Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value,
       schedules: { update: Game.Schedule() }
     })
-    // @ts-expect-error __fixLabelsRequirements__: { readonly __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "DetTypes/Count"
+    // @ts-expect-error the runtime is missing resource DetTypes/Count
     Determinism.check(bare, { schedule: "update", frames: 10, hostClock: HostClock.test(), labels: Counted })
   })
 

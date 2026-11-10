@@ -94,29 +94,16 @@ export interface Target<
   readonly machineValues: Machines
 }
 
-type InvariantRequirementErrors<
-  Invariants extends ReadonlyArray<Invariant>,
-  Services extends Record<string, unknown>,
-  Resources extends object,
-  Machines extends Record<string, unknown>
-> = Runtime.ValidateInspector<Invariants[number]["inspector"], Services, Resources, Machines> extends {
-  readonly __fixRuntimeRequirements__: infer Errors
-}
-  ? Errors
-  : never
-
 /**
  * Rejects invariants whose inspectors read a resource, service, or machine
- * the runtime does not provide, naming each one.
+ * the runtime does not provide, naming each one (as `runtime.inspect` does).
  */
 export type ValidateInvariants<
   Invariants extends ReadonlyArray<Invariant>,
   Services extends Record<string, unknown>,
   Resources extends object,
   Machines extends Record<string, unknown>
-> = [InvariantRequirementErrors<Invariants, Services, Resources, Machines>] extends [never]
-  ? unknown
-  : { readonly __fixInvariantRequirements__: InvariantRequirementErrors<Invariants, Services, Resources, Machines> }
+> = Runtime.ValidateInspector<Invariants[number]["inspector"], Services, Resources, Machines>
 
 /**
  * Names entities in devtools text: a `Game.Inspector` returning a
@@ -135,17 +122,6 @@ export type ValidateInvariants<
  */
 export type LabelsInspector<Root = any> = Inspector.InspectorDefinition<any, unknown, Root, any, any>
 
-type LabelsRequirementErrors<
-  Labels extends Inspector.Inspector.Any,
-  Services extends Record<string, unknown>,
-  Resources extends object,
-  Machines extends Record<string, unknown>
-> = Runtime.ValidateInspector<Labels, Services, Resources, Machines> extends {
-  readonly __fixRuntimeRequirements__: infer Errors
-}
-  ? Errors
-  : never
-
 /**
  * Rejects a `labels` inspector that does not return a
  * `ReadonlyMap<number, string>`, or that reads a resource, service, or
@@ -159,9 +135,7 @@ export type ValidateLabels<
 > = [Labels] extends [never]
   ? unknown
   : [Inspector.Inspector.Value<Labels>] extends [ReadonlyMap<number, string>]
-    ? [LabelsRequirementErrors<Labels, Services, Resources, Machines>] extends [never]
-      ? unknown
-      : { readonly __fixLabelsRequirements__: LabelsRequirementErrors<Labels, Services, Resources, Machines> }
+    ? Runtime.ValidateInspector<Labels, Services, Resources, Machines>
     : { readonly __fixLabels__: "labels must return a ReadonlyMap<number, string> from entity id to label" }
 
 /** What `Session.make` drives and checks, and how it prints. */

@@ -25,7 +25,7 @@ describe("InputCapture", () => {
       services: Game.Runtime.services(),
       resources: { Input: Keyboard.idle(bindings), Wrong: { jump: false } }
     }).value
-    // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "CaptureTypes/Keyboard"
+    // @ts-expect-error the runtime is missing service CaptureTypes/Keyboard
     withoutKeyboard.tick(Game.Schedule(Capture))
 
     const ready = Game.Runtime.make({
@@ -46,7 +46,7 @@ describe("InputCapture", () => {
     const services = Game.Runtime.services(Game.Runtime.service(KeyboardInput, Keyboard.actions(window, bindings)))
     const resources = { Input: Keyboard.idle(bindings), Wrong: { jump: false } }
     const withoutMachine = Game.Runtime.make({ services, resources }).value
-    // @ts-expect-error __runtimeRequirementError__: "Missing machine"; readonly __requirement__: "CaptureTypes/Pace"
+    // @ts-expect-error the runtime is missing machine CaptureTypes/Pace
     withoutMachine.tick(Game.Schedule(Capture))
     const ready = Game.Runtime.make({ services, resources, machines: Game.Runtime.machines(Game.Runtime.machine(Pace, { _tag: "Running" })) }).value
     expect(ready.tick(Game.Schedule(Capture)).ok).type.toBe<boolean>()

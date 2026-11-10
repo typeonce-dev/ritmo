@@ -83,7 +83,7 @@ describe("Netcode.rollback", () => {
   it("rejects a schedule whose requirements the runtime does not provide", () => {
     const Missing = Descriptor.Service<{ readonly speed: number }>()("NetTypes/Missing")
     const Needs = Game.System("NetTypes/Needs", { services: { missing: Game.System.service(Missing) } }, () => {})
-    // @ts-expect-error Missing service
+    // @ts-expect-error the runtime is missing service NetTypes/
     Netcode.rollback(runtime, { ...options, simulate: Game.Schedule(Capture, Needs) })
   })
 
@@ -175,7 +175,7 @@ describe("Netcode.syncTest", () => {
   it("rejects a schedule whose requirements the runtime does not provide", () => {
     const Missing = Descriptor.Service<{ readonly speed: number }>()("NetTypes/SyncMissing")
     const Needs = Game.System("NetTypes/SyncNeeds", { services: { missing: Game.System.service(Missing) } }, () => {})
-    // @ts-expect-error Missing service
+    // @ts-expect-error the runtime is missing service NetTypes/
     Netcode.syncTest(runtime, { ...syncOptions, simulate: Game.Schedule(Capture, Needs) })
   })
 
