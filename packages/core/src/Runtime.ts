@@ -639,6 +639,9 @@ export interface Runtime<
    * The first expected system failure stops the tick and is returned; that
    * system's ECS writes are rolled back and earlier systems stay committed.
    *
+   * Calling `tick` or `tryTick` while one is running (from a system, a
+   * service, or a trace or host listener) throws.
+   *
    * To tick at a fixed rate from a frame loop, use `FixedLoop.start`
    * instead of an accumulator of your own.
    */
@@ -654,7 +657,8 @@ export interface Runtime<
    *
    * Requirements are checked against current provisioning first and missing
    * ones are returned as data, then `Game.System.thisTick` reads are checked
-   * against the schedule's order (`TickOrderViolation`).
+   * against the schedule's order (`TickOrderViolation`). Like `tick`, it
+   * throws while a `tick` or `tryTick` is running.
    */
   readonly tryTick: <const Selected extends ExecutableScheduleDefinition<S, any, any, any, any>>(
     schedule: Selected
@@ -2467,7 +2471,11 @@ const makeValidatedRuntime = <
     return succeeded
   }
 
-  /** Whether `runtime.tick` is on the stack: a nested `tick` is a defect. */
+  /**
+   * Whether `runtime.tick` or `runtime.tryTick` is on the stack, from its
+   * first check to its return: a nested `tick` or `tryTick` is a defect, since
+   * the nested run would commit the outer system's rollback journal.
+   */
   let ticking = false
   /**
    * Whether a tick is advancing its frame or running its schedules (in
@@ -2637,6 +2645,7 @@ const makeValidatedRuntime = <
     schedule: Selected
   ): Result.Result<void, MissingRuntimeRequirements | TickOrderViolation | Schedule.FailureOf<Selected>> => {
     if (frameOpen) throw openFrameDefect("runtime.tryTick")
+    if (ticking) throw new Error("runtime.tryTick cannot run inside another tick")
     if (debugEnabled) reportUnread("next-tick")
     const missing = schedule.requirements
       .filter((requirement) => !hasRequirement(requirement))
@@ -2654,12 +2663,13 @@ const makeValidatedRuntime = <
       return watchResult(Result.failure({ kind: "TickOrderViolation" as const, issues }), [schedule])
     }
 
-    if (inTick) throw new Error("runtime.tryTick cannot run inside another tick")
+    ticking = true
     inTick = true
     try {
       advanceFrame()
       return watchResult(observedTick([schedule], () => runScheduleUnsafe(schedule)), [schedule]) as Result.Result<void, Schedule.FailureOf<Selected>>
     } finally {
+      ticking = false
       inTick = false
     }
   }
@@ -3250,7 +3260,7 @@ const makeValidatedRuntime = <
     schedule: ExecutableScheduleDefinition<S, any, any, any, any>
   ): Result.Result<Debug.FrameCursor<SystemFailure>, MissingRuntimeRequirements | TickOrderViolation> => {
     if (frameOpen) throw openFrameDefect("debug.beginFrame")
-    if (inTick) throw new Error("debug.beginFrame was called while a schedule is running: begin a frame between ticks")
+    if (inTick || ticking) throw new Error("debug.beginFrame was called while a schedule is running: begin a frame between ticks")
     reportUnread("next-tick")
     const missing = schedule.requirements
       .filter((requirement) => !hasRequirement(requirement))
@@ -3304,6 +3314,7 @@ const makeValidatedRuntime = <
       remaining: () => ended ? [] : steps.slice(index).map(DebugInternal.describeStep),
       next: () => {
         if (ended) throw new Error("FrameCursor.next was called after the frame ended: begin another frame")
+        if (inTick) throw new Error("FrameCursor.next was called while a step is running: step the frame from the host, between steps")
         const at = index
         const step = steps[at]!
         index += 1
