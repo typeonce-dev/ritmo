@@ -725,7 +725,8 @@ type StateRejection<Definition> = Definition extends StandardSchema<infer _Encod
  *   air: z.object({ vy: z.number(), coyote: z.int() })
  * }, { transitions: { ground: ["air"], air: ["ground"] } })
  *
- * const Game = Schema.bind(Schema.fragment({ components: { Contact } }))
+ * const Root = Schema.defineRoot("Game")
+ * const Game = Schema.bind(Schema.fragment({ components: { Contact } }), Root)
  * const gravity = 0.5
  *
  * const Spawn = Game.System("Game/Spawn", { commands: Game.System.commands(Game.System.spawns(Contact)) }, ({ commands }) => {

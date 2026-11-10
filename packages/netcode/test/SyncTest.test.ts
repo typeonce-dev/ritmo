@@ -25,7 +25,8 @@ const Score = Descriptor.ConstructedResource(Whole)("SyncTest/Score")
 const Shots = Descriptor.ConstructedResource(Whole)("SyncTest/Shots")
 const Seats = Descriptor.Service<Netcode.Source<Input>>()("SyncTest/Seats")
 const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("SyncTest/Inputs")
-const Leaky = Schema.bind(Schema.fragment({ resources: { Score, Shots, Inputs } }))
+const Root = Schema.defineRoot("SyncTest")
+const Leaky = Schema.bind(Schema.fragment({ resources: { Score, Shots, Inputs } }), Root)
 const Capture = InputCapture.system(Leaky, { name: "SyncTest/Capture", source: Seats, resource: Inputs })
 const Fire = Leaky.System("SyncTest/Fire", {
   resources: { inputs: Leaky.System.readResource(Inputs), score: Leaky.System.writeResource(Score), shots: Leaky.System.writeResource(Shots) }

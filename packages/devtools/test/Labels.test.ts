@@ -9,7 +9,8 @@ const Position = Descriptor.Component<{ readonly x: number }>()("Labels/Position
 const Health = Descriptor.Component<number>()("Labels/Health")
 const Player = Descriptor.Tag("Labels/Player")
 const Slime = Descriptor.Tag("Labels/Slime")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Player, Slime } }))
+const Root = Schema.defineRoot("Labels")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Player, Slime } }), Root)
 
 const Spawn = Game.System("Labels/Spawn", { commands: Game.System.commands(Game.System.spawns(Position, Health, Player, Slime)) }, ({ commands }) => {
   commands.spawn(Game.Command.spawn([Position, { x: 0 }], [Health, 3], [Player, {}]))

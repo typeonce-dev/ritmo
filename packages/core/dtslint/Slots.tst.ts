@@ -12,8 +12,10 @@ const Safe = Descriptor.ConstructedComponent(Codecs.safeVector)("Cells/Safe")
 const Label = Descriptor.ConstructedComponent(Codecs.string)("Cells/Label")
 const Frozen = Descriptor.Tag("Cells/Frozen")
 
-const Game = Schema.bind(Schema.fragment({ components: { Position, Tags, Health, Safe, Label, Frozen } }))
-const Other = Schema.bind(Schema.fragment({ components: { Health } }))
+const Root = Schema.defineRoot("Cells")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Tags, Health, Safe, Label, Frozen } }), Root)
+const OtherRoot = Schema.defineRoot("Cells/Other")
+const Other = Schema.bind(Schema.fragment({ components: { Health } }), OtherRoot)
 
 describe("query slots", () => {
   it("read slots return deeply readonly values and cannot write", () => {
@@ -71,7 +73,7 @@ describe("query slots", () => {
 
   it("relation slots read ids; optional ones read undefined while the entity lacks the relation", () => {
     const { relation: ChildOf } = Descriptor.Hierarchy("Cells/ChildOf", "Cells/Children")
-    const Linked = Schema.bind(Schema.fragment({ components: { Health }, relations: { ChildOf } }))
+    const Linked = Schema.bind(Schema.fragment({ components: { Health }, relations: { ChildOf } }), Root)
     Linked.System("Cells/OptionalRelation", {
       queries: {
         items: Linked.Query({ selection: { parent: Linked.Query.optionalRelation(ChildOf), children: Linked.Query.optionalRelated(ChildOf) } }),
@@ -80,14 +82,14 @@ describe("query slots", () => {
     }, ({ queries }) => {
       const { data } = queries.items
       for (const entity of queries.items.each()) {
-        expect(data.parent).type.toBe<OptionalSlot<EntityId<typeof Linked.schema, typeof Linked.schema>>>()
-        expect(data.children).type.toBe<OptionalSlot<ReadonlyArray<EntityId<typeof Linked.schema, typeof Linked.schema>>>>()
-        expect(data.parent.get(entity)).type.toBe<EntityId<typeof Linked.schema, typeof Linked.schema> | undefined>()
+        expect(data.parent).type.toBe<OptionalSlot<EntityId<typeof Linked.schema, typeof Root>>>()
+        expect(data.children).type.toBe<OptionalSlot<ReadonlyArray<EntityId<typeof Linked.schema, typeof Root>>>>()
+        expect(data.parent.get(entity)).type.toBe<EntityId<typeof Linked.schema, typeof Root> | undefined>()
         // A required relation slot needs an entity whose query proves the relation.
         expect(queries.parented.data.parent.get).type.not.toBeCallableWith(entity)
       }
       for (const entity of queries.parented.each()) {
-        expect(queries.parented.data.parent.get(entity)).type.toBe<EntityId<typeof Linked.schema, typeof Linked.schema>>()
+        expect(queries.parented.data.parent.get(entity)).type.toBe<EntityId<typeof Linked.schema, typeof Root>>()
       }
     })
   })
@@ -102,7 +104,7 @@ describe("query slots", () => {
       for (const entity of queries.items.each()) {
         expect(data).type.not.toHaveProperty("frozen")
         expect(data).type.not.toHaveProperty("position")
-        expect(entity.id).type.toBe<EntityId<typeof Game.schema, typeof Game.schema>>()
+        expect(entity.id).type.toBe<EntityId<typeof Game.schema, typeof Root>>()
       }
       expect(queries.items.single()).type.toBe<Result.Result<(typeof queries.items.each extends () => ReadonlyArray<infer M> ? M : never), Query.SingleError>>()
     })
@@ -125,8 +127,8 @@ describe("commands", () => {
       )
     }, ({ commands }) => {
       const id = commands.spawn(Game.Command.spawn([Health, 1]))
-      expect(id).type.toBe<SpawnedId<typeof Game.schema, typeof Game.schema, "Cells/Health">>()
-      expect(id).type.toBeAssignableTo<EntityId<typeof Game.schema, typeof Game.schema>>()
+      expect(id).type.toBe<SpawnedId<typeof Game.schema, typeof Root, "Cells/Health">>()
+      expect(id).type.toBeAssignableTo<EntityId<typeof Game.schema, typeof Root>>()
       expect(commands.insert).type.toBeCallableWith(id, [Health, 2], [Position, { x: 0, y: 0 }])
       expect(commands.insert).type.not.toBeCallableWith(id, [Health, "2"])
       expect(commands.insert).type.not.toBeCallableWith(id, [Position, 2])
@@ -140,7 +142,7 @@ describe("writes take what reads return", () => {
   it("writes a value read from another cell back without a copy", () => {
     const Bag = Descriptor.Component<{ items: Array<number> }>()("Cells/Bag")
     const Hit = Descriptor.Event<{ amount: number }>()("Cells/Hit")
-    const Game = Schema.bind(Schema.fragment({ components: { Bag }, events: { Hit } }))
+    const Game = Schema.bind(Schema.fragment({ components: { Bag }, events: { Hit } }), Root)
     const Bags = Game.Query({ selection: { bag: Game.Query.write(Bag) } })
     Game.System("Cells/Copy", {
       queries: { bags: Bags },

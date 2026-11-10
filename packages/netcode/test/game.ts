@@ -44,7 +44,8 @@ export const Fired = Descriptor.Event<{ readonly seat: number; readonly x: numbe
 /** Host-side and out of band: lets a test break one peer's determinism on purpose. */
 export const Drift = Descriptor.ConstructedResource(Whole)("NetTest/Drift")
 
-export const Game = Schema.bind(Schema.fragment({ components: { Player, Marker }, resources: { Total, Time, Inputs, Drift }, events: { Fired } }))
+const Root = Schema.defineRoot("NetTest")
+export const Game = Schema.bind(Schema.fragment({ components: { Player, Marker }, resources: { Total, Time, Inputs, Drift }, events: { Fired } }), Root)
 
 const Capture = InputCapture.system(Game, { name: "NetTest/Capture", source: Seats, resource: Inputs })
 const Ticking = Clock.system(Game, { name: "NetTest/Clock", resource: Time })

@@ -7,7 +7,8 @@ const Frozen = Descriptor.Component<{}>()("QueryShape/Frozen")
 const Tag = Descriptor.Component<{}>()("QueryShape/Tag")
 const Paved = Descriptor.Component<{}>()("QueryShape/Paved")
 
-const Game = Schema.bind(Schema.fragment({ components: { Position, Frozen, Tag, Paved } }))
+const Root = Schema.defineRoot("QueryShape")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Frozen, Tag, Paved } }), Root)
 
 describe("a query that can never match", () => {
   it("rejects a component both required and excluded", () => {

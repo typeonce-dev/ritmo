@@ -12,7 +12,8 @@
  * @example
  * ```ts
  * const Rng = Descriptor.ConstructedResource(Random.codec)("Game/Rng")
- * const Game = Schema.bind(Schema.fragment({ resources: { Rng } }))
+ * const Root = Schema.defineRoot("Game")
+ * const Game = Schema.bind(Schema.fragment({ resources: { Rng } }), Root)
  * const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Rng: Random.seed(0x5eed) } })
  *
  * const kinds = ["grunt", "archer"] as const

@@ -12,12 +12,13 @@ const Lonely = Descriptor.Event<number>()("Debug/Lonely")
 const Clock = Descriptor.Service<{ readonly now: () => number }>()("Debug/Clock")
 const { relation: ChildOf } = Descriptor.Hierarchy("Debug/ChildOf", "Debug/Children")
 
+const Root = Schema.defineRoot("Debug")
 const Game = Schema.bind(Schema.fragment({
   components: { Position, Tagged, Sprite },
   resources: { Score },
   events: { Ping, Lonely },
   relations: { ChildOf }
-}))
+}), Root)
 const Flow = Game.StateMachine("Debug/Flow", { Menu: {}, Playing: {} })
 
 const makeRuntime = () => Game.Runtime.make({

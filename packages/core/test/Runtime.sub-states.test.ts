@@ -4,7 +4,8 @@ import * as Codecs from "./codecs.ts"
 import { worldOf } from "./saved.ts"
 
 const Name = Descriptor.ConstructedComponent(Codecs.string)("SubStates/Name")
-const Game = Schema.bind(Schema.fragment({ components: { Name } }))
+const Root = Schema.defineRoot("SubStates")
+const Game = Schema.bind(Schema.fragment({ components: { Name } }), Root)
 const Session = Game.StateMachine("SubStates/Session", { Menu: {}, Playing: {} })
 const Phase = Game.StateMachine("SubStates/Phase", { Setup: {}, Battle: {} }, { within: [Session, "Playing"] })
 const Turn = Game.StateMachine("SubStates/Turn", { Mine: {}, Theirs: {} }, { within: [Phase, "Battle"] })

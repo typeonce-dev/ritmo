@@ -42,7 +42,8 @@ const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats
 const Time = Clock.resource("NetRewind/Time", step)
 /** What gameplay reads from the library's world, mirrored so the checksum covers it. */
 const Position = Descriptor.ConstructedResource(Whole)("NetRewind/Position")
-const Game = Schema.bind(Schema.fragment({ resources: { Inputs, Time, Position } }))
+const Root = Schema.defineRoot("NetRewind")
+const Game = Schema.bind(Schema.fragment({ resources: { Inputs, Time, Position } }), Root)
 
 const Move = Game.System("NetRewind/Move", {
   resources: { inputs: Game.System.readResource(Inputs), position: Game.System.writeResource(Position) },

@@ -9,10 +9,11 @@ const { relation: Targeting } = Descriptor.Relation("Dropped/Targeting", "Droppe
 const { relation: ChildOf } = Descriptor.Hierarchy("Dropped/ChildOf", "Dropped/Children")
 const { relation: Elsewhere } = Descriptor.Relation("Dropped/Elsewhere", "Dropped/ElsewhereBy")
 
+const Root = Schema.defineRoot("Dropped")
 const Game = Schema.bind(Schema.fragment({
   components: { Name, Idle },
   relations: { Targeting, ChildOf }
-}))
+}), Root)
 type S = typeof Game.schema
 
 describe("Game.System.readDroppedRelations", () => {
@@ -25,7 +26,7 @@ describe("Game.System.readDroppedRelations", () => {
       droppedRelations: { lost: Game.System.readDroppedRelations(Targeting) },
       commands: Game.System.commands(Game.System.inserts(Idle), Game.System.relates(Targeting))
     }, ({ droppedRelations, commands }) => {
-      expect(droppedRelations.lost.all()).type.toBe<ReadonlyArray<Relation.Relation.Dropped<typeof Targeting, S, S>>>()
+      expect(droppedRelations.lost.all()).type.toBe<ReadonlyArray<Relation.Relation.Dropped<typeof Targeting, S, typeof Root>>>()
       expect(droppedRelations.lost.lagged()).type.toBe<boolean>()
       for (const { source, target } of droppedRelations.lost.all()) {
         // A system that writes the relation may read its dropped edges too.

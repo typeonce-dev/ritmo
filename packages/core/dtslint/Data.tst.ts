@@ -6,7 +6,8 @@ import { describe, expect, it } from "tstyche"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Data/Position")
 const Velocity = Descriptor.Component<{ x: number; y: number }>()("Data/Velocity")
 const Health = Descriptor.Component<number>()("Data/Health")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity, Health } }))
+const Root = Schema.defineRoot("Data")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity, Health } }), Root)
 
 const Movers = Game.Query({ selection: { position: Game.Query.write(Position), velocity: Game.Query.read(Velocity) } })
 const Healths = Game.Query({ selection: { health: Game.Query.read(Health) } })
@@ -114,7 +115,7 @@ describe("a query's data and entities", () => {
       for (const entity of queries.healths.each()) {
         expect(entity).type.toBeAssignableTo<EntityProving<typeof Health>>()
         expect(entity).type.not.toBeAssignableTo<EntityProving<typeof Position>>()
-        expect(entity).type.toBeAssignableTo<EntityRef<typeof Game.schema, typeof Game.schema, typeof Health>>()
+        expect(entity).type.toBeAssignableTo<EntityRef<typeof Game.schema, typeof Root, typeof Health>>()
       }
     })
   })

@@ -9,7 +9,8 @@ const Label = Descriptor.ConstructedComponent(Codecs.string)("Checksum/Label")
 const Cache = Descriptor.TransientComponent<{ readonly hits: number }>()("Checksum/Cache")
 const Score = Descriptor.ConstructedResource(Codecs.number)("Checksum/Score")
 const Frame = Descriptor.TransientResource<number>()("Checksum/Frame")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Label, Cache }, resources: { Score, Frame } }))
+const Root = Schema.defineRoot("Checksum")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Label, Cache }, resources: { Score, Frame } }), Root)
 
 const makeRuntime = (score = 0, frame = 0) => {
   const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Score: score, Frame: frame } })

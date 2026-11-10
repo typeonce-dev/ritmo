@@ -7,6 +7,8 @@ declare const blurHost: Pointer.BlurHost
 
 const bindings = { fire: ["primary"], aim: ["secondary", "back"] } as const
 
+const Root = Schema.defineRoot("PointerTypes")
+
 describe("Pointer", () => {
   it("types snapshot actions by the bound action names, with raw buttons and the position", () => {
     const mouse = Pointer.actions(canvas, blurHost, bindings)
@@ -53,7 +55,7 @@ describe("Pointer", () => {
 
   it("takes snapshots only through consumeService", () => {
     const MouseInput = Descriptor.Service<Pointer.Actions<typeof bindings>>()("PointerTypes/Mouse")
-    const Game = Schema.bind(Schema.fragment({}))
+    const Game = Schema.bind(Schema.fragment({}), Root)
     Game.System("PointerTypes/Settings", { services: { mouse: Game.System.service(MouseInput) } }, ({ services }) => {
       expect(services.mouse.rebind).type.toBeCallableWith({ fire: ["middle"], aim: ["primary"] })
       // @ts-expect-error snapshot() drains PointerTypes/Mouse

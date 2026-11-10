@@ -1,7 +1,8 @@
 ```ts twoslash
 import { Descriptor, Schema } from "@typeonce/ritmo"
 const Health = Descriptor.Component<number>()("Arena/Health")
-const Game = Schema.bind(Schema.fragment({ components: { Health } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Health } }), Root)
 const Logger = Descriptor.Service<{ log(message: string): void }>()("Arena/Logger")
 // ---cut---
 // Report needs a Logger

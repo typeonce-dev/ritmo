@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest"
 import { Debug, Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
 
 const Score = Descriptor.Resource<number>()("Ignored/Score")
-const Game = Schema.bind(Schema.fragment({ resources: { Score } }))
+const Root = Schema.defineRoot("Ignored")
+const Game = Schema.bind(Schema.fragment({ resources: { Score } }), Root)
 
 const Load = Game.System("Ignored/Load", {}, () => Result.failure("level file missing" as const))
 const Place = Game.System("Ignored/Place", {}, () => {})

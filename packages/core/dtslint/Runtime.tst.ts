@@ -13,6 +13,7 @@ const Camera = Descriptor.ConstructedResource(Codecs.safeVector)("Camera")
 const Logger = Descriptor.Service<{ readonly log: (message: string) => void }>()("Logger")
 const PrefixedLogger = Descriptor.Service<{ readonly log: (message: string) => void }>()("RuntimeTypes/Logger")
 
+const Root = Schema.defineRoot("SnapshotTypes")
 const Game = Schema.bind(Schema.fragment({
   resources: {
     DeltaTime: Time,
@@ -21,7 +22,7 @@ const Game = Schema.bind(Schema.fragment({
     CurrentPhase: Phase,
     Camera
   }
-}))
+}), Root)
 const schema = Game.schema
 
 const ResourceSystem = System.System(

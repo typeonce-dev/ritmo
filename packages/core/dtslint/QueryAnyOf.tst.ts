@@ -6,7 +6,8 @@ const Position = Descriptor.Component<{ readonly x: number; readonly y: number }
 const Sprite = Descriptor.Component<string>()("AnyOfTypes/Sprite")
 const Foreign = Descriptor.Component<number>()("AnyOfTypes/Foreign")
 
-const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite } }))
+const Root = Schema.defineRoot("AnyOfTypes")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite } }), Root)
 
 describe("Game.Query.anyOf", () => {
   it("combines added and changed filters", () => {

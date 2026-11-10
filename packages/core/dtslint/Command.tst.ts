@@ -8,6 +8,7 @@ const Velocity = Descriptor.Component<{ x: number; y: number }>()("Velocity")
 const Time = Descriptor.Resource<number>()("Time")
 const SafePosition = Descriptor.ConstructedComponent(Codecs.safeVector)("SafePosition")
 
+const Root = Schema.defineRoot("Command")
 const Game = Schema.bind(Schema.fragment({
   components: {
     Position,
@@ -17,7 +18,7 @@ const Game = Schema.bind(Schema.fragment({
   resources: {
     Time
   }
-}))
+}), Root)
 const schema = Game.schema
 
 describe("Command", () => {
@@ -30,7 +31,7 @@ describe("Command", () => {
     expect(draft).type.toBe<Entity.EntityDraft<typeof schema, {
       readonly Position: { x: number; y: number }
       readonly Velocity: { x: number; y: number }
-    }, typeof schema>>()
+    }, typeof Root>>()
   })
 
   it("spawn starts with an empty draft proof", () => {
@@ -65,7 +66,7 @@ describe("Command", () => {
   })
 
   it("spawn with plain and raw entries preserves proof typing and plain entry slots", () => {
-    const Game = Schema.bind(schema)
+    const Game = Schema.bind(schema, Root)
 
     const draft = Game.Command.spawn(
       [Position, { x: 0, y: 0 }],
@@ -75,7 +76,7 @@ describe("Command", () => {
     expect(draft).type.toBe<Result.Result<Entity.EntityDraft<typeof schema, {
       readonly Position: { x: number; y: number }
       readonly SafePosition: Codecs.SafeVector
-    }, typeof schema>, readonly [null, Descriptor.SchemaIssues | null]>>()
+    }, typeof Root>, readonly [null, Descriptor.SchemaIssues | null]>>()
   })
 
   it("has no entryResult: validation goes through the descriptor", () => {
@@ -84,7 +85,7 @@ describe("Command", () => {
   })
 
   it("entryRaw entries make insert return a Result with per-entry errors", () => {
-    const Game = Schema.bind(schema)
+    const Game = Schema.bind(schema, Root)
 
     const entry = Game.Command.entryRaw(SafePosition, { x: 0, y: 0 })
     expect(entry).type.toBe<Result.Result<Command.Entry<typeof SafePosition>, Descriptor.SchemaIssues>>()
@@ -95,11 +96,11 @@ describe("Command", () => {
     expect(inserted).type.toBe<Result.Result<Entity.EntityDraft<typeof schema, {
       readonly Position: { x: number; y: number }
       readonly SafePosition: Codecs.SafeVector
-    }, typeof schema>, readonly [Descriptor.SchemaIssues | null]>>()
+    }, typeof Root>, readonly [Descriptor.SchemaIssues | null]>>()
   })
 
   it("entryRaw rejects plain component descriptors", () => {
-    const Game = Schema.bind(schema)
+    const Game = Schema.bind(schema, Root)
 
     // @ts-expect-error Type 'Descriptor<"component", "Position", { x: number; y: number; }>' is missing the following properties
     Game.Command.entryRaw(Position, { x: 0, y: 0 })

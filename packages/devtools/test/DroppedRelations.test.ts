@@ -6,7 +6,8 @@ const hostClock = HostClock.test()
 
 const Name = Descriptor.Component<string>()("Game/Name")
 const { relation: Targeting } = Descriptor.Relation("Game/Targeting", "Game/TargetedBy")
-const Game = Schema.bind(Schema.fragment({ components: { Name }, relations: { Targeting } }))
+const Root = Schema.defineRoot("Game")
+const Game = Schema.bind(Schema.fragment({ components: { Name }, relations: { Targeting } }), Root)
 
 const Named = Game.Query({ selection: { name: Game.Query.read(Name) } })
 

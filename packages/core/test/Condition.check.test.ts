@@ -9,7 +9,8 @@ const Log = Descriptor.Resource<ReadonlyArray<string>>()("Check/Log")
 const Enemy = Descriptor.Tag("Check/Enemy")
 const Ping = Descriptor.Event<number>()("Check/Ping")
 
-const Game = Schema.bind(Schema.fragment({ components: { Enemy }, resources: { Freeze, Log }, events: { Ping } }))
+const Root = Schema.defineRoot("Check")
+const Game = Schema.bind(Schema.fragment({ components: { Enemy }, resources: { Freeze, Log }, events: { Ping } }), Root)
 const Flow = Game.StateMachine("Check/Flow", { Playing: {}, Over: {} })
 
 const makeRuntime = (freeze = 0, flow: "Playing" | "Over" = "Playing") =>

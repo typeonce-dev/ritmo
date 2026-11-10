@@ -5,7 +5,8 @@ const Position = Descriptor.Component<{ readonly x: number; readonly y: number }
 const Health = Descriptor.Component<number>()("Rows/Health")
 const Shield = Descriptor.Component<{ readonly charges: number }>()("Rows/Shield")
 const Enemy = Descriptor.Tag("Rows/Enemy")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Shield, Enemy } }))
+const Root = Schema.defineRoot("Rows")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health, Shield, Enemy } }), Root)
 
 const make = (debug = false) => {
   const made = Game.Runtime.make({ services: Game.Runtime.services(), ...(debug ? { debug: { hostClock: HostClock.test() } } : {}) })

@@ -5,9 +5,10 @@ import type * as Entity from "@typeonce/ritmo/Entity"
 const Position = Descriptor.Component<{ x: number }>()("Lifecycle/Position")
 const Tag = Descriptor.Component<{}>()("Lifecycle/Tag")
 
-const Game = Schema.bind(Schema.fragment({ components: { Position, Tag } }))
+const Root = Schema.defineRoot("Lifecycle")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Tag } }), Root)
 
-type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
+type Id = Entity.EntityId<typeof Game.schema, typeof Root>
 
 const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() }).value
 

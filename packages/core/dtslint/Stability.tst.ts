@@ -5,7 +5,8 @@ import { describe, expect, it } from "tstyche"
 
 const Value = Descriptor.Resource<number>()("StabilityTypes/Value")
 const Position = Descriptor.Component<{ x: number }>()("StabilityTypes/Position")
-const Game = Schema.bind(Schema.fragment({ components: { Position }, resources: { Value } }))
+const Root = Schema.defineRoot("StabilityTypes")
+const Game = Schema.bind(Schema.fragment({ components: { Position }, resources: { Value } }), Root)
 const OtherGame = Schema.bind(Schema.fragment({ resources: { Value } }), Schema.defineRoot("Other"))
 
 const Failing = Game.System(
@@ -89,7 +90,7 @@ describe("stability types", () => {
 
   it("brands entity scopes to one bound game root", () => {
     const scope = Game.EntityScope("Level")
-    expect(scope).type.toBe<EntityScope.EntityScope<"Level", typeof Game.schema>>()
+    expect(scope).type.toBe<EntityScope.EntityScope<"Level", typeof Root>>()
 
     const otherScope = OtherGame.EntityScope("Level")
     const system = OtherGame.System("Other/Spawn", {
@@ -145,7 +146,7 @@ describe("stability types", () => {
       size(): number
     }
     const Messages = Descriptor.Service<Queue>()("StabilityTypes/Messages")
-    const Bound = Schema.bind(Schema.fragment({}))
+    const Bound = Schema.bind(Schema.fragment({}), Root)
     const peek = Bound.Inspector(
       "StabilityTypes/PeekInspector",
       { services: { queue: Bound.System.service(Messages) } },

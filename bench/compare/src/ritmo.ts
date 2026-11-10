@@ -43,7 +43,8 @@ const Tags = {
 const Position = Descriptor.Component<{ readonly x: number; readonly y: number }>()("Bench/Position")
 const Velocity = Descriptor.Component<{ readonly x: number; readonly y: number }>()("Bench/Velocity")
 
-const Game = Schema.bind(Schema.fragment({ components: { A, B, C, D, E, Data, Position, Velocity, ...Tags } }))
+const Root = Schema.defineRoot("Bench")
+const Game = Schema.bind(Schema.fragment({ components: { A, B, C, D, E, Data, Position, Velocity, ...Tags } }), Root)
 
 const runtime = () => {
   const made = Game.Runtime.make({ services: Game.Runtime.services() })

@@ -6,8 +6,10 @@ const Score = Descriptor.Resource<number>()("ChangedTypes/Score")
 const Hud = Descriptor.Resource<{ readonly text: string }>()("ChangedTypes/Hud")
 const OtherScore = Descriptor.Resource<number>()("ChangedTypes/OtherScore")
 
-const Game = Schema.bind(Schema.fragment({ resources: { Score, Hud } }))
-const Other = Schema.bind(Schema.fragment({ resources: { OtherScore } }))
+const Root = Schema.defineRoot("ChangedTypes")
+const Game = Schema.bind(Schema.fragment({ resources: { Score, Hud } }), Root)
+const OtherRoot = Schema.defineRoot("ChangedTypes/Other")
+const Other = Schema.bind(Schema.fragment({ resources: { OtherScore } }), OtherRoot)
 
 describe("Game.System.changedResource", () => {
   it("gives a read view with changed()", () => {

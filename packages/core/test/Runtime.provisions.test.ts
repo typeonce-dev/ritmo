@@ -3,7 +3,8 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 import * as Runtime from "@typeonce/ritmo/Runtime"
 
 const Logger = Descriptor.Service<{ readonly log: (message: string) => void }>()("Provisions/Logger")
-const Game = Schema.bind(Schema.fragment({}))
+const Root = Schema.defineRoot("Provisions")
+const Game = Schema.bind(Schema.fragment({}), Root)
 const Flow = Game.StateMachine("Provisions/Flow", { Menu: {}, Playing: {} })
 
 describe("runtime provisions", () => {

@@ -73,7 +73,8 @@
  * // Only the snapshot: a replay or the fuzzer provides it in place of the devices.
  * const ControlsInput = Descriptor.Service<InputCapture.SourceOf<ReturnType<typeof makeControls>>>()("Game/Controls")
  * const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("Game/Input")
- * const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
+ * const Root = Schema.defineRoot("Game")
+ * const Game = Schema.bind(Schema.fragment({ resources: { Input } }), Root)
  * const CaptureInput = InputCapture.system(Game, { name: "Game/CaptureInput", source: ControlsInput, resource: Input })
  *
  * const runtime = Game.Runtime.make({

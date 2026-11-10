@@ -10,7 +10,8 @@ const Contact = Descriptor.EntityState("State/Contact", {
 }, { transitions: { ground: ["air", "crouch"], crouch: ["ground"], air: ["ground"] } })
 const Mode = Descriptor.EntityState("State/Mode", { a: {}, b: Codecs.struct({ n: Codecs.number }), c: {} })
 
-const Game = Schema.bind(Schema.fragment({ components: { Contact, Mode } }))
+const Root = Schema.defineRoot("Descriptor")
+const Game = Schema.bind(Schema.fragment({ components: { Contact, Mode } }), Root)
 
 const Contacts = Game.Query({ selection: { contact: Game.Query.write(Contact) } })
 const ReadContacts = Game.Inspector("State/ReadContacts", {

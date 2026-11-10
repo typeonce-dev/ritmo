@@ -12,6 +12,8 @@ interface Node {
   x: number
 }
 
+const Root = Schema.defineRoot("PixiTypes")
+
 describe("@typeonce/ritmo-pixi", () => {
   it("exposes the package entrypoint type through the workspace", () => {
     expect(packageTag).type.toBe<"pixi">()
@@ -40,7 +42,7 @@ describe("@typeonce/ritmo-pixi", () => {
     const Position = Descriptor.Component<{ x: number }>()("PixiTypes/Position")
     const Sprite = Descriptor.Component<{ label: string }>()("PixiTypes/Sprite")
     const Nodes = Descriptor.Service<NodeRegistry.NodeRegistry<Node>>()("PixiTypes/Nodes")
-    const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite } }))
+    const Game = Schema.bind(Schema.fragment({ components: { Position, Sprite } }), Root)
     const render = RenderSync.system(Game, {
       name: "PixiTypes/Render",
       renderable: Sprite,

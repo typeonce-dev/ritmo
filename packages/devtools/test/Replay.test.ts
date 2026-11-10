@@ -13,7 +13,8 @@ const Steps = Descriptor.ConstructedResource(Codecs.number)("Replay/Steps")
 const Bump = Descriptor.Event<number>()("Replay/Bump")
 const Input = Descriptor.Service<Schedule.Source<{ readonly dx: number }>>()("Replay/Input")
 const Config = Descriptor.Service<{ readonly scale: number }>()("Replay/Config")
-const Game = Schema.bind(Schema.fragment({ components: { Position }, resources: { Steps }, events: { Bump } }))
+const Root = Schema.defineRoot("Replay")
+const Game = Schema.bind(Schema.fragment({ components: { Position }, resources: { Steps }, events: { Bump } }), Root)
 
 const Spawn = Game.System("Replay/Spawn", { commands: Game.System.commands(Game.System.spawns(Position)) }, ({ commands }) => {
   const draft = Game.Command.spawn(Game.Command.entryRaw(Position, { x: 0 }))

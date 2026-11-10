@@ -5,7 +5,8 @@ import { Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
 const Health = Descriptor.Component<number>()("Data/Health")
 const Position = Descriptor.Component<{ readonly x: number; readonly y: number }>()("Data/Position")
 const Mixed = Descriptor.Component<number | { readonly n: number }>()("Data/Mixed")
-const Game = Schema.bind(Schema.fragment({ components: { Health, Position, Mixed } }))
+const Root = Schema.defineRoot("Data")
+const Game = Schema.bind(Schema.fragment({ components: { Health, Position, Mixed } }), Root)
 
 const make = () => {
   const made = Game.Runtime.make({ services: Game.Runtime.services() })

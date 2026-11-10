@@ -4,10 +4,11 @@ import type * as Debug from "@typeonce/ritmo/Debug"
 
 const Name = Descriptor.Component<string>()("ScopeTriggers/Name")
 const Player = Descriptor.Component<{}>()("ScopeTriggers/Player")
+const Root = Schema.defineRoot("ScopeTriggers")
 const Game = Schema.bind(Schema.fragment({
   components: { Name, Player },
   requires: [Schema.requires(Player, Name)]
-}))
+}), Root)
 const Flow = Game.StateMachine("ScopeTriggers/Flow", { Menu: {}, Playing: {}, Paused: {} })
 const Run = Game.EntityScope("ScopeTriggers/Run", { despawnOnExit: [Flow, "Playing"] })
 const Overlay = Game.EntityScope("ScopeTriggers/Overlay", { despawnOnEnter: [Flow, "Menu"] })

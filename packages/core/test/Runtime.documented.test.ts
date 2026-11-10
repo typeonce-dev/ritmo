@@ -7,7 +7,8 @@ const Count = Descriptor.ConstructedComponent(Codecs.number)("Documented/Count")
 const Ping = Descriptor.Event<number>()("Documented/Ping")
 const Gold = Descriptor.ConstructedResource(Codecs.number)("Documented/Gold")
 const Gems = Descriptor.ConstructedResource(Codecs.number)("Documented/Gems")
-const Game = Schema.bind(Schema.fragment({ components: { Count }, events: { Ping }, resources: { Gold, Gems } }))
+const Root = Schema.defineRoot("Documented")
+const Game = Schema.bind(Schema.fragment({ components: { Count }, events: { Ping }, resources: { Gold, Gems } }), Root)
 const Flow = Game.StateMachine("Documented/Flow", { A: {}, B: {} })
 
 const unwrap = <T>(result: { readonly ok: true; readonly value: T } | { readonly ok: false }): T => {

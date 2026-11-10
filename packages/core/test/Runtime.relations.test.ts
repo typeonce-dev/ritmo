@@ -7,6 +7,7 @@ const Summary = Descriptor.Resource<string>()("Summary")
 const { relation: ChildOf } = Descriptor.Hierarchy("ChildOf", "Children")
 const { relation: Targeting } = Descriptor.Relation("Targeting", "TargetedBy")
 
+const Root = Schema.defineRoot("Runtime")
 const Game = Schema.bind(Schema.fragment({
   components: {
     Name
@@ -18,7 +19,7 @@ const Game = Schema.bind(Schema.fragment({
     ChildOf,
     Targeting
   }
-}))
+}), Root)
 const schema = Game.schema
 
 const makeRuntime = () =>
@@ -499,7 +500,7 @@ describe("Runtime relationships", () => {
           const children = queries.named.children(rootId, ChildOf)
           const descendants = queries.named.descendants(rootId, ChildOf, { order: "breadth" })
           const missing = queries.named.descendants(
-            unknownEntityId<typeof schema, typeof Game.schema>(999),
+            unknownEntityId<typeof schema, typeof Root>(999),
             ChildOf
           )
 
@@ -641,7 +642,7 @@ describe("Runtime relationships", () => {
           }
           commands.unrelate(alphaId, Targeting)
           commands.unrelate(alphaId, Targeting)
-          commands.unrelate(unknownEntityId<typeof schema, typeof Game.schema>(999), Targeting)
+          commands.unrelate(unknownEntityId<typeof schema, typeof Root>(999), Targeting)
         }
     )
 
@@ -702,7 +703,7 @@ describe("Runtime relationships", () => {
           if (!alphaId || !betaId) {
             return
           }
-          commands.relate(alphaId, Targeting, unknownEntityId<typeof schema, typeof Game.schema>(999))
+          commands.relate(alphaId, Targeting, unknownEntityId<typeof schema, typeof Root>(999))
           commands.relate(alphaId, ChildOf, betaId)
           commands.relate(betaId, ChildOf, alphaId)
         }
@@ -813,7 +814,7 @@ describe("Runtime relationships", () => {
           commands.reorderChildren(rootId, ChildOf, [secondId, secondId])
           commands.reorderChildren(rootId, ChildOf, [firstId])
           commands.reorderChildren(rootId, ChildOf, [firstId, unrelatedId])
-          commands.reorderChildren(unknownEntityId<typeof schema, typeof Game.schema>(999), ChildOf, [firstId, secondId])
+          commands.reorderChildren(unknownEntityId<typeof schema, typeof Root>(999), ChildOf, [firstId, secondId])
         }
     )
 

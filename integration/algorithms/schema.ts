@@ -21,4 +21,5 @@ type FragmentOf = typeof fragment
 /** The game's schema by name: type errors print `GameSchema`, not every descriptor. */
 export interface GameSchema extends FragmentOf {}
 const named: GameSchema = fragment
-export const Game = Schema.bind(named)
+const Root = Schema.defineRoot("Algorithms")
+export const Game = Schema.bind(named, Root)

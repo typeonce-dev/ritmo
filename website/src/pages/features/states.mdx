@@ -67,7 +67,8 @@ const Contact = Descriptor.EntityState("Brawl/Contact", {
   ground: codec(S.Struct({ platform: S.NullOr(S.Int) })),
   air: codec(S.Struct({ vy: S.Finite, coyote: S.Int }))
 }, { transitions: { ground: ["air"], air: ["ground"] } })
-const Game = Schema.bind(Schema.fragment({ components: { Contact } }))
+const Root = Schema.defineRoot("Game")
+const Game = Schema.bind(Schema.fragment({ components: { Contact } }), Root)
 const Bodies = Game.Query({ selection: { contact: Game.Query.write(Contact) } })
 // ---cut---
 // @errors: 2741
@@ -106,7 +107,8 @@ const Contact = Descriptor.EntityState("Brawl/Contact", {
   ground: codec(S.Struct({ platform: S.NullOr(S.Int) })),
   air: codec(S.Struct({ vy: S.Finite, coyote: S.Int }))
 }, { transitions: { ground: ["air"], air: ["ground"] } })
-const Game = Schema.bind(Schema.fragment({ components: { Contact } }))
+const Root = Schema.defineRoot("Game")
+const Game = Schema.bind(Schema.fragment({ components: { Contact } }), Root)
 const Bodies = Game.Query({ selection: { contact: Game.Query.write(Contact) } })
 // ---cut---
 // @errors: 2322

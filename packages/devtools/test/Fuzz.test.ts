@@ -10,7 +10,8 @@ const Progress = Descriptor.ConstructedResource(Codecs.number)("Fuzz/Progress")
 type Pad = { readonly key: number; readonly aim: number }
 const PadInput = Descriptor.Service<Schedule.Source<Pad>>()("Fuzz/Pad")
 const Rules = Descriptor.Service<{ readonly combo: ReadonlyArray<number> }>()("Fuzz/Rules")
-const Game = Schema.bind(Schema.fragment({ components: { Health }, resources: { Progress } }))
+const Root = Schema.defineRoot("Fuzz")
+const Game = Schema.bind(Schema.fragment({ components: { Health }, resources: { Progress } }), Root)
 
 const Spawn = Game.System("Fuzz/Spawn", { commands: Game.System.commands(Game.System.spawns(Health)) }, ({ commands }) => {
   const draft = Game.Command.spawn(Game.Command.entryRaw(Health, 3))

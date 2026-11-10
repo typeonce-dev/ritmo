@@ -124,7 +124,8 @@ import { MemoryNetworkLink, Netcode, WebSocketNetworkLink } from "@typeonce/ritm
 
 const step = Clock.hz(60)
 const Time = Clock.resource("Consumer/Time", step)
-const Sim = Schema.bind(Schema.fragment({ resources: { Time } }))
+const SimRoot = Schema.defineRoot("Consumer/Sim")
+const Sim = Schema.bind(Schema.fragment({ resources: { Time } }), SimRoot)
 const AdvanceTime = Clock.system(Sim, { name: "Consumer/AdvanceTime", resource: Time })
 const repeated = Determinism.check(({ hostClock }) => {
   const made = Sim.Runtime.make({ services: Sim.Runtime.services(), resources: { Time: Clock.start(step) }, debug: { hostClock } })
@@ -134,7 +135,8 @@ const repeated = Determinism.check(({ hostClock }) => {
 if (!repeated.ok) throw new Error(JSON.stringify(repeated))
 
 const Seed = Descriptor.ConstructedComponent(Random.codec)("Consumer/Seed")
-const Game = Schema.bind(Schema.fragment({ components: { Seed } }))
+const Root = Schema.defineRoot("Consumer")
+const Game = Schema.bind(Schema.fragment({ components: { Seed } }), Root)
 const Spawn = Game.System("Consumer/Spawn", { commands: Game.System.commands(Game.System.spawns(Seed)) }, ({ commands }) => {
   const draft = Game.Command.spawn(Game.Command.entryRaw(Seed, 7))
   if (draft.ok) commands.spawn(draft.value)
@@ -197,7 +199,7 @@ if (output !== expected) throw new Error(`consumer printed ${output}, expected $
 console.log(output)
 
 step("run the published devtools CLI")
-writeFileSync(path.join(consumer, "lint.mjs"), `import { HostClock, Schema } from "@typeonce/ritmo"; const Game = Schema.bind(Schema.fragment({})); export const lintTarget = () => ({ runtime: Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value, schedules: { update: Game.Schedule() } });\n`)
+writeFileSync(path.join(consumer, "lint.mjs"), `import { HostClock, Schema } from "@typeonce/ritmo"; const Game = Schema.bind(Schema.fragment({}), Schema.defineRoot("Pack")); export const lintTarget = () => ({ runtime: Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value, schedules: { update: Game.Schedule() } });\n`)
 const lintOutput = run(path.join(consumer, "node_modules", ".bin", "ritmo-devtools"), ["lint", "lint.mjs"], consumer)
 if (!lintOutput.includes("0 warnings")) throw new Error(`published lint CLI failed: ${lintOutput}`)
 
@@ -208,7 +210,8 @@ writeFileSync(path.join(consumer, "verify.mjs"), [
   `import { Replay } from "@typeonce/ritmo-devtools"`,
   `const step = Clock.hz(1)`,
   `const Time = Clock.resource("Pack/Time", step)`,
-  `const Game = Schema.bind(Schema.fragment({ resources: { Time } }))`,
+  `const Root = Schema.defineRoot("Pack")`,
+  `const Game = Schema.bind(Schema.fragment({ resources: { Time } }), Root)`,
   `const update = Game.Schedule(Clock.system(Game, { name: "Pack/Clock", resource: Time }))`,
   `const make = (hostClock) => Game.Runtime.make({ services: Game.Runtime.services(), resources: { Time: Clock.start(step) }, debug: { hostClock } }).value`,
   `export const replayTarget = () => { const hostClock = HostClock.test(); return { runtime: make(hostClock), schedules: { update }, hostClock } }`,

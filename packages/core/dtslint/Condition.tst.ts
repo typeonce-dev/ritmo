@@ -8,11 +8,13 @@ const Health = Descriptor.Component<number>()("CheckTypes/Health")
 const Ping = Descriptor.Event<number>()("CheckTypes/Ping")
 const Clock = Descriptor.Service<{ readonly now: () => number }>()("CheckTypes/Clock")
 
-const Game = Schema.bind(Schema.fragment({ components: { Enemy, Health }, resources: { Freeze }, events: { Ping } }))
+const Root = Schema.defineRoot("CheckTypes")
+const Game = Schema.bind(Schema.fragment({ components: { Enemy, Health }, resources: { Freeze }, events: { Ping } }), Root)
 const Flow = Game.StateMachine("CheckTypes/Flow", { Playing: {}, Over: {} })
 
 const OtherFreeze = Descriptor.Resource<number>()("CheckTypes/OtherFreeze")
-const Other = Schema.bind(Schema.fragment({ resources: { OtherFreeze } }))
+const OtherRoot = Schema.defineRoot("CheckTypes/Other")
+const Other = Schema.bind(Schema.fragment({ resources: { OtherFreeze } }), OtherRoot)
 const OtherFlow = Other.StateMachine("CheckTypes/OtherFlow", { A: {}, B: {} })
 
 const Noop = Game.System("CheckTypes/Noop", {}, () => {})
@@ -74,7 +76,7 @@ describe("Game.Condition.check", () => {
   it("rejects descriptors of another game and non-boolean predicates", () => {
     // @ts-expect-error Type '"CheckTypes/OtherFreeze"' is not assignable to type '"CheckTypes/Freeze"'.
     Game.Condition.check("foreignResource", { resources: { freeze: Other.System.readResource(OtherFreeze) } }, () => true)
-    // @ts-expect-error Type 'BoundStateMachine<SchemaDefinition<{}, { readonly OtherFreeze: Descriptor<"resource", "CheckTypes/OtherFreeze"
+    // @ts-expect-error Type 'RootToken<"CheckTypes/Other">' is not assignable to type 'RootToken<"CheckTypes">'
     Game.Condition.check("foreignMachine", { machines: { flow: Other.System.machine(OtherFlow) } }, () => true)
     Game.Condition.check("notBoolean", { resources: { freeze: Game.System.readResource(Freeze) } },
       // @ts-expect-error Type 'number' is not assignable to type 'boolean'.

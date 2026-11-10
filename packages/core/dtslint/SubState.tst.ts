@@ -5,16 +5,18 @@ import type * as SchemaTypes from "@typeonce/ritmo/Schema"
 import { describe, expect, it } from "tstyche"
 
 const Name = Descriptor.Component<string>()("SubStateTypes/Name")
-const Game = Schema.bind(Schema.fragment({ components: { Name } }))
-const OtherGame = Schema.bind(Schema.fragment({ resources: {} }))
+const Root = Schema.defineRoot("SubStateTypes")
+const Game = Schema.bind(Schema.fragment({ components: { Name } }), Root)
+const OtherRoot = Schema.defineRoot("SubStateTypes/Other")
+const OtherGame = Schema.bind(Schema.fragment({ resources: {} }), OtherRoot)
 const Session = Game.StateMachine("SubStateTypes/Session", { Menu: {}, Playing: {} })
 const Phase = Game.StateMachine("SubStateTypes/Phase", { Setup: {}, Battle: {} }, { within: [Session, "Playing"] })
 const OtherFlow = OtherGame.StateMachine("SubStateTypes/OtherFlow", { Idle: {} })
 
 describe("sub-states", () => {
   it("is a bound machine that records its parent", () => {
-    expect(Phase).type.toBe<SchemaTypes.Schema.BoundStateMachine<typeof Game.schema, "SubStateTypes/Phase", { readonly Setup: {}; readonly Battle: {} }, typeof Session>>()
-    expect(Session).type.toBe<SchemaTypes.Schema.BoundStateMachine<typeof Game.schema, "SubStateTypes/Session", { readonly Menu: {}; readonly Playing: {} }>>()
+    expect(Phase).type.toBe<SchemaTypes.Schema.BoundStateMachine<typeof Root, "SubStateTypes/Phase", { readonly Setup: {}; readonly Battle: {} }, typeof Session>>()
+    expect(Session).type.toBe<SchemaTypes.Schema.BoundStateMachine<typeof Root, "SubStateTypes/Session", { readonly Menu: {}; readonly Playing: {} }>>()
   })
 
   it("reads as possibly absent and sets as a Result; top-level machines are unchanged", () => {

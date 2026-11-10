@@ -3,7 +3,8 @@ import { Descriptor, Result, Schema } from "@typeonce/ritmo"
 import * as Runtime from "@typeonce/ritmo/Runtime"
 
 const Ping = Descriptor.Event<{ value: number }>()("Ping")
-const Game = Schema.bind(Schema.fragment({ events: { Ping } }))
+const Root = Schema.defineRoot("Runtime")
+const Game = Schema.bind(Schema.fragment({ events: { Ping } }), Root)
 
 const makeRuntime = () => Game.Runtime.make({ services: Game.Runtime.services() }).value
 
@@ -139,7 +140,7 @@ describe("Runtime events", () => {
   })
 
   it("discards events published while a reader is skipped by its run conditions", () => {
-    const Local = Schema.bind(Schema.fragment({ events: { Ping } }))
+    const Local = Schema.bind(Schema.fragment({ events: { Ping } }), Root)
     const Mode = Local.StateMachine("Events/Mode", { On: {}, Off: {} })
     const log: Array<ReadonlyArray<number>> = []
     const gated = Local.System("Events/Gated", {

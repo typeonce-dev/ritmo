@@ -19,9 +19,10 @@ const R14 = Descriptor.Resource<number>()("Architecture/R14")
 const R15 = Descriptor.Resource<number>()("Architecture/R15")
 const R16 = Descriptor.Resource<number>()("Architecture/R16")
 
+const Root = Schema.defineRoot("Architecture")
 const Game = Schema.bind(Schema.fragment({
   resources: { R01, R02, R03, R04, R05, R06, R07, R08, R09, R10, R11, R12, R13, R14, R15, R16 }
-}))
+}), Root)
 
 const define = <
   const Name extends string,

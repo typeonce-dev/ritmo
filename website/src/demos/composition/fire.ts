@@ -19,11 +19,12 @@ export const Fired = Descriptor.Resource<{ readonly spread: number; readonly dou
 export const Heard = Descriptor.Resource<{ readonly count: number }>()("Fire/Heard")
 export const Rng = Descriptor.ConstructedResource(Random.codec)("Fire/Rng")
 
+const Root = Schema.defineRoot("Fire")
 export const Game = Schema.bind(Schema.fragment({
   components: { Position, Velocity, Villager, Burning, Wet },
   events: { Spark },
   resources: { Fired, Heard, Rng }
-}))
+}), Root)
 
 export const AREA = { width: 600, height: 420 } as const
 export const FOUNTAIN = { x: 540, y: 210, radius: 44 } as const

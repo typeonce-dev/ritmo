@@ -3,7 +3,8 @@ import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
 const Time = Clock.resource("Arena/Time", Clock.hz(60))
 const Position = Descriptor.Component<{ x: number; y: number }>()("Arena/Position")
 const Velocity = Descriptor.Component<{ x: number; y: number }>()("Arena/Velocity")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }))
+const Root = Schema.defineRoot("Arena")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Velocity }, resources: { Time } }), Root)
 // ---cut---
 // What this system reads and writes, declared up front
 const Moving = Game.Query({

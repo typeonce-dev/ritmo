@@ -49,10 +49,11 @@ export const Contact = Descriptor.EntityState("States/Contact", {
 export const Jump = Descriptor.Event<{}>()("States/Jump")
 export const Guard = Descriptor.Event<{}>()("States/Guard")
 
+const Root = Schema.defineRoot("States")
 export const Game = Schema.bind(Schema.fragment({
   components: { Height, Contact },
   events: { Jump, Guard }
-}))
+}), Root)
 
 const Bodies = Game.Query({
   selection: { height: Game.Query.write(Height), contact: Game.Query.write(Contact) }

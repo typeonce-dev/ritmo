@@ -28,7 +28,8 @@ Each animation frame runs as many fixed updates as the time owes, then one
 
 ```ts twoslash title="main.ts"
 import { Clock, Descriptor, Schema } from "@typeonce/ritmo"
-const Game = Schema.bind(Schema.fragment({ components: { Tag: Descriptor.Component<{}>()("Example/Tag") } }))
+const Root = Schema.defineRoot("Example")
+const Game = Schema.bind(Schema.fragment({ components: { Tag: Descriptor.Component<{}>()("Example/Tag") } }), Root)
 const update = Game.Schedule()
 const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value!
 declare const draw: (alpha: number) => void
@@ -122,7 +123,8 @@ const buttons = { move: Gamepad.vector({ stick: "left" }), jump: ["south"] } as 
 const makeControls = (devices: { readonly keyboard: Keyboard.Actions<typeof keys>; readonly gamepad: Gamepad.Actions<typeof buttons> }) => Actions.merge(devices)
 const ControlsInput = Descriptor.Service<InputCapture.SourceOf<ReturnType<typeof makeControls>>>()("Example/Controls")
 const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("Example/Input")
-const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
+const Root = Schema.defineRoot("Example")
+const Game = Schema.bind(Schema.fragment({ resources: { Input } }), Root)
 // ---cut---
 const CaptureInput = InputCapture.system(Game, {
   name: "Example/CaptureInput",
@@ -256,7 +258,8 @@ import { Descriptor, Schema } from "@typeonce/ritmo"
 const Position = Descriptor.Component<{ x: number; y: number }>()("TopDown/Position")
 const Collider = Descriptor.Component<{ width: number; height: number }>()("TopDown/Collider")
 const Wall = Descriptor.Component<{}>()("TopDown/Wall")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Collider, Wall } }))
+const Root = Schema.defineRoot("TopDown")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Collider, Wall } }), Root)
 // ---cut---
 import { RenderSync } from "@typeonce/ritmo-render"
 import type { NodeRegistry } from "@typeonce/ritmo-render"

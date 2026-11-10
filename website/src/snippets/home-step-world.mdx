@@ -8,11 +8,13 @@ const Velocity = Descriptor.Component<{ x: number; y: number }>()("Arena/Velocit
 // One value for the whole world: a clock at a fixed 60 steps per second
 const Time = Clock.resource("Arena/Time", Clock.hz(60))
 
+const Root = Schema.defineRoot("Arena")
 // Every other API hangs off Game, so nothing can mix up two worlds
 export const Game = Schema.bind(
   Schema.fragment({
     components: { Position, Velocity },
     resources: { Time }
-  })
+  }),
+  Root
 )
 ```

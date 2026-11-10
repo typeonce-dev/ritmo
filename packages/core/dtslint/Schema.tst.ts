@@ -14,6 +14,8 @@ const Velocity = Descriptor.Component<{ dx: number; dy: number }>()("Velocity")
 const { relation: ChildOf } = Descriptor.Hierarchy("ChildOf", "Children")
 const { relation: Targeting } = Descriptor.Relation("Targeting", "TargetedBy")
 
+const Root = Schema.defineRoot("Schema")
+
 describe("Schema", () => {
   it("does not export top-level runtime authoring namespaces from the public barrel", () => {
     // @ts-expect-error Property 'System' does not exist on type
@@ -70,7 +72,7 @@ describe("Schema", () => {
       }
     })
 
-    const Game = Schema.bind(left, right)
+    const Game = Schema.bind(left, right, Root)
     const schema = Game.schema
 
     expect(schema).type.toBe<Schema.SchemaDefinition<
@@ -121,7 +123,7 @@ describe("Schema", () => {
     })
 
     // @ts-expect-error __schemaConflicts__: "resources key \"DeltaTime\""
-    Schema.bind(left, right)
+    Schema.bind(left, right, Root)
   })
 
   it("bind closes the schema over systems, schedules, and runtimes", () => {
@@ -134,7 +136,7 @@ describe("Schema", () => {
         CurrentPhase: Phase
       }
     })
-    const Game = Schema.bind(schema)
+    const Game = Schema.bind(schema, Root)
 
     const MoveSystem = Game.System(
       "Move",
@@ -170,7 +172,7 @@ describe("Schema", () => {
       }
     }).value
 
-    expect(update).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof schema>>()
+    expect(update).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof Root>>()
     runtime.tick(update)
   })
 
@@ -181,7 +183,7 @@ describe("Schema", () => {
         Velocity
       }
     })
-    const Game = Schema.bind(schema)
+    const Game = Schema.bind(schema, Root)
 
     const ObserveSystem = Game.System(
       "ObserveOptional",
@@ -216,7 +218,7 @@ describe("Schema", () => {
       services: Game.Runtime.services()
     }).value
 
-    expect(Game.Schedule(ObserveSystem)).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof schema>>()
+    expect(Game.Schedule(ObserveSystem)).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof Root>>()
   })
 
   it("supports a zero-or-one singleton read without widening successful matches", () => {
@@ -226,7 +228,7 @@ describe("Schema", () => {
         Velocity
       }
     })
-    const Game = Schema.bind(schema)
+    const Game = Schema.bind(schema, Root)
     const MovingQuery = Game.Query({
       selection: {
         position: Game.Query.write(Position),
@@ -263,7 +265,7 @@ describe("Schema", () => {
       services: Game.Runtime.services()
     }).value
 
-    expect(Game.Schedule(ObserveSystem)).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof schema>>()
+    expect(Game.Schedule(ObserveSystem)).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof Root>>()
   })
 
   it("rejects non-component descriptors in query selection and structural filters", () => {
@@ -275,7 +277,7 @@ describe("Schema", () => {
         DeltaTime: Time
       }
     })
-    const Game = Schema.bind(schema)
+    const Game = Schema.bind(schema, Root)
 
     // @ts-expect-error Type '"resource"' is not assignable to type '"component"'.
     Game.Query.read(Time)
@@ -311,7 +313,7 @@ describe("Schema", () => {
         DeltaTime: Time
       }
     })
-    const Game = Schema.bind(schema)
+    const Game = Schema.bind(schema, Root)
 
     const ObserveLifecycleSystem = Game.System(
       "ObserveLifecycle",
@@ -339,8 +341,8 @@ describe("Schema", () => {
             expect(queries.moved.data.velocity.get(entity)).type.toBe<QueryTypes.ReadonlyValue<{ dx: number; dy: number }> | undefined>()
           }
 
-          expect(removed.positions.all()).type.toBe<ReadonlyArray<EntityId<typeof schema, typeof schema>>>()
-          expect(despawned.entities.all()).type.toBe<ReadonlyArray<EntityId<typeof schema, typeof schema>>>()
+          expect(removed.positions.all()).type.toBe<ReadonlyArray<EntityId<typeof schema, typeof Root>>>()
+          expect(despawned.entities.all()).type.toBe<ReadonlyArray<EntityId<typeof schema, typeof Root>>>()
           expect(removed.positions.lagged()).type.toBe<boolean>()
           expect(despawned.entities.lagged()).type.toBe<boolean>()
         }
@@ -352,7 +354,7 @@ describe("Schema", () => {
 
     const schedule = Game.Schedule(ObserveLifecycleSystem)
 
-    expect(schedule).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof schema>>()
+    expect(schedule).type.toBeAssignableTo<SchemaTypes.Schema.BoundSchedule<typeof schema, typeof Root>>()
   })
 
   it("rejects non-component descriptors in lifecycle query APIs", () => {
@@ -364,7 +366,7 @@ describe("Schema", () => {
         DeltaTime: Time
       }
     })
-    const Game = Schema.bind(schema)
+    const Game = Schema.bind(schema, Root)
 
     // @ts-expect-error Type '"resource"' is not assignable to type '"component"'.
     Game.Query.added(Time)
@@ -382,14 +384,15 @@ describe("Schema", () => {
       resources: {
         DeltaTime: Time
       }
-    }))
+    }), Root)
     const schemaA = GameA.schema
 
+    const RootB = Schema.defineRoot("Schema/B")
     const GameB = Schema.bind(Schema.fragment({
       components: {
         Velocity
       }
-    }))
+    }), RootB)
     const schemaB = GameB.schema
 
     const SystemA = GameA.System(
@@ -455,8 +458,8 @@ describe("Schema", () => {
         Targeting
       }
     })
-    const Game = Schema.bind(schema)
-    const entityId = 1 as Entity.EntityId<typeof schema, typeof Game.schema>
+    const Game = Schema.bind(schema, Root)
+    const entityId = 1 as Entity.EntityId<typeof schema, typeof Root>
 
     const query = Game.Query({
       selection: {
@@ -468,10 +471,10 @@ describe("Schema", () => {
     })
 
     expect(query).type.toBeAssignableTo<QueryTypes.QuerySpec<{
-      readonly parent: Relation.RelationReadAccess<typeof ChildOf, typeof schema, typeof Game.schema>
-      readonly children: Relation.OptionalRelatedReadAccess<typeof ChildOf, typeof schema, typeof Game.schema>
-      readonly target: Relation.OptionalRelationReadAccess<typeof Targeting, typeof schema, typeof Game.schema>
-    }, readonly [], readonly [], readonly [], readonly [typeof ChildOf], readonly [], readonly [], readonly [], typeof Game.schema>>()
+      readonly parent: Relation.RelationReadAccess<typeof ChildOf, typeof schema, typeof Root>
+      readonly children: Relation.OptionalRelatedReadAccess<typeof ChildOf, typeof schema, typeof Root>
+      readonly target: Relation.OptionalRelationReadAccess<typeof Targeting, typeof schema, typeof Root>
+    }, readonly [], readonly [], readonly [], readonly [typeof ChildOf], readonly [], readonly [], readonly [], typeof Root>>()
 
     const ObserveSystem = Game.System(
       "ObserveRelations",
@@ -498,12 +501,12 @@ describe("Schema", () => {
           expect(relationFailures.targeting.all()).type.toBeAssignableTo<ReadonlyArray<Relation.Relation.MutationFailure<
             typeof Targeting,
             typeof schema,
-            typeof Game.schema
+            typeof Root
           >>>()
           expect(relationFailures.childOf.all()).type.toBeAssignableTo<ReadonlyArray<Relation.Relation.MutationFailure<
             typeof ChildOf,
             typeof schema,
-            typeof Game.schema
+            typeof Root
           >>>()
           expect(queries.nodes.children(entityId, ChildOf)).type.toBeAssignableTo<Result.Result<
             ReadonlyArray<QueryTypes.QueryEntity<typeof schema, typeof query>>,
@@ -704,8 +707,8 @@ describe("Schema", () => {
 
   it("cannot write through a query the system did not declare", () => {
     const Hp = Descriptor.Component<number>()("UndeclaredWrite/Hp")
-    const Game = Schema.bind(Schema.fragment({ components: { Hp } }))
-    const entityId = 1 as Entity.EntityId<typeof Game.schema, typeof Game.schema>
+    const Game = Schema.bind(Schema.fragment({ components: { Hp } }), Root)
+    const entityId = 1 as Entity.EntityId<typeof Game.schema, typeof Root>
     Game.System("UndeclaredWrite/Probe", {
       queries: { readers: Game.Query({ selection: { hp: Game.Query.read(Hp) } }) }
     }, ({ queries, lookup }) => {

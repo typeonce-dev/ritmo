@@ -9,7 +9,8 @@ const Position = Descriptor.ConstructedComponent(Codecs.struct({ x: Codecs.numbe
 const Health = Descriptor.ConstructedComponent(Codecs.number)("Step/Health")
 const Score = Descriptor.ConstructedResource(Codecs.number)("Step/Score")
 const Hit = Descriptor.Event<number>()("Step/Hit")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Health }, resources: { Score }, events: { Hit } }))
+const Root = Schema.defineRoot("Step")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Health }, resources: { Score }, events: { Hit } }), Root)
 
 const Movers = Game.Query({ selection: { position: Game.Query.write(Position) } })
 const Hurtable = Game.Query({ selection: { health: Game.Query.write(Health) } })

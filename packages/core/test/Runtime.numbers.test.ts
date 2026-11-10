@@ -7,7 +7,8 @@ const Speed = Descriptor.ConstructedComponent(Codecs.number)("Numbers/Speed")
 const Shield = Descriptor.Component<number>()("Numbers/Shield")
 const Target = Descriptor.Component<number | { readonly x: number }>()("Numbers/Target")
 const Label = Descriptor.ConstructedComponent(Codecs.string)("Numbers/Label")
-const Game = Schema.bind(Schema.fragment({ components: { Health, Speed, Shield, Target, Label } }))
+const Root = Schema.defineRoot("Numbers")
+const Game = Schema.bind(Schema.fragment({ components: { Health, Speed, Shield, Target, Label } }), Root)
 const Flow = Game.StateMachine("Numbers/Flow", { Playing: {}, Menu: {} })
 
 const makeRuntime = (debug = false) => Game.Runtime.make({
@@ -93,7 +94,7 @@ describe("number values", () => {
 
   it("round-trip through a snapshot", () => {
     // Every component validated on load, so the world can be saved.
-    const Saved = Schema.bind(Schema.fragment({ components: { Speed, Label } }))
+    const Saved = Schema.bind(Schema.fragment({ components: { Speed, Label } }), Root)
     const make = () => Saved.Runtime.make({ services: Saved.Runtime.services() }).value
     const Spawn = Saved.System("Numbers/SpawnSaved", { commands: Saved.System.commands(Saved.System.spawns(Speed, Label)) }, ({ commands }) => {
       for (let index = 0; index < 300; index++) commands.spawn(Saved.Command.spawn([Speed, index], [Label, `n${index}`]))

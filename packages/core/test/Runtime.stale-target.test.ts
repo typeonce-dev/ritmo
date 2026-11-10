@@ -4,13 +4,14 @@ import type * as Command from "@typeonce/ritmo/Command"
 
 const Boss = Descriptor.Component<{}>()("StaleTarget/Boss")
 const Mark = Descriptor.Component<{}>()("StaleTarget/Mark")
-const Game = Schema.bind(Schema.fragment({ components: { Boss, Mark } }))
+const Root = Schema.defineRoot("StaleTarget")
+const Game = Schema.bind(Schema.fragment({ components: { Boss, Mark } }), Root)
 const Bosses = Game.Inspector("StaleTarget/Bosses", { queries: { bosses: Game.Query({ selection: { boss: Game.Query.read(Boss) } }) } }, ({ queries }) => queries.bosses.each().length)
 
 describe("a spawned id used after its run", () => {
   it("is skipped by despawn and remove, traced, and linted", () => {
     const runtime = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock: HostClock.test() } }).value
-    let kept: Command.SpawnedId<typeof Game.schema, typeof Game.schema, "StaleTarget/Boss" | "StaleTarget/Mark"> | undefined
+    let kept: Command.SpawnedId<typeof Game.schema, typeof Root, "StaleTarget/Boss" | "StaleTarget/Mark"> | undefined
     const Spawn = Game.System("StaleTarget/Spawn", { commands: Game.System.commands(Game.System.spawns(Boss, Mark)) }, ({ commands }) => {
       kept = commands.spawn(Game.Command.spawn([Boss, {}], [Mark, {}]))
     })

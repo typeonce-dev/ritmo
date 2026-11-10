@@ -841,7 +841,7 @@ export interface EntityStateWriteSlot<States extends StateDefinitions, Transitio
    * ```ts
    * const Phase = Descriptor.EntityState("Game/Phase", { windup: {}, active: {} }, { transitions: { windup: ["active"], active: [] } })
    * declare const data: { readonly phase: Query.WriteSlotOf<typeof Phase> }
-   * declare const entity: Entity.EntityRef<typeof Game.schema, typeof Game.schema, typeof Phase>
+   * declare const entity: Entity.EntityRef<typeof Game.schema, typeof Root, typeof Phase>
    * // ---cut---
    * const started = data.phase.transition(entity, { from: "windup", to: "active" })
    * if (!started.ok) {
@@ -860,7 +860,7 @@ export interface EntityStateWriteSlot<States extends StateDefinitions, Transitio
    * @example
    * ```ts
    * declare const data: { readonly contact: Query.WriteSlotOf<typeof Contact> }
-   * declare const entity: Entity.EntityRef<typeof Game.schema, typeof Game.schema, typeof Contact>
+   * declare const entity: Entity.EntityRef<typeof Game.schema, typeof Root, typeof Contact>
    * declare const gravity: number
    * // ---cut---
    * data.contact.update(entity, { state: "air", data: (air) => ({ ...air, vy: air.vy - gravity }) })

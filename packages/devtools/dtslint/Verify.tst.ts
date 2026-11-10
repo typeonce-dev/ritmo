@@ -6,7 +6,8 @@ import * as PlaywrightEngine from "@typeonce/ritmo-devtools/PlaywrightEngine"
 import { describe, expect, it } from "tstyche"
 
 const Input = Descriptor.Service<Schedule.Source<{ readonly dx: number }>>()("VerifyTypes/Input")
-const Game = Schema.bind(Schema.fragment({}))
+const Root = Schema.defineRoot("VerifyTypes")
+const Game = Schema.bind(Schema.fragment({}), Root)
 const Move = Game.System("VerifyTypes/Move", { services: { input: Game.System.service(Input) } }, () => {})
 const hostClock = HostClock.test()
 const make = (playback: Replay.Playback) => ({

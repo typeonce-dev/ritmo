@@ -33,9 +33,10 @@ const ArkTypeDate = Descriptor.ConstructedResource({
   "~encode": type("Date").pipe((date) => date.toISOString())
 })("Libraries/ArkTypeDate")
 
+const Root = Schema.defineRoot("Libraries")
 const Game = Schema.bind(Schema.fragment({
   resources: { ZodPlain, ValibotPlain, ArkTypePlain, EffectPlain, ZodDate, EffectMap, ValibotDate, ArkTypeDate }
-}))
+}), Root)
 // A state's data from Zod as it is, beside a state without data.
 const Mode = Game.StateMachine("Libraries/Mode", { Idle: {}, Racing: z.object({ lap: z.number().int() }) })
 

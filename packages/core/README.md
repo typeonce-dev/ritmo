@@ -13,7 +13,8 @@ pnpm add @typeonce/ritmo
 import { Descriptor, Schema } from "@typeonce/ritmo"
 
 const Position = Descriptor.Component<{ x: number; y: number }>()("Example/Position")
-const Game = Schema.bind(Schema.fragment({ components: { Position } }))
+const Root = Schema.defineRoot("Example")
+const Game = Schema.bind(Schema.fragment({ components: { Position } }), Root)
 ```
 
 A component or resource can say what its number fields mean with `meta`:

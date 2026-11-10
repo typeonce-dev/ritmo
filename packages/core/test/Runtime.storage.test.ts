@@ -7,13 +7,14 @@ const Tag = Descriptor.Component<{}>()("Storage/Tag")
 const Log = Descriptor.Resource<ReadonlyArray<string>>()("Storage/Log")
 const { relation: ChildOf } = Descriptor.Hierarchy("Storage/ChildOf", "Storage/Children")
 
+const Root = Schema.defineRoot("Storage")
 const Game = Schema.bind(Schema.fragment({
   components: { Position, Tag },
   resources: { Log },
   relations: { ChildOf }
-}))
+}), Root)
 
-type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
+type Id = Entity.EntityId<typeof Game.schema, typeof Root>
 
 const makeRuntime = () => Game.Runtime.make({
   services: Game.Runtime.services(),
@@ -191,10 +192,17 @@ describe("Runtime storage", () => {
 
   it("guards duplicate descriptor names when types are erased", () => {
     const Other = Descriptor.Component<{ x: number }>()("Storage/Position")
-    const bindErased = Schema.bind as (...fragments: ReadonlyArray<Schema.Schema.Any>) => unknown
+    const bindErased = Schema.bind as (...args: ReadonlyArray<Schema.Schema.Any | Schema.RootToken>) => unknown
     expect(() => bindErased(
       Schema.fragment({ components: { Position } }),
-      Schema.fragment({ components: { Other } })
+      Schema.fragment({ components: { Other } }),
+      Root
     )).toThrow("Duplicate descriptor name: Storage/Position")
+  })
+
+  it("needs a root when types are erased", () => {
+    const bindErased = Schema.bind as (...args: ReadonlyArray<Schema.Schema.Any | Schema.RootToken>) => unknown
+    expect(() => bindErased(Schema.fragment({ components: { Position } })))
+      .toThrow("Schema.bind takes the game's root last: const Root = Schema.defineRoot('Game'), then Schema.bind(...fragments, Root)")
   })
 })

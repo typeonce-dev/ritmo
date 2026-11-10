@@ -39,7 +39,8 @@
  *
  * const KeyboardInput = Descriptor.Service<InputCapture.SourceOf<Keyboard.Actions<typeof bindings>>>()("Game/Keyboard")
  * const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof KeyboardInput>>()("Game/Input")
- * const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
+ * const Root = Schema.defineRoot("Game")
+ * const Game = Schema.bind(Schema.fragment({ resources: { Input } }), Root)
  *
  * const CaptureInput = InputCapture.system(Game, { name: "Game/CaptureInput", source: KeyboardInput, resource: Input })
  * const Jump = Game.System("Game/Jump", { resources: { input: Game.System.readResource(Input) } }, ({ resources }) => {

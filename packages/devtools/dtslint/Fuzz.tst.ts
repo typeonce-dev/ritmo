@@ -21,7 +21,8 @@ interface MarkedSource extends System.Consumes<"snapshot"> {
   readonly snapshot: () => { readonly key: number }
 }
 const Page = Descriptor.Service<{ readonly toast: (message: string) => void }>()("FuzzTypes/Page")
-const Game = Schema.bind(Schema.fragment({ components: { Place }, resources: { Limit } }))
+const Root = Schema.defineRoot("FuzzTypes")
+const Game = Schema.bind(Schema.fragment({ components: { Place }, resources: { Limit } }), Root)
 
 const update = Game.Schedule(Game.System("FuzzTypes/Move", { services: { pad: Game.System.service(Pad), rules: Game.System.service(Rules) } }, () => {}))
 const setup = Game.Schedule()

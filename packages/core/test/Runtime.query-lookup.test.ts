@@ -821,11 +821,13 @@ describe("Runtime query and lookup", () => {
   })
 })
 
+const Root = Schema.defineRoot("Optional")
+
 describe("optional slots", () => {
   it("read their value, or undefined when the entity does not hold the component", () => {
     const Hp = Descriptor.Component<number>()("Optional/Hp")
     const Name = Descriptor.Component<string>()("Optional/Name")
-    const Local = Schema.bind(Schema.fragment({ components: { Hp, Name } }))
+    const Local = Schema.bind(Schema.fragment({ components: { Hp, Name } }), Root)
     const spawn = Local.System("Optional/Spawn", { commands: Local.System.commands(Local.System.spawns(Hp, Name)) }, ({ commands }) => {
       commands.spawn(Local.Command.spawn([Name, "full"], [Hp, 3]))
       commands.spawn(Local.Command.spawn([Name, "empty"]))
@@ -841,7 +843,7 @@ describe("optional slots", () => {
   it("tell an absent component from a held component whose value is undefined", () => {
     const Note = Descriptor.Component<string | undefined>()("Optional/Note")
     const Name = Descriptor.Component<string>()("Optional/Name")
-    const Local = Schema.bind(Schema.fragment({ components: { Note, Name } }))
+    const Local = Schema.bind(Schema.fragment({ components: { Note, Name } }), Root)
     const spawn = Local.System("Optional/Spawn", { commands: Local.System.commands(Local.System.spawns(Note, Name)) }, ({ commands }) => {
       commands.spawn(Local.Command.spawn([Name, "blank"], [Note, undefined]))
       commands.spawn(Local.Command.spawn([Name, "none"]))
@@ -857,7 +859,7 @@ describe("optional slots", () => {
   it("follow the entity gaining and losing the component while it keeps matching", () => {
     const Hp = Descriptor.Component<number>()("Optional/Hp")
     const Name = Descriptor.Component<string>()("Optional/Name")
-    const Local = Schema.bind(Schema.fragment({ components: { Hp, Name } }))
+    const Local = Schema.bind(Schema.fragment({ components: { Hp, Name } }), Root)
     const Named = Local.Query({ selection: { name: Local.Query.read(Name), hp: Local.Query.optional(Hp) } })
     const spawn = Local.System("Optional/Spawn", { commands: Local.System.commands(Local.System.spawns(Name)) }, ({ commands }) => {
       commands.spawn(Local.Command.spawn([Name, "hero"]))
@@ -886,7 +888,7 @@ describe("optional slots", () => {
   it("fail when read after the run that handed them out, held or not", () => {
     const Hp = Descriptor.Component<number>()("Optional/Hp")
     const Name = Descriptor.Component<string>()("Optional/Name")
-    const Local = Schema.bind(Schema.fragment({ components: { Hp, Name } }))
+    const Local = Schema.bind(Schema.fragment({ components: { Hp, Name } }), Root)
     const spawn = Local.System("Optional/Spawn", { commands: Local.System.commands(Local.System.spawns(Hp, Name)) }, ({ commands }) => {
       commands.spawn(Local.Command.spawn([Name, "none"]))
     })

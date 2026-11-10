@@ -9,7 +9,8 @@ const hostClock = HostClock.test()
 const Ping = Descriptor.Event<number>()("Host/Ping")
 const Ready = Descriptor.TransientResource<boolean>()("Host/Ready")
 const Count = Descriptor.ConstructedResource(Codecs.number)("Host/Count")
-const Game = Schema.bind(Schema.fragment({ events: { Ping }, resources: { Ready, Count } }))
+const Root = Schema.defineRoot("Host")
+const Game = Schema.bind(Schema.fragment({ events: { Ping }, resources: { Ready, Count } }), Root)
 const Flow = Game.StateMachine("Host/Flow", { Playing: {}, Menu: {} })
 const ready = Game.Condition.check("Host/Ready", { resources: { ready: Game.System.readResource(Ready) } }, ({ resources }) => resources.ready.get())
 const playing = Game.Condition.inState(Flow, "Playing")
@@ -188,7 +189,7 @@ describe("host events and pause gates", () => {
 
   it("rejects a tick or tryTick inside a running tick or tryTick, and rolls the outer failure back", () => {
     const Gold = Descriptor.ConstructedResource(Codecs.number)("Host/Gold")
-    const Nested = Schema.bind(Schema.fragment({ resources: { Gold, Count } }))
+    const Nested = Schema.bind(Schema.fragment({ resources: { Gold, Count } }), Root)
     const made = Nested.Runtime.make({ services: Nested.Runtime.services(), resources: { Gold: 0, Count: 0 } })
     if (!made.ok) throw new Error("invalid fixture")
     const runtime = made.value
@@ -377,7 +378,7 @@ describe("numeric handles", () => {
   it("brands without allocating and compares by entity identity in sets", () => {
     // A number from a save or a message: the guard makes it a handle, the game names its id.
     const raw: unknown = JSON.parse("7")
-    if (!Entity.isHandle(Game.schema)(raw)) throw new Error("not a handle")
+    if (!Entity.isHandle(Root)(raw)) throw new Error("not a handle")
     const id = Game.Entity.id(raw)
     const first = Entity.handle(id)
     const second = Entity.handle(id)

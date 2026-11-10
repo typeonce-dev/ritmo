@@ -12,6 +12,8 @@ const Actions = Controls.actions({ buttons: ["jump", "pause"] })
 const merged = (keys: Keyboard.Timeline<typeof keyBindings>, pad: Gamepad.Timeline) =>
   Actions.merge({ keyboard: Keyboard.scripted(keyBindings, keys), gamepad: Gamepad.scripted(padBindings, pad) })
 
+const Root = Schema.defineRoot("ControlsTest")
+
 describe("Controls", () => {
   it("merges an action like one device with every binding", () => {
     const controls = merged(
@@ -102,7 +104,7 @@ describe("Controls", () => {
       Actions.merge({ keyboard: devices.keyboard, touch: Actions.lacking(devices.touch, ["pause"]) })
     const ControlsInput = Descriptor.Service<ReturnType<typeof makeControls>>()("ControlsTest/Controls")
     const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof ControlsInput>>()("ControlsTest/Input")
-    const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
+    const Game = Schema.bind(Schema.fragment({ resources: { Input } }), Root)
     const Capture = InputCapture.system(Game, { name: "ControlsTest/Capture", source: ControlsInput, resource: Input })
     const CaptureAgain = InputCapture.system(Game, { name: "ControlsTest/CaptureAgain", source: ControlsInput, resource: Input })
     const runtime = Game.Runtime.make({
@@ -195,7 +197,7 @@ describe("Controls groups", () => {
     })
     expect(controls.snapshot().available).toEqual({ moveRight: true, fire: true, pause: false })
     const Lints = Descriptor.Service<typeof controls>()("ControlsGroups/Controls")
-    const Game = Schema.bind(Schema.fragment({}))
+    const Game = Schema.bind(Schema.fragment({}), Root)
     const runtime = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(Lints, controls)),
       resources: {},

@@ -5,7 +5,8 @@ import { worldOf } from "./saved.ts"
 
 const Name = Descriptor.ConstructedComponent(Codecs.string)("SnapshotScopes/Name")
 const { relation: ChildOf } = Descriptor.Hierarchy("SnapshotScopes/ChildOf", "SnapshotScopes/Children")
-const Game = Schema.bind(Schema.fragment({ components: { Name }, relations: { ChildOf } }))
+const Root = Schema.defineRoot("SnapshotScopes")
+const Game = Schema.bind(Schema.fragment({ components: { Name }, relations: { ChildOf } }), Root)
 const Level = Game.EntityScope("SnapshotScopes/Level")
 const Menu = Game.EntityScope("SnapshotScopes/Menu")
 

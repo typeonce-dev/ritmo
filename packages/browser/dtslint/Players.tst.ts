@@ -17,6 +17,8 @@ const makePlayers = (devices: {
   readonly pads: Gamepad.Pads<typeof padKeys>
 }) => Players.pool(devices)
 
+const Root = Schema.defineRoot("PlayersTypes")
+
 describe("Controls.players", () => {
   it("types every slot by name, with device data behind a check of device", () => {
     const pool = makePlayers({ left: Keyboard.actions(host, leftKeys), right: Keyboard.actions(host, rightKeys), pads: Gamepad.pads(host, padKeys, 4) })
@@ -82,7 +84,7 @@ describe("Controls.players", () => {
   it("captures into a resource initialized with idle, and keeps snapshot() to the capture", () => {
     const PlayersInput = Descriptor.Service<ReturnType<typeof makePlayers>>()("PlayersTypes/Players")
     const Input = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof PlayersInput>>()("PlayersTypes/Input")
-    const Game = Schema.bind(Schema.fragment({ resources: { Input } }))
+    const Game = Schema.bind(Schema.fragment({ resources: { Input } }), Root)
     const pool = makePlayers({ left: Keyboard.actions(host, leftKeys), right: Keyboard.actions(host, rightKeys), pads: Gamepad.pads(host, padKeys, 2) })
     Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(PlayersInput, pool)),

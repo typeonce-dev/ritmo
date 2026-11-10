@@ -8,10 +8,11 @@ const Enemy = Descriptor.Component<{}>()("Perms/Enemy")
 const Noise = Descriptor.Component<number>()("Perms/Noise")
 const Turned = Descriptor.Component<{ readonly seconds: number }>()("Perms/Turned")
 const { relation: ChildOf } = Descriptor.Hierarchy("Perms/ChildOf", "Perms/Children")
-const Game = Schema.bind(Schema.fragment({ components: { Position, Enemy, Noise, Turned }, relations: { ChildOf } }))
+const Root = Schema.defineRoot("Perms")
+const Game = Schema.bind(Schema.fragment({ components: { Position, Enemy, Noise, Turned }, relations: { ChildOf } }), Root)
 const Level = Game.EntityScope("Perms/Level")
 const Menu = Game.EntityScope("Perms/Menu")
-type Id = Entity.EntityId<typeof Game.schema, typeof Game.schema>
+type Id = Entity.EntityId<typeof Game.schema, typeof Root>
 const id = 1 as Id
 
 const Enemies = Game.Query({ selection: { position: Game.Query.read(Position) }, with: [Enemy] })
@@ -173,7 +174,7 @@ describe("declared commands", () => {
       commands: Game.System.commands(Game.System.spawns(Position))
     }, ({ commands }) => {
       const child = Game.Command.relate(Game.Command.spawn([Position, { x: 0 }]), ChildOf, id)
-      expect(child).type.toBe<Entity.EntityDraft<typeof Game.schema, { readonly "Perms/Position": { readonly x: number } }, typeof Game.schema, typeof ChildOf>>()
+      expect(child).type.toBe<Entity.EntityDraft<typeof Game.schema, { readonly "Perms/Position": { readonly x: number } }, typeof Root, typeof ChildOf>>()
       // @ts-expect-error Perms/ChildOf is related by this draft but not declared in this system's commands: add it to Game.System.relates(...)
       commands.spawn(child)
       // @ts-expect-error Perms/ChildOf is related by this draft

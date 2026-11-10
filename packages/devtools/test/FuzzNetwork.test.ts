@@ -10,7 +10,8 @@ const Pad = Codecs.struct({ dx: Codecs.integer, fire: Codecs.boolean })
 const idle: Pad = { dx: 0, fire: false }
 const Seats = Descriptor.Service<Netcode.Source<Pad>>()("FuzzNet/Seats")
 const Score = Descriptor.ConstructedResource(Codecs.integer)("FuzzNet/Score")
-const Game = Schema.bind(Schema.fragment({ resources: { Score } }))
+const Root = Schema.defineRoot("FuzzNet")
+const Game = Schema.bind(Schema.fragment({ resources: { Score } }), Root)
 
 /**
  * The planted nondeterminism: seat 1 moving right while firing adds a

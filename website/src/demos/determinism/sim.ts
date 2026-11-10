@@ -18,10 +18,11 @@ export const Velocity = Descriptor.Component<{ x: number; y: number }>()("Drift/
 export const Rng = Descriptor.ConstructedResource(Random.codec)("Drift/Rng")
 export const Tick = Descriptor.Resource<number>()("Drift/Tick")
 
+const Root = Schema.defineRoot("Drift")
 export const Game = Schema.bind(Schema.fragment({
   components: { Position, Velocity },
   resources: { Rng, Tick }
-}))
+}), Root)
 
 const Balls = Game.Query({
   selection: { position: Game.Query.write(Position), velocity: Game.Query.write(Velocity) }

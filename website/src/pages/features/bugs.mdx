@@ -107,7 +107,8 @@ import { Netcode } from "@typeonce/ritmo-netcode"
 interface PlayerInput { readonly dx: number; readonly fire: boolean }
 const Seats = Descriptor.Service<Netcode.Source<PlayerInput>>()("Game/Seats")
 const Inputs = Descriptor.TransientResource<InputCapture.SnapshotOf<typeof Seats>>()("Game/Inputs")
-const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }))
+const Root = Schema.defineRoot("Game")
+const Game = Schema.bind(Schema.fragment({ resources: { Inputs } }), Root)
 const Capture = InputCapture.system(Game, { name: "Game/Capture", source: Seats, resource: Inputs })
 declare const seats: Netcode.Seats<PlayerInput>
 const runtime = Game.Runtime.make({ services: Game.Runtime.services(Game.Runtime.service(Seats, seats.source)), resources: { Inputs: [] } }).value!

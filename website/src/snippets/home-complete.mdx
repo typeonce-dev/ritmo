@@ -5,12 +5,14 @@ const Health = Descriptor.Component<number>()("Arena/Health")
 const Enemy = Descriptor.Component<{}>()("Arena/Enemy")
 // ---cut---
 // @errors: 2379
+const Root = Schema.defineRoot("Arena")
 // Every enemy has a position and health
 const Game = Schema.bind(
   Schema.fragment({
     components: { Position, Health, Enemy },
     requires: [Schema.requires(Enemy, Position, Health)] // [!code highlight]
-  })
+  }),
+  Root
 )
 
 Game.System(

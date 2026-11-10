@@ -10,7 +10,8 @@ import { z } from "zod"
 
 const Position = Descriptor.ConstructedComponent(z.strictObject({ x: z.number(), y: z.number() }))("Exact/Position")
 const Config = Descriptor.ConstructedResource(z.strictObject({ speed: z.number() }))("Exact/Config")
-const Game = Schema.bind(Schema.fragment({ components: { Position }, resources: { Config } }))
+const Root = Schema.defineRoot("Exact")
+const Game = Schema.bind(Schema.fragment({ components: { Position }, resources: { Config } }), Root)
 
 const makeRuntime = () => {
   const made = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Config: { speed: 1 } } })

@@ -4,7 +4,8 @@ import type * as Machine from "@typeonce/ritmo/Machine"
 import type { NextMachineWriteView } from "@typeonce/ritmo/System"
 import * as Codecs from "./codecs.ts"
 
-const Game = Schema.bind(Schema.fragment({ resources: {} }))
+const Root = Schema.defineRoot("Runtime")
+const Game = Schema.bind(Schema.fragment({ resources: {} }), Root)
 // Declared before Round, so a marker applies its move first.
 const Lights = Game.StateMachine("MachineMoves/Lights", { Off: {}, On: {} })
 const Round = Game.StateMachine("MachineMoves/Round", {
