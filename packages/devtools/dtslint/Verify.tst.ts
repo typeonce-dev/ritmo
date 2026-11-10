@@ -24,6 +24,10 @@ describe("Verify.acrossEngines", () => {
       .type.toBe<Promise<Result.Result<Rendered.Rendered<Verify.Verified>, Verify.VerifyError>>>()
   })
 
+  it("says whether the recording was compared", () => {
+    expect<Verify.Verified["recording"]>().type.toBe<"matched" | "notCompared">()
+  })
+
   it("narrows every outcome by its tag", () => {
     if (outcome._tag === "Diverged") {
       expect(outcome.tick).type.toBe<number>()
@@ -67,5 +71,18 @@ describe("PlaywrightEngine", () => {
     PlaywrightEngine.make({ entry: "target.ts", browsers: ["opera"] })
     const name = "webkit" as string
     if (PlaywrightEngine.isBrowser(name)) expect(name).type.toBe<PlaywrightEngine.Browser>()
+  })
+})
+
+describe("Replay.session play", () => {
+  it("says whether the checkpoints were compared, and narrows by the tag", () => {
+    const opened = Replay.session(make, file)
+    if (!opened.ok) return
+    const { checkpoints } = opened.value.play().data
+    expect(checkpoints).type.toBe<Replay.Checkpoints>()
+    if (checkpoints._tag === "Compared") expect(checkpoints.diverged).type.toBe<ReadonlyArray<Replay.Divergence>>()
+    else expect(checkpoints.reason).type.toBe<string>()
+    // @ts-expect-error Property 'diverged' does not exist
+    void checkpoints.diverged
   })
 })

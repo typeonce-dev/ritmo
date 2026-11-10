@@ -46,7 +46,7 @@ describe("top-down replays", () => {
     if (!opened.ok) throw new Error(JSON.stringify(opened.error))
     const played = opened.value.play()
     expect(played.data.run.stop).toEqual({ reason: "completed" })
-    expect(played.data.diverged).toEqual([])
+    expect(played.data.checkpoints).toEqual({ _tag: "Compared", diverged: [] })
     // The replayed world is the live one: the player where it walked, the pickup collected.
     const replayed = opened.value.snapshot()
     const live = runtime.snapshot()

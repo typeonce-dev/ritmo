@@ -72,7 +72,7 @@ describe("rewinds on a rollback peer", () => {
       hostClock: HostClock.test()
     }), file)
     if (!opened.ok) throw new Error(JSON.stringify(opened.error))
-    expect(opened.value.play().data.diverged).toEqual([])
+    expect(opened.value.play().data.checkpoints).toEqual({ _tag: "Compared", diverged: [] })
   })
 
   it("why shows each rewind between the changes it separates", () => {
