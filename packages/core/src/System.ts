@@ -544,8 +544,8 @@ export interface ResourceChangedView<T> extends ReadCell<T> {
  */
 export type ResourceWriteView<D extends Descriptor<"resource", string, any>> =
   D extends import("./Descriptor.ts").ConstructedDescriptor<"resource", string, infer Value, infer Raw, infer Error>
-    ? ConstructedWriteCell<Value, Raw, Error>
-    : WriteCell<Descriptor.Value<D>>
+    ? ConstructedWriteCell<Value, Raw, Error, D["name"]>
+    : WriteCell<Descriptor.Value<D>, D["name"]>
 
 /**
  * A read-only event stream view.
