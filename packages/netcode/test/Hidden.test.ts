@@ -3,7 +3,7 @@ import { HostClock } from "@typeonce/ritmo"
 import { MemoryNetworkLink, MemoryVisibility, Netcode } from "@typeonce/ritmo-netcode"
 
 import { idle, makePeer, pressed, simulate, step, type PlayerInput } from "./game.ts"
-import { checksumOf, stepMS } from "./match.ts"
+import { checksumOf, playOn, setUpMatch, settleOn, stepMS } from "./match.ts"
 
 interface HiddenMatchOptions {
   readonly mode?: "rollback" | "lockstep"
@@ -236,5 +236,68 @@ describe("hidden options", () => {
       hostClock.adjust(stepMS)
     }
     expect(sessions[0]!.status().hidden).toEqual([false, true])
+  })
+})
+
+describe("hidden: over a slow, jittery link", () => {
+  const shown = (match: ReturnType<typeof setUpMatch>) => match.peers.filter((peer) => !peer.visibility.hidden())
+  /** Every peer on one tick, in one epoch, with one world, and no halt on the way. */
+  const expectAgreement = (match: ReturnType<typeof setUpMatch>) => {
+    expect(match.halts).toEqual([])
+    expect(new Set(match.peers.map((peer) => peer.session.status().epoch)).size).toBe(1)
+    expect(new Set(match.peers.map((peer) => peer.session.status().tick)).size).toBe(1)
+    expect(new Set(match.peers.map(checksumOf)).size).toBe(1)
+  }
+
+  // Seeds under which the single announcement of main's sessions was lost to a peer, which then ended with Disconnected.
+  const lossy = [
+    { count: 2, mode: "rollback", seed: 6 },
+    { count: 2, mode: "lockstep", seed: 1 },
+    { count: 3, mode: "rollback", seed: 2 },
+    { count: 3, mode: "lockstep", seed: 6 }
+  ] as const
+  for (const { count, mode, seed } of lossy) {
+    it(`a hide reaches every peer over a link that loses messages: ${count} seats (${mode})`, () => {
+      const match = setUpMatch({ mode, count, seed, latencyMS: 250, jitterMS: 200, loss: 0.1, checksumEvery: 10, hidden: { afterMS: 10_000, then: "resync-on-return" } })
+      const away = count - 1
+      playOn(match, 200)
+      match.peers[away]!.visibility.hide()
+      // Ten seconds hidden, twice timeoutMS: the others play on.
+      playOn(match, 600)
+      expect(match.halts).toEqual([])
+      for (const peer of shown(match)) expect(peer.session.status().hidden[away]).toBe(true)
+      match.peers[away]!.visibility.show()
+      playOn(match, 150)
+      settleOn(match)
+      expectAgreement(match)
+    })
+  }
+
+  it("agrees when a seat hides under a long input delay (rollback)", () => {
+    // A message overtaken by a later one lowered the acknowledgements, so the hide announced fewer inputs than the others already ran with.
+    const match = setUpMatch({ mode: "rollback", count: 3, seed: 11, latencyMS: 250, jitterMS: 200, inputDelay: 30, maxRollback: 60, checkpoints: 60, checksumEvery: 10, hidden: { afterMS: 10_000, then: "resync-on-return" } })
+    playOn(match, 200)
+    match.peers[2]!.visibility.hide()
+    playOn(match, 300)
+    expect(match.halts).toEqual([])
+    match.peers[2]!.visibility.show()
+    playOn(match, 150)
+    settleOn(match)
+    expectAgreement(match)
+  })
+
+  it("agrees when a seat hides after a resync (lockstep, adaptive delay)", () => {
+    const match = setUpMatch({ mode: "lockstep", count: 3, seed: 11, latencyMS: 250, jitterMS: 200, adaptiveDelay: { min: 0, max: 30 }, checksumEvery: 10, hidden: { afterMS: 10_000, then: "resync-on-return" } })
+    playOn(match, 300)
+    playOn(match, 100, { skip: (seat) => seat === 0 })
+    match.peers[0]!.session.resync()
+    playOn(match, 200)
+    match.peers[2]!.visibility.hide()
+    playOn(match, 300)
+    expect(match.halts).toEqual([])
+    match.peers[2]!.visibility.show()
+    playOn(match, 150)
+    settleOn(match)
+    expectAgreement(match)
   })
 })

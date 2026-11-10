@@ -4,7 +4,7 @@
  * one runtime ticked with the input each seat's session recorded.
  */
 import { Clock, HostClock } from "@typeonce/ritmo"
-import { MemoryNetworkLink, Netcode } from "@typeonce/ritmo-netcode"
+import { MemoryNetworkLink, MemoryVisibility, Netcode } from "@typeonce/ritmo-netcode"
 
 import { Fired, Game, idle, makePeer, pressed, Seats, simulate, step, type Peer, type PlayerInput } from "./game.ts"
 
@@ -26,6 +26,10 @@ export interface MatchOptions {
   readonly tail?: number
   /** How many frames late each seat starts calling `advance`. */
   readonly lateBy?: ReadonlyArray<number>
+  readonly checksumEvery?: number
+  readonly timeoutMS?: number
+  /** The `hidden` option of every peer, on its own page (`peer.visibility`). */
+  readonly hidden?: { readonly afterMS: number; readonly then: Netcode.HiddenPolicy }
 }
 
 export interface MatchPeer extends Peer {
@@ -33,6 +37,8 @@ export interface MatchPeer extends Peer {
   /** The input this seat's session recorded, by tick. */
   readonly recorded: Map<number, PlayerInput>
   readonly results: Array<Netcode.Advanced>
+  /** This peer's page: hidden only when the test hides it. */
+  readonly visibility: MemoryVisibility.MemoryVisibility
 }
 
 export const stepMS = step.dt * 1000
@@ -51,6 +57,7 @@ export const setUpMatch = (options: MatchOptions) => {
   if (!links.ok) throw new Error(links.error.field)
   const peers: Array<MatchPeer> = Array.from({ length: count }, (_, seat) => {
     const peer = makePeer({ count, setUp: seat === 0, ...(options.checkpoints === undefined ? {} : { checkpoints: options.checkpoints }) })
+    const visibility = MemoryVisibility.make()
     const shared = {
       seats: peer.seats,
       seat,
@@ -59,15 +66,20 @@ export const setUpMatch = (options: MatchOptions) => {
       step,
       ...(options.adaptiveDelay !== undefined
         ? { adaptiveDelay: options.adaptiveDelay }
-        : options.inputDelay === undefined ? {} : { inputDelay: options.inputDelay })
+        : options.inputDelay === undefined ? {} : { inputDelay: options.inputDelay }),
+      ...(options.checksumEvery === undefined ? {} : { checksumEvery: options.checksumEvery }),
+      ...(options.timeoutMS === undefined ? {} : { timeoutMS: options.timeoutMS }),
+      ...(options.hidden === undefined ? {} : { hidden: { visibility, ...options.hidden } })
     }
     const session = options.mode === "rollback"
       ? Netcode.rollback(peer.runtime, { ...shared, simulate, ...(options.maxRollback === undefined ? {} : { maxRollback: options.maxRollback }) })
       : Netcode.lockstep(peer.runtime, { ...shared, simulate })
     if (!session.ok) throw new Error(session.error.reason)
-    return { ...peer, session: session.value, recorded: new Map(), results: [] }
+    return { ...peer, session: session.value, recorded: new Map(), results: [], visibility }
   })
-  return { hostClock, links: links.value, peers }
+  /** Every failed `advance` of {@link playOn}, as `seat <n>: <tag>`. */
+  const halts: Array<string> = []
+  return { hostClock, links: links.value, peers, halts }
 }
 
 /** One frame: every seat advances with its input, then the clock moves one step. */
@@ -99,6 +111,45 @@ export const play = (options: MatchOptions) => {
     frame(match, at, (seat) => at < frames ? pressed(seat, at) : idle, (seat) => at < (lateBy[seat] ?? 0))
   }
   return match
+}
+
+/**
+ * Plays `frames` frames on which every peer whose page is shown advances
+ * (`skip` leaves a seat out, as a hitch does), recording failures in
+ * `match.halts` instead of throwing: for matches over a faulty link.
+ */
+export const playOn = (
+  match: ReturnType<typeof setUpMatch>,
+  frames: number,
+  options: { readonly input?: (seat: number, at: number) => PlayerInput; readonly skip?: (seat: number) => boolean } = {}
+): void => {
+  const input = options.input ?? pressed
+  for (let at = 0; at < frames; at++) {
+    for (const [seat, peer] of match.peers.entries()) {
+      if (peer.visibility.hidden() || options.skip?.(seat) === true) continue
+      const advanced = peer.session.advance(input(seat, at))
+      if (!advanced.ok) match.halts.push(`seat ${seat}: ${advanced.error._tag}`)
+    }
+    match.hostClock.adjust(stepMS)
+  }
+}
+
+/**
+ * Idle frames until every guess is right, then the peers behind catch up:
+ * every shown peer ends on one tick. When one behind has waited half a
+ * second (`status().waiting`), every peer advances once, so what the link
+ * lost is sent again.
+ */
+export const settleOn = (match: ReturnType<typeof setUpMatch>): void => {
+  playOn(match, 90, { input: () => idle })
+  const shown = (seat: number): boolean => !match.peers[seat]!.visibility.hidden()
+  for (let at = 0; at < 1200; at++) {
+    const ticks = match.peers.map((peer) => peer.session.status().tick)
+    const lowest = Math.min(...ticks.filter((_, seat) => shown(seat)))
+    if (ticks.every((tick, seat) => !shown(seat) || tick === lowest)) return
+    const stuck = match.peers.some((peer, seat) => ticks[seat] === lowest && (peer.session.status().waiting?.forMS ?? 0) > 500)
+    playOn(match, 1, { input: () => idle, skip: (seat) => ticks[seat] !== lowest && !stuck })
+  }
 }
 
 const ReadFired = Game.Inspector("NetTest/ReadFired", { events: { fired: Game.System.readEvent(Fired) } }, ({ events }) => events.fired.all())

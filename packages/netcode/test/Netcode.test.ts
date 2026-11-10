@@ -17,11 +17,13 @@ const tagsOf = (results: ReadonlyArray<Netcode.Advanced>) => new Set(results.map
 describe("Netcode.rollback", () => {
   it("ends every peer on the world of one runtime that knew every input, after rolling back", () => {
     const match = play({ mode: "rollback", latencyMS: 60, jitterMS: 40 })
+    // The peer ahead guesses and rolls back; the one behind may always have the input in time.
+    const [ahead] = [...match.peers].sort((left, right) => right.session.status().ahead - left.session.status().ahead)
+    expect(ahead!.session.status().rollbacks).toBeGreaterThan(0)
+    expect(ahead!.session.status().again).toBeGreaterThan(ahead!.session.status().rollbacks)
     for (const peer of match.peers) {
       const status = peer.session.status()
       expect(status.tick).toBeGreaterThan(300)
-      expect(status.rollbacks).toBeGreaterThan(0)
-      expect(status.again).toBeGreaterThan(status.rollbacks)
       expect(checksumOf(peer)).toBe(truth(match.peers, status.tick)[status.tick])
       expect(status.verified).toBeGreaterThan(200)
     }
@@ -31,9 +33,9 @@ describe("Netcode.rollback", () => {
     const match = play({ mode: "rollback", latencyMS: 60, jitterMS: 40 })
     for (const peer of match.peers) {
       const reported = peer.results.reduce((sum, result) => sum + (result._tag === "Ran" ? result.again : 0), 0)
-      expect(peer.session.status().again).toBeGreaterThan(0)
       expect(reported).toBe(peer.session.status().again)
     }
+    expect(match.peers.some((peer) => peer.session.status().again > 0)).toBe(true)
   })
 
   it("agrees over a lossy link: inputs are sent again until acknowledged", () => {
@@ -225,7 +227,7 @@ describe("Netcode.rollback", () => {
     const link: NetworkLink.NetworkLink = { send: () => {}, receive: () => inbox.splice(0), status: () => NetworkLink.open }
     const peer = makePeer()
     const session = valueOf(Netcode.rollback(peer.runtime, { simulate, seats: peer.seats, seat: 0, links: [link], hostClock, step }))
-    inbox.push("not json", JSON.stringify({ v: 2, k: "hello", from: 7, epoch: 0 }))
+    inbox.push("not json", JSON.stringify({ v: 3, k: "hello", from: 7, epoch: 0 }))
     expect(session.advance(idle).ok).toBe(true)
     expect(session.status().dropped).toBe(2)
     inbox.push(JSON.stringify({ v: 1, k: "hello", from: 1, epoch: 0 }))
