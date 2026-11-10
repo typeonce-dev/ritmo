@@ -2053,6 +2053,18 @@ const makeValidatedRuntime = <
     return slot
   }
 
+  /** Drops a system's slot, so its next run makes a fresh one, as on its first run. */
+  const forgetSlot = (system: SystemDefinition<any, any, any>, reader: ReaderState): void => {
+    slots.delete(system)
+    allReaders.delete(reader)
+    streamReaders.delete(reader)
+    events.unregister(reader)
+    transitionEvents.unregister(reader)
+    relationFailures.unregister(reader)
+    droppedRelations.unregister(reader)
+    world.unregisterLifecycleReader(reader)
+  }
+
   const succeeded = Result.success(undefined)
 
   /**
@@ -3092,9 +3104,14 @@ const makeValidatedRuntime = <
     for (const [system, positions] of mark.readers) {
       const reader = slots.get(system)?.reader
       if (reader === undefined) continue
+      if (positions === undefined) {
+        // A system first run after the checkpoint starts over, as if it never
+        // ran: unregistered, so it holds nothing until its first run again.
+        forgetSlot(system, reader)
+        continue
+      }
       inside.add(reader)
-      // A system first run after the checkpoint starts over, as if it never ran.
-      const [since, lastRun, streamSince, streamLastRun] = positions ?? [0, 0, 0, 0]
+      const [since, lastRun, streamSince, streamLastRun] = positions
       reader.since = since
       reader.lastRun = lastRun
       reader.streamSince = streamSince

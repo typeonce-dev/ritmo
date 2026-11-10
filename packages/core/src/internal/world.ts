@@ -288,6 +288,8 @@ export interface WorldMark {
   readonly id: number
   /** The change tick it was taken at: everything stamped after it happened after the mark. */
   readonly tick: number
+  /** The tick the frame it was taken in started at: the next frame's trim boundary. */
+  readonly frameStart: number
   readonly nextEntity: number
   readonly pages: Map<Page, KeptPage>
   readonly records: Map<number, KeptRecord>
@@ -1101,6 +1103,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     const mark: WorldMark = {
       id: markCount,
       tick,
+      frameStart,
       nextEntity,
       pages: new Map(),
       records: new Map(),
@@ -1143,7 +1146,8 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
 
   /**
    * Puts the world back to `mark` (a held mark): pages, entities, relations,
-   * scopes, the next entity id, and the removed and despawned logs. Newer
+   * scopes, the next entity id, the removed and despawned logs, and the
+   * frame window (so the frames that run again trim as they did). Newer
    * marks are let go of; `mark` stays held, now with nothing kept. Query
    * caches see the membership changes like any other. The change tick does
    * not move back: restored values keep the ticks they had at the mark.
@@ -1268,6 +1272,8 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     }
 
     nextEntity = mark.nextEntity
+    // The frames that run again trim what they trimmed the first time.
+    frameStart = mark.frameStart
     const removedAfter: Array<readonly [number, number, number]> = []
     removedLogs.forEach((log, ordinal) => {
       if (log === undefined) return
@@ -1577,16 +1583,19 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       }
       frameVersions[ordinal] = componentVersions[ordinal]!
     }
+    const boundary = frameStart
     if (frameStart > 0) {
       for (const log of changedLogs) if (log) trimLog(log, frameStart)
       removedLogs.forEach((log, ordinal) => {
         if (log) trimHeldLog(log, frameStart, removedReaders[ordinal], lifecycleCapacity)
       })
       trimHeldLog(despawnedLog, frameStart, despawnedReaders, lifecycleCapacity)
-      retainedAfter = frameStart
+      // After a rewind the boundary is the checkpoint's again, but what the
+      // changed logs dropped since stays dropped.
+      retainedAfter = Math.max(retainedAfter, frameStart)
     }
     frameStart = tick
-    return retainedAfter
+    return boundary
   }
 
   const entriesSince = (log: TickLog | undefined, since: number): ReadonlyArray<number> => {
@@ -1821,6 +1830,11 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     /** Makes `reader` hold despawn records until it has read them. */
     registerDespawnedReader: (reader: LifecycleCursor): void => {
       despawnedReaders.add(reader)
+    },
+    /** Stops `reader` holding removal and despawn records: a rewind took back the run that registered it. */
+    unregisterLifecycleReader: (reader: LifecycleCursor): void => {
+      for (const readers of removedReaders) readers?.delete(reader)
+      despawnedReaders.delete(reader)
     },
     /**
      * Whether removal records of `ordinal` after `since` (and after

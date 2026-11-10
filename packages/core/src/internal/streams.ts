@@ -59,6 +59,8 @@ export interface StreamInspection {
 export interface Streams<T> {
   /** Makes `cursor` hold `key`'s batches until it has read them. */
   register(key: symbol, cursor: Cursor): void
+  /** Stops `cursor` holding any key's batches: a rewind took back the run that registered it. */
+  unregister(cursor: Cursor): void
   /** Publishes `values` as one batch; the array must not be mutated afterwards. */
   append(key: symbol, tick: number, values: ReadonlyArray<T>, surviveRestore?: boolean): void
   /** Values for `key` stamped after `since`, oldest first. */
@@ -142,6 +144,9 @@ export const make = <T>(capacity: number): Streams<T> => {
         readers.set(key, set)
       }
       set.add(cursor)
+    },
+    unregister(cursor) {
+      for (const set of readers.values()) set.delete(cursor)
     },
     append(key, tick, values, surviveRestore = false) {
       if (values.length === 0) return
