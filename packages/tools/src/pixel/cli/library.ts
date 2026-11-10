@@ -16,11 +16,11 @@
  * file named outright is always taken.
  */
 import { existsSync, statSync } from "node:fs"
-import { readFile, writeFile } from "node:fs/promises"
+import { readFile } from "node:fs/promises"
 import { basename, dirname, extname, join, relative, resolve } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { Effect, Option } from "effect"
-import { idOf, posix, rootOf, walk } from "../../internal/files.ts"
+import { idOf, posix, rootOf, walk, writeWhole } from "../../internal/files.ts"
 import { hashText } from "../../internal/hash.ts"
 import { mtime } from "../../internal/serve.ts"
 import { toRgba } from "../core/export.ts"
@@ -413,7 +413,7 @@ export const writeReviews = (assets: ReadonlyArray<PixelAsset>, review: Review):
       const text = encodeReview({ assets: kept })
       const now = await textOf(reviews)
       // Nothing said yet makes no file.
-      if (text !== now && !(now === null && text === encodeReview(emptyReview))) await writeFile(reviews, text)
+      if (text !== now && !(now === null && text === encodeReview(emptyReview))) await writeWhole(reviews, text)
     }
   })
   writing = write.catch(() => undefined)

@@ -851,7 +851,8 @@ const review = Command.make(
     yield* promised("cannot read the review", () => reviewsOf(found))
     const address = yield* promised("cannot serve the page", () => serve({ paths: flags.paths, port: flags.port, host: flags.host }))
     yield* printJson({
-      ...address,
+      url: address.url,
+      network: address.network,
       assets: found.length,
       warning,
       reviews: [...new Set(found.map((asset) => path.relative(process.cwd(), reviewPlace(asset.file).reviews)))],

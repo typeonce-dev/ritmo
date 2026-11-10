@@ -18,14 +18,15 @@ import { instrumentIds, instruments, type InstrumentId } from "../core/instrumen
 import { isSparse, listen, referenceOf } from "../core/listen.ts"
 import { toMidi } from "../core/midi.ts"
 import { noteSamples, renderSong, SAMPLE_RATE, type NoteCache, type Stereo } from "../core/render.ts"
-import { approvalOf, changedOf, decodeReview, describeEdits, emptyReview, encodeReview, type Comment, type Status } from "../core/review.ts"
+import { approvalOf, changedOf, decodeAudioReview, decodeReview, describeEdits, emptyReview, encodeReview, type Comment, type Status } from "../core/review.ts"
 import { barsOf, decodeSong, encodeSong, lengthInBeats, lengthInSeconds, parseKey, scaleNames, secondsPerBeat, type Note, type Scale, type Song, type Track } from "../core/song.ts"
 import { makeAudioView } from "./audio.ts"
 import { arrangementHeight, attachArrangement, attachGrid, drawArrangement, drawGrid, GUTTER, type View } from "./grid.ts"
 import { commentsSection, reviewSection, statusLabel } from "./panels.ts"
 import { makePlayer } from "./player.ts"
 import { canRecord, monoOf, startRecording, type Recording } from "./record.ts"
-import { SERVER_GONE, type Entry, type SongSession, type Store } from "./store.ts"
+import { mergeText, textVersion, type Base } from "../../internal/save.ts"
+import { SERVER_GONE, type Entry, type Session, type SongSession, type Store } from "./store.ts"
 
 const RITMO_URL = "https://ritmo.typeonce.dev/"
 
@@ -89,8 +90,67 @@ let songDirty = false
 let reviewDirty = false
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 
-const put = async (file: "song" | "review", text: string): Promise<void> => {
-  state.version = await store.save(state.current, file, text)
+/** What each file of the music open held when the page last read or wrote it: what its next save is based on, and what a merge starts from. */
+const bases: Record<"song" | "review", Base> = { song: { text: "", version: "" }, review: { text: "", version: "" } }
+
+/** Takes the files' versions from what the page just read. */
+const based = (session: Session): void => {
+  if (session.kind === "song") bases.song = { text: session.songText, version: textVersion(session.songText) }
+  bases.review = { text: session.reviewText ?? encodeReview(emptyReview), version: textVersion(session.reviewText) }
+}
+
+const encoded = (file: "song" | "review"): string => (file === "song" ? encodeSong(state.song) : state.kind === "audio" ? audio.reviewText() : encodeReview(state.review))
+
+/**
+ * The agent wrote the file since the page read it: the person's change
+ * since then goes over what it holds now. A merge that does not read takes
+ * the agent's version, and says so.
+ */
+const mergeInto = (file: "song" | "review", mine: string, theirs: string): void => {
+  const merged = mergeText(bases[file].text, mine, theirs) ?? ""
+  const lost = (): void => say(`The agent changed the ${file} as you did, in a way both cannot keep: the page shows the agent's. Make your change again.`)
+  if (file === "song") {
+    const song = decodeSong(merged)
+    const now = song.ok ? song : decodeSong(theirs)
+    if (!song.ok) lost()
+    if (!now.ok) return
+    state.song = now.value
+    // The agent's version: what the person edits from here is told against it.
+    const agent = decodeSong(theirs)
+    if (agent.ok) state.baseline = agent.value
+    state.review = { ...state.review, edits: describeEdits(state.baseline, state.song) }
+    reviewDirty = true
+    songChanged()
+    return
+  }
+  if (state.kind === "audio") {
+    const ok = decodeAudioReview(merged).ok
+    if (!ok) lost()
+    audio.restore(ok ? merged : theirs)
+  } else {
+    const review = decodeReview(merged)
+    const now = review.ok ? review : decodeReview(theirs)
+    if (!review.ok) lost()
+    if (now.ok) state.review = now.value
+  }
+  update()
+}
+
+const put = async (file: "song" | "review"): Promise<void> => {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const text = encoded(file)
+    const saved = await store.save(state.current, file, text, bases[file].version)
+    if (saved.ok) {
+      bases[file] = { text, version: saved.base }
+      // After a merge the version stays behind, so the page reads the music once more: the agent may have written the other file too.
+      if (attempt === 0) state.version = saved.version
+      return
+    }
+    // Written meanwhile: the person's change goes over what it holds now, and is sent again on that.
+    mergeInto(file, text, saved.text)
+    bases[file] = { text: saved.text, version: saved.version }
+  }
+  throw new Error(`the ${file} kept changing while saving`)
 }
 
 /** The write under way: writes go one at a time, and opening other music waits for them. */
@@ -117,13 +177,13 @@ const write = async (): Promise<void> => {
     if (songDirty) {
       songDirty = false
       owedSong = true
-      await put("song", encodeSong(state.song))
+      await put("song")
       owedSong = false
     }
     if (reviewDirty) {
       reviewDirty = false
       owedReview = true
-      await put("review", state.kind === "audio" ? audio.reviewText() : encodeReview(state.review))
+      await put("review")
       owedReview = false
     }
     state.saving = songDirty || reviewDirty ? "saving" : "saved"
@@ -254,6 +314,7 @@ const open = async (id: string): Promise<void> => {
   state.problem = undefined
   state.name = answer.name
   state.version = answer.version
+  based(answer)
   if (store.follows) window.history.replaceState(null, "", `#${encodeURIComponent(id)}`)
   history.reset()
   state.loaded = true
@@ -302,6 +363,7 @@ const follow = async (): Promise<void> => {
     const session = await store.session(id)
     // The person may have moved on, or changed something, while it came.
     if (session === undefined || id !== state.current || busy()) return
+    based(session)
     if (session.kind === "audio") {
       audio.follow(session)
       state.version = session.version

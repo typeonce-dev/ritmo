@@ -9,9 +9,9 @@
  * around), so it is left out of a folder.
  */
 import { existsSync, statSync } from "node:fs"
-import { readFile, writeFile } from "node:fs/promises"
+import { readFile } from "node:fs/promises"
 import { basename, dirname, extname, join, relative, resolve } from "node:path"
-import { idOf, posix, rootOf, walk } from "../../internal/files.ts"
+import { idOf, posix, rootOf, walk, writeWhole } from "../../internal/files.ts"
 import { hashBytes } from "../../internal/hash.ts"
 import { mtime } from "../../internal/serve.ts"
 import { audioChangedOf, AUDIO_REVIEWS, changedOf, decodeAudioReviews, decodeReview, emptyAudioReview, emptyReview, encodeAudioReviews, reviewPath, type AudioReview, type Review, type Status } from "../core/review.ts"
@@ -83,7 +83,7 @@ let writing: Promise<unknown> = Promise.resolve()
 /** Writes one file's review into the shared file, one write at a time: each reads what the last one wrote. */
 export const writeAudioReview = (file: string, review: AudioReview): Promise<void> => {
   const { reviews, key } = audioReviewPlace(file)
-  const write = writing.then(async () => writeFile(reviews, encodeAudioReviews({ ...(await readAudioReviews(reviews)), [key]: review })))
+  const write = writing.then(async () => writeWhole(reviews, encodeAudioReviews({ ...(await readAudioReviews(reviews)), [key]: review })))
   writing = write.catch(() => undefined)
   return write
 }

@@ -252,7 +252,7 @@ const review = Command.make(
       try: () => serve({ bank, port: flags.port, host: flags.host, rules: { palette: rules.palette?.map(toHex), maxColors: rules.maxColors } }),
       catch: (error) => new CliFailure({ message: `cannot serve the page: ${error instanceof Error ? error.message : String(error)}` })
     })
-    yield* printJson({ ...address, bank, review: reviewPath(bank), next: "Send the person the url. What they pick, tune, and note is saved to the bank and the review as they go; read it back with `ritmo-tools fx notes`." })
+    yield* printJson({ url: address.url, network: address.network, bank, review: reviewPath(bank), next: "Send the person the url. What they pick, tune, and note is saved to the bank and the review as they go; read it back with `ritmo-tools fx notes`." })
     return yield* Effect.never
   })
 ).pipe(

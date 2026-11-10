@@ -3,6 +3,7 @@
  * (`serverStore`, the files the agent reads back), or the tab itself
  * (`memoryStore`, the website's demo, one song).
  */
+import { putFile, type Written } from "../../internal/save.ts"
 import { changedOf, decodeReview, emptyReview, type Status } from "../core/review.ts"
 import { decodeSong } from "../core/song.ts"
 
@@ -57,8 +58,8 @@ export interface Store {
   readonly library: () => Promise<ReadonlyArray<Entry> | undefined>
   /** One entry and its review, or `undefined` when it is gone. */
   readonly session: (id: string) => Promise<Session | undefined>
-  /** Writes an entry's song or review; resolves with the entry's new version. */
-  readonly save: (id: string, file: "song" | "review", text: string) => Promise<string>
+  /** Writes an entry's song or review when the file is still at `base` (`internal/save.ts`); fails with `SERVER_GONE` when the server cannot be reached. */
+  readonly save: (id: string, file: "song" | "review", text: string, base: string) => Promise<Written>
   /** A plain audio file's bytes, or `undefined` when it cannot be read. */
   readonly readFile: (id: string) => Promise<ArrayBuffer | undefined>
   /** An audio file next to a song (the hum), or `undefined` when there is none. */
@@ -77,9 +78,6 @@ export const SERVER_GONE = "the review server is not running. Start `ritmo-tools
 const isSession = (value: unknown): value is Session => typeof value === "object" && value !== null && "kind" in value && "version" in value && typeof value.version === "string"
 
 const isEntries = (value: unknown): value is { readonly entries: ReadonlyArray<Entry> } => typeof value === "object" && value !== null && "entries" in value && Array.isArray(value.entries)
-
-const versionOf = (answer: unknown): string | undefined =>
-  typeof answer === "object" && answer !== null && "version" in answer && typeof answer.version === "string" ? answer.version : undefined
 
 const put = async (path: string, body: BodyInit): Promise<unknown> => {
   const response = await fetch(`/api/${path}`, { method: "PUT", body }).catch(() => {
@@ -115,7 +113,7 @@ export const serverStore: Store = {
     const answer: unknown = await (await fetch(`/api/session${query(id)}`)).json()
     return isSession(answer) ? answer : undefined
   },
-  save: async (id, file, text) => versionOf(await put(`${file}${query(id)}`, text)) ?? "",
+  save: (id, file, text, base) => putFile(`/api/${file}${query(id)}`, text, base, SERVER_GONE),
   readFile: (id) => bytesOf(`/api/file${query(id)}`),
   readAudio: (id, name) => bytesOf(`/api/audio/${encodeURIComponent(name)}${query(id)}`),
   writeAudio: async (id, name, bytes) => {
@@ -155,7 +153,7 @@ export const memoryStore = (name: string, songText: string, audio: ReadonlyMap<s
       if (file === "song") song = text
       else review = text
       version += 1
-      return String(version)
+      return { ok: true, version: String(version), base: String(version) }
     },
     readFile: async () => undefined,
     readAudio: async (_, file) => {

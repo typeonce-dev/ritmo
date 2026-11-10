@@ -17,6 +17,7 @@ import { approvalOf, audioChangedOf, audioReviewSummary, changedSince, decodeAud
 import { decodeSong, encodeSong, inKey, midiOf, nameOf, parseKey, type Song } from "@typeonce/ritmo-tools/music/core/song.ts"
 import { audioReviewPlace, findMusic, hashFile, libraryOf, readAudioReview, writeAudioReview } from "@typeonce/ritmo-tools/music/cli/library.ts"
 import { api } from "@typeonce/ritmo-tools/music/cli/serve.ts"
+import { textVersion } from "@typeonce/ritmo-tools/internal/save.ts"
 
 const tune = ["A4", "C5", "E5", "D5", "C5", "A4", "G4", "A4"]
 
@@ -466,18 +467,19 @@ describe("the review page's server", () => {
     const { folder, songFile, flac } = setup()
     await withServer([folder], async (url) => {
       const id = encodeURIComponent(idOf(songFile))
-      const saved = await fetch(`${url}/song?id=${id}`, { method: "PUT", body: encodeSong({ ...song(), tempo: 90 }) })
+      const saved = await fetch(`${url}/song?id=${id}&base=${textVersion(readFileSync(songFile, "utf8"))}`, { method: "PUT", body: encodeSong({ ...song(), tempo: 90 }) })
       expect(saved.status).toBe(200)
       const songNow = decodeSong(readFileSync(songFile, "utf8"))
       expect(songNow.ok && songNow.value.tempo).toBe(90)
       const review = { ...emptyReview, status: "changes" as const, note: "Calmer." }
-      const answer = (await (await fetch(`${url}/review?id=${id}`, { method: "PUT", body: encodeReview(review) })).json()) as { version: string }
+      const answer = (await (await fetch(`${url}/review?id=${id}&base=${textVersion(null)}`, { method: "PUT", body: encodeReview(review) })).json()) as { version: string }
       expect(decodeReview(readFileSync(reviewPath(songFile), "utf8"))).toEqual({ ok: true, value: review })
       const { entries } = (await (await fetch(`${url}/library`)).json()) as { entries: ReadonlyArray<{ id: string; version: string }> }
       // What the page keeps after a save is what the list shows, so the page does not read its own save as the agent's.
       expect(entries.find((entry) => entry.id === idOf(songFile))?.version).toBe(answer.version)
       const flacReview = { status: "approved" as const, note: "", comments: [], approved: await hashFile(flac) }
-      expect((await fetch(`${url}/review?id=${encodeURIComponent(idOf(flac))}`, { method: "PUT", body: encodeAudioReview(flacReview) })).status).toBe(200)
+      const flacBase = textVersion(encodeAudioReview(await readAudioReview(flac)))
+      expect((await fetch(`${url}/review?id=${encodeURIComponent(idOf(flac))}&base=${flacBase}`, { method: "PUT", body: encodeAudioReview(flacReview) })).status).toBe(200)
       expect(await readAudioReview(flac)).toEqual(flacReview)
       expect(existsSync(`${flac}.review.json`)).toBe(false)
     })
@@ -499,12 +501,13 @@ describe("the review page's server", () => {
     const { folder, songFile, flac } = setup()
     await withServer([folder], async (url) => {
       const id = encodeURIComponent(idOf(songFile))
-      expect((await fetch(`${url}/audio/hum.wav?id=${id}`, { method: "PUT", body: "hummm" })).status).toBe(200)
-      expect(await (await fetch(`${url}/audio/hum.wav?id=${id}`)).text()).toBe("hummm")
-      expect(readFileSync(join(folder, "hum.wav"), "utf8")).toBe("hummm")
-      expect((await fetch(`${url}/audio/${encodeURIComponent("../hum.wav")}?id=${id}`, { method: "PUT", body: "out" })).status).toBe(400)
+      const hum = "RIFF\u0000\u0000\u0000\u0000WAVEhummm"
+      expect((await fetch(`${url}/audio/theme.song.reference.wav?id=${id}`, { method: "PUT", body: hum })).status).toBe(200)
+      expect(await (await fetch(`${url}/audio/theme.song.reference.wav?id=${id}`)).text()).toBe(hum)
+      expect(readFileSync(join(folder, "theme.song.reference.wav"), "utf8")).toBe(hum)
+      expect((await fetch(`${url}/audio/${encodeURIComponent("../theme.song.reference.wav")}?id=${id}`, { method: "PUT", body: hum })).status).toBe(400)
       // A plain audio file has no hum beside it.
-      expect((await fetch(`${url}/audio/hum.wav?id=${encodeURIComponent(idOf(flac))}`)).status).toBe(404)
+      expect((await fetch(`${url}/audio/theme.song.reference.wav?id=${encodeURIComponent(idOf(flac))}`)).status).toBe(404)
     })
   })
 })

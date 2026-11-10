@@ -177,7 +177,8 @@ const review = Command.make(
       catch: (error) => new CliFailure({ message: `cannot serve the page: ${error instanceof Error ? error.message : String(error)}` })
     })
     yield* printJson({
-      ...address,
+      url: address.url,
+      network: address.network,
       music: found.map((music) => music.id),
       next: "Send the person the url. What they edit, record, approve, and comment is saved as they go; read it back with `ritmo-tools music notes`, with the same paths."
     })

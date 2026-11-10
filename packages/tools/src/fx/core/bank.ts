@@ -148,6 +148,11 @@ const parse = (text: string): Decoded<unknown> => {
   }
 }
 
+/** Whether a path in a bank stays inside its folder: not absolute, and no `..` in it. The review page reads what a bank names, and the page writes the bank. */
+const staysInside = (file: string): boolean => !/^([\\/]|[a-zA-Z]:)/.test(file) && !file.split(/[\\/]/).includes("..")
+
+const INSIDE = 'must be a path inside the bank\'s folder, not absolute and with no "..": keep the bank in a folder that holds its drafts and art'
+
 export const decodeBank = (text: string): Decoded<Bank> => {
   const parsed = parse(text)
   if (!parsed.ok) return parsed
@@ -185,6 +190,7 @@ export const decodeBank = (text: string): Decoded<Bank> => {
   if (raw.standIn !== undefined) {
     if (!isRecord(raw.standIn) || typeof raw.standIn.file !== "string" || raw.standIn.file === "" || !pixel(raw.standIn.anchor))
       errors.push('standIn must be {"file": "a PNG of one of the game\'s sprites", "anchor": [x, y] (its feet)}')
+    else if (!staysInside(raw.standIn.file)) errors.push(`standIn.file ${INSIDE}`)
     else standIn = { file: raw.standIn.file, anchor: [raw.standIn.anchor[0], raw.standIn.anchor[1]] }
   }
   const effects: Record<string, EffectEntry> = {}
@@ -199,6 +205,7 @@ export const decodeBank = (text: string): Decoded<Bank> => {
         errors.push(`effects.${name}.drafts.${id} needs a file`)
         continue
       }
+      if (!staysInside(draft.file)) errors.push(`effects.${name}.drafts.${id}.file ${INSIDE}`)
       if (draft.seed !== undefined && !Number.isInteger(draft.seed)) errors.push(`effects.${name}.drafts.${id}.seed must be a whole number`)
       const tune: Record<string, number> = {}
       if (draft.tune !== undefined && !isRecord(draft.tune)) errors.push(`effects.${name}.drafts.${id}.tune must be an object of numbers`)

@@ -13,7 +13,7 @@ import type { IncomingMessage, ServerResponse } from "node:http"
 import { dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { hashText } from "../../internal/hash.ts"
-import { body, send, servePage, type Address, type Handler } from "../../internal/serve.ts"
+import { body, send, servePage, writeChecked, type Address, type Handler } from "../../internal/serve.ts"
 import { decodeReview, encodeReview } from "../core/review.ts"
 import { assetVersion, detailOf, findAssets, libraryOf, normalPictureOf, pictureOf, readAsset, readingOf, reviewsOf, reviewVersion, writeReviews, type PixelAsset } from "./library.ts"
 
@@ -56,12 +56,13 @@ export const api = (paths: ReadonlyArray<string>, listWait = LIST_WAIT_MS): Hand
         const decoded = decodeReview((await body(request)).toString("utf8"))
         if (!decoded.ok) return send(response, 400, { error: decoded.error })
         // Written since the page last read it (the agent resolved a comment): the page merges and tries again.
-        const now = await reviewVersion(assets)
-        if (query(request, "base") !== now) return send(response, 409, { error: "the review changed since the page read it", text: encodeReview(await reviewsOf(assets)), version: now })
-        await writeReviews(assets, decoded.value)
-        // Only what was found is written. An id that is not (the agent renamed that file while the page was open) is said back, and its review stays in the file under its old name, for `pixel notes` to list.
-        const ignored = Object.keys(decoded.value.assets).filter((id) => !assets.some((asset) => asset.id === id))
-        return send(response, 200, { version: await reviewVersion(assets), ignored })
+        const held = async () => ({ text: encodeReview(await reviewsOf(assets)), version: await reviewVersion(assets) })
+        return writeChecked(request, response, held, async () => {
+          await writeReviews(assets, decoded.value)
+          // Only what was found is written. An id that is not (the agent renamed that file while the page was open) is said back, and its review stays in the file under its old name, for `pixel notes` to list.
+          const ignored = Object.keys(decoded.value.assets).filter((id) => !assets.some((asset) => asset.id === id))
+          return { version: await reviewVersion(assets), ignored }
+        })
       }
       const asset = named(request, assets)
       if (asset === undefined) return send(response, 404, { error: `no such asset for ${route}` })

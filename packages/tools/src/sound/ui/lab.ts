@@ -19,6 +19,7 @@ import { approvalOf, changedOf, decodeReview, emptyReview, encodeReview, newSoun
 import { makeTakes, towards, type Take, type Toward } from "../core/takes.ts"
 import { toWav } from "../core/wav.ts"
 import { makePlayer } from "./player.ts"
+import { mergeText, textVersion, type Base } from "../../internal/save.ts"
 import type { Store } from "./store.ts"
 import { drawWave } from "./wave.ts"
 
@@ -102,24 +103,80 @@ const checkAll = (): void => {
 let bankDirty = false
 let reviewDirty = false
 let saveTimer: ReturnType<typeof setTimeout> | undefined
+let flushing: Promise<void> = Promise.resolve()
 
-const put = async (file: "bank" | "review", text: string): Promise<void> => {
-  state.version = await store.save(file, text)
+/** What each file held when the page last read or wrote it: what its next save is based on, and what a merge starts from. */
+const bases: Record<"bank" | "review", Base> = { bank: { text: "", version: "" }, review: { text: "", version: "" } }
+
+const encoded = (file: "bank" | "review"): string => (file === "bank" ? encodeBank(state.bank) : encodeReview(state.review))
+
+/**
+ * The agent wrote the file since the page read it (takes, a recipe): the
+ * person's change since then goes over what it holds now. A merge that
+ * does not read as a bank or a review takes the agent's version, and says so.
+ */
+const mergeInto = (file: "bank" | "review", mine: string, theirs: string): void => {
+  const merged = mergeText(bases[file].text, mine, theirs)
+  if (file === "bank") {
+    const bank = decodeBank(merged ?? "")
+    const now = bank.ok ? bank : decodeBank(theirs)
+    if (now.ok) state.bank = now.value
+    if (!bank.ok) say("The agent changed the bank as you did, in a way both cannot keep: the page shows the agent's. Make your change again.")
+  } else {
+    const review = decodeReview(merged ?? "")
+    const now = review.ok ? review : decodeReview(theirs)
+    if (now.ok) state.review = now.value
+    if (!review.ok) say("The agent changed the review as you did, in a way both cannot keep: the page shows the agent's. Make your change again.")
+  }
+  if (recipeOf(state.selected) === undefined) state.selected = names()[0] ?? ""
+  checkAll()
+  update()
 }
 
-const flush = async (): Promise<void> => {
+const put = async (file: "bank" | "review"): Promise<void> => {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const text = encoded(file)
+    const saved = await store.save(file, text, bases[file].version)
+    if (saved.ok) {
+      bases[file] = { text, version: saved.base }
+      // After a merge the version stays behind, so the page reads the files once more: the agent may have written the other one too.
+      if (attempt === 0) state.version = saved.version
+      return
+    }
+    // Written meanwhile: the person's change goes over what it holds now, and is sent again on that.
+    mergeInto(file, text, saved.text)
+    bases[file] = { text: saved.text, version: saved.version }
+  }
+  throw new Error(`the ${file} kept changing while saving`)
+}
+
+const flush = (): Promise<void> => {
+  flushing = flushing.then(write)
+  return flushing
+}
+
+const write = async (): Promise<void> => {
   saveTimer = undefined
+  // What is on its way stays owed until it lands: a change made meanwhile sets the flag again, and a failure puts it back.
+  let owedBank = false
+  let owedReview = false
   try {
     if (bankDirty) {
       bankDirty = false
-      await put("bank", encodeBank(state.bank))
+      owedBank = true
+      await put("bank")
+      owedBank = false
     }
     if (reviewDirty) {
       reviewDirty = false
-      await put("review", encodeReview(state.review))
+      owedReview = true
+      await put("review")
+      owedReview = false
     }
     state.saving = bankDirty || reviewDirty ? "saving" : "saved"
   } catch (error) {
+    bankDirty ||= owedBank
+    reviewDirty ||= owedReview
     state.saving = "failed"
     say(`Not saved: ${error instanceof Error ? error.message : String(error)}`)
   }
@@ -181,6 +238,8 @@ const load = async (): Promise<void> => {
   state.bankFile = answer.bank
   state.name = answer.name
   state.version = answer.version
+  bases.bank = { text: answer.bankText, version: textVersion(answer.bankText) }
+  bases.review = { text: answer.reviewText ?? encodeReview(emptyReview), version: textVersion(answer.reviewText) }
   if (recipeOf(state.selected) === undefined) state.selected = names()[0] ?? ""
   checkAll()
   history.reset()
@@ -189,11 +248,20 @@ const load = async (): Promise<void> => {
   update()
 }
 
+/** Something here is not in the files yet: what they hold now is not to be taken over it. */
+const busy = (): boolean => saveTimer !== undefined || state.saving === "saving" || bankDirty || reviewDirty
+
 const follow = async (): Promise<void> => {
   if (saveTimer !== undefined || state.saving === "saving") return
   try {
     const version = await store.version()
-    if (version === undefined || version === state.version) return
+    if (version === undefined) return
+    // What failed to save (the server was gone) goes out once it answers again.
+    if (busy()) {
+      if (state.saving === "failed" && saveTimer === undefined) void flush()
+      return
+    }
+    if (version === state.version) return
     await load()
     say("The agent changed the bank: the page shows it now.")
   } catch {
