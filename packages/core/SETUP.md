@@ -29,6 +29,7 @@ Follow these steps once in a new project, and for any step an existing project i
    type SchemaOf = typeof schema
    export interface GameSchema extends SchemaOf {}
    const named: GameSchema = schema
+   const Root = Schema.defineRoot("Game")
    export const Game = Schema.bind(named, Root)
    ```
 

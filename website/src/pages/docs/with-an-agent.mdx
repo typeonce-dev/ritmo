@@ -107,11 +107,15 @@ https://raw.githubusercontent.com/typeonce-dev/ritmo/main/packages/core/SETUP.md
 
 `SETUP.md` ships with `@typeonce/ritmo`. It has the agent:
 
-1. install the runtime, the devtools, and the lint plugin;
-2. link the **Ritmo skill** from `node_modules` into the folder it reads
+1. install the runtime and the devtools;
+2. link the eight **Ritmo skills** (`ritmo`, `ritmo-prototype`,
+   `ritmo-onboarding`, `ritmo-polish`, `ritmo-pixel-art`, `ritmo-sounds`,
+   `ritmo-music`, `ritmo-fx`) from `node_modules` into the folder it reads
    skills from;
-3. add one check script: type check, `oxlint`, `ritmo-devtools lint`, and
-   the tests.
+3. install the lint plugin and add one check script: type check, `oxlint`,
+   `ritmo-devtools lint`, and the tests;
+4. name the schema's type where the game binds it, so type errors print
+   `GameSchema` instead of every descriptor the game has.
 
 From then on, "run the check" is how you and the agent know a change is
 done.

@@ -22,7 +22,21 @@ tester.run("no-kept-query-values", rule, {
     system("let best\nfor (const entity of queries.targets.each()) best = entity\nif (best) commands.despawn(best)"),
     system("let best\nqueries.targets.each().forEach((entity) => { best = entity })"),
     // Helpers outside a system are not judged: they get their entities from the system.
-    "let kept\nconst keep = (entity) => { kept = entity }"
+    "let kept\nconst keep = (entity) => { kept = entity }",
+    // Ids, in every form that keeps entities.
+    system("local.ids = Array.from(queries.targets.each(), (entity) => entity.id)"),
+    system("local.ids = queries.targets.each().map((entity) => entity.id)"),
+    system("local.total = queries.targets.each().reduce((sum, entity) => sum + queries.targets.data.health.get(entity), 0)"),
+    system("const [first] = queries.targets.each()\nlocal.target = first?.id"),
+    system("Object.assign(local, { target: queries.targets.each()[0]?.id })"),
+    `Game.System("Game/S", { queries: { targets: Targets } }, ({ queries: q, local }) => { local.target = q.targets.each()[0]?.id })`,
+    `Game.System("Game/S", { queries: { targets: Targets } }, ({ queries: { targets }, local }) => { local.at = targets.data.position.get(targets.each()[0]) })`,
+    `Game.System("Game/S", { queries: { targets: Targets } }, (ctx) => { ctx.local.target = ctx.queries.targets.each()[0]?.id })`,
+    "const cache = new Map()\nconst run = ({ queries }) => { for (const entity of queries.targets.each()) cache.set(entity.id, 1) }\nGame.System(\"Game/S\", { queries: { targets: Targets } }, run)",
+    // A function not passed to a system is a helper.
+    "const cache = new Map()\nconst run = ({ queries }) => { cache.set(1, queries.targets.each()[0]) }",
+    // A service may keep what it is given: the rule cannot see what it does.
+    system("services.cache.remember(queries.targets.each()[0])")
   ],
   invalid: [
     {
@@ -74,6 +88,57 @@ tester.run("no-kept-query-values", rule, {
     {
       code: system("slots = queries.targets.data", "let slots"),
       errors: [{ messageId: "data", data: { name: "queries.targets.data" } }]
+    },
+    // Entities copied into another array, or picked by a callback.
+    {
+      code: system("local.list = Array.from(queries.targets.each())"),
+      errors: [{ messageId: "entity", data: { name: "Array.from(queries.targets.each())", id: "its `id`" } }]
+    },
+    {
+      code: system("local.list = queries.targets.each().map((e) => e)"),
+      errors: [{ messageId: "entity", data: { name: "queries.targets.each().map((e) => e)", id: "its `id`" } }]
+    },
+    {
+      code: system("local.pairs = queries.targets.each().map((entity) => ({ entity, hp: 1 }))"),
+      errors: [{ messageId: "entity", data: { name: "queries.targets.each().map((entity) => ({ entity, hp: 1 }))", id: "its `id`" } }]
+    },
+    {
+      code: system("kept = queries.targets.each().reduce((best, e) => (e.id > best.id ? e : best))", "let kept"),
+      errors: [{ messageId: "entity", data: { name: "queries.targets.each().reduce((best, e) => (e.id > best.id ? e : best))", id: "its `id`" } }]
+    },
+    {
+      code: system("const [first] = queries.targets.each()\nlocal.target = first"),
+      errors: [{ messageId: "entity", data: { name: "first", id: "`first.id`" } }]
+    },
+    {
+      code: system("Object.assign(local, { target: queries.targets.each()[0] })"),
+      errors: [{ messageId: "entity", data: { name: "queries.targets.each()[0]", id: "its `id`" } }]
+    },
+    // Contexts destructured another way.
+    {
+      code: `Game.System("Game/S", { queries: { targets: Targets } }, ({ queries: q, local }) => { local.slots = q.targets.data })`,
+      errors: [{ messageId: "data", data: { name: "q.targets.data" } }]
+    },
+    {
+      code: `Game.System("Game/S", { queries: { targets: Targets } }, ({ queries: { targets }, local }) => { local.slots = targets.data })`,
+      errors: [{ messageId: "data", data: { name: "targets.data" } }]
+    },
+    {
+      code: `Game.System("Game/S", { queries: { targets: Targets } }, (ctx) => { ctx.local.target = ctx.queries.targets.each()[0] })`,
+      errors: [{ messageId: "entity", data: { name: "ctx.queries.targets.each()[0]", id: "its `id`" } }]
+    },
+    {
+      code: `Game.System("Game/S", { queries: { targets: Targets } }, ({ queries, local: kept }) => { kept.target = queries.targets.each()[0] })`,
+      errors: [{ messageId: "entity", data: { name: "queries.targets.each()[0]", id: "its `id`" } }]
+    },
+    {
+      // A system function declared apart and passed by name.
+      code: "const cache = new Map()\nconst run = ({ queries }) => { for (const entity of queries.targets.each()) cache.set(1, entity) }\nGame.System(\"Game/S\", { queries: { targets: Targets } }, run)",
+      errors: [{ messageId: "entity", data: { name: "entity", id: "`entity.id`" } }]
+    },
+    {
+      code: "const cache = new Map()\nfunction run({ queries }) { cache.set(1, queries.targets.each()[0]) }\nexport const S = Game.System(\"Game/S\", { queries: { targets: Targets } }, run)",
+      errors: [{ messageId: "entity", data: { name: "queries.targets.each()[0]", id: "its `id`" } }]
     },
     {
       code: `let kept\nGame.Inspector("Game/I", { queries: { targets: Targets } }, ({ queries }) => { kept = queries.targets.each() })`,

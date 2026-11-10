@@ -66,8 +66,8 @@ const started = performance.now()
 | [`use-random-for-randomness`](#ritmouse-random-for-randomness) | simulation | `Math.random()`, `crypto` randomness | `Random.draw(resources.rng)` |
 | [`use-ops-for-math`](#ritmouse-ops-for-math) | simulation | `Math.sin`, `Math.hypot`, `a ** b`, `const { sin } = Math`, ... | `Ops` |
 | [`keep-simulation-headless`](#ritmokeep-simulation-headless) | simulation | page globals, host I/O, audio, renderer imports | input and data from the host, drawing and sound in a render schedule |
-| [`no-infinity-in-simulation-data`](#ritmono-infinity-in-simulation-data) | simulation | `Infinity` / `NaN` in object literals | `null` |
-| [`no-float-timers`](#ritmono-float-timers) | simulation | `timer -= dt`, `cooldown - time.dt` | `Clock.deadline` / `Clock.reached` |
+| [`no-infinity-in-simulation-data`](#ritmono-infinity-in-simulation-data) | simulation | `Infinity` / `NaN` in object and array literals | `null` |
+| [`no-float-timers`](#ritmono-float-timers) | simulation | `timer -= dt`, `cooldown = cooldown - time.dt` | `Clock.deadline` / `Clock.reached` |
 | [`no-brand-cast`](#ritmono-brand-cast) | simulation | `raw as UserId`, `1 as Random.State` | the schema or constructor that brands it |
 | [`handle-runtime-result`](#ritmohandle-runtime-result) | everywhere | a dropped or unchecked `runtime.tick(...)` / `restore(...)` / `rewind(...)` / `snapshot()` / `checksum()` result | check `.ok` |
 | [`prefix-descriptor-and-system-names`](#ritmoprefix-descriptor-and-system-names) | everywhere | `"Position"`, `Game.System("Move", ...)` | `"Game/Position"` |
@@ -162,7 +162,9 @@ dash: { remaining: 0, since: null }                              // since: numbe
 { timer: null }                                                  // timer: { remaining: number; duration: number } | null
 ```
 
-Catches `Infinity`, `-Infinity`, `NaN`, and `Number.POSITIVE_INFINITY` / `NEGATIVE_INFINITY` / `NaN` as a property value in any object literal in simulation files, including values built in helpers before they are spawned. Search seeds in locals (`let best = Infinity`) are not reported.
+Catches `Infinity`, `-Infinity`, `NaN`, `Number.POSITIVE_INFINITY` / `NEGATIVE_INFINITY` / `NaN`, `1 / 0`, and `Math.min()` / `Math.max()` of nothing, as a property value of an object literal or an element of an array literal in simulation files, including values built in helpers before they are spawned. In the same places it also catches a call given one of them (`{ dash: make(Infinity) }`; `Math.*` and `Number.*` calls give finite numbers back), a `const` declared as one (`{ max: LIMIT }`), and a search seed stored unchecked (`{ distance: best }` after `let best = Infinity`), which stays Infinity when the search finds nothing; comparing the seed with `Infinity` or passing it to `Number.isFinite` anywhere in the file counts as the check.
+
+Local scratch is not reported: a search seed in a `let`, a literal one too (`let nearest = { distance: Infinity, id: -1 }`); a fallback in a function whose fields are only compared (`const hit = sweep ?? { time: Infinity }`, then `hit.time < limit`); and values a `for...of` tries one by one (`for (const size of [0, Infinity])`). A value passed straight to a write (`resources.best.set(best)`) is not checked.
 
 ### `ritmo/no-float-timers`
 
@@ -195,7 +197,14 @@ data.enemy.set(entity, { attackAt: Clock.deadline(gameplay, windup) })
 
 Time scaled by a fraction (a 0.3x slow motion) has no whole step to end on, so a float is right there: keep it and disable the line with the reason (`// oxlint-disable-next-line ritmo/no-float-timers -- scaled by slow motion`). A value counted up by `dt` is reported too, since it drifts the same way: `Clock.elapsed(time)` is the exact seconds of a clock.
 
-Catches a stored value (a local or a field) plus or minus a tick's seconds on their own: `dt`, `deltaTime`, or `deltaSeconds`, as a local, a field (`time.dt`), or a resource read (`resources.deltaTime.get()`), in `x -= dt`, `x += dt`, and `x - dt` / `x + dt` anywhere (`Math.max(0, x - dt)`, an object literal). A rate scaled by `dt` (`position.x += velocity.x * dt`) is integration and is not reported, nor is a count of whole steps (`cooldown - 1`), nor a `delta` that is not time (a pointer's).
+Catches a value updated by a step's length in seconds, so it counts across ticks: `x -= dt` and `x += dt`, and `x - dt` / `x + dt` written back where `x` came from: to a target of the same name (`x = x - dt`, `let cooldown = Math.max(0, state.cooldown - dt)`, `{ left: buff.left - dt }`, `resources.timer.set(timer - dt)`), or as an `update` callback's result (`resources.timer.update((left) => left - dt)`).
+
+A step's length is:
+- a local, a field (`time.dt`), or a resource read (`resources.deltaTime.get()`) named `dt`, `deltaTime`, `deltaSeconds`, `dtSeconds`, `fixedDt`, `fixedDelta`, `fixedDeltaTime`, `fixedDeltaSeconds`, `fixedStep`, `stepSeconds`, `fixedStepSeconds`, `timeStep`, `fixedTimeStep`, `secondsPerStep`, `secondsPerTick`, `tickSeconds`, or `frameSeconds`, in any case and with or without `_` (`STEP_SECONDS`);
+- `delta` of `time`, `clock`, `frame`, `tick`, or `step`, and `seconds` of `frame`, `tick`, or `step` (`step.seconds`); a bare `delta` only when subtracted (`x -= delta`);
+- `1 / 60` (one over a whole number), one of the above scaled by a number (`dt * 1000`) or clamped (`Math.min(dt, 0.1)`), or a `const` that holds one.
+
+Not reported: a rate scaled by `dt` (`position.x += velocity.x * dt`, integration), a step's length added and kept elsewhere (`const until = horizon + dt`, `if (accumulator - dt >= 0)`), a count of whole steps (`cooldown - 1`), and a `delta` that is not time (`pending[axis] += delta`, `pointer.delta`).
 
 ### `ritmo/no-brand-cast`
 
@@ -230,6 +239,7 @@ Make the value through its check: decode at the boundary with the game's schema,
 ```ts
 runtime.tick(update)                                             // reported
 runtime.restore(save)                                            // reported
+if (!runtime.restore(save)) showLoadError()                      // reported: a Result is an object, always true
 runtime.rewind(checkpoint)                                       // reported
 persist(runtime.snapshot())                                      // reported
 log(`hash ${runtime.checksum()}`)                                // reported
@@ -246,7 +256,9 @@ if (saved.ok) persist(saved.value)
 void runtime.tick(render)                                        // ignored on purpose
 ```
 
-Catches these calls on a receiver named like a runtime (`runtime`, `game.runtime`, `worldRuntime`) used as a statement, or passed on unchecked: as a call argument, inside a template string, an object or array literal, a spread, or an operand, also through `??`, `? :`, and `as`. A variable, a field, a `return`, `.ok`, and `void` keep the `Result` for the code to check. A `tick`, `tryTick`, `restore`, or `rewind` result passed to a function is left to that function (a test's `expectOk(runtime.tick(update))`), unless it only prints or encodes (`JSON.stringify`, `String`, `console.*`). A `snapshot()` or `checksum()` result is data on its way somewhere, so passing it to any function unchecked is reported; a helper that takes that `Result` itself gets it once it is named: `const checksum = runtime.checksum(); helper(checksum)`. Game wrappers with other names (`town.restore(...)`) are not reported. Option: `{ "runtimePattern": "^(runtime|world)$" }` (a case-insensitive regular expression for the receiver's name; default `runtime$`).
+A runtime is a receiver named like one (`runtime`, `game.runtime`, `worldRuntime`), the `.value` of a `Game.Runtime.make(...)` held in a `const` of the same file (`made.value`, or `game` after `const game = made.value`), or a method destructured from one in a `const` (`const { tick } = runtime`).
+
+Catches these calls on a runtime used as a statement, as the value an arrow returns to a caller that drops it (`forEach`, `addEventListener`, `requestAnimationFrame`, `requestIdleCallback`, `setTimeout`, `setInterval`, `setImmediate`, `queueMicrotask`), as any but the last expression of a sequence (`runtime.tick(update), draw()`), tested as a condition (`!`, `if`, `while`, `for`, `? :`, the left of `&&` / `||`), or passed on unchecked: as a call argument, inside a template string, an object or array literal, a spread, or an operand, also through `??`, `? :`, and `as`. A variable, a field, a `return`, `.ok`, and `void` keep the `Result` for the code to check (`() => void runtime.tick(update)` ignores it on purpose). A `tick`, `tryTick`, `restore`, or `rewind` result passed to a function is left to that function (a test's `expectOk(runtime.tick(update))`), unless it only prints or encodes (`JSON.stringify`, `String`, `console.*`). A `snapshot()` or `checksum()` result is data on its way somewhere, so passing it to any function unchecked is reported; a helper that takes that `Result` itself gets it once it is named: `const checksum = runtime.checksum(); helper(checksum)`. Other receivers cannot be told from a runtime by syntax and are not reported: game wrappers (`town.restore(...)`) and runtimes reached any other way (`game.tick(...)` with `game` a parameter or an import). Option: `{ "runtimePattern": "^(runtime|world)$" }` (a case-insensitive regular expression for the receiver's name; default `runtime$`).
 
 ### `ritmo/prefix-descriptor-and-system-names`
 
@@ -268,19 +280,23 @@ Checks the names given to `Descriptor.*`, `*.System`, `*.StateMachine`, `*.Entit
 A tagged value, such as the value of a `Descriptor.EntityState` component or of a `Game.StateMachine`, changes state with the new state's own fields. Setting `_tag` over a spread of the previous state keeps every field of that state at runtime, while the new state's type hides them: they come back when the value is saved, compared, or spread again.
 
 ```ts
-const popped = { ...ground, _tag: "air", vy: 2 }   // reported: `platform` survives in the air
+const pop = (contact: Contact): Contact =>
+  contact._tag === "ground" ? { ...contact, _tag: "air", vy: 2, coyote: 0 } : contact   // reported: `platform` survives in the air
 
 // instead
 data.contact.transition(entity, { from: "ground", to: "air", data: { vy: 2, coyote: 0 } })
 nextMachines.mode.transition({ from: "Talking", to: "Exploring" })   // a machine's move, not { ...talking, _tag: "Exploring" }
-const popped = { _tag: "air", vy: 2, coyote: 0 }   // in a pure function
+const pop = (contact: Contact): Contact =>
+  contact._tag === "ground" ? { _tag: "air", vy: 2, coyote: 0 } : contact   // in a pure function
 ```
 
-Spreading the previous value to change fields of the same state (`{ ...air, vy: air.vy - 1 }`) is not reported, nor is a `_tag` written before the spread (`{ _tag: to, ...data }`).
+The compiler already rejects an `update` callback that changes `_tag` and `set` on a state declared with `transitions`, so the rule guards the rest: a value built in a pure function, or written with `set` to a state declared without `transitions`. It reports a `_tag` set over a spread when the file shows the spread value is a state: read from a state machine (`machines.x.get()`, `nextMachines.x.getPending()`) or from an entity state's slot the same function moves (`data.contact.get(entity)` next to `data.contact.transition(...)` or `data.contact.update(entity, { state, data })`), directly or through the variable holding it, or a value whose `_tag` the same function reads (`if (body._tag === "ground")`, `switch (state._tag)`, `const { _tag } = previous`). It reads `Object.assign({}, ground, { _tag: "air" })` and `{ ...ground, ...{ _tag: "air" } }` the same way, and also reports a rest that took the tag out given a named one (`const { _tag, ...rest } = ground`, then `{ _tag: "air", ...rest }`).
+
+Not reported: a value nothing in the file shows to be a state, such as a plain value tagged for an event (`events.explosion.emit({ ...position, _tag: "Explosion" })`); spreading the previous value to change fields of the same state (`{ ...air, vy: air.vy - 1 }`); and a `_tag` written before the spread (`{ _tag: to, ...data }`).
 
 ### `ritmo/no-kept-query-values`
 
-An entity from `queries.x.each()` and a query's `data` live for one run. Kept past it, the data throws in the next run, and the entity is not checked against its query again: a runtime without `debug` keeps reading it after it left the query (gained a `without` component, lost a `with` one), and a debug runtime throws. The rule reports an entity or `data` stored in `local` state (directly, in a field or element of a literal, pushed or set into a collection there, or captured by a closure stored there) or in a variable declared outside the `Game.System` or `Game.Inspector` callback.
+An entity from `queries.x.each()` and a query's `data` live for one run. Kept past it, the data throws in the next run, and the entity is not checked against its query again: a runtime without `debug` keeps reading it after it left the query (gained a `without` component, lost a `with` one), and a debug runtime throws. The rule reports an entity or `data` stored in `local` state (directly, in a field or element of a literal, pushed or set into a collection there, merged in with `Object.assign(local, ...)`, or captured by a closure stored there) or in a variable declared outside the system's function: the callback of `Game.System` or `Game.Inspector`, or a function of the same file passed to one by name (`Game.System(name, spec, run)`). It follows entities copied (`Array.from(queries.x.each())`, `const [first] = queries.x.each()`) or returned by a `map` or `reduce` callback, and a context destructured or renamed (`({ queries: q })`, `({ queries: { x } })`, `({ local: kept })`, `ctx.queries.x`).
 
 ```ts
 local.target ??= queries.targets.each()[0]       // reported
@@ -293,7 +309,7 @@ if (found?.ok) aimAt(queries.targets.data.position.get(found.value))
 local.rows = queries.targets.rows()              // plain values, safe to keep
 ```
 
-Ids, values read from `data`, and rows are not reported, nor are variables of the run itself (`let best` in the system's body).
+Ids (`entity.id`, `.map((entity) => entity.id)`), values read from `data`, and rows are not reported, nor are variables of the run itself (`let best` in the system's body). An entity handed to a service (`services.cache.remember(entity)`) is not judged: the rule cannot see what the service keeps.
 
 ## Built-in rules that pair well
 
@@ -301,7 +317,7 @@ Some of oxlint's own rules catch Ritmo mistakes too. They are optional; turn on 
 
 | Rule | Catches in a Ritmo game |
 |---|---|
-| `typescript/no-unnecessary-condition` | a `Result` checked as a boolean instead of with `.ok` (`if (!runtime.restore(save))` never fires), an object compared to `undefined` |
+| `typescript/no-unnecessary-condition` | a `Result` checked as a boolean instead of with `.ok` where `ritmo/handle-runtime-result` cannot see the runtime (`if (!game.restore(save))` never fires), an object compared to `undefined` |
 | `typescript/switch-exhaustiveness-check` | a switch over a closed set (a role, a kind, a state's `_tag`) that misses a member added later |
 | `typescript/no-floating-promises`, `typescript/no-misused-promises` | host code that never awaits an asset load or a replay upload, or passes an async callback where a plain one is called |
 | `typescript/restrict-template-expressions`, `typescript/no-base-to-string` | `[object Object]` in HUD or log text |
