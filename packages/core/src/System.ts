@@ -642,7 +642,11 @@ export interface NextMachineWriteView<M extends Machine.StateMachine.Any = Machi
    * check reads the committed state when it is called, not a value queued
    * earlier. The move is queued exactly as `set` queues it: committed at
    * the next `applyStateTransitions(...)`, replacing a value queued before,
-   * and a `to` equal to `from` re-enters the state.
+   * and a `to` equal to `from` re-enters the state. The marker commits it
+   * only while the machine is still in `from`: a move queued from a
+   * transition schedule (`onExit`, `onTransition`, another machine's
+   * `onEnter`) while the machine is leaving `from` returns ok and is dropped
+   * at the following marker, so no move the graph forbids ever commits.
    *
    * @example
    * ```ts

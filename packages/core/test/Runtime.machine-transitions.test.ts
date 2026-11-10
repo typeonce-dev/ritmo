@@ -4,6 +4,8 @@ import type { NextMachineWriteView } from "@typeonce/ritmo/System"
 import * as Codecs from "./codecs.ts"
 
 const Game = Schema.bind(Schema.fragment({ resources: {} }))
+// Declared before Round, so a marker applies its move first.
+const Lights = Game.StateMachine("MachineMoves/Lights", { Off: {}, On: {} })
 const Round = Game.StateMachine("MachineMoves/Round", {
   Lobby: {},
   Countdown: Codecs.struct({ until: Codecs.integer }),
@@ -23,6 +25,7 @@ type RoundValue = Parameters<NextMachineWriteView<typeof Round>["set"]>[0]
 const makeRuntime = (round: RoundValue, options: { readonly debug?: boolean } = {}) => Game.Runtime.make({
   services: Game.Runtime.services(),
   machines: Game.Runtime.machines(
+    Game.Runtime.machine(Lights, { _tag: "Off" }),
     Game.Runtime.machine(Round, round),
     Game.Runtime.machine(Phase, { _tag: "Setup" }),
     Game.Runtime.machine(Free, { _tag: "A" })
@@ -217,5 +220,47 @@ describe("nextMachines.x.transition", () => {
     expect(runtime.debug.describe().lints.filter((lint) => lint.code === "next-state-replaced").map((lint) => lint.message)).toEqual([
       "MachineMoves/StartAnyway queued MachineMoves/Round=Playing {\"round\":1}, replacing Lobby queued by MachineMoves/Cancel before the same applyStateTransitions(): the last value wins"
     ])
+  })
+
+  it("drops a move queued from a transition schedule once the machine has left from", () => {
+    reset()
+    const runtime = makeRuntime({ _tag: "Countdown", until: 3 }, { debug: true })
+    const outcomes: Array<string> = []
+    runtime.debug.observe((event) => {
+      if (event.type === "transition" && event.machine === "MachineMoves/Round") outcomes.push(`${event.from}->${event.to} ${event.outcome}`)
+    })
+    const Start = onRound("StartRound", (round) => round.transition({ from: "Countdown", to: "Playing", data: { round: 1 } }))
+    // While Countdown exits it is still the committed state, so the check
+    // passes; by the following marker the round is Playing, which has no
+    // move to Lobby.
+    const Abort = onRound("AbortOnExit", (round) => round.transition({ from: "Countdown", to: "Lobby" }))
+    const leaving = Game.Schedule.applyStateTransitions(Game.Schedule.transitions(
+      Game.Schedule.onExit(Round, "Countdown", [Abort])
+    ))
+    runtime.tick(Game.Schedule(Start, leaving))
+    expect(results).toEqual([ok, ok])
+    runtime.tick(Game.Schedule(leaving, Read))
+    expect(log).toEqual(["round={\"_tag\":\"Playing\",\"round\":1} phase={\"_tag\":\"Setup\"} free={\"_tag\":\"A\"}"])
+    expect(outcomes).toEqual(["Countdown->Playing applied", "Playing->Lobby stale"])
+  })
+
+  it("drops a move queued from another machine's schedule before this machine's own move commits", () => {
+    reset()
+    const runtime = makeRuntime({ _tag: "Countdown", until: 3 })
+    const Both = Game.System("MachineMoves/Both", {
+      nextMachines: { lights: Game.System.nextState(Lights), round: Game.System.nextState(Round) }
+    }, ({ nextMachines }) => {
+      nextMachines.lights.set({ _tag: "On" })
+      results.push(nextMachines.round.transition({ from: "Countdown", to: "Playing", data: { round: 1 } }))
+    })
+    // Lights enters On before the round's move commits at the same marker.
+    const Abort = onRound("AbortOnLights", (round) => round.transition({ from: "Countdown", to: "Lobby" }))
+    const lit = Game.Schedule.applyStateTransitions(Game.Schedule.transitions(
+      Game.Schedule.onEnter(Lights, "On", [Abort])
+    ))
+    runtime.tick(Game.Schedule(Both, lit))
+    expect(results).toEqual([ok, ok])
+    runtime.tick(Game.Schedule(lit, Read))
+    expect(log).toEqual(["round={\"_tag\":\"Playing\",\"round\":1} phase={\"_tag\":\"Setup\"} free={\"_tag\":\"A\"}"])
   })
 })

@@ -808,7 +808,8 @@ const makeValidatedRuntime = <
    */
   const currentMachines = new Map<symbol, unknown>()
   /** Queued next values; with `debug`, `by` is the system that queued it, for the `next-state-replaced` lint. */
-  const pendingMachines = new Map<symbol, { value: unknown; skipIfSame: boolean; by?: string }>()
+  /** Next values by machine. `from` is set by `transition`: the state the move must still start from at the marker. */
+  const pendingMachines = new Map<symbol, { value: unknown; skipIfSame: boolean; by?: string; from?: string }>()
   /** Requests dropped because their sub-state stopped existing: skipped by the marker that queued them. */
   const discardedPending = new WeakSet()
   const previousMachines = new Map<symbol, unknown>()
@@ -1746,8 +1747,12 @@ const makeValidatedRuntime = <
       requires: stateMachine.within!.state
     })
 
-  /** Queues a next value; a sub-state whose parent is in another state queues nothing and fails. */
-  const queueMachine = <M extends Machine.StateMachine.Any>(stateMachine: M, value: unknown, skipIfSame: boolean): Machine.SetResult<M> => {
+  /**
+   * Queues a next value; a sub-state whose parent is in another state queues
+   * nothing and fails. With `from` (a `transition`), the marker commits the
+   * value only while the machine is still in that state.
+   */
+  const queueMachine = <M extends Machine.StateMachine.Any>(stateMachine: M, value: unknown, skipIfSame: boolean, from?: string): Machine.SetResult<M> => {
     const within = stateMachine.within
     if (within !== undefined && !currentMachines.has(stateMachine.key)) {
       return subStateInactive(stateMachine) as Machine.SetResult<M>
@@ -1768,9 +1773,9 @@ const makeValidatedRuntime = <
           count: (seen?.count ?? 0) + 1
         })
       }
-      pendingMachines.set(stateMachine.key, { value, skipIfSame, by: runningSystem })
+      pendingMachines.set(stateMachine.key, { value, skipIfSame, by: runningSystem, ...(from === undefined ? {} : { from }) })
     } else {
-      pendingMachines.set(stateMachine.key, { value, skipIfSame })
+      pendingMachines.set(stateMachine.key, { value, skipIfSame, ...(from === undefined ? {} : { from }) })
     }
     return (within === undefined ? undefined : succeeded) as Machine.SetResult<M>
   }
@@ -1789,7 +1794,7 @@ const makeValidatedRuntime = <
       if (current._tag !== move.from) {
         return Result.failure({ _tag: "MachineStateMismatch", machine: stateMachine.name, expected: move.from, actual: current._tag })
       }
-      queueMachine(stateMachine, move.data === undefined ? { _tag: move.to } : { _tag: move.to, ...move.data }, false)
+      queueMachine(stateMachine, move.data === undefined ? { _tag: move.to } : { _tag: move.to, ...move.data }, false, move.from)
       return succeeded
     },
     reset() {
@@ -2309,6 +2314,13 @@ const makeValidatedRuntime = <
       }
       const current = currentMachines.get(machineKey)
       if (current === undefined) {
+        continue
+      }
+      if (pending.from !== undefined && stateOf(current) !== pending.from) {
+        // A `transition` queued from a transition schedule while an earlier
+        // move of this machine was still being applied: the machine has left
+        // the state the move starts from, so the graph no longer allows it.
+        if (tracing) traceTransition(machineKey, { from: stateOf(current)!, to: stateOf(pending.value)! }, "stale")
         continue
       }
       if (pending.skipIfSame && sameValue(current, pending.value)) {
@@ -2964,7 +2976,7 @@ const makeValidatedRuntime = <
     readonly resources: ReadonlyMap<symbol, unknown>
     readonly resourceChangedAt: ReadonlyMap<symbol, number>
     readonly currentMachines: ReadonlyMap<symbol, unknown>
-    readonly pendingMachines: ReadonlyMap<symbol, { value: unknown; skipIfSame: boolean; by?: string }>
+    readonly pendingMachines: ReadonlyMap<symbol, { value: unknown; skipIfSame: boolean; by?: string; from?: string }>
     readonly previousMachines: ReadonlyMap<symbol, unknown>
     readonly pendingCommands: ReadonlyArray<Command.DeferredCommand<S>>
     readonly pendingOrigins: ReadonlyArray<string>
