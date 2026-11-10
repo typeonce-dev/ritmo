@@ -862,9 +862,9 @@ export interface CommandsApi<
   readonly relate: [Relates] extends [never]
     ? MethodNotDeclared<"relate", "relates">
     : <R extends Extract<Relates, Relation.Relation.Any>>(
-        entity: Entity.EntityId<S, Root>,
+        entity: Entity.IdParameter<S, Root>,
         relation: R,
-        target: Entity.EntityId<S, Root>
+        target: Entity.IdParameter<S, Root>
       ) => void
   /**
    * Queues removal of one outgoing relation when present.
@@ -872,7 +872,7 @@ export interface CommandsApi<
   readonly unrelate: [Relates] extends [never]
     ? MethodNotDeclared<"unrelate", "relates">
     : <R extends Extract<Relates, Relation.Relation.Any>>(
-        entity: Entity.EntityId<S, Root>,
+        entity: Entity.IdParameter<S, Root>,
         relation: R
       ) => void
   /**
@@ -881,9 +881,9 @@ export interface CommandsApi<
   readonly reorderChildren: [Relates] extends [never]
     ? MethodNotDeclared<"reorderChildren", "relates">
     : <R extends Extract<Relates, Relation.Relation.Hierarchy>>(
-        entity: Entity.EntityId<S, Root>,
+        entity: Entity.IdParameter<S, Root>,
         relation: R,
-        children: ReadonlyArray<Entity.EntityId<S, Root>>
+        children: ReadonlyArray<Entity.IdParameter<S, Root>>
       ) => void
 }
 

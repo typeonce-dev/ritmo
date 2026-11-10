@@ -40,7 +40,7 @@ describe("host APIs", () => {
     const system = Game.System("Types/Run", {}, () => {})
     const gated = Game.Schedule.when([ready], Game.Schedule.pauseWhen([ready], system))
     const missing = Game.Runtime.make({ services: Game.Runtime.services() }).value
-    // @ts-expect-error __runtimeRequirementError__: "Missing resource"
+    // @ts-expect-error the runtime is missing resource
     missing.tick(gated)
     const supplied = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Ready: true } }).value
     supplied.tick(gated)

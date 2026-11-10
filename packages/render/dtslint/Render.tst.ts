@@ -40,7 +40,7 @@ describe("@typeonce/ritmo-render", () => {
     expect(withRegistry.tick(Game.Schedule(render))).type.toBe<Result.Result<void, never>>()
 
     const withoutRegistry = Game.Runtime.make({ services: Game.Runtime.services() }).value
-    // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "RenderTypes/Nodes"
+    // @ts-expect-error the runtime is missing service RenderTypes/Nodes
     withoutRegistry.tick(Game.Schedule(render))
   })
 
@@ -68,7 +68,7 @@ describe("@typeonce/ritmo-render", () => {
     const withoutScale = Game.Runtime.make({
       services: Game.Runtime.services(Game.Runtime.service(Nodes, NodeRegistry.make<Node>({ attach() {}, detach() {} })))
     }).value
-    // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "RenderTypes/Scale"
+    // @ts-expect-error the runtime is missing service RenderTypes/Scale
     withoutScale.tick(Game.Schedule(render))
   })
 
@@ -189,7 +189,7 @@ describe("@typeonce/ritmo-render", () => {
     const withoutClock = Planet.Runtime.make({
       services: Planet.Runtime.services(Planet.Runtime.service(Nodes, NodeRegistry.make<Node>({ attach() {}, detach() {} })))
     }).value
-    // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "RenderTypes/Clock"
+    // @ts-expect-error the runtime is missing service RenderTypes/Clock
     withoutClock.tick(Planet.Schedule(interpolate))
 
     // Not a 2D position: the default blend does not apply.

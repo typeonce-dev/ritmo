@@ -56,7 +56,7 @@ describe("@typeonce/ritmo-pixi", () => {
     expect(runtime.tick(Game.Schedule(render))).type.toBe<Result.Result<void, never>>()
 
     const missing = Game.Runtime.make({ services: Game.Runtime.services() }).value
-    // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "PixiTypes/Nodes"
+    // @ts-expect-error the runtime is missing service PixiTypes/Nodes
     missing.tick(Game.Schedule(render))
   })
 })

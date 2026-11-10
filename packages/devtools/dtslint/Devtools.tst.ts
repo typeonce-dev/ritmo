@@ -94,7 +94,7 @@ describe("Invariant.fromInspector", () => {
     Session.make(provided, { hostClock, schedules: { update }, invariants: [UnderLimit] })
 
     const missing = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
-    // @ts-expect-error __fixInvariantRequirements__: { readonly __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "DevtoolsTypes/Limit"
+    // @ts-expect-error the runtime is missing resource DevtoolsTypes/Limit
     Session.make(missing, { hostClock, schedules: { update }, invariants: [UnderLimit] })
   })
 
@@ -135,7 +135,7 @@ describe("Session labels", () => {
     const provided = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Limit: 10 }, debug: { hostClock } }).value
     expect(Session.make).type.toBeCallableWith(provided, { hostClock, schedules: { update }, labels: Limited })
     const missing = Game.Runtime.make({ services: Game.Runtime.services(), debug: { hostClock } }).value
-    // @ts-expect-error __fixLabelsRequirements__: { readonly __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "DevtoolsTypes/Limit"
+    // @ts-expect-error the runtime is missing resource DevtoolsTypes/Limit
     Session.make(missing, { hostClock, schedules: { update }, labels: Limited })
   })
 
@@ -241,7 +241,7 @@ describe("Replay.session", () => {
     // @ts-expect-error labels must return a ReadonlyMap<number, string> from entity id to label
     Replay.session(make, file, { labels: Text })
     const Limited = Saved.Inspector("DevtoolsTypes/ReplayLimited", { resources: { cap: Saved.System.readResource(Cap) } }, () => new Map<number, string>())
-    // @ts-expect-error __fixLabelsRequirements__
+    // @ts-expect-error the runtime is missing resource
     Replay.session(make, file, { labels: Limited })
   })
 })

@@ -479,6 +479,12 @@ export interface ExecutableScheduleDefinition<
   // Any order by default, so a pattern that names five parameters (`infer S, any, ...`) matches every schedule.
   out Order extends AnyScheduleOrder = AnyScheduleOrder
 > {
+  /**
+   * What a transition schedule passed in its place does not fit: the message
+   * names the fix. No schedule has it. Declared first, so the compiler
+   * reports it before any other property.
+   */
+  readonly transition?: "onEnter, onExit, and onTransition schedules run when their machine changes state: bundle them with Game.Schedule.transitions(...) and pass that to Game.Schedule.applyStateTransitions(...) in a schedule you tick"
   readonly kind: "schedule"
   readonly steps: ReadonlyArray<ScheduleStep>
   readonly systems: ReadonlyArray<AnySystem>

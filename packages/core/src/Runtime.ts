@@ -271,6 +271,8 @@ type MachineEntriesToRecord<
  */
 export type RuntimeMachines<Machines extends Record<string, unknown> = {}> = Readonly<Machines> & {
   readonly [runtimeMachinesTypeId]: {
+    /** What a hand-written object in its place lacks: the message names the fix. Type-level only. */
+    readonly __fixMachines__: "machines are started with Game.Runtime.machines(Game.Runtime.machine(Machine, initial)), or left out when there are none"
     readonly _Machines: (_: never) => Machines
   }
   readonly [runtimeMachinesEntries]: ReadonlyArray<MachineProvision>
@@ -333,6 +335,8 @@ type ServiceEntriesToRecord<
  */
 export type RuntimeServices<Services extends Record<string, unknown> = {}> = Readonly<Services> & {
   readonly [runtimeServicesTypeId]: {
+    /** What a hand-written object in its place lacks: the message names the fix. Type-level only. */
+    readonly __fixServices__: "services are built with Game.Runtime.services(Game.Runtime.service(Descriptor, implementation)), or Game.Runtime.services() when there are none"
     readonly _Services: (_: never) => Services
   }
 }
@@ -366,22 +370,20 @@ type ProvisionedDescriptorValue<
   D extends Descriptor.Any
 > = Provided[Extract<RegistryKeysForDescriptor<Values, D>, keyof Provided>]
 
+/** One requirement the runtime does not provide, or provides with another type than its descriptor's. */
+type RequirementError<Kind extends "resource" | "service" | "machine", Name extends string, Missing extends boolean> =
+  `${Missing extends true ? "missing" : "incompatible"} ${Kind} ${Name}`
+
 type DescriptorProvisionError<
-  Kind extends string,
+  Kind extends "resource",
   Values extends Registry,
   Provided extends object,
   D extends Descriptor.Any
 > = [Extract<RegistryKeysForDescriptor<Values, D>, keyof Provided>] extends [never]
-  ? {
-      readonly __runtimeRequirementError__: `Missing ${Kind}`
-      readonly __requirement__: Descriptor.Name<D>
-    }
+  ? RequirementError<Kind, Descriptor.Name<D>, true>
   : [ProvisionedDescriptorValue<Values, Provided, D>] extends [Descriptor.Value<D>]
     ? never
-    : {
-        readonly __runtimeRequirementError__: `Incompatible ${Kind}`
-        readonly __requirement__: Descriptor.Name<D>
-      }
+    : RequirementError<Kind, Descriptor.Name<D>, false>
 
 type RequirementErrorFor<
   Need extends Requirement.Requirement,
@@ -391,27 +393,73 @@ type RequirementErrorFor<
   Machines extends object
 > = Need extends Descriptor<"service", infer Name, infer Value>
   ? Name extends keyof Services
-    ? [Services[Name]] extends [Value] ? never : {
-        readonly __runtimeRequirementError__: "Incompatible service"
-        readonly __requirement__: Name
-      }
-    : {
-        readonly __runtimeRequirementError__: "Missing service"
-        readonly __requirement__: Name
-      }
+    ? [Services[Name]] extends [Value] ? never : RequirementError<"service", Name, false>
+    : RequirementError<"service", Name, true>
   : Need extends Descriptor<"resource", string, any>
     ? DescriptorProvisionError<"resource", Schema.Resources<S>, Resources, Need>
   : Need extends Machine.StateMachineDefinition<infer Name, infer States, any>
     ? Name extends keyof Machines
-      ? [Machines[Name]] extends [DescriptorModule.StateValueOf<States, keyof States & string>] ? never : {
-          readonly __runtimeRequirementError__: "Incompatible machine"
-          readonly __requirement__: Name
-        }
-      : {
-          readonly __runtimeRequirementError__: "Missing machine"
-          readonly __requirement__: Name
-        }
+      ? [Machines[Name]] extends [DescriptorModule.StateValueOf<States, keyof States & string>] ? never : RequirementError<"machine", Name, false>
+      : RequirementError<"machine", Name, true>
   : never
+
+/** The last member of a union, in the compiler's order. */
+type LastMember<U> =
+  ((U extends unknown ? (_: () => U) => void : never) extends (_: infer All) => void ? All : never) extends () => infer Last ? Last : never
+
+/** Joins a union of strings into one, `Separator` between each. */
+type Join<U extends string, Separator extends string, Joined extends string = ""> = [U] extends [never]
+  ? Joined
+  : LastMember<U> extends infer Last extends string
+    ? Join<Exclude<U, Last>, Separator, Joined extends "" ? Last : `${Last}${Separator}${Joined}`>
+    : Joined
+
+type JoinParts<A extends string, B extends string, Separator extends string> =
+  A extends "" ? B : B extends "" ? A : `${A}${Separator}${B}`
+
+/** The requirements of one kind with one problem, as `resource Game/Score`. */
+type RequirementItems<Errors extends string, Problem extends string, Kind extends string> =
+  Errors extends `${Problem} ${Kind} ${infer Name}` ? `${Kind} ${Name}` : never
+
+/** The requirements with one problem, resources first, then services, then machines. */
+type RequirementList<Errors extends string, Problem extends string> = JoinParts<
+  JoinParts<Join<RequirementItems<Errors, Problem, "resource">, ", ">, Join<RequirementItems<Errors, Problem, "service">, ", ">, ", ">,
+  Join<RequirementItems<Errors, Problem, "machine">, ", ">,
+  ", "
+>
+
+/** Where `Game.Runtime.make` takes each kind of missing requirement. */
+type RequirementFixes<Errors extends string> = JoinParts<
+  JoinParts<
+    [RequirementItems<Errors, "missing", "resource">] extends [never] ? "" : "resources: { Key: value }",
+    [RequirementItems<Errors, "missing", "service">] extends [never] ? "" : "services: Game.Runtime.services(Game.Runtime.service(Descriptor, implementation))",
+    ", "
+  >,
+  [RequirementItems<Errors, "missing", "machine">] extends [never] ? "" : "machines: Game.Runtime.machines(Game.Runtime.machine(Machine, initial))",
+  ", "
+>
+
+/**
+ * Every missing or mistyped requirement and its fix, in one string.
+ */
+type RequirementsMessage<Errors extends string> = JoinParts<
+  RequirementList<Errors, "missing"> extends infer List extends string
+    ? List extends "" ? "" : `the runtime is missing ${List}: add to Game.Runtime.make({ ${RequirementFixes<Errors>} })`
+    : never,
+  RequirementList<Errors, "incompatible"> extends infer List extends string
+    ? List extends "" ? "" : `the runtime provides ${List} with another type than its descriptor: provide the type the descriptor declares`
+    : never,
+  "; "
+>
+
+/**
+ * What a call missing requirements lacks: one property named by the message.
+ * The compiler prints a missing property's name whole, where it would cut a
+ * long type or union, so every requirement stays readable.
+ */
+type MissingRequirements<Errors extends string> = {
+  readonly [Message in RequirementsMessage<Errors>]: true
+}
 
 type RequirementErrorsFor<
   Needs extends Requirement.Requirement,
@@ -436,8 +484,9 @@ type RequirementErrorsOfSchedule<
  * The check `runtime.tick(...)` applies to its schedules, for a package that
  * takes a schedule to run on a runtime (`Netcode.rollback`'s `simulate`):
  * `unknown` when the runtime provides every service, resource, and machine
- * the schedules need; otherwise a `__fixRuntimeRequirements__` member naming
- * each missing one, so the call does not compile.
+ * the schedules need; otherwise a member whose one property is named by a
+ * message listing each missing one and where to provide it, so the call does
+ * not compile.
  */
 export type ValidateScheduleArray<
   Schedules extends ReadonlyArray<ExecutableScheduleDefinition<any, any, any, any, any>>,
@@ -446,9 +495,7 @@ export type ValidateScheduleArray<
   Machines extends object
 > = [RequirementErrorsOfSchedule<Schedules[number], Services, Resources, Machines>] extends [never]
   ? unknown
-  : {
-      readonly __fixRuntimeRequirements__: RequirementErrorsOfSchedule<Schedules[number], Services, Resources, Machines>
-    }
+  : MissingRequirements<RequirementErrorsOfSchedule<Schedules[number], Services, Resources, Machines>>
 
 type ValidateScheduleArgs<
   Schedules extends ReadonlyArray<ExecutableScheduleDefinition<any, any, any, any, any>>,
@@ -462,9 +509,7 @@ type ValidateScheduleArgs<
         /** `Game.System.thisTick` reads whose writers do not all run earlier in this call. */
         readonly __fixTickOrder__: Schedule.TickOrderErrors<NoInfer<Schedules>>
       }
-  : Schedules & {
-      readonly __fixRuntimeRequirements__: RequirementErrorsOfSchedule<NoInfer<Schedules[number]>, Services, Resources, Machines>
-    }
+  : Schedules & MissingRequirements<RequirementErrorsOfSchedule<NoInfer<Schedules[number]>, Services, Resources, Machines>>
 
 type RequirementErrorsOfInspector<
   Selected extends Inspector.Inspector.Any,
@@ -488,9 +533,7 @@ export type ValidateInspector<
   Machines extends object
 > = [RequirementErrorsOfInspector<Selected, Services, Resources, Machines>] extends [never]
   ? unknown
-  : {
-      readonly __fixRuntimeRequirements__: RequirementErrorsOfInspector<Selected, Services, Resources, Machines>
-    }
+  : MissingRequirements<RequirementErrorsOfInspector<Selected, Services, Resources, Machines>>
 
 /** One runtime requirement that is not currently provisioned. */
 export interface MissingRuntimeRequirement {
@@ -1275,15 +1318,16 @@ const makeValidatedRuntime = <
   }
 
   const makeLookup = (): LookupApi<S, Root> => {
+    // Ids only: the entity member of `Entity.IdParameter` has no values, it only names the fix.
     const lookup: LookupApi<S, Root> = {
     related: relatedTarget,
-    relatedSources(target, relation) {
+    relatedSources(target: Entity.EntityId<S, Root>, relation) {
       if (!world.records.has(target)) {
         return Result.failure(RelationErrors.missingEntityError(target))
       }
       return Result.success(world.relatedSourceIds(relation, target).map(entityId))
     },
-    ancestors(target, relation) {
+    ancestors(target: Entity.EntityId<S, Root>, relation) {
       if (!world.records.has(target)) {
         return Result.failure(RelationErrors.missingEntityError(target))
       }
@@ -1295,7 +1339,7 @@ const makeValidatedRuntime = <
       }
       return Result.success(ancestors)
     },
-    descendants(target, relation, options) {
+    descendants(target: Entity.EntityId<S, Root>, relation, options) {
       if (!world.records.has(target)) {
         return Result.failure(RelationErrors.missingEntityError(target))
       }
@@ -1320,7 +1364,7 @@ const makeValidatedRuntime = <
       }
       return Result.success(descendants)
     },
-    root(target, relation) {
+    root(target: Entity.EntityId<S, Root>, relation) {
       if (!world.records.has(target)) {
         return Result.failure(RelationErrors.missingEntityError(target))
       }
@@ -1366,17 +1410,17 @@ const makeValidatedRuntime = <
         }
         return guarded as QueryData<Q>
       },
-      get(target) {
+      get(target: Entity.EntityId<S, Query.Query.Root<Q>>) {
         return resolve(target, query, reader)
       },
       getHandle(handle) {
         return resolve(handle as Entity.Handle<Root, any>, query, reader)
       },
-      children(target, relation) {
+      children(target: Entity.EntityId<S, Query.Query.Root<Q>>, relation) {
         if (!world.records.has(target)) return Result.failure(RelationErrors.missingEntityError(target))
         return Result.success(matching(world.relatedSourceIds(relation, target).map(entityId)))
       },
-      descendants(target, relation, options) {
+      descendants(target: Entity.EntityId<S, Query.Query.Root<Q>>, relation, options) {
         const ids = lookup.descendants(target, relation, options)
         return ids.ok ? Result.success(matching(ids.value)) : ids
       },

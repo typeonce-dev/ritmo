@@ -212,7 +212,7 @@ describe("Runtime", () => {
       }
     }).value
 
-    // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "Logger"
+    // @ts-expect-error the runtime is missing service Logger
     runtime.tick(serviceSchedule)
   })
 
@@ -222,7 +222,7 @@ describe("Runtime", () => {
       services: Runtime.services()
     }).value
 
-    // @ts-expect-error __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "Time"
+    // @ts-expect-error the runtime is missing resource Time
     runtime.tick(resourceSchedule)
   })
 
@@ -236,7 +236,7 @@ describe("Runtime", () => {
       }
     }).value
 
-    // @ts-expect-error __runtimeRequirementError__: "Missing resource"; readonly __requirement__: "Phase"
+    // @ts-expect-error the runtime is missing resource Phase
     runtime.tick(stateSchedule)
   })
 
@@ -251,7 +251,7 @@ describe("Runtime", () => {
       }
     }).value
 
-    // @ts-expect-error __runtimeRequirementError__: "Missing service"; readonly __requirement__: "Logger"
+    // @ts-expect-error the runtime is missing service Logger
     runtime.tick(serviceSchedule)
   })
 

@@ -372,7 +372,7 @@ describe("StateMachine", () => {
       resources: { Counter: 0 },
       machines: Runtime.machines(Runtime.machine(AppState, { _tag: "Menu" }))
     }).value
-    // @ts-expect-error __runtimeRequirementError__: "Missing machine"; readonly __requirement__: "RoundState"
+    // @ts-expect-error the runtime is missing machine RoundState
     withoutMachine.tick(Game.Schedule(Game.Schedule.applyStateTransitions(bundle)))
   })
 
@@ -390,7 +390,7 @@ describe("StateMachine", () => {
     withMachine.tick(gated)
 
     const withoutMachine = Game.Runtime.make({ services: Runtime.services(), resources: { Counter: 0 } }).value
-    // @ts-expect-error __runtimeRequirementError__: "Missing machine"; readonly __requirement__: "AppState"
+    // @ts-expect-error the runtime is missing machine AppState
     withoutMachine.tick(gated)
 
     // A machine of another game is rejected where the condition is built, naming the fix.

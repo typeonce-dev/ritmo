@@ -120,7 +120,7 @@ describe("Clock.system", () => {
     const madeBare = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Time: Clock.start(step), Slow: Clock.start(Clock.hz(10)), Paused: false } })
     if (!madeBare.ok) throw new Error("unreachable")
     const bare = madeBare.value
-    // @ts-expect-error __runtimeRequirementError__: "Missing machine"; readonly __requirement__: "ClockTypes/Flow"
+    // @ts-expect-error the runtime is missing machine ClockTypes/Flow
     bare.tick(Game.Schedule(AdvanceTime))
   })
 

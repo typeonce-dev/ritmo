@@ -337,6 +337,8 @@ export interface TransitionScheduleDefinition<
   Failure extends SystemFailure = never,
   Order extends AnyScheduleOrder = AnyScheduleOrder
 > {
+  /** A transition schedule has no `kind`; declared so that passing one where a schedule to run is wanted reports `transition`, which names the fix. */
+  readonly kind?: never
   readonly steps: ReadonlyArray<Schedule.Step>
   readonly systems: ReadonlyArray<unknown>
   readonly schema: S

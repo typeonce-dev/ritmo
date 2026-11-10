@@ -1,4 +1,5 @@
-import { Descriptor, Result, Schema } from "@typeonce/ritmo"
+import { Descriptor, HostClock, Result, Schema } from "@typeonce/ritmo"
+import type { RuntimeServices, ValidateScheduleArray } from "@typeonce/ritmo/Runtime"
 import type { SystemAccessSpec } from "@typeonce/ritmo/System"
 import { describe, expect, it } from "tstyche"
 
@@ -8,14 +9,18 @@ import { describe, expect, it } from "tstyche"
 const Position = Descriptor.Component<{ x: number; y: number }>()("Fix/Position")
 const Health = Descriptor.Component<number>()("Fix/Health")
 const Score = Descriptor.Resource<number>()("Fix/Score")
+const Lives = Descriptor.Resource<number>()("Fix/Lives")
+const Audio = Descriptor.Service<{ readonly play: (sound: string) => void }>()("Fix/Audio")
+const Log = Descriptor.Service<{ readonly log: (line: string) => void }>()("Fix/Log")
 const ChildOf = Descriptor.Hierarchy("Fix/ChildOf", "Fix/Children")
 const Targets = Descriptor.Relation("Fix/Targets", "Fix/TargetedBy")
 
 const Game = Schema.bind(Schema.fragment({
   components: { Position, Health },
-  resources: { Score },
+  resources: { Score, Lives },
   relations: { ChildOf: ChildOf.relation, Targets: Targets.relation }
 }))
+const Flow = Game.StateMachine("Fix/Flow", { Menu: {}, Playing: {} })
 
 describe("system bodies", () => {
   it("return nothing or Result.failure, and are synchronous", () => {
@@ -113,5 +118,90 @@ describe("value descriptors", () => {
     Descriptor.TransientComponent<number>("Fix/Name")
     // @ts-expect-error the name goes in the second call: Descriptor.TransientResource<Value>()(name)
     Descriptor.TransientResource<number>("Fix/Name")
+  })
+})
+
+describe("ids", () => {
+  it("go where an id is wanted, not the entity", () => {
+    const Positions = Game.Query({ selection: { position: Game.Query.read(Position) } })
+    const relates = Game.System.commands(Game.System.relates(ChildOf.relation))
+    Game.System("Fix/Ids", { queries: { positions: Positions }, commands: relates }, ({ queries, commands, lookup }) => {
+      for (const entity of queries.positions.each()) {
+        queries.positions.get(entity.id)
+        // @ts-expect-error this takes an entity id, not an entity: pass entity.id
+        queries.positions.get(entity)
+        lookup.related(entity.id, ChildOf.relation)
+        // @ts-expect-error this takes an entity id, not an entity: pass entity.id
+        lookup.related(entity, ChildOf.relation)
+        commands.relate(entity.id, ChildOf.relation, entity.id)
+        // @ts-expect-error this takes an entity id, not an entity: pass entity.id
+        commands.relate(entity, ChildOf.relation, entity.id)
+      }
+    })
+  })
+})
+
+describe("transition schedules", () => {
+  it("run from applyStateTransitions, not on their own", () => {
+    const EnterPlaying = Game.Schedule.onEnter(Flow, "Playing", [])
+    const runtime = Game.Runtime.make({
+      services: Game.Runtime.services(),
+      machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Menu" })),
+      debug: { hostClock: HostClock.test() }
+    }).value
+    runtime.tick(Game.Schedule(Game.Schedule.applyStateTransitions(Game.Schedule.transitions(EnterPlaying))))
+    // @ts-expect-error onEnter, onExit, and onTransition schedules run when their machine changes state: bundle them with Game.Schedule.transitions(...) and pass that to Game.Schedule.applyStateTransitions(...)
+    runtime.tick(EnterPlaying)
+    // @ts-expect-error bundle them with Game.Schedule.transitions(...) and pass that to Game.Schedule.applyStateTransitions(...)
+    runtime.tryTick(EnterPlaying)
+    // @ts-expect-error bundle them with Game.Schedule.transitions(...) and pass that to Game.Schedule.applyStateTransitions(...)
+    runtime.checkpoint(EnterPlaying)
+    // @ts-expect-error bundle them with Game.Schedule.transitions(...) and pass that to Game.Schedule.applyStateTransitions(...)
+    runtime.debug.beginFrame(EnterPlaying)
+    // @ts-expect-error bundle them with Game.Schedule.transitions(...) and pass that to Game.Schedule.applyStateTransitions(...)
+    Game.Schedule(EnterPlaying)
+  })
+})
+
+describe("runtime requirements", () => {
+  it("name every missing one at tick, and where to provide it", () => {
+    const Needs = Game.System("Fix/Needs", {
+      resources: { score: Game.System.readResource(Score), lives: Game.System.readResource(Lives) },
+      services: { audio: Game.System.service(Audio), log: Game.System.service(Log) },
+      machines: { flow: Game.System.machine(Flow) }
+    }, () => {})
+    const update = Game.Schedule(Needs)
+    const provided = Game.Runtime.make({
+      services: Game.Runtime.services(Game.Runtime.service(Audio, { play: () => {} }), Game.Runtime.service(Log, { log: () => {} })),
+      resources: { Score: 0, Lives: 3 },
+      machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Menu" }))
+    }).value
+    provided.tick(update)
+    const bare = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    // The message is a property name, which the compiler prints whole: its end comes after all five.
+    // @ts-expect-error machine Fix/Flow: add to Game.Runtime.make({ resources: { Key: value }, services: Game.Runtime.services(Game.Runtime.service(Descriptor, implementation)), machines: Game.Runtime.machines(Game.Runtime.machine(Machine, initial)) })
+    bare.tick(update)
+    type Message = keyof ValidateScheduleArray<readonly [typeof update], {}, {}, {}>
+    expect<Message>().type.toBeAssignableTo<`the runtime is missing resource ${string}, resource ${string}, service ${string}, service ${string}, machine Fix/Flow: ${string}`>()
+    expect<Message>().type.toBeAssignableTo<`${string}resource Fix/Score${string}`>()
+    expect<Message>().type.toBeAssignableTo<`${string}resource Fix/Lives${string}`>()
+    expect<Message>().type.toBeAssignableTo<`${string}service Fix/Audio${string}`>()
+    expect<Message>().type.toBeAssignableTo<`${string}service Fix/Log${string}`>()
+  })
+})
+
+describe("runtime provisions", () => {
+  it("are built with Game.Runtime.services and Game.Runtime.machines", () => {
+    Game.Runtime.make({ services: Game.Runtime.services() })
+    // @ts-expect-error services are built with Game.Runtime.services(Game.Runtime.service(Descriptor, implementation)), or Game.Runtime.services() when there are none
+    Game.Runtime.make({ services: {} })
+    // @ts-expect-error services are built with Game.Runtime.services(Game.Runtime.service(Descriptor, implementation))
+    Game.Runtime.make({ services: { "Fix/Audio": { play: () => {} } } })
+    Game.Runtime.make({ services: Game.Runtime.services(), machines: Game.Runtime.machines(Game.Runtime.machine(Flow, { _tag: "Menu" })) })
+    // @ts-expect-error machines are started with Game.Runtime.machines(Game.Runtime.machine(Machine, initial)), or left out when there are none
+    Game.Runtime.make({ services: Game.Runtime.services(), machines: {} })
+    // A helper that forwards its services still compiles.
+    const makeRuntime = <const Services extends RuntimeServices>(services: Services) => Game.Runtime.make({ services })
+    expect(makeRuntime(Game.Runtime.services(Game.Runtime.service(Audio, { play: () => {} }))).value.services).type.toBe<{ readonly "Fix/Audio": { readonly play: (sound: string) => void } }>()
   })
 })
