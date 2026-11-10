@@ -3,242 +3,242 @@
     "tolerance": 0.25,
     "allocationTolerance": 0.1,
     "allocationSlackBytes": 1024,
-    "calibrationMs": 2.9767,
+    "calibrationMs": 2.9339,
     "environment": "Apple M1 / node v24.16.0 / darwin",
     "cases": {
       "top-down/frame-x60": {
-        "minMs": 0.3902,
-        "medianMs": 0.4093,
-        "score": 0.1309,
-        "bytesPerRun": 776438
+        "minMs": 0.3796,
+        "medianMs": 0.4054,
+        "score": 0.1292,
+        "bytesPerRun": 783761
       },
       "random/next-100k": {
-        "minMs": 0.794,
-        "medianMs": 0.8075,
-        "score": 0.2673,
+        "minMs": 0.7799,
+        "medianMs": 0.8006,
+        "score": 0.265,
         "bytesPerRun": 800335
       },
       "random/draw-resource-100k": {
-        "minMs": 3.8188,
-        "medianMs": 3.8968,
-        "score": 1.2845,
-        "bytesPerRun": 3060374
+        "minMs": 3.7822,
+        "medianMs": 3.9238,
+        "score": 1.2891,
+        "bytesPerRun": 3060381
       },
       "ops/steer-10k": {
-        "minMs": 0.8763,
-        "medianMs": 0.9033,
-        "score": 0.2953,
-        "bytesPerRun": 1760399
+        "minMs": 0.8874,
+        "medianMs": 0.9242,
+        "score": 0.3025,
+        "bytesPerRun": 1760392
       },
       "clock/advance-1000": {
-        "minMs": 0.1612,
-        "medianMs": 0.1802,
-        "score": 0.0542,
+        "minMs": 0.1605,
+        "medianMs": 0.1785,
+        "score": 0.0546,
         "bytesPerRun": 424313
       },
       "spawn/10k-3c": {
-        "minMs": 6.5824,
-        "medianMs": 6.8288,
-        "score": 2.2082,
-        "bytesPerRun": 20430374
+        "minMs": 6.6323,
+        "medianMs": 6.8365,
+        "score": 2.2606,
+        "bytesPerRun": 19800651
       },
       "despawn/10k": {
-        "minMs": 9.6665,
-        "medianMs": 10.7796,
-        "score": 3.2549,
-        "bytesPerRun": 9099694
+        "minMs": 9.4164,
+        "medianMs": 10.4508,
+        "score": 3.2046,
+        "bytesPerRun": 9100621
       },
       "query/iterate-read-10k-of-20k": {
-        "minMs": 0.0791,
-        "medianMs": 0.0797,
-        "score": 0.0267,
-        "bytesPerRun": 1647
+        "minMs": 0.0677,
+        "medianMs": 0.0694,
+        "score": 0.0231,
+        "bytesPerRun": 1648
       },
       "query/optional-read-20k": {
-        "minMs": 0.2137,
-        "medianMs": 0.2165,
-        "score": 0.0719,
-        "bytesPerRun": 1628
+        "minMs": 0.1983,
+        "medianMs": 0.2037,
+        "score": 0.0676,
+        "bytesPerRun": 1629
       },
       "query/rows-10k": {
-        "minMs": 0.4902,
-        "medianMs": 0.5025,
-        "score": 0.1638,
+        "minMs": 0.4671,
+        "medianMs": 0.4775,
+        "score": 0.1589,
         "bytesPerRun": 1041966
       },
       "query/iterate-write-10k": {
-        "minMs": 0.1777,
-        "medianMs": 0.1815,
-        "score": 0.0596,
-        "bytesPerRun": 401111
+        "minMs": 0.1696,
+        "medianMs": 0.1755,
+        "score": 0.0578,
+        "bytesPerRun": 401485
       },
       "query/number-write-10k": {
-        "minMs": 0.0978,
-        "medianMs": 0.0985,
-        "score": 0.0327,
-        "bytesPerRun": 1472
+        "minMs": 0.078,
+        "medianMs": 0.0785,
+        "score": 0.0265,
+        "bytesPerRun": 1473
       },
       "query/set-raw-10k": {
-        "minMs": 0.6748,
-        "medianMs": 0.7365,
-        "score": 0.2266,
+        "minMs": 0.6272,
+        "medianMs": 0.6584,
+        "score": 0.2131,
         "bytesPerRun": 1281581
       },
       "entity-state/update-transition-10k": {
-        "minMs": 1.5665,
-        "medianMs": 1.8946,
-        "score": 0.5269,
-        "bytesPerRun": 3583358
+        "minMs": 1.5299,
+        "medianMs": 1.8925,
+        "score": 0.5207,
+        "bytesPerRun": 3583303
       },
       "machine/update-10k": {
-        "minMs": 2.6774,
-        "medianMs": 2.7,
-        "score": 0.8994,
+        "minMs": 2.6661,
+        "medianMs": 2.7102,
+        "score": 0.9087,
         "bytesPerRun": 5522969
       },
       "query/single-in-20k-x1000": {
-        "minMs": 0.1667,
-        "medianMs": 0.1725,
-        "score": 0.0561,
+        "minMs": 0.1598,
+        "medianMs": 0.1639,
+        "score": 0.0545,
         "bytesPerRun": 288321
       },
       "query/changed-100-of-10k-x20": {
-        "minMs": 0.2012,
-        "medianMs": 0.2076,
-        "score": 0.0677,
-        "bytesPerRun": 340953
+        "minMs": 0.1934,
+        "medianMs": 0.1992,
+        "score": 0.0659,
+        "bytesPerRun": 341047
       },
       "structural/insert-remove-1k": {
-        "minMs": 0.1819,
-        "medianMs": 0.1917,
-        "score": 0.061,
-        "bytesPerRun": 665492
+        "minMs": 0.1775,
+        "medianMs": 0.1875,
+        "score": 0.0604,
+        "bytesPerRun": 666340
       },
       "schedule/100-systems-x10": {
-        "minMs": 0.0424,
-        "medianMs": 0.043,
+        "minMs": 0.042,
+        "medianMs": 0.0431,
         "score": 0.0143,
-        "bytesPerRun": 9634
+        "bytesPerRun": 9627
       },
       "schedule/150-systems-thistick-x10": {
-        "minMs": 0.0859,
-        "medianMs": 0.0887,
-        "score": 0.0289,
-        "bytesPerRun": 18369
+        "minMs": 0.0844,
+        "medianMs": 0.087,
+        "score": 0.0288,
+        "bytesPerRun": 18377
       },
       "lookup/get-10k": {
-        "minMs": 0.6433,
-        "medianMs": 0.6653,
-        "score": 0.2163,
-        "bytesPerRun": 1619
+        "minMs": 0.6247,
+        "medianMs": 0.6384,
+        "score": 0.2129,
+        "bytesPerRun": 1609
       },
       "events/emit-read-10k": {
-        "minMs": 0.0959,
-        "medianMs": 0.099,
-        "score": 0.0323,
+        "minMs": 0.0944,
+        "medianMs": 0.0978,
+        "score": 0.0321,
         "bytesPerRun": 248139
       },
       "relations/descendants-100x100": {
-        "minMs": 0.296,
-        "medianMs": 0.3074,
-        "score": 0.0998,
+        "minMs": 0.2929,
+        "medianMs": 0.3041,
+        "score": 0.0995,
         "bytesPerRun": 329778
       },
       "snapshot/json-roundtrip-10k": {
-        "minMs": 22.2506,
-        "medianMs": 23.3039,
-        "score": 7.4842,
-        "bytesPerRun": 32395541
+        "minMs": 21.8249,
+        "medianMs": 22.5528,
+        "score": 7.4275,
+        "bytesPerRun": 33428073
       },
       "frame/50-systems-5k": {
-        "minMs": 1.7661,
-        "medianMs": 1.8278,
-        "score": 0.5938,
-        "bytesPerRun": 3035463
+        "minMs": 1.7438,
+        "medianMs": 1.8124,
+        "score": 0.5935,
+        "bytesPerRun": 3031183
       },
       "checkpoint/take-tick-10k": {
-        "minMs": 0.2877,
-        "medianMs": 0.3192,
-        "score": 0.0966,
-        "bytesPerRun": 514923
+        "minMs": 0.2708,
+        "medianMs": 0.2892,
+        "score": 0.092,
+        "bytesPerRun": 514975
       },
       "checkpoint/rollback-8-of-5k": {
-        "minMs": 2.7109,
-        "medianMs": 2.9551,
-        "score": 0.9077,
-        "bytesPerRun": 4516468
+        "minMs": 2.5892,
+        "medianMs": 2.8851,
+        "score": 0.8797,
+        "bytesPerRun": 4515720
       },
       "math/vec2-steer-10k": {
-        "minMs": 1.2129,
-        "medianMs": 1.2378,
-        "score": 0.4075,
-        "bytesPerRun": 3567291
+        "minMs": 1.1895,
+        "medianMs": 1.2321,
+        "score": 0.4048,
+        "bytesPerRun": 3567298
       },
       "math/scalar-spring-10k": {
-        "minMs": 0.5454,
-        "medianMs": 0.5605,
-        "score": 0.1835,
+        "minMs": 0.5349,
+        "medianMs": 0.5529,
+        "score": 0.1817,
         "bytesPerRun": 1655520
       },
       "math/flow-field-search": {
-        "minMs": 0.1542,
-        "medianMs": 0.1866,
-        "score": 0.0519,
-        "bytesPerRun": 463
+        "minMs": 0.184,
+        "medianMs": 0.1932,
+        "score": 0.0625,
+        "bytesPerRun": 382
       },
       "math/flow-field-way-1k": {
-        "minMs": 0.0674,
-        "medianMs": 0.0692,
-        "score": 0.0227,
-        "bytesPerRun": 109984
+        "minMs": 0.0906,
+        "medianMs": 0.0927,
+        "score": 0.0308,
+        "bytesPerRun": 116464
       },
       "math/collide-move-circle-1k": {
-        "minMs": 0.6222,
-        "medianMs": 0.6271,
-        "score": 0.2095,
-        "bytesPerRun": 274464
+        "minMs": 0.5025,
+        "medianMs": 0.5148,
+        "score": 0.1707,
+        "bytesPerRun": 246848
       },
       "math/collide-move-circle-segments-1k": {
-        "minMs": 5.4756,
-        "medianMs": 5.5646,
-        "score": 1.8412,
-        "bytesPerRun": 272563
+        "minMs": 2.204,
+        "medianMs": 2.2564,
+        "score": 0.7501,
+        "bytesPerRun": 254535
       },
       "netcode/rollback-frame-2-peers": {
-        "minMs": 0.0579,
-        "medianMs": 0.0688,
-        "score": 0.0195,
-        "bytesPerRun": 185523
+        "minMs": 0.0595,
+        "medianMs": 0.0718,
+        "score": 0.0203,
+        "bytesPerRun": 189438
       },
       "netcode/lockstep-frame-2-peers": {
-        "minMs": 0.008,
-        "medianMs": 0.0088,
-        "score": 0.0027,
-        "bytesPerRun": 24233
+        "minMs": 0.0084,
+        "medianMs": 0.0091,
+        "score": 0.0029,
+        "bytesPerRun": 24876
       },
       "render/sync-1k-changed-of-10k": {
-        "minMs": 0.2495,
-        "medianMs": 0.2858,
-        "score": 0.0838,
-        "bytesPerRun": 382148
+        "minMs": 0.2267,
+        "medianMs": 0.2515,
+        "score": 0.0771,
+        "bytesPerRun": 382126
       },
       "render/sync-hierarchy-1k-changed-of-10k": {
-        "minMs": 0.4487,
-        "medianMs": 0.4977,
-        "score": 0.1511,
-        "bytesPerRun": 421775
+        "minMs": 0.4267,
+        "medianMs": 0.4672,
+        "score": 0.1452,
+        "bytesPerRun": 422068
       },
       "render/sync-spawn-despawn-500": {
-        "minMs": 1.3602,
-        "medianMs": 1.517,
-        "score": 0.4574,
-        "bytesPerRun": 1869930
+        "minMs": 1.3514,
+        "medianMs": 1.479,
+        "score": 0.4606,
+        "bytesPerRun": 1869989
       },
       "render/interpolate-10k": {
-        "minMs": 0.294,
-        "medianMs": 0.2997,
-        "score": 0.0989,
-        "bytesPerRun": 1488
+        "minMs": 0.2873,
+        "medianMs": 0.2952,
+        "score": 0.0976,
+        "bytesPerRun": 1489
       }
     }
   },
@@ -246,8 +246,8 @@
     "tolerance": 0.05,
     "typescript": "Version 7.0.2",
     "metrics": {
-      "types": 128938,
-      "instantiations": 1467383
+      "types": 134749,
+      "instantiations": 1491989
     }
   }
 }
