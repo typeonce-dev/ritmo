@@ -606,6 +606,12 @@ const staleBakeFiles = Effect.fn("staleBakeFiles")(function* (base: string, mode
   if (!isWritten(sprite) && (yield* exists(sprite)) && (yield* text(sprite)).includes(`Baked from ${model}:`)) stale.push(sprite)
   const shadow = `${base}.shadow.png`
   if (!isWritten(shadow) && (yield* exists(shadow))) stale.push(shadow)
+  const map = `${base}.map.json`
+  if (!isWritten(map) && (yield* exists(map))) {
+    const raw = yield* text(map)
+    const image = yield* Effect.try((): unknown => (JSON.parse(raw) as { image?: unknown } | null)?.image).pipe(Effect.orElseSucceed(() => undefined))
+    if (image === `${name}.png`) stale.push(map)
+  }
   const normal = `${base}.normal.png`
   if (!isWritten(normal) && (yield* exists(normal)) && !(yield* exists(`${base}.normals.json`))) stale.push(normal)
   const dir = path.dirname(base)
@@ -661,6 +667,38 @@ const bake = Command.make(
       files.normal = yield* writePng(`${base}.normal.png`, { width: atlas.art.width, height: atlas.art.height, data })
     }
     if (model.shadow) files.shadow = yield* writePng(`${base}.shadow.png`, toRgba(atlasPick((frame) => frame.shadow).art))
+    if (model.map) {
+      // The geometry under every pixel of the PNG, laid out as it is, for a script that gives the art its own look.
+      const width = atlas.art.width
+      const pixelsOf = (fill: number) => new Array<number>(width * atlas.art.height).fill(fill)
+      const part = pixelsOf(-1)
+      const face = pixelsOf(-1)
+      const depth = pixelsOf(0)
+      const u = pixelsOf(0)
+      const v = pixelsOf(0)
+      const facing = Array.from({ length: atlas.art.height }, () => new Array<string>(width).fill("."))
+      const placed = result.clips.flatMap((clip) => clip.frames)
+      atlas.rects.forEach((rect, i) => {
+        const map = placed[i]!.map
+        for (let y = 0; y < rect.h; y++) {
+          for (let x = 0; x < rect.w; x++) {
+            const from = y * rect.w + x
+            if (map.part[from]! < 0) continue
+            const to = (rect.y + y) * width + rect.x + x
+            part[to] = map.part[from]!
+            face[to] = map.face[from]!
+            depth[to] = map.depth[from]!
+            u[to] = map.u[from]!
+            v[to] = map.v[from]!
+            facing[rect.y + y]![rect.x + x] = ".TLR"[map.facing[from]!]!
+          }
+        }
+      })
+      files.map = yield* writeText(
+        `${base}.map.json`,
+        `${JSON.stringify({ image: `${name}.png`, width, height: atlas.art.height, parts: result.partsShown, facing: facing.map((row) => row.join("")), part, face, depth, u, v })}\n`
+      )
+    }
     const moving = clips.filter((clip) => clip.frames.length > 1)
     if (moving.length > 0) {
       const gifs: Array<string> = []
@@ -712,7 +750,7 @@ const bake = Command.make(
   })
 ).pipe(
   Command.withDescription(
-    "Draws a model of 3D shapes (`<name>.bake.json`) through the project's one camera and light: `.png`, `.sprite.txt` for a still or `.json` for a sheet, and `.preview.png`, with `.normal.png` and `.shadow.png` when the model asks for them. For things with a solid shape, seen from any angle; the design is the model's."
+    "Draws a model of 3D shapes (`<name>.bake.json`) through the project's one camera and light: `.png`, `.sprite.txt` for a still or `.json` for a sheet, and `.preview.png`, with `.normal.png`, `.shadow.png`, and `.map.json` (what every pixel shows) when the model asks for them. For things with a solid shape, seen from any angle; the design is the model's."
   )
 )
 
