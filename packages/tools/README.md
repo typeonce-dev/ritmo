@@ -689,10 +689,10 @@ Every field has that default except `scale` (1), `outline`, and `materials`.
   `X = x cos(yaw) - y sin(yaw)`, `Y = x sin(yaw) + y cos(yaw)`, then across
   `X * scale` and down `(Y * sin(elevation) - z * heightScale * cos(elevation)) * scale`.
   A game that already says where a point lands gives that instead, as `across`
-  and `down`: art pixels across and down for one unit of x, y, and z. A game
-  whose point lands at `u - v` across and `(u + v) * 0.6 - z * 0.88` down has
-  `{ "across": [1, -1, 0], "down": [0.6, 0.6, -0.88] }`, and 2:1 is
-  `{ "across": [1, -1, 0], "down": [0.5, 0.5, -1] }`. Then the four above are
+  and `down`: art pixels across and down for one unit of x, y, and z. A 2:1 view
+  is `{ "across": [1, -1, 0], "down": [0.5, 0.5, -1] }`, and a three-quarter
+  view whose point lands at `x` across and `y * 0.75 - z * 0.5` down is
+  `{ "across": [1, 0, 0], "down": [0, 0.75, -0.5] }`. Then the four above are
   left out, `headings` turn the model before it, and `sun` keeps the picture's
   axes.
 - `light`: `sun` points toward the sun in the screen's axes whatever the `yaw`
