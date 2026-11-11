@@ -37,6 +37,12 @@ export interface BakeSetup {
     readonly scale: number
     /** Heights are multiplied by this, for a game whose view is not a true projection. */
     readonly heightScale: number
+    /**
+     * The camera in a game's own terms, in place of the four above: how many art
+     * pixels across and down one unit of x, y, and z moves a point. A 2:1 view
+     * is `{ across: [1, -1, 0], down: [0.5, 0.5, -1] }`.
+     */
+    readonly axes: { readonly across: Vec3; readonly down: Vec3 } | undefined
   }
   readonly light: {
     /** Toward the sun, in the screen's axes. */
@@ -57,7 +63,7 @@ export interface BakeSetup {
 }
 
 export const defaultBakeSetup: BakeSetup = {
-  camera: { yaw: 45, elevation: 30, scale: 1, heightScale: 1 },
+  camera: { yaw: 45, elevation: 30, scale: 1, heightScale: 1, axes: undefined },
   light: { sun: [-0.7, 0.05, 0.7], dark: 0, bright: 0.6, castShadows: false },
   outline: undefined,
   edges: 4,
@@ -87,6 +93,12 @@ export interface PartMotion {
   readonly wave: boolean
 }
 
+/** Which way a surface faces in the picture: up, or the side that faces left or right. */
+export type Facing = "top" | "left" | "right"
+
+/** A line where a part meets what is behind it: the outline's color, one step darker, or a color. */
+export type PartLine = true | "step" | string
+
 interface NodeBase {
   /** Where it is in the file, for the report. */
   readonly path: string
@@ -94,6 +106,10 @@ interface NodeBase {
   readonly material: string | undefined
   readonly detail: boolean
   readonly step: number | undefined
+  /** A ramp's step for each way its surfaces face, in place of the light. */
+  readonly steps: Readonly<Partial<Record<Facing, number>>> | undefined
+  /** False for none, undefined for its group's. */
+  readonly line: PartLine | false | undefined
   readonly move: Vec3 | undefined
   readonly rotate: Rotation | undefined
   readonly repeat: { readonly count: number; readonly move: Vec3 | undefined; readonly rotate: Rotation | undefined; readonly materials: ReadonlyArray<string> | undefined } | undefined
@@ -105,7 +121,14 @@ export type BakeNode =
   | (NodeBase & { readonly kind: "box"; readonly from: Vec3; readonly to: Vec3; readonly top: readonly [number, number]; readonly lean: readonly [number, number] })
   | (NodeBase & { readonly kind: "cylinder"; readonly from: Vec3; readonly to: Vec3; readonly axis: "x" | "y" | "z"; readonly sides: number; readonly taper: number })
   | (NodeBase & { readonly kind: "sphere"; readonly from: Vec3; readonly to: Vec3 })
-  | (NodeBase & { readonly kind: "mesh"; readonly points: ReadonlyArray<Vec3>; readonly faces: ReadonlyArray<ReadonlyArray<number>>; readonly lifted: boolean })
+  | (NodeBase & {
+      readonly kind: "mesh"
+      readonly points: ReadonlyArray<Vec3>
+      readonly faces: ReadonlyArray<ReadonlyArray<number>>
+      readonly lifted: boolean
+      /** A face's own picture: rows of letters laid over it, the first row at its top and the first letter at its left. */
+      readonly rows: ReadonlyArray<string> | undefined
+    })
 
 export interface BakePaint {
   /** Art pixels from the anchor to its first row's first pixel, x right and y down. */
@@ -127,6 +150,8 @@ export interface BakeModel {
   readonly cleanup: boolean
   readonly normals: boolean
   readonly shadow: boolean
+  /** Writes `<name>.map.json`: what every pixel shows, for a script that gives the art its own look. */
+  readonly map: boolean
   readonly parts: ReadonlyArray<BakeNode>
   readonly paint: ReadonlyArray<BakePaint>
 }
@@ -148,8 +173,9 @@ const isCount = (value: unknown): value is number => isNumber(value) && Number.i
 class Reader {
   readonly problems: Array<BakeProblem> = []
 
-  fail(path: string, message: string): void {
+  fail(path: string, message: string): undefined {
     this.problems.push({ path, message })
+    return undefined
   }
 
   fields(raw: unknown, path: string, allowed: ReadonlyArray<string>, hints: Readonly<Record<string, string>> = {}): Fields {
@@ -246,19 +272,33 @@ export const parseBakeSetup = (raw: unknown): Parsed<BakeSetup> => {
   if (raw === undefined) return { ok: true, value: defaultBakeSetup }
   const read = new Reader()
   const fields = read.fields(raw, "bake", ["camera", "light", "outline", "edges", "materials"])
-  const camera = read.fields(fields.camera ?? {}, "bake.camera", ["yaw", "elevation", "scale", "heightScale"])
+  const camera = read.fields(fields.camera ?? {}, "bake.camera", ["yaw", "elevation", "scale", "heightScale", "across", "down"])
   const light = read.fields(fields.light ?? {}, "bake.light", ["sun", "dark", "bright", "castShadows"])
   const base = defaultBakeSetup
   const positive = (n: number) => (n > 0 ? undefined : "must be above 0")
   const sun = light.sun === undefined ? base.light.sun : read.vector(light.sun, "bake.light.sun")
   if (sun !== undefined && sun[2] <= 0) read.fail("bake.light.sun", "must be above the ground: its z above 0")
   const edges = fields.edges === false ? false : read.number(fields.edges, "bake.edges", base.edges as number, positive)
+  let axes: BakeSetup["camera"]["axes"]
+  if (camera.across !== undefined || camera.down !== undefined) {
+    const turned = ["yaw", "elevation", "scale", "heightScale"].filter((key) => camera[key] !== undefined)
+    if (turned.length > 0) read.fail("bake.camera", `gives \`across\` and \`down\` with ${turned.map((key) => `\`${key}\``).join(", ")}: use one or the other`)
+    const across = camera.across === undefined ? read.fail("bake.camera.across", "must be given with `down`: art pixels across for one unit of x, y, and z, like [1, -1, 0]") : read.vector(camera.across, "bake.camera.across")
+    const down = camera.down === undefined ? read.fail("bake.camera.down", "must be given with `across`: art pixels down for one unit of x, y, and z, like [0.5, 0.5, -1]") : read.vector(camera.down, "bake.camera.down")
+    if (across !== undefined && down !== undefined) {
+      if (Math.hypot(...cross(across, down)) < 1e-9) read.fail("bake.camera", "has `across` and `down` along one line: the picture would be flat")
+      else if (Math.hypot(across[0], across[1]) < 1e-9) read.fail("bake.camera.across", "must move a point across the picture along the ground: its x or y not 0")
+      else if (down[2] >= 0) read.fail("bake.camera.down", "must move a point up the picture as z grows: its z below 0, like -1")
+      axes = { across, down }
+    }
+  }
   const value: BakeSetup = {
     camera: {
       yaw: read.number(camera.yaw, "bake.camera.yaw", base.camera.yaw),
       elevation: read.number(camera.elevation, "bake.camera.elevation", base.camera.elevation, (n) => (n > 0 && n <= 90 ? undefined : "must be above 0 and up to 90 degrees")),
       scale: read.number(camera.scale, "bake.camera.scale", base.camera.scale, positive),
-      heightScale: read.number(camera.heightScale, "bake.camera.heightScale", base.camera.heightScale, positive)
+      heightScale: read.number(camera.heightScale, "bake.camera.heightScale", base.camera.heightScale, positive),
+      axes
     },
     light: {
       sun: sun ?? base.light.sun,
@@ -275,13 +315,17 @@ export const parseBakeSetup = (raw: unknown): Parsed<BakeSetup> => {
 }
 
 const SHAPES = ["box", "cylinder", "sphere", "face", "mesh"] as const
-const COMMON = ["name", "material", "detail", "step", "move", "rotate", "repeat", "animate"]
+const COMMON = ["name", "material", "detail", "step", "steps", "line", "move", "rotate", "repeat", "animate"]
+const FACINGS: ReadonlyArray<Facing> = ["top", "left", "right"]
 const MISTAKES: Readonly<Record<string, string>> = {
   at: "is not a field: give `from` and `to`, two opposite corners",
   size: "is not a field: give `from` and `to`, two opposite corners",
   color: "is not a field: use `material`, a color like \"#ef7d57\" or a material's name",
   flat: "is not a field: use `step`, which keeps a ramp on one of its steps",
-  spin: "is not a field: use `animate`, with a motion for each animation's name"
+  spin: "is not a field: use `animate`, with a motion for each animation's name",
+  lines: "is not a field: use `line`",
+  outline: "is not a field on a part: use `line`, where it meets what is behind it",
+  paint: "is not a field on a part: give a `face` its own `rows`, or paint the model's pixels with the model's `paint`"
 }
 
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
@@ -356,12 +400,33 @@ const parseNode = (read: Reader, raw: unknown, path: string, material: boolean, 
         : shape === "sphere"
           ? ["shape", "from", "to"]
           : shape === "face"
-            ? ["shape", "corners"]
+            ? ["shape", "corners", "rows"]
             : ["shape", "points", "faces"]
   const fields = read.fields(raw, path, [...own, ...COMMON], MISTAKES)
   if (fields.material !== undefined) knownMaterial(read, fields.material, `${path}.material`, context)
   if (fields.name !== undefined && typeof fields.name !== "string") read.fail(`${path}.name`, "must be text")
-  if (fields.step !== undefined && !(isNumber(fields.step) && Number.isInteger(fields.step) && fields.step >= 0)) read.fail(`${path}.step`, "must be a ramp's step: 0 is its darkest")
+  const isStep = (n: unknown): n is number => isNumber(n) && Number.isInteger(n) && n >= 0
+  if (fields.step !== undefined && !isStep(fields.step)) read.fail(`${path}.step`, "must be a ramp's step: 0 is its darkest")
+  let steps: NodeBase["steps"]
+  if (fields.steps !== undefined) {
+    const raw = read.fields(fields.steps, `${path}.steps`, FACINGS)
+    const chosen: Partial<Record<Facing, number>> = {}
+    for (const facing of FACINGS) {
+      const n = raw[facing]
+      if (n === undefined) continue
+      if (isStep(n)) chosen[facing] = n
+      else read.fail(`${path}.steps.${facing}`, "must be a ramp's step: 0 is its darkest")
+    }
+    steps = chosen
+  }
+  let line: NodeBase["line"]
+  if (fields.line !== undefined) {
+    const raw = fields.line
+    const rgb = typeof raw === "string" && raw !== "step" ? parseHex(raw) : undefined
+    if (raw === true || raw === false || raw === "step") line = raw
+    else if (rgb !== undefined) line = toHex(rgb)
+    else read.fail(`${path}.line`, 'must be true (the outline\'s color), "step" (one step darker), a color like "#1a1c2c", or false for none')
+  }
   let repeat: NodeBase["repeat"]
   if (fields.repeat !== undefined) {
     const r = read.fields(fields.repeat, `${path}.repeat`, ["count", "move", "rotate", "materials"])
@@ -395,6 +460,8 @@ const parseNode = (read: Reader, raw: unknown, path: string, material: boolean, 
     material: typeof fields.material === "string" ? fields.material : undefined,
     detail: read.boolean(fields.detail, `${path}.detail`, false),
     step: isNumber(fields.step) ? fields.step : undefined,
+    steps,
+    line,
     move: fields.move === undefined ? undefined : read.vector(fields.move, `${path}.move`),
     rotate: fields.rotate === undefined ? undefined : read.rotation(fields.rotate, `${path}.rotate`),
     repeat,
@@ -409,7 +476,7 @@ const parseNode = (read: Reader, raw: unknown, path: string, material: boolean, 
     const parts = fields.parts.flatMap((part, i) => parseNode(read, part, `${path}.parts[${i}]`, painted, context) ?? [])
     return { ...base, kind: "group", parts }
   }
-  if (!painted) read.fail(`${path}.material`, 'is missing: a color like "#ef7d57", a material\'s name, or one set on its group')
+  if (!painted && !(shape === "face" && fields.rows !== undefined)) read.fail(`${path}.material`, 'is missing: a color like "#ef7d57", a material\'s name, or one set on its group')
   if (shape === "face" || shape === "mesh") {
     const list = shape === "face" ? fields.corners : fields.points
     const name = shape === "face" ? "corners" : "points"
@@ -423,7 +490,19 @@ const parseNode = (read: Reader, raw: unknown, path: string, material: boolean, 
     if (shape === "face") {
       const wrong = polygonProblem(points)
       if (wrong !== undefined) read.fail(`${path}.corners`, wrong)
-      return { ...base, kind: "mesh", points, faces: [points.map((_, i) => i)], lifted: true }
+      let rows: ReadonlyArray<string> | undefined
+      if (fields.rows !== undefined) {
+        const lines = Array.isArray(fields.rows) && fields.rows.length > 0 && fields.rows.every((row: unknown) => typeof row === "string" && row.length > 0) ? (fields.rows as ReadonlyArray<string>) : undefined
+        if (lines === undefined) read.fail(`${path}.rows`, 'must be rows of text laid over the face, one letter per cell: "." shows what is behind it, and any other letter is a one-color material of that name')
+        else {
+          if (lines.some((row) => [...row].length !== [...lines[0]!].length)) read.fail(`${path}.rows`, "must all be as long as the first row")
+          for (const letter of new Set(lines.join(""))) {
+            if (letter !== "." && context.known[letter]?.length !== 1) read.fail(`${path}.rows`, `uses "${letter}", which needs a one-color material of that name in \`materials\`, like { "${letter}": "#ffcd75" }`)
+          }
+          rows = lines
+        }
+      }
+      return { ...base, kind: "mesh", points, faces: [points.map((_, i) => i)], lifted: true, rows }
     }
     if (!Array.isArray(fields.faces)) {
       read.fail(`${path}.faces`, "must be a list of faces, each a list of positions in `points`")
@@ -439,7 +518,7 @@ const parseNode = (read: Reader, raw: unknown, path: string, material: boolean, 
       if (wrong !== undefined) read.fail(`${path}.faces[${i}]`, wrong)
       faces.push(face)
     })
-    return { ...base, kind: "mesh", points, faces, lifted: false }
+    return { ...base, kind: "mesh", points, faces, lifted: false, rows: undefined }
   }
   const from = read.vector(fields.from, `${path}.from`)
   const to = read.vector(fields.to, `${path}.to`)
@@ -475,7 +554,7 @@ export const MAX_BAKE_SIDE = 1024
 /** A model whose frame is past `MAX_BAKE_SIDE`: said before anything is drawn, which would run out of memory. */
 export class BakeTooLarge extends Error {}
 
-const MODEL_FIELDS = ["headings", "animations", "frame", "materials", "outline", "cleanup", "normals", "shadow", "parts", "paint"]
+const MODEL_FIELDS = ["headings", "animations", "frame", "materials", "outline", "cleanup", "normals", "shadow", "map", "parts", "paint"]
 
 /** Reads a model, with every problem found. `setup` holds the materials it can name. */
 export const parseBakeModel = (text: string, setup: BakeSetup): Parsed<BakeModel> => {
@@ -553,6 +632,7 @@ export const parseBakeModel = (text: string, setup: BakeSetup): Parsed<BakeModel
     cleanup: read.boolean(fields.cleanup, "$.cleanup", true),
     normals: read.boolean(fields.normals, "$.normals", false),
     shadow: read.boolean(fields.shadow, "$.shadow", false),
+    map: read.boolean(fields.map, "$.map", false),
     parts,
     paint
   }
@@ -656,17 +736,28 @@ interface Triangle {
   readonly b: Vec3
   readonly c: Vec3
   readonly part: number
+  /** The flat face it is cut from, counted across the model. */
+  readonly face: number
 }
 
 /** One drawn copy of a part. */
 interface Piece {
   readonly source: string
   readonly name: string | undefined
+  readonly material: string | undefined
+  /** Dark to light; for a face with its own rows, one color per letter. */
   readonly ramp: ReadonlyArray<string>
   readonly detail: boolean
   readonly step: number | undefined
+  readonly steps: Readonly<Partial<Record<Facing, number>>> | undefined
+  readonly line: PartLine | undefined
   readonly lifted: boolean
+  /** A face's own picture: per row, per letter, its step in `ramp`, or -1 to show what is behind. */
+  readonly cells: ReadonlyArray<ReadonlyArray<number>> | undefined
 }
+
+/** A part's tones are its own: the light, cast shadows, and `edges` leave them alone. */
+const chosenTones = (piece: Piece): boolean => piece.step !== undefined || piece.steps !== undefined || piece.cells !== undefined
 
 interface Moment {
   readonly animation: string | undefined
@@ -694,38 +785,69 @@ const nodeMatrix = (node: BakeNode, moment: Moment): Matrix => {
 interface View {
   readonly triangles: ReadonlyArray<Triangle>
   readonly pieces: ReadonlyArray<Piece>
+  /** Every flat face's corners, by the number its triangles carry. */
+  readonly faces: ReadonlyArray<ReadonlyArray<Vec3>>
 }
 
 /** Every triangle of a model at one moment, in model coordinates with heights scaled. */
 const flatten = (model: BakeModel, moment: Moment, resolve: (name: string) => ReadonlyArray<string>, heightScale: number): View => {
   const triangles: Array<Triangle> = []
   const pieces: Array<Piece> = []
-  // A group's material, detail, and step go to its parts that have none of their own.
-  const visit = (node: BakeNode, parent: Matrix, material: string | undefined, detail: boolean, step: number | undefined): void => {
+  const faces: Array<ReadonlyArray<Vec3>> = []
+  interface Inherited {
+    readonly material: string | undefined
+    readonly detail: boolean
+    readonly step: number | undefined
+    readonly steps: Piece["steps"]
+    readonly line: PartLine | false | undefined
+  }
+  // A group's material, detail, step, steps, and line go to its parts that have none of their own.
+  const visit = (node: BakeNode, parent: Matrix, inherited: Inherited): void => {
     const count = node.repeat?.count ?? 1
     for (let copy = 0; copy < count; copy++) {
       let placed = parent
       if (node.repeat?.move !== undefined) placed = multiply(placed, translation(mul(node.repeat.move, copy)))
       if (node.repeat?.rotate !== undefined) placed = multiply(placed, rotationMatrix(node.repeat.rotate, copy))
       placed = multiply(placed, nodeMatrix(node, moment))
-      const chosen = node.repeat?.materials?.[copy % node.repeat.materials.length] ?? node.material ?? material
+      const own: Inherited = {
+        material: node.repeat?.materials?.[copy % node.repeat.materials.length] ?? node.material ?? inherited.material,
+        detail: node.detail || inherited.detail,
+        step: node.step ?? inherited.step,
+        steps: node.steps ?? inherited.steps,
+        line: node.line ?? inherited.line
+      }
       if (node.kind === "group") {
-        for (const part of node.parts) visit(part, placed, chosen, node.detail || detail, node.step ?? step)
+        for (const part of node.parts) visit(part, placed, own)
         continue
       }
       const part = pieces.length
-      pieces.push({ source: node.path, name: node.name, ramp: resolve(chosen!), detail: node.detail || detail, step: node.step ?? step, lifted: node.kind === "mesh" && node.lifted })
+      const rows = node.kind === "mesh" ? node.rows : undefined
+      const letters = rows === undefined ? [] : [...new Set(rows.join(""))].filter((letter) => letter !== ".")
+      pieces.push({
+        source: node.path,
+        name: node.name,
+        material: rows === undefined ? own.material : undefined,
+        ramp: rows === undefined ? resolve(own.material!) : letters.map((letter) => resolve(letter)[0]!),
+        detail: own.detail,
+        step: own.step,
+        steps: own.steps,
+        line: own.line === false ? undefined : own.line,
+        lifted: node.kind === "mesh" && node.lifted,
+        cells: rows?.map((row) => [...row].map((letter) => letters.indexOf(letter)))
+      })
       for (const polygon of polygonsOf(node)) {
         const points = polygon.map((point) => {
           const p = apply(placed, point)
           return [p[0], p[1], p[2] * heightScale] as Vec3
         })
-        for (let i = 1; i + 1 < points.length; i++) triangles.push({ a: points[0]!, b: points[i]!, c: points[i + 1]!, part })
+        const face = faces.length
+        faces.push(points)
+        for (let i = 1; i + 1 < points.length; i++) triangles.push({ a: points[0]!, b: points[i]!, c: points[i + 1]!, part, face })
       }
     }
   }
-  for (const node of model.parts) visit(node, IDENTITY, undefined, false, undefined)
-  return { triangles, pieces }
+  for (const node of model.parts) visit(node, IDENTITY, { material: undefined, detail: false, step: undefined, steps: undefined, line: undefined })
+  return { triangles, pieces, faces }
 }
 
 // ---------------------------------------------------------------------------
@@ -736,6 +858,7 @@ export interface BakedFrame {
   /** The directions, as `pixel normals` writes them: x right, y up, z to the viewer. */
   readonly normal: RgbaImage
   readonly shadow: PixelArt
+  readonly map: FrameMap
 }
 
 export interface BakedClip {
@@ -757,6 +880,8 @@ export interface BakeResult {
   /** How many art pixels the art reaches past a frame the model set. */
   readonly cut: { readonly left: number; readonly right: number; readonly up: number; readonly below: number }
   readonly parts: number
+  /** Every drawn copy of a part, in the order `FrameMap.part` counts them. */
+  readonly partsShown: ReadonlyArray<{ readonly path: string; readonly name: string | undefined; readonly material: string | undefined }>
 }
 
 /** Samples per art pixel across. Enough that a part's edge lands within a pixel's vote. */
@@ -767,7 +892,7 @@ const CLEANUP_PASSES = 4
 /** How far, in art pixels of depth, a `face` draws in front of what it lies on. */
 const FACE_LIFT = 0.12
 
-const fillTriangle = (a: Vec3, b: Vec3, c: Vec3, width: number, height: number, put: (x: number, y: number, depth: number) => void): void => {
+const fillTriangle = (a: Vec3, b: Vec3, c: Vec3, width: number, height: number, put: (x: number, y: number, depth: number, wa: number, wb: number, wc: number) => void): void => {
   const area = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
   if (Math.abs(area) < 1e-9) return
   const x0 = Math.max(0, Math.floor(Math.min(a[0], b[0], c[0])))
@@ -782,7 +907,7 @@ const fillTriangle = (a: Vec3, b: Vec3, c: Vec3, width: number, height: number, 
       const w1 = ((c[0] - px) * (a[1] - py) - (c[1] - py) * (a[0] - px)) / area
       const w2 = 1 - w0 - w1
       if (w0 < -1e-6 || w1 < -1e-6 || w2 < -1e-6) continue
-      put(x, y, w0 * a[2] + w1 * b[2] + w2 * c[2])
+      put(x, y, w0 * a[2] + w1 * b[2] + w2 * c[2], w0, w1, w2)
     }
   }
 }
@@ -802,9 +927,65 @@ interface Camera {
   readonly toView: (n: Vec3) => Vec3
   /** The point in rotated coordinates under art pixels from the anchor, at a depth. */
   readonly fromScreen: (x: number, y: number, depth: number) => Vec3
+  /** Toward the viewer, in rotated coordinates. */
+  readonly view: Vec3
+}
+
+/** About how many art pixels one unit of the model covers: what depths in art pixels are measured by. */
+const unitPixels = (setup: BakeSetup): number => {
+  const axes = setup.camera.axes
+  if (axes === undefined) return setup.camera.scale
+  return Math.max(Math.hypot(axes.across[0], axes.down[0]), Math.hypot(axes.across[1], axes.down[1]))
+}
+
+/**
+ * The sun in the coordinates a camera draws from. It is given in the picture's
+ * axes (+x right, +y toward the viewer, +z up), which the turned camera draws
+ * from already; `axes` draws from the model's, so it is turned to match.
+ */
+const sunOf = (setup: BakeSetup): Vec3 => {
+  const sun = unit(setup.light.sun)
+  const axes = setup.camera.axes
+  if (axes === undefined) return sun
+  const right = unit([axes.across[0], axes.across[1], 0])
+  const toward = cross(axes.across, axes.down)
+  let near: Vec3 = [-right[1], right[0], 0]
+  if (dot(near, toward[2] < 0 ? mul(toward, -1) : toward) < 0) near = mul(near, -1)
+  return unit(add(add(mul(right, sun[0]), mul(near, sun[1])), [0, 0, sun[2]]))
+}
+
+/** Heights a model's points are multiplied by before the camera: `axes` carries its own. */
+const heightScaleOf = (setup: BakeSetup): number => (setup.camera.axes === undefined ? setup.camera.heightScale : 1)
+
+/** The inverse of three rows, as a function. */
+const solve3 = (r0: Vec3, r1: Vec3, r2: Vec3): ((b: Vec3) => Vec3) => {
+  const c0 = cross(r1, r2)
+  const c1 = cross(r2, r0)
+  const c2 = cross(r0, r1)
+  const det = dot(r0, c0)
+  return (b) => mul(add(add(mul(c0, b[0]), mul(c1, b[1])), mul(c2, b[2])), 1 / det)
 }
 
 const cameraOf = (setup: BakeSetup, heading: number, headings: number): Camera => {
+  const axes = setup.camera.axes
+  if (axes !== undefined) {
+    // Each heading turns the model about z before the game's own projection.
+    const turn = ((360 * heading) / headings) * (Math.PI / 180)
+    const cosT = Math.cos(turn)
+    const sinT = Math.sin(turn)
+    const toward = cross(axes.across, axes.down)
+    const view = unit(toward[2] < 0 ? mul(toward, -1) : toward)
+    const right = unit(sub(axes.across, mul(view, dot(axes.across, view))))
+    const up = unit(mul(sub(axes.down, mul(view, dot(axes.down, view))), -1))
+    const back = solve3(axes.across, axes.down, view)
+    return {
+      toRotated: (p) => [p[0] * cosT - p[1] * sinT, p[0] * sinT + p[1] * cosT, p[2]],
+      project: (p) => ({ x: dot(axes.across, p), y: dot(axes.down, p), depth: dot(view, p) }),
+      toView: (n) => [dot(n, right), dot(n, up), dot(n, view)],
+      fromScreen: (x, y, depth) => back([x, y, depth]),
+      view
+    }
+  }
   const yaw = ((setup.camera.yaw + (360 * heading) / headings) * Math.PI) / 180
   const elevation = (setup.camera.elevation * Math.PI) / 180
   const cosYaw = Math.cos(yaw)
@@ -816,7 +997,8 @@ const cameraOf = (setup: BakeSetup, heading: number, headings: number): Camera =
     toRotated: (p) => [p[0] * cosYaw - p[1] * sinYaw, p[0] * sinYaw + p[1] * cosYaw, p[2]],
     project: (p) => ({ x: p[0] * scale, y: (p[1] * sinE - p[2] * cosE) * scale, depth: p[1] * cosE + p[2] * sinE }),
     toView: (n) => [n[0], n[2] * cosE - n[1] * sinE, n[1] * cosE + n[2] * sinE],
-    fromScreen: (x, y, depth) => [x / scale, (y / scale) * sinE + depth * cosE, depth * sinE - (y / scale) * cosE]
+    fromScreen: (x, y, depth) => [x / scale, (y / scale) * sinE + depth * cosE, depth * sinE - (y / scale) * cosE],
+    view: [0, cosE, sinE]
   }
 }
 
@@ -863,12 +1045,68 @@ const castMap = (triangles: ReadonlyArray<Triangle>, sun: Vec3, scale: number): 
   }
 }
 
+/**
+ * A flat face's own grid, seen from the viewer's side: which way it faces, and
+ * where a point sits on it, from 0 at its left to 1 at its right (`u`) and from
+ * 0 at its top to 1 at its bottom (`v`). A side's top is up; a top's rows run
+ * along the model's y from -y, and its letters along x from -x, so its
+ * picture turns with the model.
+ */
+interface FaceGrid {
+  readonly facing: Facing
+  readonly u: (p: Vec3) => number
+  readonly v: (p: Vec3) => number
+}
+
+const faceGridOf = (points: ReadonlyArray<Vec3>, camera: Camera): FaceGrid => {
+  let normal: Vec3 = [0, 0, 0]
+  for (let i = 0; i < points.length; i++) normal = add(normal, cross(points[i]!, points[(i + 1) % points.length]!))
+  let n = unit(normal)
+  if (dot(n, camera.view) < 0) n = mul(n, -1)
+  const top = n[2] > Math.hypot(n[0], n[1])
+  const facing: Facing = top ? "top" : camera.toView(n)[0] < 0 ? "left" : "right"
+  let across: Vec3
+  let downward: Vec3
+  if (top) {
+    across = camera.toRotated([1, 0, 0])
+    downward = camera.toRotated([0, 1, 0])
+  } else {
+    const up = unit(sub([0, 0, 1], mul(n, n[2])))
+    across = cross(n, up)
+    downward = mul(up, -1)
+  }
+  const us = points.map((p) => dot(p, across))
+  const vs = points.map((p) => dot(p, downward))
+  const u0 = Math.min(...us)
+  const v0 = Math.min(...vs)
+  const uSpan = Math.max(...us) - u0 || 1
+  const vSpan = Math.max(...vs) - v0 || 1
+  return { facing, u: (p) => (dot(p, across) - u0) / uSpan, v: (p) => (dot(p, downward) - v0) / vSpan }
+}
+
+/** What a baked frame shows at each pixel, before its outline, lines, and paint. */
+export interface FrameMap {
+  /** Which part, by its place in `BakeResult.partsShown`, or -1 for none. */
+  readonly part: Int32Array
+  /** Which flat face, counted across the model, or -1. */
+  readonly face: Int32Array
+  /** 0 for none, then top, left, right. */
+  readonly facing: Uint8Array
+  /** Art pixels toward the viewer from the model's origin. */
+  readonly depth: Float32Array
+  readonly u: Float32Array
+  readonly v: Float32Array
+}
+
+const FACING_CODE: Readonly<Record<Facing, number>> = { top: 1, left: 2, right: 3 }
+
 /** Draws every view of a model. */
 export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: ReadonlyArray<Rgb>): BakeResult => {
   const materials = { ...setup.materials, ...model.materials }
   const resolve = (name: string): ReadonlyArray<string> => materials[name] ?? [toHex(parseHex(name)!)]
-  const heightScale = setup.camera.heightScale
-  const sun = unit(setup.light.sun)
+  const heightScale = heightScaleOf(setup)
+  const pixelsPerUnit = unitPixels(setup)
+  const sun = sunOf(setup)
   const moments: ReadonlyArray<{ readonly clip: BakeAnimation | undefined; readonly frame: number; readonly moment: Moment }> =
     model.animations.length === 0
       ? [{ clip: undefined, frame: 0, moment: { animation: undefined, time: 0 } }]
@@ -962,6 +1200,8 @@ export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: Readonl
   // Every color first, so the darkest is settled and is the same in every frame.
   for (const { moment } of moments) for (const piece of viewOf(moment).pieces) for (const color of piece.ramp) indexOf(color)
   const outlineColor = outlineSetting === false ? undefined : outlineSetting !== undefined ? indexOf(outlineSetting) : darkestOf(paletteColors !== undefined && paletteColors.length > 0 ? paletteColors : palette)
+  // `line: true` takes the outline's color; with no outline, the darkest.
+  const lineColor = outlineColor ?? darkestOf(paletteColors !== undefined && paletteColors.length > 0 ? paletteColors : palette)
   const sampleWidth = width * SAMPLES
   const sampleHeight = height * SAMPLES
   const shown = new Map<string, number>()
@@ -969,12 +1209,16 @@ export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: Readonl
   const draw = (heading: number, clip: BakeAnimation | undefined, frame: number, moment: Moment): BakedFrame => {
     const camera = cameraOf(setup, heading, model.headings)
     const view = viewOf(moment)
-    const rotated = view.triangles.map((t) => ({ a: camera.toRotated(t.a), b: camera.toRotated(t.b), c: camera.toRotated(t.c), part: t.part }))
-    const casts = setup.light.castShadows ? castMap(rotated, sun, setup.camera.scale) : undefined
+    const rotated = view.triangles.map((t) => ({ a: camera.toRotated(t.a), b: camera.toRotated(t.b), c: camera.toRotated(t.c), part: t.part, face: t.face }))
+    const casts = setup.light.castShadows ? castMap(rotated, sun, pixelsPerUnit) : undefined
     const depth = new Float32Array(sampleWidth * sampleHeight).fill(-Infinity)
     const owner = new Int32Array(sampleWidth * sampleHeight).fill(-1)
     const stepAt = new Uint8Array(sampleWidth * sampleHeight)
     const normalAt = new Float32Array(sampleWidth * sampleHeight * 3)
+    const faceAt = new Int32Array(sampleWidth * sampleHeight).fill(-1)
+    const uAt = new Float32Array(sampleWidth * sampleHeight)
+    const vAt = new Float32Array(sampleWidth * sampleHeight)
+    const grids = view.faces.map((points) => faceGridOf(points.map(camera.toRotated), camera))
     const toSample = (p: Vec3): Vec3 => {
       const q = camera.project(p)
       return [(q.x + left) * SAMPLES, (q.y + up) * SAMPLES, q.depth]
@@ -988,17 +1232,37 @@ export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: Readonl
         facing = mul(facing, -1)
       }
       const piece = view.pieces[t.part]!
+      const grid = grids[t.face]!
       const light = dot(world, sun)
-      const shade = Math.min(piece.ramp.length - 1, piece.step ?? stepOfLight(light, piece.ramp.length, setup.light.dark, setup.light.bright))
+      const chosen = piece.steps?.[grid.facing] ?? piece.step
+      const shade = Math.min(piece.ramp.length - 1, chosen ?? stepOfLight(light, piece.ramp.length, setup.light.dark, setup.light.bright))
       // A face on a surface shows over it: a door drawn exactly on its wall needs no gap.
-      const lift = piece.lifted ? FACE_LIFT / setup.camera.scale : 0
-      fillTriangle(toSample(t.a), toSample(t.b), toSample(t.c), sampleWidth, sampleHeight, (x, y, d) => {
+      const lift = piece.lifted ? FACE_LIFT / pixelsPerUnit : 0
+      const ua = grid.u(t.a)
+      const ub = grid.u(t.b)
+      const uc = grid.u(t.c)
+      const va = grid.v(t.a)
+      const vb = grid.v(t.b)
+      const vc = grid.v(t.c)
+      const cells = piece.cells
+      fillTriangle(toSample(t.a), toSample(t.b), toSample(t.c), sampleWidth, sampleHeight, (x, y, d, wa, wb, wc) => {
         const i = y * sampleWidth + x
         if (d + lift <= depth[i]!) return
+        const u = wa * ua + wb * ub + wc * uc
+        const v = wa * va + wb * vb + wc * vc
+        let step = shade
+        if (cells !== undefined) {
+          const row = cells[Math.min(cells.length - 1, Math.max(0, Math.floor(v * cells.length)))]!
+          const cell = row[Math.min(row.length - 1, Math.max(0, Math.floor(u * row.length)))]!
+          // "." shows what is behind the face.
+          if (cell < 0) return
+          step = cell
+        } else if (casts !== undefined && !chosenTones(piece) && light > 0.02 && casts(camera.fromScreen((x + 0.5) / SAMPLES - left, (y + 0.5) / SAMPLES - up, d), t.part)) step = Math.max(0, step - 1)
         depth[i] = d + lift
         owner[i] = t.part
-        let step = shade
-        if (casts !== undefined && piece.step === undefined && light > 0.02 && casts(camera.fromScreen((x + 0.5) / SAMPLES - left, (y + 0.5) / SAMPLES - up, d), t.part)) step = Math.max(0, step - 1)
+        faceAt[i] = t.face
+        uAt[i] = u
+        vAt[i] = v
         stepAt[i] = step
         normalAt[i * 3] = facing[0]
         normalAt[i * 3 + 1] = facing[1]
@@ -1012,7 +1276,15 @@ export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: Readonl
     const pixelStep = new Uint8Array(pixels)
     const pixelDepth = new Float32Array(pixels)
     const pixelNormal = new Float32Array(pixels * 3)
-    const votes = new Map<number, { weight: number; count: number; depth: number; x: number; y: number; z: number }>()
+    const map: FrameMap = {
+      part: new Int32Array(pixels).fill(-1),
+      face: new Int32Array(pixels).fill(-1),
+      facing: new Uint8Array(pixels),
+      depth: new Float32Array(pixels),
+      u: new Float32Array(pixels),
+      v: new Float32Array(pixels)
+    }
+    const votes = new Map<number, { weight: number; count: number; depth: number; x: number; y: number; z: number; face: number; u: number; v: number; onFace: number }>()
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         votes.clear()
@@ -1027,7 +1299,7 @@ export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: Readonl
             const key = part * 256 + stepAt[s]!
             let vote = votes.get(key)
             if (vote === undefined) {
-              vote = { weight: 0, count: 0, depth: 0, x: 0, y: 0, z: 0 }
+              vote = { weight: 0, count: 0, depth: 0, x: 0, y: 0, z: 0, face: faceAt[s]!, u: 0, v: 0, onFace: 0 }
               votes.set(key, vote)
             }
             vote.weight += weight
@@ -1036,6 +1308,12 @@ export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: Readonl
             vote.x += normalAt[s * 3]!
             vote.y += normalAt[s * 3 + 1]!
             vote.z += normalAt[s * 3 + 2]!
+            // Where on its face: the first face the vote saw, so two faces of one part never average.
+            if (faceAt[s] === vote.face) {
+              vote.u += uAt[s]!
+              vote.v += vAt[s]!
+              vote.onFace++
+            }
           }
         }
         if (covered * 2 < SAMPLES * SAMPLES) continue
@@ -1056,6 +1334,12 @@ export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: Readonl
         pixelNormal[i * 3] = n[0]
         pixelNormal[i * 3 + 1] = n[1]
         pixelNormal[i * 3 + 2] = n[2]
+        map.part[i] = pixelOwner[i]!
+        map.face[i] = vote.face
+        map.facing[i] = FACING_CODE[grids[vote.face]!.facing]
+        map.depth[i] = Math.round(pixelDepth[i] * pixelsPerUnit * 100) / 100
+        map.u[i] = Math.round((vote.u / vote.onFace) * 1000) / 1000
+        map.v[i] = Math.round((vote.v / vote.onFace) * 1000) / 1000
       }
     }
 
@@ -1075,8 +1359,29 @@ export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: Readonl
     if (edges !== false) {
       for (let i = 0; i < pixels; i++) {
         const part = pixelOwner[i]!
-        if (part < 0 || view.pieces[part]!.step !== undefined) continue
-        if (neighbours(i).some((n) => pixelOwner[n]! >= 0 && (pixelDepth[n]! - pixelDepth[i]!) * setup.camera.scale > edges)) finalStep[i] = Math.max(0, pixelStep[i]! - 1)
+        if (part < 0 || chosenTones(view.pieces[part]!)) continue
+        if (neighbours(i).some((n) => pixelOwner[n]! >= 0 && (pixelDepth[n]! - pixelDepth[i]!) * pixelsPerUnit > edges)) finalStep[i] = Math.max(0, pixelStep[i]! - 1)
+      }
+    }
+
+    // A part's `line` falls where it meets what is behind it, on the pixels behind: as an outline falls outside a shape.
+    const lineAt = new Int32Array(pixels).fill(-1)
+    const darker = new Uint8Array(pixels)
+    const tie = 0.5 / pixelsPerUnit
+    for (let i = 0; i < pixels; i++) {
+      const behind = pixelOwner[i]!
+      if (behind < 0) continue
+      for (const n of neighbours(i)) {
+        const front = pixelOwner[n]!
+        if (front < 0 || front === behind) continue
+        const line = view.pieces[front]!.line
+        if (line === undefined) continue
+        const gap = pixelDepth[n]! - pixelDepth[i]!
+        // Level with each other, the line goes on the part without one, or on the later part.
+        const across = gap > tie || (gap >= -tie && (view.pieces[behind]!.line === undefined || behind > front))
+        if (!across) continue
+        if (line === "step") darker[i] = 1
+        else lineAt[i] = line === true ? lineColor : indexOf(line)
       }
     }
 
@@ -1086,7 +1391,7 @@ export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: Readonl
       const part = pixelOwner[i]!
       if (part < 0) continue
       const piece = view.pieces[part]!
-      indices[i] = indexOf(piece.ramp[Math.min(piece.ramp.length - 1, finalStep[i]!)]!)
+      indices[i] = lineAt[i]! >= 0 ? lineAt[i]! : indexOf(piece.ramp[Math.max(0, Math.min(piece.ramp.length - 1, finalStep[i]!) - darker[i]!)]!)
       if (piece.detail) protectedPixel[i] = 1
       shown.set(piece.source, (shown.get(piece.source) ?? 0) + 1)
     }
@@ -1121,6 +1426,7 @@ export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: Readonl
     painted(false)
 
     // One outline around whatever now stands there.
+    const outlined = new Uint8Array(pixels)
     if (outlineColor !== undefined) {
       const before = indices.slice()
       for (let i = 0; i < pixels; i++) {
@@ -1128,6 +1434,7 @@ export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: Readonl
         const near = neighbours(i).filter((n) => before[n] !== TRANSPARENT)
         if (near.length === 0) continue
         indices[i] = outlineColor
+        outlined[i] = 1
         const n = unit(near.reduce<Vec3>((sum, at) => add(sum, [pixelNormal[at * 3]!, pixelNormal[at * 3 + 1]!, pixelNormal[at * 3 + 2]!]), [0, 0, 0]))
         pixelNormal[i * 3] = n[0]
         pixelNormal[i * 3 + 1] = n[1]
@@ -1136,10 +1443,10 @@ export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: Readonl
     }
     painted(true)
 
-    // The lint's lone pixels go, by the rule it reads them by, except what was placed on purpose.
+    // The lint's lone pixels go, by the rule it reads them by, except what was placed on purpose and the outline.
     if (model.cleanup) {
       for (let pass = 0; pass < CLEANUP_PASSES; pass++) {
-        const strays = strayPixels(indices, width, height).filter((i) => protectedPixel[i] === 0)
+        const strays = strayPixels(indices, width, height).filter((i) => protectedPixel[i] === 0 && (outlined[i] === 0 || indices[i] !== outlineColor))
         if (strays.length === 0) break
         for (const i of strays) {
           const x = i % width
@@ -1157,6 +1464,24 @@ export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: Readonl
           }
           const top = [...counts].sort((a, b) => b[1] - a[1])[0]
           if (top !== undefined) indices[i] = top[0]
+        }
+      }
+      // An outline pixel that meets the rest only at a corner (a roof's eave, a spire's tip) is joined to it
+      // through the empty corner, so the outline neither breaks nor leaves a lone pixel.
+      if (outlineColor !== undefined) {
+        for (const i of strayPixels(indices, width, height)) {
+          if (indices[i] !== outlineColor || outlined[i] === 0) continue
+          const x = i % width
+          const y = Math.floor(i / width)
+          for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+            const nx = x + dx
+            const ny = y + dy
+            if (nx < 0 || ny < 0 || nx >= width || ny >= height || indices[ny * width + nx] !== outlineColor) continue
+            const corner = [y * width + nx, ny * width + x].find((c) => indices[c] === TRANSPARENT)
+            if (corner === undefined) continue
+            indices[corner] = outlineColor
+            break
+          }
         }
       }
     }
@@ -1195,7 +1520,8 @@ export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: Readonl
     return {
       art: { width, height, palette, indices },
       normal: { width, height, data: normal },
-      shadow: { width, height, palette, indices: shadowIndices }
+      shadow: { width, height, palette, indices: shadowIndices },
+      map
     }
   }
 
@@ -1219,7 +1545,9 @@ export const bake = (model: BakeModel, setup: BakeSetup, paletteColors?: Readonl
 
   const sources = new Map<string, string | undefined>()
   for (const { moment } of moments) for (const piece of viewOf(moment).pieces) sources.set(piece.source, piece.name)
+  const first = viewOf(moments[0]!.moment)
   return {
+    partsShown: first.pieces.map((piece) => ({ path: piece.source, name: piece.name, material: piece.material })),
     width,
     height,
     anchor: { x: left, y: up },

@@ -626,8 +626,10 @@ all one of a set or one seen from several angles. You describe it in 3D, and the
 tool draws it through the project's one camera and light, so every sprite shares
 the angle, the shading on the palette's ramps, clean edges, and one outline. The
 design stays yours: any shapes, any colors, proportions as exaggerated as the
-style wants, and hand-placed pixels for what geometry cannot say. What is odd
-about a model comes back in the report, never as a refusal.
+style wants, and hand-placed pixels for what geometry cannot say. The look can
+be yours too: a part can choose its own tones and lines, a face can carry its
+own picture, and `map` hands a script of yours what every pixel shows. What is
+odd about a model comes back in the report, never as a refusal.
 
 Not for characters or anything soft. Below about 24 pixels across, a bake loses
 what tells things apart: draw those as a sprite source (`pixel render`), from a
@@ -688,6 +690,13 @@ Every field has that default except `scale` (1), `outline`, and `materials`.
   game whose view is not a true projection. A point lands at
   `X = x cos(yaw) - y sin(yaw)`, `Y = x sin(yaw) + y cos(yaw)`, then across
   `X * scale` and down `(Y * sin(elevation) - z * heightScale * cos(elevation)) * scale`.
+  A game that already says where a point lands gives that instead, as `across`
+  and `down`: art pixels across and down for one unit of x, y, and z. A 2:1 view
+  is `{ "across": [1, -1, 0], "down": [0.5, 0.5, -1] }`, and a three-quarter
+  view whose point lands at `x` across and `y * 0.75 - z * 0.5` down is
+  `{ "across": [1, 0, 0], "down": [0, 0.75, -0.5] }`. Then the four above are
+  left out, `headings` turn the model before it, and `sun` keeps the picture's
+  axes.
 - `light`: `sun` points toward the sun in the screen's axes whatever the `yaw`
   (`[0.7, 0.05, 0.7]` is the picture's upper right), and stays put as a model
   turns. A ramp's steps fall evenly from `dark` to `bright` on how directly a
@@ -711,6 +720,7 @@ Every field has that default except `scale` (1), `outline`, and `materials`.
 | `cleanup` | `false` keeps lone pixels. |
 | `normals` | `true` writes `<name>.normal.png`, from the real surfaces, to light the art in a game; `pixel review` shows it under a light. |
 | `shadow` | `true` writes `<name>.shadow.png`, the model flattened along the sun, for a game to draw under it. |
+| `map` | `true` writes `<name>.map.json`, what every pixel shows: below. |
 | `paint` | Hand-placed pixels, below. |
 
 **Parts.** What is nearest the camera shows, as in 3D, so their order does not
@@ -722,7 +732,7 @@ walls around a floor.
 | `box` | `from` and `to`, two opposite corners. `top: [a, b]` scales its top along x and y: `[1, 0]` is a roof with its ridge along x, `[0, 1]` along y, `[0, 0]` a point, `[0.5, 0.5]` a frustum. `lean: [dx, dy]` moves its top. |
 | `cylinder` | `from` and `to`, the corners of the box around it. `axis`: `"z"` (default), `"x"`, or `"y"`. `sides` (20; 8 or 10 look faceted). `taper` scales its far end: `0.05` is a cone. |
 | `sphere` | `from` and `to`, the corners of the box around it. |
-| `face` | `corners`: a flat convex polygon, `[x, y, z]` going around its edge. It shows over a surface it lies exactly on: doors, windows, stripes, trim, or one side of a part in its own material. |
+| `face` | `corners`: a flat convex polygon, `[x, y, z]` going around its edge. It shows over a surface it lies exactly on: doors, windows, stripes, trim, or one side of a part in its own material. `rows` gives it its own picture, below; then it needs no `material`. |
 | `mesh` | `points`, and `faces` as lists of positions in `points`. Any shape at all. Each face has to be flat and convex: split one that is not, and the report says which. |
 
 Any part, and any group (`"parts": [...]` in place of `shape`) takes these. A
@@ -739,6 +749,23 @@ own. A part is animated, turned, then moved, and then its group does the same:
 | `animate` | `{ "spin": { "rotate": { "axis": "x", "degrees": 90 }, "move": [0, 0, 2], "wave": false } }`: where it gets to at the animation's end, which is never drawn, so a loop closes cleanly. `wave` swings out to it, back through rest, and out the other way: a bob or a sway. |
 | `detail` | `true` counts it three times when pixels are decided, and keeps its lone pixels. Under about two pixels it still comes out a lone pixel: paint that instead. |
 | `step` | Holds a ramp on one of its steps, 0 the darkest. |
+| `steps` | A step for each way its surfaces face: `{ "top": 2, "right": 1, "left": 0 }`. A top is anything tilted less than 45 degrees from flat; a side faces left or right on the picture. A facing left out takes the light. |
+| `line` | Where it meets a part behind it, a line on that part: `true` in the outline's color, `"step"` one step darker, or a color. A roof from its walls, a lid from its box. `false` turns off one its group set. |
+
+A part with `step`, `steps`, or `rows` keeps the tones it chose: `edges` and
+`castShadows` leave it alone.
+
+**A face's own picture.** A door, a window, planks, a clock's dial: draw it flat,
+as seen from the front, and the bake lays it on the face, so it turns with the
+model and its steps follow the face's slant. `rows` are letters, each a
+one-color material, and `.` shows what is behind the face. The rows are spread
+over the whole face, the first at its top and the first letter at its left as
+seen from the viewer's side; on a top, rows run from -y to +y and letters from
+-x to +x. As many letters as the face is pixels wide keeps one letter a pixel.
+
+```json
+{ "name": "door", "shape": "face", "corners": [[-2, 5, 0], [2, 5, 0], [2, 5, 6], [-2, 5, 6]], "rows": ["WWW", "WYW", "WWW"] }
+```
 
 **Paint** is for what geometry cannot say: a flame, a flag, a face, the one
 pixel that makes a shape read. It bakes with the model every time.
@@ -753,6 +780,24 @@ the origin in the PNG, so the PNG's pixel at column `c` and row `r` is
 `[c - anchor.x, r - anchor.y]`. Each letter names a one-color material; `.`
 leaves what is there, and `_` clears it. The outline goes around paint;
 `"after": true` puts it over the outline instead.
+
+**The map.** With `"map": true`, `<name>.map.json` says what every pixel of the
+PNG shows, laid out as the PNG is (a sheet's frames included), so a script of
+yours can give the art its own look: recolor by part and facing, draw lines
+where faces meet, light it its own way. Pixel `i` is at column `i % width` and
+row `Math.floor(i / width)`.
+
+| Field | What it is |
+| --- | --- |
+| `image`, `width`, `height` | The PNG it maps. |
+| `parts` | Every drawn copy of a part: its `path` in the model, `name`, and `material`. |
+| `facing` | One row of text per row of pixels: `T` top, `L` left, `R` right, `.` nothing. |
+| `part` | Each pixel's place in `parts`, or -1. |
+| `face` | Which flat face of the model, so two faces of one part can be told apart. |
+| `depth` | Art pixels toward the viewer from the model's origin: more is nearer. |
+| `u`, `v` | Where on its face, from 0 to 1: `u` from its left, `v` from its top, as a face's `rows` are laid. |
+
+The map is the geometry: the outline, `line`, and `paint` are not in it.
 
 **What it writes, and the report.** `<name>.png`, `<name>.preview.png`, and for a
 still `<name>.sprite.txt`. Several frames make a sheet instead: `<name>.json` in

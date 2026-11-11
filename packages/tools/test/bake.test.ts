@@ -117,12 +117,42 @@ describe("reading a model", () => {
     const unknown = parseBakeSetup({ camera: { zoom: 2 } })
     expect(unknown.ok === false && unknown.problems[0]!.message).toContain("is not a field")
   })
+
+  it("reads the look a part chooses for itself, and names what is wrong with it", () => {
+    expect(problems({ parts: [{ ...box, steps: { top: 2, left: 0, right: 1 }, line: true }] })).toEqual([])
+    expect(problems({ parts: [{ ...box, line: "step" }, { ...box, line: "#123456" }, { ...box, line: false }] })).toEqual([])
+    expect(problems({ parts: [{ ...box, steps: { front: 1 } }] }).join("\n")).toContain("$.parts[0].steps.front")
+    expect(problems({ parts: [{ ...box, steps: { top: -1 } }] }).join("\n")).toContain("must be a ramp's step")
+    expect(problems({ parts: [{ ...box, line: "thick" }] }).join("\n")).toContain('"step" (one step darker)')
+    expect(problems({ parts: [{ ...box, outline: true }] }).join("\n")).toContain("use `line`")
+  })
+
+  it("reads a face's own rows, which need no material, and checks their letters", () => {
+    const door = { shape: "face", corners: [[-2, 5, 0], [2, 5, 0], [2, 5, 6], [-2, 5, 6]] }
+    expect(problems({ materials: { D: "#5d275d", Y: "#ffcd75" }, parts: [box, { ...door, rows: ["DD", "DY", "D."] }] })).toEqual([])
+    expect(problems({ parts: [box, { ...door, rows: ["QQ"] }] }).join("\n")).toContain('uses "Q"')
+    expect(problems({ materials: { D: "#5d275d" }, parts: [box, { ...door, rows: ["DD", "D"] }] }).join("\n")).toContain("as long as the first row")
+    expect(problems({ parts: [box, door] }).join("\n")).toContain("material")
+  })
+
+  it("takes the camera in a game's own terms, and never mixed with the other", () => {
+    const axes = parseBakeSetup({ camera: { across: [1, -1, 0], down: [0.6, 0.6, -0.88] } })
+    expect(axes.ok && axes.value.camera.axes).toEqual({ across: [1, -1, 0], down: [0.6, 0.6, -0.88] })
+    const mixed = parseBakeSetup({ camera: { across: [1, -1, 0], down: [0.6, 0.6, -0.88], yaw: 45 } })
+    expect(mixed.ok === false && mixed.problems[0]!.message).toContain("use one or the other")
+    const half = parseBakeSetup({ camera: { across: [1, -1, 0] } })
+    expect(half.ok === false && half.problems[0]!.path).toBe("bake.camera.down")
+    const flat = parseBakeSetup({ camera: { across: [1, 0, 0], down: [2, 0, 0] } })
+    expect(flat.ok === false && flat.problems[0]!.message).toContain("along one line")
+    const upside = parseBakeSetup({ camera: { across: [1, -1, 0], down: [0.5, 0.5, 1] } })
+    expect(upside.ok === false && upside.problems[0]!.path).toBe("bake.camera.down")
+  })
 })
 
 describe("one camera", () => {
   it("puts a point where the project's numbers say", () => {
     // Landkeep's view: a point lands at x = u - v, y = (u + v) * 0.6 - z * 0.88.
-    const using = setup({ camera: { yaw: 45, elevation: Math.asin(0.6) * (180 / Math.PI), scale: Math.SQRT2, heightScale: 0.88 / (Math.SQRT2 * 0.8) } })
+    const using = setup({ camera: { yaw: 45, elevation: Math.asin(0.6) * (180 / Math.PI), scale: Math.SQRT2, heightScale: 0.88 / (Math.SQRT2 * 0.8), axes: undefined } })
     const result = bake(model({ outline: false, parts: [{ shape: "box", material: "#ffffff", from: [0, 0, 10], to: [10, 10, 20] }] }, using), using)
     const art = still(result)
     const xs: Array<number> = []
@@ -150,6 +180,18 @@ describe("one camera", () => {
       expect(clip.frames[0]!.art.height).toBe(result.height)
     }
     expect(Number.isInteger(result.anchor.x)).toBe(true)
+  })
+
+  it("draws a game's own axes as the turned camera that matches them", () => {
+    const s = 2
+    const e = Math.PI / 6
+    const turned = setup()
+    const axes = setup({ camera: { ...defaultBakeSetup.camera, axes: { across: [s * Math.SQRT1_2, -s * Math.SQRT1_2, 0], down: [s * Math.SQRT1_2 * Math.sin(e), s * Math.SQRT1_2 * Math.sin(e), -s * Math.cos(e)] } } })
+    const fields = { headings: 2, parts: [box, { shape: "cylinder", material: "ramp", from: [-3, -3, 10], to: [3, 3, 16], taper: 0.1 }] }
+    const a = bake(model(fields, turned), turned)
+    const b = bake(model(fields, axes), axes)
+    expect([b.width, b.height, b.anchor]).toEqual([a.width, a.height, a.anchor])
+    a.clips.forEach((clip, i) => expect(Array.from(b.clips[i]!.frames[0]!.art.indices)).toEqual(Array.from(clip.frames[0]!.art.indices)))
   })
 
   it("draws the same pixels every time", () => {
@@ -209,6 +251,103 @@ describe("one light", () => {
     const flat = setup()
     const lively = setup({ light: { ...defaultBakeSetup.light, castShadows: true } })
     expect(count(still(bake(model(ramp, lively), lively)), "#505050")).toBeGreaterThan(count(still(bake(model(ramp, flat), flat)), "#505050"))
+  })
+})
+
+describe("the look a part chooses", () => {
+  const without = { outline: false }
+
+  it("takes a step for each way its surfaces face, whatever the light", () => {
+    const chosen = { ...box, steps: { top: 2, left: 0, right: 1 } }
+    const right = setup({ light: { ...defaultBakeSetup.light, sun: [0.7, 0.05, 0.7] } })
+    const left = setup({ light: { ...defaultBakeSetup.light, sun: [-0.7, 0.05, 0.7] } })
+    const a = bake(model({ ...without, parts: [chosen] }, right), right)
+    const b = bake(model({ ...without, parts: [chosen] }, left), left)
+    expect(Array.from(still(a).indices)).toEqual(Array.from(still(b).indices))
+    const { x, y } = a.anchor
+    expect(colorAt(still(a), x, y - Math.round(10 * Math.cos(Math.PI / 6) * 2))).toBe(LIGHT)
+    expect(colorAt(still(a), x + 5, y + 2)).toBe(MID)
+    expect(colorAt(still(a), x - 5, y + 2)).toBe(DARK)
+    // One facing chosen, the others from the light.
+    const lit = bake(model({ ...without, parts: [{ ...box, steps: { left: 2 } }] }, right), right)
+    expect(colorAt(still(lit), lit.anchor.x - 5, lit.anchor.y + 2)).toBe(LIGHT)
+    expect(colorAt(still(lit), lit.anchor.x + 5, lit.anchor.y + 2)).toBe(MID)
+  })
+
+  it("draws a line where a part meets what is behind it, on what is behind", () => {
+    const base = { shape: "box", material: "#00aa00", from: [-6, -6, 0], to: [6, 6, 6] }
+    const lid = { shape: "box", material: "#aa0000", from: [-7, -7, 6], to: [7, 7, 9] }
+    const plain = still(bake(model({ parts: [base, lid] }), setup()))
+    const lined = still(bake(model({ parts: [base, { ...lid, line: true }] }), setup()))
+    // The outline's color, on the base just under the lid; the lid keeps every pixel.
+    const drawn = count(lined, "#000000") - count(plain, "#000000")
+    expect(drawn).toBeGreaterThan(0)
+    expect(count(lined, "#aa0000")).toBe(count(plain, "#aa0000"))
+    expect(count(plain, "#00aa00") - count(lined, "#00aa00")).toBe(drawn)
+    const colored = still(bake(model({ parts: [base, { ...lid, line: "#0000aa" }] }), setup()))
+    expect(count(colored, "#0000aa")).toBe(drawn)
+    // "step": the base goes a step darker under the lid instead.
+    const ramped = still(bake(model({ parts: [{ ...base, material: "ramp", steps: { left: 2, right: 2 } }, { ...lid, line: "step" }] }), setup()))
+    expect(count(ramped, MID)).toBe(drawn)
+    // With no outline, a line takes the darkest color there is.
+    const bare = still(bake(model({ outline: false, materials: { deep: "#010101" }, parts: [base, { ...lid, line: true }, { shape: "box", material: "deep", from: [20, 20, 0], to: [21, 21, 1], detail: true }] }), setup()))
+    expect(count(bare, "#010101")).toBeGreaterThan(drawn)
+  })
+
+  it("lays a face's rows over it from its top left, so a door turns with its wall", () => {
+    const door = { shape: "face", corners: [[-4, 5, 0], [4, 5, 0], [4, 5, 8], [-4, 5, 8]], rows: ["AB", "CC"] }
+    const fields = { ...without, headings: 4, materials: { A: "#aa0000", B: "#00aa00", C: "#0000aa" }, parts: [box, door] }
+    const result = bake(model(fields), setup())
+    const art = result.clips[0]!.frames[0]!.art
+    const where = (color: string) => {
+      const points: Array<[number, number]> = []
+      for (let y = 0; y < art.height; y++) for (let x = 0; x < art.width; x++) if (colorAt(art, x, y) === color) points.push([x, y])
+      return { x: points.reduce((sum, p) => sum + p[0], 0) / points.length, y: points.reduce((sum, p) => sum + p[1], 0) / points.length, n: points.length }
+    }
+    const a = where("#aa0000")
+    const b = where("#00aa00")
+    const c = where("#0000aa")
+    expect(a.n).toBeGreaterThan(0)
+    expect(a.x).toBeLessThan(b.x)
+    expect(c.y).toBeGreaterThan(a.y)
+    expect(colors(art).has(MID) || colors(art).has(DARK)).toBe(true)
+    // Turned half way, the wall faces away and its door with it.
+    expect(colors(result.clips[2]!.frames[0]!.art).has("#aa0000")).toBe(false)
+  })
+
+  it("shows what is behind a face where its rows say .", () => {
+    const window = { shape: "face", corners: [[-4, 5, 2], [4, 5, 2], [4, 5, 8], [-4, 5, 8]], rows: ["A.A"] }
+    const art = still(bake(model({ ...without, materials: { A: "#aa0000" }, parts: [{ ...box, steps: { left: 0, right: 0, top: 0 } }, window] }), setup()))
+    const middle = still(bake(model({ ...without, materials: { A: "#aa0000" }, parts: [{ ...box, steps: { left: 0, right: 0, top: 0 } }, { ...window, rows: ["AAA"] }] }), setup()))
+    expect(count(art, "#aa0000")).toBeLessThan(count(middle, "#aa0000"))
+    expect(count(art, DARK)).toBeGreaterThan(count(middle, DARK))
+  })
+
+  it("maps what every pixel shows: its part, its face, which way it faces, and where on it", () => {
+    const door = { name: "door", shape: "face", material: "#aa0000", corners: [[-4, 5, 0], [4, 5, 0], [4, 5, 8], [-4, 5, 8]] }
+    const result = bake(model({ parts: [{ ...box, name: "walls" }, door] }), setup())
+    const frame = result.clips[0]!.frames[0]!
+    const { map, art } = frame
+    expect(result.partsShown.map((part) => part.name)).toEqual(["walls", "door"])
+    expect(result.partsShown[0]!.material).toBe("ramp")
+    const facings = new Set<number>()
+    for (let i = 0; i < art.width * art.height; i++) {
+      if (map.part[i]! < 0) continue
+      // Mapped pixels are drawn, and what the outline adds is not mapped.
+      expect(art.indices[i]).not.toBe(TRANSPARENT)
+      expect(colorAt(art, i % art.width, Math.floor(i / art.width))).not.toBe("#000000")
+      facings.add(map.facing[i]!)
+      expect(map.u[i]!).toBeGreaterThanOrEqual(0)
+      expect(map.u[i]!).toBeLessThanOrEqual(1)
+      if (map.part[i] === 1) {
+        expect(colorAt(art, i % art.width, Math.floor(i / art.width))).toBe("#aa0000")
+        expect(map.facing[i]).toBe(2)
+      }
+    }
+    expect(facings).toEqual(new Set([1, 2, 3]))
+    // Nearer is more: the box's near corner is in front of its far one.
+    const { x, y } = result.anchor
+    expect(map.depth[(y + 2) * art.width + x]!).toBeGreaterThan(map.depth[(y - 20) * art.width + x]!)
   })
 })
 
@@ -324,6 +463,28 @@ describe("hand-placed pixels", () => {
     const result = bake(model(paint({ paint: [{ at: [-30, 0], rows: ["Y"], after: true }], frame: { width: 80, up: 40, below: 20 } })), setup())
     expect(colorAt(still(result), result.anchor.x - 29, result.anchor.y)).toBeUndefined()
     expect(colorAt(still(result), result.anchor.x - 30, result.anchor.y)).toBe(Y)
+  })
+})
+
+describe("one outline", () => {
+  it("never breaks at a sharp tip, and leaves no lone pixel there", () => {
+    const using = setup({ camera: { ...defaultBakeSetup.camera, axes: { across: [1, -1, 0], down: [0.6, 0.6, -0.88] } } })
+    const house = {
+      parts: [
+        { shape: "box", material: "ramp", from: [-7, -5, 0], to: [7, 5, 10] },
+        { shape: "box", material: "ramp", from: [-8.5, -6.5, 10], to: [8.5, 6.5, 18], top: [1, 0] }
+      ]
+    }
+    const art = still(bake(model(house, using), using))
+    expect(strayPixels(art.indices, art.width, art.height)).toEqual([])
+    // Every pixel of the shape has the outline, never the empty, beside it.
+    for (let y = 0; y < art.height; y++) {
+      for (let x = 0; x < art.width; x++) {
+        const color = colorAt(art, x, y)
+        if (color === undefined || color === "#000000") continue
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) expect(colorAt(art, x + dx, y + dy)).toBeDefined()
+      }
+    }
   })
 })
 
@@ -485,6 +646,29 @@ describe("the command", { timeout: 60_000 }, () => {
     expect(run(dir, "bake", "a.bake.json").status).toBe(0)
     const sprite = parseSprite(readFileSync(join(dir, "a.sprite.txt"), "utf8"))
     expect(sprite.ok && sprite.art.palette.map(toHex).sort()).toEqual(["#020202", "#ffffff"])
+  })
+
+  it("writes the map of a still or a sheet over its PNG, and removes it when no longer asked", () => {
+    const dir = folder()
+    write(dir, "cart.bake.json", { map: true, headings: 2, parts: [{ ...box, name: "body" }] })
+    const result = run(dir, "bake", "cart.bake.json")
+    expect(result.status).toBe(0)
+    const report = JSON.parse(result.stdout) as { files: Record<string, unknown> }
+    expect(report.files.map).toBeDefined()
+    const png = decodePng(new Uint8Array(readFileSync(join(dir, "cart.png"))))
+    const map = JSON.parse(readFileSync(join(dir, "cart.map.json"), "utf8")) as { image: string; width: number; height: number; parts: ReadonlyArray<{ name: string }>; facing: ReadonlyArray<string>; part: ReadonlyArray<number> }
+    expect([map.image, map.width, map.height]).toEqual(["cart.png", png.width, png.height])
+    expect(map.parts.map((part) => part.name)).toEqual(["body"])
+    expect(map.facing).toHaveLength(png.height)
+    expect(map.part).toHaveLength(png.width * png.height)
+    // Both headings are mapped, each where it sits in the sheet.
+    const half = png.width / 2
+    expect(map.facing.some((row) => /[TLR]/.test(row.slice(0, half)))).toBe(true)
+    expect(map.facing.some((row) => /[TLR]/.test(row.slice(half)))).toBe(true)
+    for (let i = 0; i < map.part.length; i++) if (map.part[i]! >= 0) expect(png.data[i * 4 + 3]).toBe(255)
+    write(dir, "cart.bake.json", { parts: [box] })
+    const again = JSON.parse(run(dir, "bake", "cart.bake.json").stdout) as { files: { removed: ReadonlyArray<string> } }
+    expect(again.files.removed.map((file) => file.split(/[\\/]/).pop())).toContain("cart.map.json")
   })
 
   it("writes where --out says", () => {
