@@ -115,15 +115,55 @@ const round = (value: number, places = 3): number => Math.round(value * 10 ** pl
 /** Pixel art at its own size has few colors; a blurry or upscaled-and-smoothed picture has many. */
 const FEW_COLORS = 256
 
+/** Below this change rate (see `changeRate`), a picture with more than `SMOOTH_COLORS` colors is an upscale, never pixel art at its own size. */
+const SMOOTH_LIMIT = 0.05
+/**
+ * Flat pixel art (a parallax layer, a tile of a few colors) also changes color rarely;
+ * an upscale carries the generator's or the resize's in-between colors.
+ */
+const SMOOTH_COLORS = 32
+
+/**
+ * The share of neighbouring visible pixels (across and down) whose colors differ by more than a
+ * small step: pixel art at its own size changes color often (a median of about a third), an
+ * upscale only on its cell lines (a few hundredths).
+ */
+const changeRate = (image: RgbaImage): number => {
+  const { width, height, data } = image
+  let changed = 0
+  let pairs = 0
+  const step = (i: number, j: number): boolean =>
+    Math.max(Math.abs(data[i]! - data[j]!), Math.abs(data[i + 1]! - data[j + 1]!), Math.abs(data[i + 2]! - data[j + 2]!)) > 24
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4
+      if (data[i + 3]! < 128) continue
+      if (x + 1 < width && data[i + 7]! >= 128) {
+        pairs++
+        if (step(i, i + 4)) changed++
+      }
+      if (y + 1 < height && data[i + width * 4 + 3]! >= 128) {
+        pairs++
+        if (step(i, i + width * 4)) changed++
+      }
+    }
+  }
+  return pairs === 0 ? 1 : changed / pairs
+}
+
+
 /**
  * True when a picture is already pixel art at its own size: no grid of fake
  * pixels found in it, cells under 1.5 pixels, a grid found with little
  * confidence, or an unsure one in a picture with few colors (a small sprite's
- * own shapes can look like a grid). `outcome` is the fix with the grid found.
+ * own shapes can look like a grid). Never for a smooth picture with many
+ * colors (an upscale whose grid was not found): that one is judged as a fix,
+ * so an unsure grid is reported as one. `outcome` is the fix with the grid found.
  * The CLI's `check` and the page both decide with it, so one picture opens
  * the same way in both.
  */
 export const isNative = (image: RgbaImage, outcome: Outcome | undefined): boolean => {
+  if (changeRate(image) < SMOOTH_LIMIT && artOfImage(image).art.palette.length > SMOOTH_COLORS) return false
   if (outcome === undefined) return true
   const { spec, detection } = outcome
   if (Math.min(spec.cellWidth, spec.cellHeight) < 1.5) return true

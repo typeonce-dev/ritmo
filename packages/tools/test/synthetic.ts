@@ -55,6 +55,13 @@ export const pad = (sprite: PixelArt, margin: number): PixelArt => {
   return { ...sprite, width, height, indices }
 }
 
+/** The sprite in the middle of an opaque canvas of one color, `margin` pixels wider on every side: an image generator's off-white page. */
+export const onCanvas = (sprite: PixelArt, margin: number, color: Rgb): PixelArt => {
+  const padded = pad(sprite, margin)
+  const palette = [...padded.palette, color]
+  return { ...padded, palette, indices: padded.indices.map((index) => (index === TRANSPARENT ? palette.length - 1 : index)) }
+}
+
 /** A sprite moved by whole pixels inside a transparent picture of the given size. */
 export const place = (sprite: PixelArt, width: number, height: number, x: number, y: number): PixelArt => {
   const indices = new Int32Array(width * height).fill(TRANSPARENT)

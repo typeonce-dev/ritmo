@@ -384,8 +384,8 @@ export const detectAxis = (
   return { cell, offset: offset >= cell ? 0 : offset, confidence: Math.min(1, Math.max(0, confidence)) }
 }
 
-/** Finds the grid of an upscaled pixel-art picture; undefined when it has no edges at all. */
-export const detectGrid = (image: RgbaImage): Detection | undefined => {
+/** `detectGrid` on the whole picture. */
+const detectWhole = (image: RgbaImage): Detection | undefined => {
   const { columns, rows } = edgeProfiles(image)
   let x = detectAxis(image, "x", columns)
   let y = detectAxis(image, "y", rows)
@@ -407,6 +407,99 @@ export const detectGrid = (image: RgbaImage): Detection | undefined => {
     x,
     y,
     confidence: Math.min(x.confidence, y.confidence)
+  }
+}
+
+/** A border color is the background when this share of the border is within `BORDER_TOLERANCE` of it. */
+const BORDER_SHARE = 0.9
+/** How far (largest channel step) a pixel may be from the border color and still be background. */
+const BORDER_TOLERANCE = 24
+/** Pixels kept around the subject, so its outline (its strongest edges) is inside the box, where the edge profiles see it. */
+const CROP_MARGIN = 4
+
+/**
+ * The box holding the picture's subject: its visible pixels (alpha 128 or more), or, in an
+ * opaque picture whose border is one color, the pixels away from that color. Undefined
+ * when the subject fills the picture.
+ */
+const contentBox = (image: RgbaImage): readonly [number, number, number, number] | undefined => {
+  const { width, height, data } = image
+  let transparent = false
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i]! < 128) {
+      transparent = true
+      break
+    }
+  }
+  let key: readonly [number, number, number] | undefined
+  if (!transparent) {
+    const border: Array<number> = []
+    for (let x = 0; x < width; x++) border.push(x * 4, ((height - 1) * width + x) * 4)
+    for (let y = 1; y < height - 1; y++) border.push(y * width * 4, (y * width + width - 1) * 4)
+    const median = (channel: number): number => {
+      const values = border.map((i) => data[i + channel]!).sort((a, b) => a - b)
+      return values[Math.floor(values.length / 2)]!
+    }
+    const candidate = [median(0), median(1), median(2)] as const
+    const near = border.filter((i) => Math.max(Math.abs(data[i]! - candidate[0]), Math.abs(data[i + 1]! - candidate[1]), Math.abs(data[i + 2]! - candidate[2])) <= BORDER_TOLERANCE).length
+    if (near < BORDER_SHARE * border.length) return undefined
+    key = candidate
+  }
+  let left = width
+  let top = height
+  let right = -1
+  let bottom = -1
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4
+      const content =
+        key === undefined
+          ? data[i + 3]! >= 128
+          : Math.max(Math.abs(data[i]! - key[0]), Math.abs(data[i + 1]! - key[1]), Math.abs(data[i + 2]! - key[2])) > BORDER_TOLERANCE
+      if (!content) continue
+      if (x < left) left = x
+      if (x > right) right = x
+      if (y < top) top = y
+      if (y > bottom) bottom = y
+    }
+  }
+  if (right < 0) return undefined
+  const box = [Math.max(0, left - CROP_MARGIN), Math.max(0, top - CROP_MARGIN), Math.min(width, right + 1 + CROP_MARGIN), Math.min(height, bottom + 1 + CROP_MARGIN)] as const
+  if (box[0] === 0 && box[1] === 0 && box[2] === width && box[3] === height) return undefined
+  return box
+}
+
+/** The part of a picture inside a box. */
+const cropImage = (image: RgbaImage, [left, top, right, bottom]: readonly [number, number, number, number]): RgbaImage => {
+  const width = right - left
+  const height = bottom - top
+  const data = new Uint8ClampedArray(width * height * 4)
+  for (let y = 0; y < height; y++) {
+    data.set(image.data.subarray(((y + top) * image.width + left) * 4, ((y + top) * image.width + right) * 4), y * width * 4)
+  }
+  return { width, height, data }
+}
+
+/**
+ * Finds the grid of an upscaled pixel-art picture; undefined when it has no edges at all.
+ * It is read on the subject only, then placed back on the whole picture.
+ */
+export const detectGrid = (image: RgbaImage): Detection | undefined => {
+  const box = contentBox(image)
+  if (box === undefined) return detectWhole(image)
+  const found = detectWhole(cropImage(image, box))
+  if (found === undefined) return undefined
+  const shift = (offset: number, by: number, cell: number): number => {
+    const moved = Math.round(((((offset + by) % cell) + cell) % cell) * 100) / 100
+    return moved >= cell ? 0 : moved
+  }
+  const offsetX = shift(found.spec.offsetX, box[0], found.spec.cellWidth)
+  const offsetY = shift(found.spec.offsetY, box[1], found.spec.cellHeight)
+  return {
+    ...found,
+    spec: { ...found.spec, offsetX, offsetY },
+    x: { ...found.x, offset: offsetX },
+    y: { ...found.y, offset: offsetY }
   }
 }
 

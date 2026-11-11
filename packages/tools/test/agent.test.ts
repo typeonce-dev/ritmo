@@ -244,6 +244,24 @@ describe("check", () => {
     expect(checkImage(image, defaultRecipe).report.output).toMatchObject({ width: 24, height: 24 })
   })
 
+  it("asks for a person, never calling it pixel art at its own size, when an upscale's grid is not found", () => {
+    // Drifting cells hide the grid; the picture is smooth and has many colors, so it is no 1x art.
+    const image = upscale(makeSprite(24, 24, sweetie.colors, 7), { scale: 26, offset: 0, drift: 0.6, blur: 1, noise: 4, seed: 2 })
+    const { report } = checkImage(image, defaultRecipe)
+    expect(report.kind).toBe("upscaled")
+    expect(report.verdict).toBe("needs-person")
+  })
+
+  it("takes flat pixel art of a few colors as pixel art at its own size", () => {
+    // A parallax layer changes color as rarely as an upscale, but has only its few colors.
+    const width = 120
+    const height = 80
+    const indices = new Int32Array(width * height).map((_, i) => (Math.floor(i / width) < 50 + Math.round(8 * Math.sin((i % width) / 9)) ? 0 : (i % width) % 40 < 30 ? 1 : 2))
+    const { report } = checkImage(toRgba({ width, height, palette: sweetie.colors.slice(0, 3), indices }), defaultRecipe)
+    expect(report.kind).toBe("pixel-art")
+    expect(report.output).toMatchObject({ width, height })
+  })
+
   it("asks for a person when the grid given does not fit", () => {
     const sprite = makeSprite(20, 20, sweetie.colors, 7)
     const image = upscale(sprite, { scale: 10, offset: 0, blur: 1, noise: 4, seed: 3 })

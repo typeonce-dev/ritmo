@@ -6,7 +6,7 @@ import { toJson, toRects, toRgba, toSvg } from "@typeonce/ritmo-tools/pixel/core
 import { cellColors, defaultSampleOptions, quantize, sampleCells, TRANSPARENT, type PixelArt } from "@typeonce/ritmo-tools/pixel/core/fix.ts"
 import { detectGrid, edgeProfiles, refineCuts, refineGrid, uniformCuts, uniformGrid } from "@typeonce/ritmo-tools/pixel/core/grid.ts"
 import { extractPalette, parsePalette, presets, toGpl, toHexFile } from "@typeonce/ritmo-tools/pixel/core/palette.ts"
-import { boundaries, makeSprite, pad, upscale, type Upscale } from "./synthetic.ts"
+import { boundaries, makeSprite, onCanvas, pad, upscale, type Upscale } from "./synthetic.ts"
 
 const sweetie = presets.find((palette) => palette.name === "Sweetie 16")!.colors
 
@@ -105,6 +105,21 @@ describe("grid", () => {
     const sprite = pad(makeSprite(16, 12, sweetie, 21), 14)
     const { detection, art } = fix(sprite, { scale: 9.5, offset: 0, blur: 1, noise: 3 })
     expect(detection.spec.cellWidth).toBeCloseTo(9.5, 1)
+    expect(mismatches(sprite, art)).toBe(0)
+  })
+
+  it("finds the grid of a small sprite on a much larger clear canvas", () => {
+    // The empty canvas made every cell size look clean, and the grid came out 12 times too large.
+    const sprite = pad(makeSprite(16, 12, sweetie, 21), 40)
+    const { detection, art } = fix(sprite, { scale: 9.5, offset: 0, blur: 1, noise: 3 })
+    expect(detection.spec.cellWidth).toBeCloseTo(9.5, 1)
+    expect(mismatches(sprite, art)).toBe(0)
+  })
+
+  it("finds the grid of a small sprite on a much larger off-white canvas", () => {
+    const sprite = onCanvas(makeSprite(16, 12, sweetie, 21), 30, { r: 244, g: 240, b: 236 })
+    const { detection, art } = fix(sprite, { scale: 12.3, offset: 0, blur: 1, noise: 3 })
+    expect(detection.spec.cellWidth).toBeCloseTo(12.3, 1)
     expect(mismatches(sprite, art)).toBe(0)
   })
 

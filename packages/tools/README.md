@@ -115,7 +115,9 @@ node packages/tools/bin/ritmo-tools.mjs pixel check art.png   # from its source,
 
 ### How to use it
 
-1. **Grid.** The grid is detected when a picture opens. The note under
+1. **Grid.** The grid is detected when a picture opens, from its subject
+   only: a small sprite on a large clear or one-color canvas finds its own
+   cells. The note under
    **Auto-detect** gives the cell size, the output size, and a confidence. Below
    about 50%, check the pink grid lines against the picture. Fix it by typing
    the cell size and offset (fractions are fine: AI pictures are often scaled
