@@ -97,6 +97,12 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 - Yu ([link][yu]): "A well-defined character has details that do not obscure the basic forms".
 - **Ritmo:** "the one character with a time motif … Keep the teal/ivory identity that no enemy uses" and "Each one should be identifiable from its silhouette alone" are Still Time directions (reviews 1, 4, and 6); the player's accent color reserved for the player is the maintainer's rule, written as "what the player controls" so that strategy and puzzle games, which have no single hero, are covered. "Every kind" allows the tiers of one enemy as recolors of one shape.
 
+### Name each kind by one feature, from what it does in the game; exaggerate it until it reads
+
+- Medeiros, "My Thoughts on Very Low Resolution", 2020 ([link][saint-lowres]): "choose what to show and what to leave to the imagination of the viewer" … "taking away every bit of information that it’s not extremely important" … "I focused on his beard and hair because they communicate so much about his personality."
+- Mitchell, Francke, Eng ([pdf][tf2-paper]), quoted above: silhouette lines "explicitly designed to give each character a unique silhouette."
+- **Ritmo:** from a blind test on 2026-11-11. An agent was given five pieces of a game (a house, a granary, stilts, a quarry, a ruin) by their role in the game and their size only, and told to pick one feature per piece before anything else. The maintainer preferred its set to the game's own pieces, which had been through review rounds and followed a written spec of what each looks like ("their shape is better"). One of the game's earlier notes on its chest was the case the rule answers: "I am not sure really what this is supposed to represent. I want to be clear at a glance." "From what it does in the game" because the test could not separate the method from starting at the role, and both point the same way. One run, one model.
+
 ## One style
 
 ### The characters (or the pieces) set the rules, generated assets included; a second style lives in its own area
@@ -127,6 +133,17 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 - Yu ([link][yu]): "With curved lines, jaggies crop up when the length of the line segments don't grow or shrink in a consistent manner." … "clean up the outline by removing stray pixels and reducing every line to a single pixel in thickness." … "By shading, you're not just adding color - you're sculpting out a form."
 - Cure ([link][cure]): "Jaggies occur when a pixel or group of pixels are out of place, interrupting the flow of a line." … "Pillow-shading is bad because it pays no attention to the light source,".
 - **Ritmo:** `fx check` measures jaggies, doubles, and holes on effects and the `ritmo-fx` skill's Craft explains them with their sources (`FX.md`); `pixel lint` checks none of them on sprites and tiles, so the skill names the rules once and points there.
+
+### A solid shows three tones, chosen per piece; a line between parts is a choice
+
+- Yu ([link][yu]), quoted above: "By shading, you're not just adding color - you're sculpting out a form."
+- **Ritmo:** the game in the 2026-11-11 test writes the rule into its art direction: "Tops lightest, right faces next, left faces darkest." Two agents in two tests that day (an isometric room, and the five pieces of that game) each judged the computed shading of `pixel bake` worse than their own and chose three steps per piece by hand instead; in the first one's bake, a box's top and one side took the same ramp step and read as one flat shape. The maintainer liked both results. Lines between parts: the second agent used one in five pieces ("the eave line I tried on the house left noise"), so the skill makes the line a decision and says what it costs at small sizes.
+
+### Details on a slanted face are drawn flat, then laid on it along the view's slope
+
+- Schlitter, "Pixelblog 41: Isometric Pixel Art", 2022 ([link][slynyrd-41]): "isometric pixel art compromises by using the 2:1 line pattern" … "Count pixels and use a 2:1 ruler to make sure things are lined up that are supposed to."
+- 夏天 (@xiaoxiatian8), an isometric room's making-of, 2026 ([video][xiaoxiatian]): the bookshelf, sideboard, and clock are drawn as front views in line art first, then turned onto the iso faces.
+- **Ritmo:** both agents in the 2026-11-11 tests drew doors, book spines, and a clock's dial as a front view and sheared them onto the face with the camera's slope; the second reported that it "worked for the doors", and that a one-pixel line along a 5:3 slope breaks into single pixels, which is why the rule is about laying a flat drawing on the face and not about drawing at the angle.
 
 ### One light; under engine lighting, assets carry even shades and no strong baked light
 
@@ -165,6 +182,12 @@ Quotes were checked against the text of the linked page on 2026-11-01. A quote m
 - Yu ([link][yu]): "if you squint, a few large clusters of light and dark should still emerge."
 - **Ritmo:** every Still Time review was written from phone captures of real rooms, and after lighting shipped the reviewer wrote "Judge your art under it. Append `?nolight` to the URL to compare against the unlit scene." In the `ritmo-prototype` skill one screenshot is the whole check in a round about looks; this skill asks for the same captures before art goes in. "When the target screen is out of reach, say so" is the `ritmo-prototype` rule of reporting what the check did not run.
 - **Ritmo:** "and so does the review page" is the maintainer's direction for `pixel review` (2026-11-04): an approval on the page is the person's, but the page shows each asset alone, at whole-number zooms over a plain backdrop, so it settles the pixels and not the read; the game capture still does.
+
+### Judge a set together: side by side at display size, and in pure black
+
+- Medeiros, "Consistency", 2023 ([link][saint-consistency]): "When in doubt, strive for maximum consistency."
+- Riot Games ([link][riot-clarity]), quoted above: "Silhouettes are the single most important thing for champion recognition in League."
+- **Ritmo:** in the 2026-11-11 test the agent's checks of the five pieces side by side and in black are what changed them: the house gained a chimney and the ruin taller pillars so their silhouettes parted, and the granary's cap was toned down so it stopped shouting over the rest. Each piece alone had passed.
 
 ### A reference is a set of named qualities; change what was asked and nothing else; options at display size and 4× beside it
 
@@ -208,6 +231,8 @@ The skill says to use `pixel bake` for something with a solid shape, not for cha
 [slynyrd-23]: https://www.slynyrd.com/blog/2019/11/12/pixelblog-23-parallax-scrolling
 [slynyrd-31]: https://www.slynyrd.com/blog/2020/12/14/pixelblog-31-shmup-sprite-design
 [slynyrd-43]: https://slynyrd.com/blog/2023/3/26/pixelblog-43-top-down-tiles-part-2
+[slynyrd-41]: https://www.slynyrd.com/blog/2022/11/28/pixelblog-41-isometric-pixel-art
+[xiaoxiatian]: https://x.com/xiaoxiatian8/status/2120085162684035378
 [tsugumo-1]: https://web.cs.wpi.edu/~claypool/courses/frontiers-06/samples/pixel-artist/chapter1.htm
 [tsugumo-2]: https://web.cs.wpi.edu/~claypool/courses/frontiers-06/samples/pixel-artist/chapter2.htm
 [lospec]: https://lospec.com/palette-list
