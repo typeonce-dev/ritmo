@@ -39,140 +39,14 @@
  */
 import type * as PlaywrightTypes from "playwright"
 
-import * as Result from "@typeonce/ritmo/Result"
-
-import { pageScript } from "./keyboardPage.ts"
-
-/** A control a route names: by accessible name, and by role when given. */
-export interface ControlName {
-  readonly name: string
-  readonly role?: string
-}
-
-/** One thing a route does to reach a screen. */
-export type Step =
-  | { readonly press: string }
-  | { readonly click: { readonly role: string; readonly name: string } }
-  | { readonly waitFor: { readonly role: string; readonly name: string } }
-  | { readonly wait: number }
-
-/** One screen of the walk: where it starts, how to reach it, and what not to press. */
-export interface Screen {
-  readonly name: string
-  /** Appended to the URL: `/`, `?map=8`, `#settings`. */
-  readonly path: string
-  readonly steps: ReadonlyArray<Step>
-  /** `true` presses nothing on this screen (no `focus-dropped`); a list skips those controls. */
-  readonly noPress: true | ReadonlyArray<ControlName>
-}
-
-export interface Route {
-  readonly screens: ReadonlyArray<Screen>
-}
-
-/** The route of a game that writes none: the start page, as one screen. */
-export const startRoute: Route = { screens: [{ name: "start", path: "", steps: [], noPress: [] }] }
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
-
-const onlyKeys = (value: Record<string, unknown>, keys: ReadonlyArray<string>, at: string): string | undefined => {
-  const extra = Object.keys(value).find((key) => !keys.includes(key))
-  return extra === undefined ? undefined : `${at}.${extra} is not a field (expected ${keys.join(", ")})`
-}
-
-const nonEmpty = (value: unknown): value is string => typeof value === "string" && value.trim() !== ""
-
-const parseControlName = (value: unknown, at: string): Result.Result<ControlName, string> => {
-  if (!isRecord(value)) return Result.failure(`${at} must be an object { "name": string, "role"?: string }`)
-  const extra = onlyKeys(value, ["name", "role"], at)
-  if (extra !== undefined) return Result.failure(extra)
-  if (!nonEmpty(value["name"])) return Result.failure(`${at}.name must be a non-empty string: the control's accessible name`)
-  if (value["role"] !== undefined && !nonEmpty(value["role"])) return Result.failure(`${at}.role must be a non-empty string when given: an ARIA role such as "button"`)
-  return Result.success(value["role"] === undefined ? { name: value["name"] } : { name: value["name"], role: value["role"] })
-}
-
-const parseStep = (value: unknown, at: string): Result.Result<Step, string> => {
-  if (!isRecord(value) || Object.keys(value).length !== 1) {
-    return Result.failure(`${at} must be one of { "press": "Escape" }, { "click": { "role": "button", "name": "Play" } }, { "waitFor": { "role": "button", "name": "Play" } }, { "wait": 500 }`)
-  }
-  if ("press" in value) {
-    return nonEmpty(value["press"]) ? Result.success({ press: value["press"] }) : Result.failure(`${at}.press must be a key name, as Playwright's keyboard.press takes it ("Enter", "Escape", "a")`)
-  }
-  if ("wait" in value) {
-    const wait = value["wait"]
-    return typeof wait === "number" && Number.isInteger(wait) && wait >= 0 && wait <= 60_000
-      ? Result.success({ wait })
-      : Result.failure(`${at}.wait must be a whole number of milliseconds from 0 to 60000`)
-  }
-  for (const kind of ["click", "waitFor"] as const) {
-    if (!(kind in value)) continue
-    const named = value[kind]
-    if (!isRecord(named)) return Result.failure(`${at}.${kind} must be an object { "role": string, "name": string }`)
-    const extra = onlyKeys(named, ["role", "name"], `${at}.${kind}`)
-    if (extra !== undefined) return Result.failure(extra)
-    if (!nonEmpty(named["role"])) return Result.failure(`${at}.${kind}.role must be a non-empty string: an ARIA role such as "button"`)
-    if (!nonEmpty(named["name"])) return Result.failure(`${at}.${kind}.name must be a non-empty string: the control's accessible name`)
-    const control = { role: named["role"], name: named["name"] }
-    return Result.success(kind === "click" ? { click: control } : { waitFor: control })
-  }
-  return Result.failure(`${at} must be one of { "press": ... }, { "click": ... }, { "waitFor": ... }, { "wait": ... }; ${Object.keys(value)[0]} is not a step`)
-}
-
-const parseScreen = (value: unknown, at: string): Result.Result<Screen, string> => {
-  if (!isRecord(value)) return Result.failure(`${at} must be an object { "name", "path"?, "steps"?, "noPress"? }`)
-  const extra = onlyKeys(value, ["name", "path", "steps", "noPress"], at)
-  if (extra !== undefined) return Result.failure(extra)
-  if (!nonEmpty(value["name"])) return Result.failure(`${at}.name must be a non-empty string`)
-  const path = value["path"] ?? ""
-  if (typeof path !== "string") return Result.failure(`${at}.path must be a string appended to the URL ("/", "?map=8")`)
-  const rawSteps = value["steps"] ?? []
-  if (!Array.isArray(rawSteps)) return Result.failure(`${at}.steps must be an array`)
-  const steps: Array<Step> = []
-  for (const [index, raw] of rawSteps.entries()) {
-    const step = parseStep(raw, `${at}.steps[${index}]`)
-    if (!step.ok) return step
-    steps.push(step.value)
-  }
-  const rawNoPress = value["noPress"] ?? []
-  if (rawNoPress === true) return Result.success({ name: value["name"], path, steps, noPress: true })
-  if (!Array.isArray(rawNoPress)) return Result.failure(`${at}.noPress must be true (press nothing on this screen) or an array of { "name", "role"? }`)
-  const noPress: Array<ControlName> = []
-  for (const [index, raw] of rawNoPress.entries()) {
-    const control = parseControlName(raw, `${at}.noPress[${index}]`)
-    if (!control.ok) return control
-    noPress.push(control.value)
-  }
-  return Result.success({ name: value["name"], path, steps, noPress })
-}
-
-/** Validates a route file's JSON; the error names the field that is wrong. */
-export const parseRoute = (value: unknown): Result.Result<Route, string> => {
-  if (!isRecord(value)) return Result.failure(`the route must be an object { "screens": [...] }`)
-  const extra = onlyKeys(value, ["screens"], "route")
-  if (extra !== undefined) return Result.failure(extra)
-  const raw = value["screens"]
-  if (!Array.isArray(raw) || raw.length === 0) return Result.failure(`route.screens must be a non-empty array`)
-  const screens: Array<Screen> = []
-  for (const [index, entry] of raw.entries()) {
-    const screen = parseScreen(entry, `route.screens[${index}]`)
-    if (!screen.ok) return screen
-    if (screens.some((other) => other.name === screen.value.name)) return Result.failure(`route.screens[${index}].name "${screen.value.name}" is already the name of another screen`)
-    screens.push(screen.value)
-  }
-  return Result.success({ screens })
-}
+import type { Control, Described, Opened, PageState } from "./pageOpen.ts"
+import { call, open, reach, stalledSaw } from "./pageOpen.ts"
+import type { ControlName, Route, Screen } from "./route.ts"
 
 /** The six checks. */
 export type CheckId = "focus-outside-menu" | "tab-leaves-menu" | "unnamed-control" | "key-not-pressed" | "focus-dropped" | "unreachable-control"
 
 export const checks: ReadonlyArray<CheckId> = ["focus-outside-menu", "tab-leaves-menu", "unnamed-control", "key-not-pressed", "focus-dropped", "unreachable-control"]
-
-/** A control as the report names it: its role and name from the accessibility tree, and a CSS selector that finds it. */
-export interface Control {
-  readonly role: string
-  readonly name: string
-  readonly selector: string
-}
 
 /** One failure: which check, on which screen, which control, what the walk saw, and what to change. */
 export interface Failure {
@@ -231,24 +105,6 @@ export interface Options {
   readonly stall?: number
 }
 
-interface Described {
-  readonly id: number
-  readonly tag: string
-  readonly selector: string
-  readonly keys: ReadonlyArray<string>
-  readonly native: boolean
-  /** A link to another site: pressing it for real would leave the game, so it is not pressed. */
-  readonly external: boolean
-  readonly canvas: boolean
-}
-
-interface PageState {
-  readonly active: Described | null
-  readonly menu: Described | null
-  readonly inMenu: boolean
-  readonly url: string
-}
-
 interface PressResult {
   readonly pressed: boolean
   readonly keydownPrevented: boolean | null
@@ -256,13 +112,6 @@ interface PressResult {
 }
 
 const keyName = (key: string): string => key === " " ? "Space" : key
-
-/** Joins a screen's path to the base URL, keeping the base's own path. */
-const screenUrl = (base: string, path: string): string => {
-  if (path === "") return base
-  if (path.startsWith("?") || path.startsWith("#")) return base.replace(/[?#].*$/, "") + path
-  return new URL(path, base).href
-}
 
 const describeControl = (control: Control): string =>
   `${control.role === "" ? "element" : control.role} ${control.name === "" ? "(no name)" : JSON.stringify(control.name)} at ${control.selector}`
@@ -280,159 +129,12 @@ export const walk = async (browser: PlaywrightTypes.Browser, options: Options): 
   return { ok: failures.length === 0, url: options.url, screens: options.route.screens.map((screen) => screen.name), failures, outcomes }
 }
 
-interface Opened {
-  readonly page: PlaywrightTypes.Page
-  readonly errors: Array<string>
-  /** Requests in flight, and a count that moves whenever one starts or ends. */
-  readonly network: { inFlight: number; activity: number }
-  /** True once the page stopped answering and was closed for it. */
-  readonly stalled: () => boolean
-  readonly state: () => Promise<PageState>
-  readonly control: (described: Described) => Promise<Control>
-  readonly close: () => Promise<void>
-}
-
 /** What every page of one walk shares. */
 interface Walk {
   readonly url: string
   readonly settle: number
   readonly pages: number
   readonly stall: number
-}
-
-const stalledSaw = (stall: number): string => `the page stopped answering for ${stall / 1000} seconds: its main thread is busy, or its renderer hung`
-
-/** Whether the page runs a script within `most` milliseconds. A page that is closed or navigating has answered. */
-const answers = (page: PlaywrightTypes.Page, most: number): Promise<boolean> =>
-  new Promise((resolve) => {
-    // oxlint-disable-next-line ritmo/use-clock-for-time -- a tool on the developer's machine, not a simulation: it times a page that no longer answers, so no page timer or tick can do it
-    const timer = setTimeout(() => resolve(false), most)
-    void page.evaluate(() => true).then(() => true, () => true).then((answered) => {
-      clearTimeout(timer)
-      resolve(answered)
-    })
-  })
-
-const open = async (browser: PlaywrightTypes.Browser, stall: number): Promise<Opened> => {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
-  await page.addInitScript(pageScript)
-  const errors: Array<string> = []
-  page.on("pageerror", (error) => errors.push(error.message))
-  const network = { inFlight: 0, activity: 0 }
-  page.on("request", () => {
-    network.inFlight++
-    network.activity++
-  })
-  const ended = (): void => {
-    network.inFlight = Math.max(0, network.inFlight - 1)
-    network.activity++
-  }
-  page.on("requestfinished", ended)
-  page.on("requestfailed", ended)
-  const cdp = await page.context().newCDPSession(page)
-  const state = () => page.evaluate(() => (Reflect.get(globalThis, "__ritmoKeyboardWalk") as { state: () => PageState }).state())
-  const control = async (described: Described): Promise<Control> => {
-    try {
-      const evaluated = await cdp.send("Runtime.evaluate", { expression: `__ritmoKeyboardWalk.element(${described.id})`, objectGroup: "ritmo-keyboard" })
-      const objectId = evaluated.result.objectId
-      if (objectId === undefined) return { role: "", name: "", selector: described.selector }
-      const tree = await cdp.send("Accessibility.getPartialAXTree", { objectId, fetchRelatives: false })
-      const node = tree.nodes[0]
-      const role = node?.role?.value
-      const name = node?.name?.value
-      return { role: typeof role === "string" ? role : "", name: typeof name === "string" ? name.trim() : "", selector: described.selector }
-    } catch {
-      return { role: "", name: "", selector: described.selector }
-    }
-  }
-  // Closing a page that stopped answering rejects every call still waiting on it, so the walk moves on.
-  let stalled = false
-  const watch = async (): Promise<void> => {
-    while (!page.isClosed()) {
-      if (!(await answers(page, stall))) {
-        stalled = !page.isClosed()
-        await page.close().catch(() => undefined)
-        return
-      }
-      await page.waitForTimeout(1000).catch(() => undefined)
-    }
-  }
-  void watch()
-  return { page, errors, network, stalled: () => stalled, state, control, close: () => page.close().catch(() => undefined) }
-}
-
-/** Opens the screen: loads its URL, lets it settle, and runs its steps. A failed step is returned as its message. */
-const reach = async (opened: Opened, url: string, screen: Screen, settle: number): Promise<string | undefined> => {
-  const { page } = opened
-  try {
-    await page.goto(screenUrl(url, screen.path), { waitUntil: "load" })
-  } catch (error) {
-    return `the page did not load: ${error instanceof Error ? error.message : String(error)}`
-  }
-  await settled(opened, settle)
-  for (const [index, step] of screen.steps.entries()) {
-    const at = `steps[${index}]`
-    try {
-      if ("press" in step) await page.keyboard.press(step.press)
-      else if ("wait" in step) await page.waitForTimeout(step.wait)
-      else if ("waitFor" in step) {
-        const target = await find(opened, step.waitFor, 15_000)
-        if (target === undefined) return `${at}: no visible ${step.waitFor.role} named ${JSON.stringify(step.waitFor.name)} showed within 15 seconds (names are the ones this report prints)`
-      } else {
-        const target = await find(opened, step.click, 5000)
-        if (target === undefined) return `${at}: no visible ${step.click.role} named ${JSON.stringify(step.click.name)} to click (names are the ones this report prints)`
-        await page.locator(target.selector).first().click({ timeout: 5000 })
-      }
-    } catch (error) {
-      return `${at} failed: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`
-    }
-    await page.waitForTimeout(300)
-  }
-  return undefined
-}
-
-/**
- * The first visible element with this role and accessible name, by the names
- * this report prints (Chromium's accessibility tree), so a name copied from a
- * report finds its control. Waits up to about `most` milliseconds for it to show.
- */
-const find = async (opened: Opened, wanted: { readonly role: string; readonly name: string }, most: number): Promise<Described | undefined> => {
-  for (let waited = 0; waited <= most; waited += 150) {
-    const candidates = await call(opened.page, "controls", null) as ReadonlyArray<Described>
-    for (const candidate of candidates) {
-      const control = await opened.control(candidate)
-      if (control.role === wanted.role && control.name === wanted.name) return candidate
-    }
-    await opened.page.waitForTimeout(150)
-  }
-  return undefined
-}
-
-/**
- * Waits for a loaded page to stop changing: no request in flight, and the
- * same menu, focus, and visible controls for 400 ms of the page's own clock,
- * or `most` milliseconds at the latest. A page that never goes quiet (it
- * polls a server, or keeps redrawing its controls) waits the whole `most`.
- */
-const settled = async (opened: Opened, most: number): Promise<void> => {
-  const quiet = 400
-  let start: number | undefined
-  let since = 0
-  let seen: string | undefined
-  // The count bounds a page whose clock cannot be read (it is navigating).
-  for (let polls = 0; polls * 50 <= most * 2; polls++) {
-    try {
-      const at = await opened.page.evaluate(() => (Reflect.get(globalThis, "__ritmoKeyboardWalk") as { signature: () => { now: number; key: string } }).signature())
-      const key = `${at.key} ${opened.network.activity}`
-      if (start === undefined || at.now < since) start = since = at.now
-      if (key !== seen || opened.network.inFlight > 0) since = at.now
-      seen = key
-      if (at.now - since >= quiet || at.now - start >= most) return
-    } catch {
-      seen = undefined
-    }
-    await opened.page.waitForTimeout(50)
-  }
 }
 
 /** Runs `run` on every item, at most `most` at once; the results keep the items' order. */
@@ -448,12 +150,6 @@ const inParallel = async <A, B>(items: ReadonlyArray<A>, most: number, run: (ite
   await Promise.all(Array.from({ length: Math.min(most, items.length) }, worker))
   return results
 }
-
-const call = <A>(page: PlaywrightTypes.Page, name: string, argument: A): Promise<unknown> =>
-  page.evaluate(
-    ({ name, argument }) => (Reflect.get(globalThis, "__ritmoKeyboardWalk") as Record<string, (argument: unknown, more?: unknown) => unknown>)[name]!(argument),
-    { name, argument }
-  )
 
 const press = async (opened: Opened, key: string, stop: boolean, wait: number): Promise<PressResult> => {
   await call(opened.page, "arm", stop)

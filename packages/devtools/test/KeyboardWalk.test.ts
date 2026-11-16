@@ -7,9 +7,11 @@ import { fileURLToPath } from "node:url"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
 import type * as KeyboardWalkModule from "../src/internal/keyboardWalk.ts"
+import type * as RouteModule from "../src/internal/route.ts"
 
 // The walk is internal to the CLI (the package exports no `internal/*`): load its source to call it with a short settle time.
 const KeyboardWalk = await import(new URL("../src/internal/keyboardWalk.ts", import.meta.url).href) as typeof KeyboardWalkModule
+const Route = await import(new URL("../src/internal/route.ts", import.meta.url).href) as typeof RouteModule
 
 const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url))
 const fixtures = fileURLToPath(new URL("./fixtures/keyboard/", import.meta.url))
@@ -20,48 +22,6 @@ const run = (args: ReadonlyArray<string>, cwd: string) =>
       done({ status: error === null ? 0 : typeof error.code === "number" ? error.code : null, stdout, stderr })
     })
   })
-
-describe("keyboard route", () => {
-  it("fills in a screen's defaults", () => {
-    expect(KeyboardWalk.parseRoute({ screens: [{ name: "title" }] })).toEqual({
-      ok: true,
-      value: { screens: [{ name: "title", path: "", steps: [], noPress: [] }] }
-    })
-  })
-
-  it("keeps every kind of step and both kinds of noPress", () => {
-    const parsed = KeyboardWalk.parseRoute({
-      screens: [
-        { name: "play", path: "?map=8", steps: [{ press: "Escape" }, { click: { role: "button", name: "Play" } }, { waitFor: { role: "button", name: "Resume" } }, { wait: 500 }], noPress: [{ name: "Start over", role: "button" }] },
-        { name: "end", noPress: true }
-      ]
-    })
-    expect(parsed.ok && parsed.value.screens).toEqual([
-      { name: "play", path: "?map=8", steps: [{ press: "Escape" }, { click: { role: "button", name: "Play" } }, { waitFor: { role: "button", name: "Resume" } }, { wait: 500 }], noPress: [{ name: "Start over", role: "button" }] },
-      { name: "end", path: "", steps: [], noPress: true }
-    ])
-  })
-
-  it("names the field that is wrong", () => {
-    const error = (value: unknown) => {
-      const parsed = KeyboardWalk.parseRoute(value)
-      return parsed.ok ? undefined : parsed.error
-    }
-    expect(error([])).toBe("the route must be an object { \"screens\": [...] }")
-    expect(error({ screens: [] })).toBe("route.screens must be a non-empty array")
-    expect(error({ screens: [{ name: "a" }], extra: 1 })).toBe("route.extra is not a field (expected screens)")
-    expect(error({ screens: [{ name: "" }] })).toBe("route.screens[0].name must be a non-empty string")
-    expect(error({ screens: [{ name: "a" }, { name: "a" }] })).toBe("route.screens[1].name \"a\" is already the name of another screen")
-    expect(error({ screens: [{ name: "a", url: "/" }] })).toBe("route.screens[0].url is not a field (expected name, path, steps, noPress)")
-    expect(error({ screens: [{ name: "a", steps: [{ click: { role: "button" } }] }] })).toBe("route.screens[0].steps[0].click.name must be a non-empty string: the control's accessible name")
-    expect(error({ screens: [{ name: "a", steps: [{ waitFor: { name: "Play" } }] }] })).toBe("route.screens[0].steps[0].waitFor.role must be a non-empty string: an ARIA role such as \"button\"")
-    expect(error({ screens: [{ name: "a", steps: [{ wait: 1.5 }] }] })).toBe("route.screens[0].steps[0].wait must be a whole number of milliseconds from 0 to 60000")
-    expect(error({ screens: [{ name: "a", steps: [{ press: "a", wait: 1 }] }] })).toMatch(/^route\.screens\[0\]\.steps\[0\] must be one of/)
-    expect(error({ screens: [{ name: "a", steps: [{ type: "abc" }] }] })).toMatch(/type is not a step$/)
-    expect(error({ screens: [{ name: "a", noPress: [{ role: "button" }] }] })).toBe("route.screens[0].noPress[0].name must be a non-empty string: the control's accessible name")
-    expect(error({ screens: [{ name: "a", noPress: false }] })).toBe("route.screens[0].noPress must be true (press nothing on this screen) or an array of { \"name\", \"role\"? }")
-  })
-})
 
 describe("ritmo-devtools keyboard arguments", () => {
   it("refuses a bad route or URL with exit code 2", async () => {
@@ -115,8 +75,8 @@ describe.skipIf(skipped !== undefined)("ritmo-devtools keyboard", () => {
     await new Promise((done) => server?.close(done))
   })
 
-  const walk = (screens: ReadonlyArray<Partial<KeyboardWalkModule.Screen> & { readonly name: string }>, options: { readonly settle?: number; readonly pages?: number; readonly stall?: number } = {}) =>
-    KeyboardWalk.walk(browser, { url: base, route: { screens: screens.map((screen) => ({ path: "", steps: [], noPress: [], ...screen })) }, settle: 100, ...options })
+  const walk = (screens: ReadonlyArray<Partial<RouteModule.Screen> & { readonly name: string }>, options: { readonly settle?: number; readonly pages?: number; readonly stall?: number } = {}) =>
+    KeyboardWalk.walk(browser, { url: base, route: { ...Route.startRoute, screens: screens.map((screen) => ({ path: "", steps: [], noPress: [], allow: [], ...screen })) }, settle: 100, ...options })
   const statuses = (report: KeyboardWalkModule.Report, screen: string) =>
     Object.fromEntries(report.outcomes.filter((outcome) => outcome.screen === screen).map((outcome) => [outcome.check, outcome.status]))
 

@@ -85,6 +85,7 @@ import { pathToFileURL } from "node:url"
 import * as DependencyScan from "./internal/dependencyScan.ts"
 import * as KeyboardWalk from "./internal/keyboardWalk.ts"
 import * as PackageVersions from "./internal/packageVersions.ts"
+import * as Route from "./internal/route.ts"
 import * as SimulationCoverage from "./internal/simulationCoverage.ts"
 import * as SkillLink from "./internal/skillLink.ts"
 import * as Lint from "./Lint.ts"
@@ -273,7 +274,7 @@ const keyboard = async (args: ReadonlyArray<string>): Promise<number> => {
     console.error(`--url must be an http(s) URL of the game's page, such as http://localhost:5173/; got ${url}`)
     return 2
   }
-  let route = KeyboardWalk.startRoute
+  let route = Route.startRoute
   if (routeFile !== undefined) {
     let data: unknown
     try {
@@ -282,7 +283,7 @@ const keyboard = async (args: ReadonlyArray<string>): Promise<number> => {
       console.error(`${routeFile} could not be read as JSON: ${error instanceof Error ? error.message : String(error)}`)
       return 2
     }
-    const parsed = KeyboardWalk.parseRoute(data)
+    const parsed = Route.parseRoute(data)
     if (!parsed.ok) {
       console.error(`${routeFile} is not a keyboard route: ${parsed.error}`)
       return 2
