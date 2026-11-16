@@ -453,6 +453,154 @@ describe("Keyboard keys the page is using", () => {
     }
   })
 
+  describe("(e) while a modal is open in the document, wherever focus is", () => {
+    /** A document as the module reads it: an open `dialog:modal` when `dialog` is true, and these `aria-modal` elements. */
+    const page = (options: { readonly dialog?: boolean; readonly ariaModals?: ReadonlyArray<unknown> } = {}) => {
+      const state = { dialog: options.dialog ?? false, ariaModals: options.ariaModals ?? [], queries: 0 }
+      return {
+        state,
+        querySelector: (selector: string) => {
+          state.queries++
+          return selector === "dialog:modal" && state.dialog ? {} : null
+        },
+        querySelectorAll: (selector: string) => {
+          state.queries++
+          return selector === "[aria-modal=\"true\"]" ? state.ariaModals : []
+        }
+      }
+    }
+    /** An `aria-modal` element whose `checkVisibility` answers `visible`, and records the options it was asked with. */
+    const ariaModal = (visible: boolean) => {
+      const asked: Array<unknown> = []
+      return { asked, checkVisibility: (options: unknown) => (asked.push(options), visible) }
+    }
+    const inside = (document: object, tagName = "BODY") => ({ ...element(tagName), ownerDocument: document })
+    const pressAll = (fake: ReturnType<typeof makeHost>, target: object) => {
+      fake.downIn(target, " ", "Space")
+      fake.downIn(target, "Escape", "Escape")
+      fake.downIn(target, "ArrowRight", "ArrowRight")
+    }
+
+    it("leaves every key to the page with focus on the body while a dialog:modal is open, and Escape is not prevented", () => {
+      const fake = makeHost()
+      const keys = Keyboard.actions(fake.host, bindings)
+      pressAll(fake, inside(page({ dialog: true })))
+      const snapshot = keys.snapshot()
+      expect(snapshot.actions.jump).toEqual(idle)
+      expect(snapshot.actions.pause).toEqual(idle)
+      expect(snapshot.actions.right).toEqual(idle)
+      expect(snapshot.used).toBe(false)
+      expect(fake.prevented).toEqual([])
+    })
+
+    it("leaves every key to the page while a shown aria-modal element is open, asking it with visibility and opacity", () => {
+      const fake = makeHost()
+      const keys = Keyboard.actions(fake.host, bindings)
+      const menu = ariaModal(true)
+      pressAll(fake, inside(page({ ariaModals: [ariaModal(false), menu] })))
+      expect(keys.snapshot().actions.pause).toEqual(idle)
+      expect(fake.prevented).toEqual([])
+      expect(menu.asked[0]).toEqual({ visibilityProperty: true, opacityProperty: true })
+    })
+
+    it("keeps the keys with the game while every aria-modal element is hidden (closed, hidden, faded out)", () => {
+      const fake = makeHost()
+      const keys = Keyboard.actions(fake.host, bindings)
+      pressAll(fake, inside(page({ ariaModals: [ariaModal(false), ariaModal(false)] })))
+      const snapshot = keys.snapshot()
+      expect(snapshot.actions.jump.pressed).toBe(true)
+      expect(snapshot.actions.pause.pressed).toBe(true)
+      expect(fake.prevented).toEqual([" ", "Escape", "ArrowRight"])
+    })
+
+    it("keeps the keys with the game for an aria-modal element that cannot say whether it is shown", () => {
+      const fake = makeHost()
+      const keys = Keyboard.actions(fake.host, bindings)
+      fake.downIn(inside(page({ ariaModals: [{}, { checkVisibility: true }, null] })), " ", "Space")
+      expect(keys.snapshot().actions.jump.pressed).toBe(true)
+    })
+
+    it("asks a document that is the target itself", () => {
+      const fake = makeHost()
+      const keys = Keyboard.actions(fake.host, bindings)
+      fake.downIn(page({ dialog: true }), " ", "Space")
+      expect(keys.snapshot().actions.jump).toEqual(idle)
+    })
+
+    it("keeps the keys with the game for a target with no document, a document that cannot query, or a query that throws", () => {
+      const throwing = {
+        querySelector: () => {
+          throw new Error("SyntaxError")
+        },
+        querySelectorAll: () => {
+          throw new Error("SyntaxError")
+        }
+      }
+      for (const target of [body, inside({}), inside(throwing), { ownerDocument: null, nodeName: "#document" }, inside({ querySelectorAll: () => 3 })]) {
+        const fake = makeHost()
+        const keys = Keyboard.actions(fake.host, bindings)
+        fake.downIn(target, " ", "Space")
+        expect(keys.snapshot().actions.jump.pressed).toBe(true)
+        expect(fake.prevented).toEqual([" "])
+      }
+    })
+
+    it("gives the keys back on the first key after the modal closes, and asks on every key, repeats included", () => {
+      const fake = makeHost()
+      const keys = Keyboard.actions(fake.host, bindings)
+      const document = page({ dialog: true })
+      const target = inside(document)
+      fake.downIn(target, " ", "Space")
+      fake.repeatIn(target, " ", "Space")
+      const queriesWhileOpen = document.state.queries
+      expect(queriesWhileOpen).toBe(2)
+      expect(keys.snapshot().actions.jump).toEqual(idle)
+      document.state.dialog = false
+      fake.upIn(target, " ", "Space")
+      fake.downIn(target, " ", "Space")
+      expect(keys.snapshot().actions.jump).toEqual({ held: true, pressed: true, released: false })
+      expect(fake.prevented).toEqual([" "])
+    })
+
+    it("releases a key held before the modal opened", () => {
+      const fake = makeHost()
+      const keys = Keyboard.actions(fake.host, bindings)
+      const document = page()
+      const target = inside(document)
+      fake.downIn(target, "ArrowRight", "ArrowRight")
+      expect(keys.snapshot().actions.right.held).toBe(true)
+      document.state.dialog = true
+      fake.repeatIn(target, "ArrowRight", "ArrowRight")
+      fake.upIn(target, "ArrowRight", "ArrowRight")
+      expect(keys.snapshot().actions.right).toEqual({ held: false, pressed: false, released: true })
+    })
+
+    it("still offers the key to presses, so a settings dialog hears the key to bind", () => {
+      const fake = makeHost()
+      const presses = Keyboard.presses(fake.host)
+      const target = inside(page({ dialog: true }))
+      fake.downIn(target, "Escape", "Escape")
+      fake.downIn(target, "k", "KeyK")
+      expect(presses.snapshot()).toEqual([{ key: "Escape", code: "Escape" }, { key: "k", code: "KeyK" }])
+    })
+
+    it("leaves the keys to the page on a canvas, and with an element as the host", () => {
+      const listeners = new Map<string, (event: any) => void>()
+      const document = page({ dialog: true })
+      const surface = {
+        ...inside(document, "CANVAS"),
+        addEventListener: (type: string, listener: (event: any) => void) => listeners.set(type, listener),
+        removeEventListener: (type: string) => listeners.delete(type)
+      }
+      const keys = Keyboard.actions(surface, bindings)
+      listeners.get("keydown")!({ key: " ", code: "Space", repeat: false, target: surface, preventDefault() {} })
+      expect(keys.snapshot().actions.jump).toEqual(idle)
+      document.state.dialog = false
+      listeners.get("keydown")!({ key: "Escape", code: "Escape", repeat: false, target: surface, preventDefault() {} })
+      expect(keys.snapshot().actions.pause.pressed).toBe(true)
+    })
+  })
+
   it("(f) leaves a key a widget already handled to the widget, also on a control clicked with the mouse", () => {
     const fake = makeHost()
     const keys = Keyboard.actions(fake.host, bindings)

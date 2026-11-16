@@ -30,10 +30,11 @@
  *
  * Keys the page is using are left to the page: a key that goes down in a
  * form field (`<input>` of any type, `<textarea>`, `<select>`,
- * contenteditable), or inside an open modal dialog (`<dialog>` opened with
- * `showModal()`, or `aria-modal="true"`), or that a listener nearer the
- * target already handled with `preventDefault()` (a menu's arrows, a
- * slider's keys), and Enter, Space, and Tab on a control the player reached
+ * contenteditable), or while a modal dialog is open (a `<dialog>` opened
+ * with `showModal()`, or a shown `aria-modal="true"` element), wherever
+ * focus is, or that a listener nearer the target already handled with
+ * `preventDefault()` (a menu's arrows, a slider's keys), and Enter, Space,
+ * and Tab on a control the player reached
  * by keyboard (Tab to a button, link, tab, or any focusable element: the
  * browser shows it with `:focus-visible`) press no action and are not
  * `preventDefault`-ed. So a name field receives "wasd" and the player does
@@ -129,9 +130,24 @@ export type { Direction }
  * - the target is a form field: its `tagName` is `INPUT` (any type,
  *   checkboxes and buttons included), `TEXTAREA`, or `SELECT`, or its
  *   `isContentEditable` is `true`;
- * - the target is inside an open modal dialog: `closest` finds a
- *   `dialog:modal` (opened with `showModal()`) or an `[aria-modal="true"]`
- *   element, however the dialog was opened;
+ * - a modal dialog is open, wherever focus is: `closest` from the target
+ *   finds a `dialog:modal` (opened with `showModal()`) or an
+ *   `[aria-modal="true"]` element, or the target's document (its
+ *   `ownerDocument`, or the target itself when it has `querySelector`) holds
+ *   a `dialog:modal`, or an `[aria-modal="true"]` element that is shown:
+ *   its `checkVisibility({ visibilityProperty: true, opacityProperty: true })`
+ *   returns `true`. So a menu keeps its keys after a redraw deleted the
+ *   focused button and dropped focus to `<body>`, and Escape still closes
+ *   it. An `aria-modal` element still in the page but closed (`hidden`,
+ *   `display: none`, `visibility: hidden`, a closed popover, inside a closed
+ *   `<dialog>`) leaves the keys with the game, and so does one fading out
+ *   at `opacity: 0`: the player no longer sees the menu. A script that
+ *   hides an `aria-modal` menu on a key calls `preventDefault()` on it (the
+ *   first rule): it runs before a `window` host hears the key, and the menu
+ *   it hid no longer counts. Not seen: a modal inside a shadow root (the
+ *   target is then the shadow host, and the document query does not look
+ *   inside it). A modal in another document (an iframe) is modal only
+ *   there and leaves this host's keys alone;
  * - the key is Enter, Space, or Tab (the keys a browser itself acts on for
  *   a focused control: press it, move focus on) and the target took focus
  *   by keyboard: it matched `:focus-visible` when its `focusin` reached the
@@ -155,9 +171,12 @@ export type { Direction }
  *
  * The target is read by shape, not `instanceof`, so it works across
  * iframes, and a test host types into a field by passing
- * `{ tagName: "INPUT" }` or `{ isContentEditable: true }`, and focuses a
+ * `{ tagName: "INPUT" }` or `{ isContentEditable: true }`, focuses a
  * control by keyboard by sending `focusin` with a target whose
- * `matches(":focus-visible")` returns `true`.
+ * `matches(":focus-visible")` returns `true`, and opens a modal by giving
+ * the target an `ownerDocument` whose `querySelector("dialog:modal")`
+ * returns an element. A target without those members leaves the key with
+ * the game.
  */
 export interface KeyEvent {
   readonly key: string
@@ -225,6 +244,59 @@ const hasAncestor = (target: object, selector: string): boolean => {
 const isInsideModal = (target: object): boolean =>
   hasAncestor(target, "[aria-modal=\"true\"]") || hasAncestor(target, "dialog:modal")
 
+/** The members of a document the module reads. */
+interface DocumentShape {
+  readonly ownerDocument?: unknown
+  readonly querySelector?: unknown
+  readonly querySelectorAll?: unknown
+}
+
+/** The document a key went down in: the target's `ownerDocument`, or the target itself when it is one (it can query). */
+const documentOf = (target: object): object | null => {
+  const { ownerDocument, querySelector } = target as DocumentShape
+  if (typeof ownerDocument === "object" && ownerDocument !== null) return ownerDocument
+  return typeof querySelector === "function" ? target : null
+}
+
+/**
+ * Whether an `aria-modal` element is shown. A closed one often stays in the
+ * page with its attribute (`hidden`, a closed popover, `display: none`), and
+ * one fading out at `opacity: 0` is gone for the player. An element that
+ * cannot answer is not shown.
+ */
+const isShown = (element: unknown): boolean => {
+  if (typeof element !== "object" || element === null) return false
+  const { checkVisibility } = element as { readonly checkVisibility?: unknown }
+  if (typeof checkVisibility !== "function") return false
+  return (checkVisibility as (options: object) => unknown).call(element, { visibilityProperty: true, opacityProperty: true }) === true
+}
+
+/** Whether the document holds an open modal dialog, wherever focus is in it. */
+const hasOpenModal = (document: object): boolean => {
+  const { querySelector, querySelectorAll } = document as DocumentShape
+  try {
+    if (typeof querySelector === "function") {
+      const dialog: unknown = (querySelector as (selector: string) => unknown).call(document, "dialog:modal")
+      if (dialog !== null && dialog !== undefined) return true
+    }
+    if (typeof querySelectorAll !== "function") return false
+    const elements: unknown = (querySelectorAll as (selector: string) => unknown).call(document, "[aria-modal=\"true\"]")
+    if (typeof elements !== "object" || elements === null || typeof (elements as { readonly length?: unknown }).length !== "number") return false
+    const list = elements as ArrayLike<unknown>
+    for (let index = 0; index < list.length; index++) if (isShown(list[index])) return true
+    return false
+  } catch {
+    return false
+  }
+}
+
+/** Whether a modal dialog is open for a key with this target, by the rule on {@link KeyEvent}. */
+const isModalOpen = (target: object): boolean => {
+  if (isInsideModal(target)) return true
+  const document = documentOf(target)
+  return document !== null && hasOpenModal(document)
+}
+
 /**
  * The key events a `Keyboard.actions` device prevented: another device on
  * the same host sees them as `defaultPrevented`, and they are still the game's.
@@ -267,7 +339,7 @@ const pageKeys = (host: KeyboardHost): PageKeys => {
       if (event.defaultPrevented === true && !preventedByKeyboard.has(event)) return true
       const target = event.target ?? null
       if (target === null) return false
-      return isEditableTarget(target) || isInsideModal(target) || isControlPress(event, target)
+      return isEditableTarget(target) || isControlPress(event, target) || isModalOpen(target)
     },
     ownsWhileCapturing(event) {
       const target = event.target ?? null
@@ -622,6 +694,9 @@ export const actions = <const B extends Bindings>(
       }
       tokens.push(codeToken(event.code))
     }
+    // A key bound to no action presses nothing and is not prevented, so the
+    // page's rule (which may query the document) is not asked for it.
+    if (!tokens.some((token) => actionsByToken.has(token))) return
     // A key the page is using belongs to the page; a shortcut belongs to the
     // browser. Their releases are still processed by `onKeyUp`.
     if (page.owns(event) || (leavesShortcuts && isShortcut(event))) return
