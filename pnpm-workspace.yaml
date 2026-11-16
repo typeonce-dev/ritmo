@@ -8,15 +8,15 @@ packages:
 catalog:
   # Exact, and moved together: ritmo-tools depends on all three, and a
   # mismatched @effect/platform-node-shared crashed every command (e6ead988).
-  "@effect/platform-node": 4.1.1
-  "@effect/platform-node-shared": 4.1.1
-  effect: 4.1.1
+  "@effect/platform-node": 4.1.4
+  "@effect/platform-node-shared": 4.1.4
+  effect: 4.1.4
   # The compiler; the website's Twoslash and the `typescript6` alias need
   # the TypeScript 6 JavaScript API, so they pin typescript 6 themselves.
   typescript: 7.0.2
-  vite: ^8.3.5
+  vite: ^8.3.8
   tsx: ^4.23.15
-  pixi.js: 8.22.0
+  pixi.js: 8.23.0
   # The libraries the comparison bench and the website's comparison page measure.
   bitecs: 0.4.0
   koota: 0.6.6
