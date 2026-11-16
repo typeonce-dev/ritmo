@@ -555,7 +555,7 @@ Each screen gets six checks:
 | --- | --- |
 | `focus-outside-menu` | a menu is open and focus is outside it |
 | `tab-leaves-menu` | Tab moves focus out of the open menu |
-| `unnamed-control` | a control Tab reaches has no accessible name |
+| `unnamed-control` | a control the keyboard reaches (by Tab, or by the arrow keys of its group) has no accessible name |
 | `key-not-pressed` | Enter or Space on the focused control does not press it |
 | `focus-dropped` | pressing a control drops focus to `<body>` |
 | `unreachable-control` | a visible control is reached neither by Tab nor by the arrow keys of its group (a roving group with one Tab stop passes) |
@@ -593,15 +593,17 @@ Without `--route` the start page is one screen. A route is a JSON file:
 - `noPress` is `true` (press nothing on that screen) or a list of controls
   by name and optional role.
 - A step that cannot run, or an error the page throws, is a failure, and
-  that screen's checks are not checked.
+  that screen's checks are not checked. A screen on which no check could be
+  decided is a failure too (`nothing-checked`): the route did not reach the
+  game's controls, or the page has none the walk can see.
 
 - Without `--url` it serves the working directory with the game's own Vite
   config; `--url` walks a page already served. It needs `playwright` and its
   Chromium (`npm install --save-dev playwright vite` and
   `npx playwright install chromium`); a missing one is printed with its
   install command.
-- Exit codes: 0 nothing failed, 1 a check failed, a route step failed, or the
-  page threw, 2 usage error (arguments, a route that is not valid, a missing
+- Exit codes: 0 nothing failed, 1 a check failed, a route step failed, the
+  page threw, or a screen had nothing to check, 2 usage error (arguments, a route that is not valid, a missing
   tool, a dev server that did not start). `--json` prints
   `{ ok, url, screens, failures: [{ check, screen, control?, saw, fix }], outcomes: [{ check, screen, status, decided, undecided }] }`.
 

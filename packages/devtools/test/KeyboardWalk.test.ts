@@ -152,6 +152,8 @@ describe.skipIf(skipped !== undefined)("ritmo-devtools keyboard", () => {
       ["focus-outside-menu", "focus-outside-menu", "dialog", "Title", "body > div"],
       ["tab-leaves-menu", "tab-leaves-menu", "dialog", "Paused", "body > div"],
       ["unnamed-control", "unnamed-control", "button", "", "body > button:nth-of-type(1)"],
+      // Reached by its group's arrows, never by Tab.
+      ["unnamed-control", "unnamed-control", "button", "", "#tools > button:nth-of-type(2)"],
       ["key-not-pressed", "key-not-pressed", "button", "Restart", "#restart"],
       ["key-not-pressed", "key-not-pressed", "button", "Restart", "#restart"],
       ["focus-dropped", "focus-dropped", "button", "Add (0)", "#add"],
@@ -187,6 +189,19 @@ describe.skipIf(skipped !== undefined)("ritmo-devtools keyboard", () => {
     ])
     expect(report.outcomes.every((outcome) => outcome.status === "not-checked")).toBe(true)
     expect(report.outcomes).toHaveLength(12)
+  }, 120_000)
+
+  it("fails a screen on which nothing could be checked", async () => {
+    const report = await walk([{ name: "canvas", path: "no-controls.html" }])
+    expect(report.ok).toBe(false)
+    expect(report.failures).toEqual([{
+      check: "nothing-checked",
+      screen: "canvas",
+      saw: "no check could be decided on this screen: no menu is open, and it shows no control",
+      fix: KeyboardWalk.fixes["nothing-checked"]
+    }])
+    expect(report.outcomes.every((outcome) => outcome.status === "not-checked")).toBe(true)
+    expect(KeyboardWalk.format(report).split("\n").at(-1)).toMatch(/: 1 failure \(1 from the route or the page, not from a check\); checks 0 failed, 0 passed, 6 not checked on 1 screen$/)
   }, 120_000)
 
   it("does not press what the route marks", async () => {

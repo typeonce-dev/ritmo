@@ -7,13 +7,17 @@
  *
  * - `focus-outside-menu`: a menu is open and focus is outside it;
  * - `tab-leaves-menu`: Tab moves focus out of the open menu;
- * - `unnamed-control`: a control Tab reaches has no accessible name;
+ * - `unnamed-control`: a control the keyboard reaches (by Tab, or by the
+ *   arrows of its group) has no accessible name;
  * - `key-not-pressed`: Enter or Space on the focused control did not press
  *   it (the click is stopped, so this changes nothing);
  * - `focus-dropped`: pressing a control dropped focus to `<body>` (the
  *   control is pressed for real, after a reload of the screen);
  * - `unreachable-control`: a visible control neither Tab nor the arrows of
  *   its group reach.
+ *
+ * A screen on which no check could be decided is a failure too
+ * (`nothing-checked`): nothing checked is never an exit code of 0.
  *
  * A menu is a `dialog:modal`, a shown `aria-modal="true"` element (the
  * `checkVisibility` test `Keyboard.actions` uses), or a shown dialog
@@ -158,7 +162,7 @@ export interface Control {
 
 /** One failure: which check, on which screen, which control, what the walk saw, and what to change. */
 export interface Failure {
-  readonly check: CheckId | "route-step" | "page-error"
+  readonly check: CheckId | "route-step" | "page-error" | "nothing-checked"
   readonly screen: string
   readonly control?: Control
   readonly saw: string
@@ -194,10 +198,11 @@ export const fixes: Record<Failure["check"], string> = {
   "tab-leaves-menu": "keep Tab inside the open menu: open it with showModal() on a <dialog>, or make the page behind an aria-modal element inert (ui-and-render.md step 8)",
   "unnamed-control": "give it a name: visible text, or aria-label on an icon (ui-and-render.md step 7)",
   "key-not-pressed": "leave Enter and Space on a focused control to the page: take game keys with Keyboard.actions, not a page key listener that calls preventDefault() (lint ritmo/use-keyboard-for-game-keys)",
-  "focus-dropped": "update the control in place instead of rewriting its region (ui-and-render.md step 7); when the press closes a menu into play, focus the canvas (ui-and-render.md step 8, Keyboard.actions)",
+  "focus-dropped": "update the control in place instead of rewriting its region (ui-and-render.md step 7); when the press hides or removes the control (it closes a menu, dismisses a hint), move focus on, to the canvas when play resumes (Keyboard.actions)",
   "unreachable-control": "let the keyboard reach it: remove tabIndex = -1 (Keyboard.actions leaves Enter and Space on a focused control to it and keeps every other key with the game), or make it part of a group whose one Tab stop reaches it with the arrows",
   "route-step": "fix the route so this step can run, or the page so it shows what the step names; the screen's checks did not run",
-  "page-error": "fix the error the page threw; the checks it interrupted did not run"
+  "page-error": "fix the error the page threw; the checks it interrupted did not run",
+  "nothing-checked": "give this screen steps that reach the game's DOM controls, or take it out of the route; controls drawn on the canvas, and elements that are not a <button>, a link, a form field, or an ARIA role, are not for this walk"
 }
 
 /** What the walk needs from outside: the page's URL, the route, and how long to let a screen settle. */
@@ -434,16 +439,8 @@ const walkScreen = async (browser: PlaywrightTypes.Browser, url: string, screen:
       }
     }
 
-    // unnamed-control.
-    const named = stops.filter((stop) => !stop.canvas)
     const controls = new Map<number, Control>()
     for (const stop of stops) controls.set(stop.id, await opened.control(stop))
-    if (named.length === 0) outcomes.push(notChecked("unnamed-control", screen.name, "Tab reached no control"))
-    else {
-      const unnamed = named.filter((stop) => controls.get(stop.id)!.name === "")
-      for (const stop of unnamed) fail("unnamed-control", "Tab reaches it and it has no accessible name", controls.get(stop.id))
-      outcomes.push({ check: "unnamed-control", screen: screen.name, status: unnamed.length > 0 ? "failed" : "passed", decided: named.length, undecided: [] })
-    }
 
     // key-not-pressed.
     {
@@ -477,6 +474,8 @@ const walkScreen = async (browser: PlaywrightTypes.Browser, url: string, screen:
       const visible = await call(opened.page, "controls", menu?.id ?? null) as ReadonlyArray<Described>
       const reachedIds = new Set(stops.map((stop) => stop.id))
       const missed = visible.filter((control) => !reachedIds.has(control.id))
+      // Named before the arrow keys are pressed: a game that takes them may redraw what they name.
+      for (const control of missed) controls.set(control.id, await opened.control(control))
       const probed = new Map<number, Set<number>>()
       const unreachable: Array<Described> = []
       for (const control of missed) {
@@ -499,13 +498,21 @@ const walkScreen = async (browser: PlaywrightTypes.Browser, url: string, screen:
         if (!found) unreachable.push(control)
       }
       for (const control of unreachable) {
-        const named = await opened.control(control)
-        fail("unreachable-control", `it is visible${menu === null ? "" : " in the open menu"}, and neither Tab nor the arrow keys of its group reach it`, named)
+        fail("unreachable-control", `it is visible${menu === null ? "" : " in the open menu"}, and neither Tab nor the arrow keys of its group reach it`, controls.get(control.id))
       }
       outcomes.push(visible.length === 0
         ? notChecked("unreachable-control", screen.name, menu === null ? "no visible control on this screen" : "no visible control in the open menu")
         : { check: "unreachable-control", screen: screen.name, status: unreachable.length > 0 ? "failed" : "passed", decided: visible.length, undecided: [] })
       if (opened.errors.length > pageErrors) fail("page-error", `the page threw during the arrow-key probe: ${opened.errors[pageErrors]}`)
+
+      // unnamed-control: every control the keyboard reaches, by Tab or by the arrows of its group.
+      const reached = [...stops.filter((stop) => !stop.canvas), ...missed.filter((control) => !unreachable.includes(control))]
+      if (reached.length === 0) outcomes.push(notChecked("unnamed-control", screen.name, "the keyboard reached no control"))
+      else {
+        const unnamed = reached.filter((control) => controls.get(control.id)!.name === "")
+        for (const control of unnamed) fail("unnamed-control", "the keyboard reaches it and it has no accessible name", controls.get(control.id))
+        outcomes.push({ check: "unnamed-control", screen: screen.name, status: unnamed.length > 0 ? "failed" : "passed", decided: reached.length, undecided: [] })
+      }
 
       // Pass 2, focus-dropped: press each control for real, on a fresh copy of the screen.
       if (screen.noPress === true) {
@@ -545,6 +552,10 @@ const walkScreen = async (browser: PlaywrightTypes.Browser, url: string, screen:
           ? { check: "focus-dropped", screen: screen.name, status: "not-checked", decided: 0, undecided: results.undecided.length > 0 ? results.undecided : [{ reason: "Tab reached no control that Enter or Space presses" }] }
           : { check: "focus-dropped", screen: screen.name, status: results.failed > 0 ? "failed" : "passed", decided: results.decided, undecided: results.undecided })
       }
+    }
+    // Nothing decided is not a pass: the route missed the game's controls, or the page has none this walk can see.
+    if (failures.length === 0 && outcomes.every((outcome) => outcome.status === "not-checked")) {
+      fail("nothing-checked", "no check could be decided on this screen: no menu is open, and it shows no control")
     }
     return { failures, outcomes: checks.map((check) => outcomes.find((outcome) => outcome.check === check)!) }
   } finally {
@@ -632,8 +643,8 @@ export const format = (report: Report): string => {
   const failed = report.outcomes.filter((outcome) => outcome.status === "failed").length
   const passed = report.outcomes.filter((outcome) => outcome.status === "passed").length
   const skipped = report.outcomes.filter((outcome) => outcome.status === "not-checked").length
-  const other = report.failures.filter((failure) => failure.check === "route-step" || failure.check === "page-error").length
+  const other = report.failures.filter((failure) => failure.check === "route-step" || failure.check === "page-error" || failure.check === "nothing-checked").length
   lines.push("")
-  lines.push(`keyboard walk of ${report.url}: ${report.failures.length} failure${report.failures.length === 1 ? "" : "s"}${other > 0 ? ` (${other} route or page error${other === 1 ? "" : "s"})` : ""}; checks ${failed} failed, ${passed} passed, ${skipped} not checked on ${report.screens.length} screen${report.screens.length === 1 ? "" : "s"}`)
+  lines.push(`keyboard walk of ${report.url}: ${report.failures.length} failure${report.failures.length === 1 ? "" : "s"}${other > 0 ? ` (${other} from the route or the page, not from a check)` : ""}; checks ${failed} failed, ${passed} passed, ${skipped} not checked on ${report.screens.length} screen${report.screens.length === 1 ? "" : "s"}`)
   return lines.join("\n")
 }
