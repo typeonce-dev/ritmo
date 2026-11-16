@@ -15,17 +15,20 @@ const makeHost = () => {
       listeners.get(type)?.delete(listener)
     }
   }
-  const dispatch = (type: "keydown" | "keyup", key: string, repeat = false, code?: string, target?: object) => {
-    for (const listener of listeners.get(type) ?? []) {
-      const event: Keyboard.KeyEvent = {
-        key,
-        repeat,
-        ...(code === undefined ? {} : { code }),
-        ...(target === undefined ? {} : { target }),
-        preventDefault: () => prevented.push(key)
+  /** One event for every listener, as a browser sends it: a `preventDefault()` by one is `defaultPrevented` to the next. */
+  const dispatch = (type: "keydown" | "keyup", key: string, repeat = false, code?: string, target?: object, defaultPrevented = false) => {
+    const event = {
+      key,
+      repeat,
+      defaultPrevented,
+      ...(code === undefined ? {} : { code }),
+      ...(target === undefined ? {} : { target }),
+      preventDefault() {
+        prevented.push(key)
+        event.defaultPrevented = true
       }
-      listener(event)
     }
+    for (const listener of listeners.get(type) ?? []) listener(event satisfies Keyboard.KeyEvent)
   }
   /** A key event with every field a browser sends, modifiers included. */
   const fire = (type: "keydown" | "keyup", event: Omit<Keyboard.KeyEvent, "preventDefault" | "repeat"> & { readonly repeat?: boolean }) => {
@@ -44,6 +47,12 @@ const makeHost = () => {
     downIn: (target: object, key: string, code?: string) => dispatch("keydown", key, false, code, target),
     repeatIn: (target: object, key: string, code?: string) => dispatch("keydown", key, true, code, target),
     upIn: (target: object, key: string, code?: string) => dispatch("keyup", key, false, code, target),
+    /** A key a listener nearer the target already handled with `preventDefault()`. */
+    downHandled: (target: object, key: string, code?: string) => dispatch("keydown", key, false, code, target, true),
+    /** Focus moving to `target`, as the browser's `focusin` reports it. */
+    focusIn: (target: object) => {
+      for (const listener of listeners.get("focusin") ?? []) listener({ target } satisfies Keyboard.FocusInEvent)
+    },
     blur: () => {
       for (const listener of listeners.get("blur") ?? []) listener()
     },
@@ -330,6 +339,192 @@ describe("Keyboard form fields", () => {
     fake.downIn(editable, "k", "KeyK")
     fake.downIn(canvas, "l", "KeyL")
     expect(presses.snapshot()).toEqual([{ key: "l", code: "KeyL" }])
+  })
+})
+
+describe("Keyboard keys the page is using", () => {
+  /** An element as the module reads it: `:focus-visible` while `keyboard` is true, inside `modal` when given. */
+  const element = (tagName: string, options: { readonly keyboard?: boolean; readonly modal?: "dialog" | "aria" } = {}) => {
+    const state = { keyboard: options.keyboard ?? false }
+    return {
+      tagName,
+      isContentEditable: false,
+      state,
+      matches: (selector: string) => selector === ":focus-visible" && state.keyboard,
+      closest: (selector: string) =>
+        (options.modal === "dialog" && selector === "dialog:modal") || (options.modal === "aria" && selector === "[aria-modal=\"true\"]") ? {} : null
+    }
+  }
+  const body = element("BODY")
+  const bindings = { jump: [" "], confirm: ["Enter"], right: ["ArrowRight"], pause: ["Escape"], next: ["Tab"] } as const
+  const idle = { held: false, pressed: false, released: false }
+
+  it("(a) takes bound keys typed on the body or the document, and prevents their default", () => {
+    const fake = makeHost()
+    const keys = Keyboard.actions(fake.host, bindings)
+    fake.downIn(body, " ", "Space")
+    fake.downIn({ nodeName: "#document" }, "Enter", "Enter")
+    const snapshot = keys.snapshot()
+    expect(snapshot.actions.jump.pressed).toBe(true)
+    expect(snapshot.actions.confirm.pressed).toBe(true)
+    expect(fake.prevented).toEqual([" ", "Enter"])
+  })
+
+  it("(c) leaves Enter, Space, and Tab on a control reached by keyboard to it: no action, no preventDefault", () => {
+    for (const tag of ["BUTTON", "A", "SUMMARY", "DIV"]) {
+      const fake = makeHost()
+      const keys = Keyboard.actions(fake.host, bindings)
+      const presses = Keyboard.presses(fake.host)
+      const control = element(tag, { keyboard: true })
+      fake.focusIn(control)
+      fake.downIn(control, "Enter", "Enter")
+      fake.downIn(control, " ", "Space")
+      fake.downIn(control, "Tab", "Tab")
+      const snapshot = keys.snapshot()
+      expect(snapshot.actions.confirm).toEqual(idle)
+      expect(snapshot.actions.jump).toEqual(idle)
+      expect(snapshot.actions.next).toEqual(idle)
+      expect(presses.snapshot()).toEqual([])
+      expect(fake.prevented).toEqual([])
+    }
+  })
+
+  it("(c) still plays every other key on a control reached by keyboard, so movement and hotkeys survive a Tab", () => {
+    const fake = makeHost()
+    const keys = Keyboard.actions(fake.host, bindings)
+    const presses = Keyboard.presses(fake.host)
+    const control = element("BUTTON", { keyboard: true })
+    fake.focusIn(control)
+    fake.downIn(control, "ArrowRight", "ArrowRight")
+    fake.downIn(control, "Escape", "Escape")
+    const snapshot = keys.snapshot()
+    expect(snapshot.actions.right.pressed).toBe(true)
+    expect(snapshot.actions.pause.pressed).toBe(true)
+    expect(presses.snapshot()).toEqual([{ key: "ArrowRight", code: "ArrowRight" }, { key: "Escape", code: "Escape" }])
+    expect(fake.prevented).toEqual(["ArrowRight", "Escape"])
+  })
+
+  it("(d) keeps the keys on a control clicked with the mouse, even once the browser shows it focused", () => {
+    const fake = makeHost()
+    const keys = Keyboard.actions(fake.host, bindings)
+    const mute = element("BUTTON")
+    fake.focusIn(mute)
+    // Chromium turns `:focus-visible` on for a clicked button at the next key: focus is judged when it arrived.
+    mute.state.keyboard = true
+    fake.downIn(mute, " ", "Space")
+    fake.downIn(mute, "Enter", "Enter")
+    const snapshot = keys.snapshot()
+    expect(snapshot.actions.jump.pressed).toBe(true)
+    expect(snapshot.actions.confirm.pressed).toBe(true)
+    expect(fake.prevented).toEqual([" ", "Enter"])
+  })
+
+  it("(c, d) hands the keys to a control once Tab moves focus to it after a click elsewhere", () => {
+    const fake = makeHost()
+    const keys = Keyboard.actions(fake.host, { jump: [" "] })
+    const mute = element("BUTTON")
+    const quit = element("BUTTON", { keyboard: true })
+    fake.focusIn(mute)
+    fake.downIn(mute, " ", "Space")
+    fake.focusIn(quit)
+    fake.downIn(quit, " ", "Space")
+    expect(keys.snapshot().actions.jump.pressed).toBe(true)
+    fake.upIn(quit, " ", "Space")
+    fake.downIn(quit, " ", "Space")
+    expect(keys.snapshot().actions.jump).toEqual({ held: false, pressed: false, released: true })
+    expect(fake.prevented).toEqual([" "])
+  })
+
+  it("(e) leaves every key inside an open modal dialog to it, however focus got there", () => {
+    for (const modal of ["dialog", "aria"] as const) {
+      const fake = makeHost()
+      const keys = Keyboard.actions(fake.host, bindings)
+      const presses = Keyboard.presses(fake.host)
+      const ok = element("BUTTON", { modal })
+      fake.focusIn(ok)
+      fake.downIn(ok, "Enter", "Enter")
+      fake.downIn(ok, "Escape", "Escape")
+      const snapshot = keys.snapshot()
+      expect(snapshot.actions.confirm).toEqual(idle)
+      expect(snapshot.actions.pause).toEqual(idle)
+      expect(fake.prevented).toEqual([])
+      // A settings dialog that waits for the key to bind still hears it.
+      expect(presses.snapshot()).toEqual([{ key: "Enter", code: "Enter" }, { key: "Escape", code: "Escape" }])
+    }
+  })
+
+  it("(f) leaves a key a widget already handled to the widget, also on a control clicked with the mouse", () => {
+    const fake = makeHost()
+    const keys = Keyboard.actions(fake.host, bindings)
+    const presses = Keyboard.presses(fake.host)
+    const item = element("BUTTON")
+    fake.focusIn(item)
+    fake.downHandled(item, "ArrowRight", "ArrowRight")
+    expect(keys.snapshot().actions.right).toEqual(idle)
+    // The key a settings screen waits for is still offered, whatever the focused widget did with it.
+    expect(presses.snapshot()).toEqual([{ key: "ArrowRight", code: "ArrowRight" }])
+  })
+
+  it("(f) still plays a key another keyboard on the same host prevented", () => {
+    const fake = makeHost()
+    const first = Keyboard.actions(fake.host, { jump: [" "] })
+    const second = Keyboard.actions(fake.host, { jump: [" "] })
+    const presses = Keyboard.presses(fake.host)
+    fake.downIn(body, " ", "Space")
+    expect(first.snapshot().actions.jump.pressed).toBe(true)
+    expect(second.snapshot().actions.jump.pressed).toBe(true)
+    expect(presses.snapshot()).toEqual([{ key: " ", code: "Space" }])
+  })
+
+  it("(g) releases a key that went down in the game wherever it comes up, and never presses one that went down in the page", () => {
+    const fake = makeHost()
+    const keys = Keyboard.actions(fake.host, bindings)
+    const control = element("BUTTON", { keyboard: true })
+    fake.downIn(body, " ", "Space")
+    expect(keys.snapshot().actions.jump.held).toBe(true)
+    fake.focusIn(control)
+    fake.upIn(control, " ", "Space")
+    expect(keys.snapshot().actions.jump).toEqual({ held: false, pressed: false, released: true })
+    fake.downIn(control, "Enter", "Enter")
+    fake.focusIn(body)
+    fake.repeatIn(body, "Enter", "Enter")
+    fake.upIn(body, "Enter", "Enter")
+    expect(keys.snapshot().actions.confirm).toEqual(idle)
+  })
+
+  it("(h) keeps the keys on a canvas reached by keyboard, and on the host itself", () => {
+    const canvas = element("CANVAS", { keyboard: true })
+    const fake = makeHost()
+    const keys = Keyboard.actions(fake.host, bindings)
+    fake.focusIn(canvas)
+    fake.downIn(canvas, " ", "Space")
+    expect(keys.snapshot().actions.jump.pressed).toBe(true)
+
+    // A game drawn into an element passes that element as the host.
+    const listeners = new Map<string, (event: any) => void>()
+    const surface = {
+      ...element("DIV", { keyboard: true }),
+      addEventListener: (type: string, listener: (event: any) => void) => listeners.set(type, listener),
+      removeEventListener: (type: string) => listeners.delete(type)
+    }
+    const onSurface = Keyboard.actions(surface, bindings)
+    listeners.get("focusin")!({ target: surface })
+    listeners.get("keydown")!({ key: " ", code: "Space", repeat: false, target: surface, preventDefault() {} })
+    expect(onSurface.snapshot().actions.jump.pressed).toBe(true)
+  })
+
+  it("plays keys on a control that took focus before its focusin was seen, as a test host that sends none", () => {
+    const fake = makeHost()
+    const keys = Keyboard.actions(fake.host, bindings)
+    fake.downIn(element("BUTTON", { keyboard: true }), " ", "Space")
+    expect(keys.snapshot().actions.jump.pressed).toBe(true)
+  })
+
+  it("removes its focus listener on dispose", () => {
+    const fake = makeHost()
+    Keyboard.actions(fake.host, bindings).dispose()
+    Keyboard.presses(fake.host).dispose()
+    expect(fake.listenerCount()).toBe(0)
   })
 })
 

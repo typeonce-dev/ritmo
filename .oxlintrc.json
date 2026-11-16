@@ -30,7 +30,8 @@
         "ritmo/handle-runtime-result": "error",
         "ritmo/prefix-descriptor-and-system-names": "error",
         "ritmo/no-state-spread": "error",
-        "ritmo/no-kept-query-values": "error"
+        "ritmo/no-kept-query-values": "error",
+        "ritmo/use-keyboard-for-game-keys": "error"
       }
     },
     {
@@ -86,7 +87,9 @@
         "ritmo/use-ops-for-math": "off",
         "ritmo/keep-simulation-headless": "off",
         "ritmo/no-infinity-in-simulation-data": "off",
-        "ritmo/no-float-timers": "off"
+        "ritmo/no-float-timers": "off",
+        // Review pages with their own shortcuts, not games: they take no Ritmo input.
+        "ritmo/use-keyboard-for-game-keys": "off"
       }
     }
   ],

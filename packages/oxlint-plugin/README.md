@@ -10,7 +10,8 @@ Ritmo's types reject wrong calls, and its devtools lints reject wrong runs. Thes
 - casts that claim a brand's check without running it;
 - state values that keep a previous state's fields;
 - query entities and data kept past their run;
-- runtime results that are dropped.
+- runtime results that are dropped;
+- host key listeners that take keys from the page's buttons, links, and dialogs.
 
 Every report says what goes wrong and which Ritmo API to use instead.
 
@@ -31,7 +32,8 @@ Register the plugin and turn the rules on in `.oxlintrc.json`. The simulation ru
     "ritmo/handle-runtime-result": "error",
     "ritmo/prefix-descriptor-and-system-names": "error",
     "ritmo/no-state-spread": "error",
-    "ritmo/no-kept-query-values": "error"
+    "ritmo/no-kept-query-values": "error",
+    "ritmo/use-keyboard-for-game-keys": "error"
   },
   "overrides": [
     {
@@ -73,6 +75,7 @@ const started = performance.now()
 | [`prefix-descriptor-and-system-names`](#ritmoprefix-descriptor-and-system-names) | everywhere | `"Position"`, `Game.System("Move", ...)` | `"Game/Position"` |
 | [`no-state-spread`](#ritmono-state-spread) | everywhere | `{ ...ground, _tag: "air", vy }` | `data.state.transition(entity, { from, to, data })`, `nextMachines.x.transition({ from, to, data })`, or the new state's fields written out |
 | [`no-kept-query-values`](#ritmono-kept-query-values) | everywhere | `local.target = queries.x.each()[0]`, `local.slots = queries.x.data` | `entity.id` and `queries.x.get(id)`, or plain values from `queries.x.rows()` |
+| [`use-keyboard-for-game-keys`](#ritmouse-keyboard-for-game-keys) | everywhere | `window.addEventListener("keydown", (e) => { ...; e.preventDefault() })` | `Keyboard.actions(window, bindings)` and its `pressed` edges, or a listener on the UI element |
 
 ## Simulation rules
 
@@ -310,6 +313,29 @@ local.rows = queries.targets.rows()              // plain values, safe to keep
 ```
 
 Ids (`entity.id`, `.map((entity) => entity.id)`), values read from `data`, and rows are not reported, nor are variables of the run itself (`let best` in the system's body). An entity handed to a service (`services.cache.remember(entity)`) is not judged: the rule cannot see what the service keeps.
+
+### `ritmo/use-keyboard-for-game-keys`
+
+A `keydown` listener on the whole page runs for every key, whatever has focus, so one that calls `preventDefault()` for Enter, Space, or the arrows also stops them on a focused button, link, tab, or open dialog: a player who reaches a menu by keyboard cannot press it, and Escape does not close a modal `<dialog>`. Games then hide it with `tabIndex = -1` on every button or `blur()` after each click. [`Keyboard.actions`](https://github.com/typeonce-dev/ritmo/blob/main/packages/browser/README.md) leaves keys the page is using to the page (a form field, a control reached by keyboard, an open modal dialog, a key a widget already handled) and keeps them when a control only kept focus after a click.
+
+```ts
+window.addEventListener("keydown", (event) => {    // reported
+  if (event.key === "Escape") togglePause()
+  else if (event.key === " ") jump()
+  else return
+  event.preventDefault()
+})
+
+// instead
+const keys = Keyboard.actions(window, { pause: ["Escape"], jump: [" "] })
+// once per frame, or through InputCapture / Controls:
+const snapshot = keys.snapshot()
+if (snapshot.actions.pause.pressed) togglePause()
+// a key for one piece of UI listens on that element:
+dialog.addEventListener("keydown", (event) => { if (event.key === "ArrowDown") { event.preventDefault(); focusNext() } })
+```
+
+Reports a `keydown`, `keyup`, or `keypress` listener added to `window`, `document`, `document.body`, or `document.documentElement` (also as `globalThis.addEventListener` or a bare `addEventListener`) whose function calls `preventDefault()` on its event, written inline or declared in the same file by name. A listener that leaves the default alone (opening audio on the first key) and a listener on another element are not reported. A listener reached through a class member or another function (`window.addEventListener("keydown", this.onKey)`) is not followed. For "press any key", use `Keyboard.presses(window)`.
 
 ## Built-in rules that pair well
 
