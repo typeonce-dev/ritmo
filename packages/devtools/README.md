@@ -11,7 +11,7 @@ pnpm add -D @typeonce/ritmo-devtools
 The main import (`Session`, `Fuzz`, `Invariant`, `Replay`, `Lint`, ...) and
 `ritmo-devtools lint` need no peer dependency. Each optional peer is for one
 feature: `playwright` and `vite` for runs in browser engines
-(`PlaywrightEngine`, `ritmo-devtools verify`), `vite` for `ReplayVitePlugin`,
+(`PlaywrightEngine`, `ritmo-devtools verify`, `ritmo-devtools keyboard`), `vite` for `ReplayVitePlugin`,
 and `rolldown` and `oxlint` for `ritmo-devtools scan`.
 
 The package reads the core `Debug` handle, which exists only on runtimes made
@@ -527,6 +527,83 @@ ritmo-devtools scan src/simulation/index.ts
   error (arguments, an unreadable entry, an import that does not resolve, a
   missing tool). `--json` prints
   `{ entry, files, packages: [{ name, files, findings: [{ file, line, column, rule, snippet }] }] }`.
+
+## Keyboard walk
+
+`ritmo-devtools keyboard` plays the game's page by keyboard in Chromium and
+fails on what breaks keyboard play, whatever the game. Run it after a change
+to the page's DOM controls or menus:
+
+```sh
+ritmo-devtools keyboard --route keyboard.json
+# FAIL focus-outside-menu [title] dialog "Paused" at #menu: this menu is open and focus is on <body>. Fix: move focus into the menu when it opens: ...
+# FAIL key-not-pressed [play] button "Menu" at #pause: Space with it focused did not press it: a key listener called preventDefault() on its keydown. Fix: ...
+#
+# [title]
+#   FAIL focus-outside-menu (1 decided)
+#   pass tab-leaves-menu (1 decided)
+#   ...
+#   not checked focus-dropped
+#     not checked link "Discord" at #links > a: a link to another site is not pressed for real
+#
+# keyboard walk of http://127.0.0.1:52011/: 2 failures; checks 2 failed, 9 passed, 1 not checked on 2 screens
+```
+
+Each screen gets six checks:
+
+| check | fails when |
+| --- | --- |
+| `focus-outside-menu` | a menu is open and focus is outside it |
+| `tab-leaves-menu` | Tab moves focus out of the open menu |
+| `unnamed-control` | a control Tab reaches has no accessible name |
+| `key-not-pressed` | Enter or Space on the focused control does not press it |
+| `focus-dropped` | pressing a control drops focus to `<body>` |
+| `unreachable-control` | a visible control is reached neither by Tab nor by the arrow keys of its group (a roving group with one Tab stop passes) |
+
+A menu is a `<dialog>` opened with `showModal()`, a shown
+`aria-modal="true"` element, or a shown dialog (`<dialog open>`,
+`role="dialog"`). Names and roles are Chromium's own, from its accessibility
+tree. A check that cannot be decided on a screen (no menu open, nothing Tab
+reaches) is printed as not checked with the reason, never as passed. Each
+failure line names the check, the screen, the control (role, name, and a
+CSS selector that finds it), what was seen, and the fix.
+
+`key-not-pressed` stops the click it caused, so it changes nothing a click
+would; a custom control (a `role="switch"`) counts as pressed when its
+`aria-checked`, `aria-pressed`, `aria-expanded`, or `aria-selected` changes.
+`focus-dropped` presses each control for real, on a fresh load of its
+screen, so it does what a player's press does: mark what must not be pressed
+in the route. A link to another site is never pressed for real.
+
+Without `--route` the start page is one screen. A route is a JSON file:
+
+```json
+{
+  "screens": [
+    { "name": "title" },
+    { "name": "play", "path": "?seed=7", "steps": [{ "click": { "role": "button", "name": "Play" } }, { "press": "s" }, { "wait": 800 }] },
+    { "name": "end", "path": "?moment=end", "steps": [{ "wait": 5000 }], "noPress": [{ "name": "Start over", "role": "button" }] }
+  ]
+}
+```
+
+- `path` is appended to the URL. `steps` run in order after the page
+  settles: `press` takes a key as Playwright names it, `click` a role and
+  the accessible name the report prints, `wait` milliseconds.
+- `noPress` is `true` (press nothing on that screen) or a list of controls
+  by name and optional role.
+- A step that cannot run, or an error the page throws, is a failure, and
+  that screen's checks are not checked.
+
+- Without `--url` it serves the working directory with the game's own Vite
+  config; `--url` walks a page already served. It needs `playwright` and its
+  Chromium (`npm install --save-dev playwright vite` and
+  `npx playwright install chromium`); a missing one is printed with its
+  install command.
+- Exit codes: 0 nothing failed, 1 a check failed, a route step failed, or the
+  page threw, 2 usage error (arguments, a route that is not valid, a missing
+  tool, a dev server that did not start). `--json` prints
+  `{ ok, url, screens, failures: [{ check, screen, control?, saw, fix }], outcomes: [{ check, screen, status, decided, undecided }] }`.
 
 ## Fuzzing
 

@@ -97,7 +97,7 @@ jobs:
 
       # The check job skips these without browsers.
       - name: Browser engine tests
-        run: pnpm vitest run packages/devtools/test/PlaywrightEngine.test.ts
+        run: pnpm vitest run packages/devtools/test/PlaywrightEngine.test.ts packages/devtools/test/KeyboardWalk.test.ts
 
   # Pull requests only: on main the change is already merged, so a result
   # there could not stop it.

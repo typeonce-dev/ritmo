@@ -5,6 +5,7 @@
  *   ritmo-devtools lint <entry>
  *   ritmo-devtools verify <entry> <replay> [--engines node,chromium,webkit,firefox] [--json]
  *   ritmo-devtools scan <entry> [--json]
+ *   ritmo-devtools keyboard [--url <url>] [--route <file>] [--json]
  *
  * `lint` imports `<entry>` (a module exporting `lintTarget`, see the `Lint` module),
  * prints every lint of its schedules with its fix, and exits with 1 when one
@@ -54,9 +55,22 @@
  * and the game's `oxlint` with `@typeonce/oxlint-plugin-ritmo`; a missing one
  * is printed with its install command and exits with 2.
  *
+ * `keyboard` plays the game's page by keyboard in Chromium and checks, on
+ * each screen of a route, what a keyboard player relies on: focus moves into
+ * an open menu and Tab stays there, every control has a name, Enter and
+ * Space press the focused control, a press keeps focus off `<body>`, and
+ * every visible control is reached by Tab or by its group's arrow keys.
+ * Without `--url` it serves the working directory with the game's own Vite
+ * config. `--route <file>` names the screens to visit (JSON, see the README);
+ * without it the start page is one screen. It needs `playwright` and its
+ * Chromium, and `vite` when there is no `--url`; a missing one is printed
+ * with its install command.
+ *
  * Exit codes: 0 ok (and every `scan` that ran), 1 lint warning, uncovered
- * module, mismatched versions, or an engine that differs or did not run, 2 usage error (for `scan`
- * also an unreadable entry, an import that does not resolve, or a missing tool).
+ * module, mismatched versions, an engine that differs or did not run, or a
+ * keyboard failure, 2 usage error (for `scan` also an unreadable entry, an
+ * import that does not resolve, or a missing tool; for `keyboard` an invalid
+ * route, a missing tool, or a dev server that did not start).
  * Requires Node 22.15 or later for `module.registerHooks`; on older Node it
  * prints that coverage was not checked.
  *
@@ -68,6 +82,7 @@ import { resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import * as DependencyScan from "./internal/dependencyScan.ts"
+import * as KeyboardWalk from "./internal/keyboardWalk.ts"
 import * as PackageVersions from "./internal/packageVersions.ts"
 import * as SimulationCoverage from "./internal/simulationCoverage.ts"
 import * as SkillLink from "./internal/skillLink.ts"
@@ -79,9 +94,11 @@ const usage = [
   "usage: ritmo-devtools lint <entry>",
   "       ritmo-devtools verify <entry> <replay> [--engines node,chromium,webkit,firefox] [--json]",
   "       ritmo-devtools scan <entry> [--json]",
+  "       ritmo-devtools keyboard [--url <url>] [--route <file>] [--json]",
   "  lint:   <entry> exports lintTarget: () => { runtime, schedules, describe?, hostEvents? } (see the Lint module)",
   "  verify: <entry> exports replayTarget: (playback) => { runtime, schedules, hostClock } (see the Verify module)",
-  "  scan:   <entry> is the simulation's entry module; every file it imports, node_modules included, is checked for Math, clock, and randomness calls"
+  "  scan:   <entry> is the simulation's entry module; every file it imports, node_modules included, is checked for Math, clock, and randomness calls",
+  "  keyboard: plays the page at --url (or the working directory served with its Vite config) by keyboard in Chromium; --route is a JSON file of screens"
 ].join("\n")
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null
@@ -101,6 +118,7 @@ const main = async (args: ReadonlyArray<string>): Promise<number> => {
   if (command === "lint" && rest.length === 1) return lint(rest[0]!)
   if (command === "verify") return verify(rest)
   if (command === "scan") return scan(rest)
+  if (command === "keyboard") return keyboard(rest)
   console.error(usage)
   return 2
 }
@@ -221,6 +239,109 @@ const scan = async (args: ReadonlyArray<string>): Promise<number> => {
   }
   console.log(json ? JSON.stringify(result.value, null, 2) : DependencyScan.format(result.value))
   return 0
+}
+
+/** The value of `--name value` or `--name=value` at `index`, and how many arguments it took; undefined when `args[index]` is not that flag. */
+const flag = (args: ReadonlyArray<string>, index: number, name: string): { readonly value: string | undefined; readonly taken: number } | undefined => {
+  const arg = args[index]!
+  if (arg === name) return { value: args[index + 1], taken: 2 }
+  if (arg.startsWith(`${name}=`)) return { value: arg.slice(name.length + 1), taken: 1 }
+  return undefined
+}
+
+const keyboard = async (args: ReadonlyArray<string>): Promise<number> => {
+  let url: string | undefined
+  let routeFile: string | undefined
+  let json = false
+  for (let index = 0; index < args.length;) {
+    if (args[index] === "--json") {
+      json = true
+      index++
+      continue
+    }
+    const given = flag(args, index, "--url") ?? flag(args, index, "--route")
+    if (given === undefined || given.value === undefined || given.value === "") {
+      console.error(usage)
+      return 2
+    }
+    if (args[index]!.startsWith("--url")) url = given.value
+    else routeFile = given.value
+    index += given.taken
+  }
+  if (url !== undefined && !/^https?:\/\//.test(url)) {
+    console.error(`--url must be an http(s) URL of the game's page, such as http://localhost:5173/; got ${url}`)
+    return 2
+  }
+  let route = KeyboardWalk.startRoute
+  if (routeFile !== undefined) {
+    let data: unknown
+    try {
+      data = JSON.parse(readFileSync(resolve(routeFile), "utf8"))
+    } catch (error) {
+      console.error(`${routeFile} could not be read as JSON: ${error instanceof Error ? error.message : String(error)}`)
+      return 2
+    }
+    const parsed = KeyboardWalk.parseRoute(data)
+    if (!parsed.ok) {
+      console.error(`${routeFile} is not a keyboard route: ${parsed.error}`)
+      return 2
+    }
+    route = parsed.value
+  }
+  let playwright: typeof import("playwright")
+  try {
+    playwright = await import("playwright")
+  } catch {
+    console.error("keyboard needs playwright, which is not installed: npm install --save-dev playwright && npx playwright install chromium")
+    return 2
+  }
+  let browser: Awaited<ReturnType<typeof playwright.chromium.launch>>
+  try {
+    browser = await playwright.chromium.launch()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(/Executable doesn't exist|playwright install/i.test(message)
+      ? "keyboard needs Chromium, which is not downloaded: npx playwright install chromium"
+      : `Chromium did not launch: ${message.split("\n")[0]}`)
+    return 2
+  }
+  let server: { readonly close: () => Promise<void> } | undefined
+  try {
+    if (url === undefined) {
+      let vite: typeof import("vite")
+      try {
+        vite = await import("vite")
+      } catch {
+        console.error("keyboard serves the game with its own Vite config and needs vite, which is not installed: npm install --save-dev vite (or pass --url of a running dev server)")
+        return 2
+      }
+      try {
+        const dev = await vite.createServer({
+          root: process.cwd(),
+          logLevel: "silent",
+          clearScreen: false,
+          server: { host: "127.0.0.1", port: 0, strictPort: false, hmr: false, watch: null }
+        })
+        server = dev
+        await dev.listen()
+        const address = dev.httpServer?.address()
+        if (address === null || address === undefined || typeof address === "string") {
+          console.error("the Vite dev server did not report its port")
+          return 2
+        }
+        url = `http://127.0.0.1:${address.port}/`
+      } catch (error) {
+        console.error(`the game's Vite dev server did not start: ${error instanceof Error ? error.message : String(error)}`)
+        return 2
+      }
+    }
+    const report = await KeyboardWalk.walk(browser, { url, route })
+    console.log(json ? JSON.stringify(report, null, 2) : KeyboardWalk.format(report))
+    return report.ok ? 0 : 1
+  } finally {
+    await browser.close().catch(() => undefined)
+    await server?.close().catch(() => undefined)
+  }
 }
 
 const withoutText = ({ text: _text, ...error }: Verify.VerifyError) => error

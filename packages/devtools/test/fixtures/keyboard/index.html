@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>passes every check</title>
+<canvas id="board" tabindex="-1" width="80" height="60"></canvas>
+<div role="toolbar" aria-label="Tools" id="tools">
+  <button tabindex="0">Dig</button>
+  <button tabindex="-1">Build</button>
+  <button tabindex="-1">Plant</button>
+</div>
+<button id="sound" aria-pressed="true">Sound</button>
+<button id="menu-open">Menu</button>
+<dialog id="menu" aria-label="Paused">
+  <button id="resume">Resume</button>
+  <button id="mute" aria-pressed="false">Music</button>
+  <a href="#rules">Rules</a>
+</dialog>
+<script>
+  // A roving group: one Tab stop, the arrows move along it.
+  const tools = [...document.querySelectorAll("#tools button")]
+  document.getElementById("tools").addEventListener("keydown", (event) => {
+    const at = tools.indexOf(document.activeElement)
+    const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0
+    if (at < 0 || step === 0) return
+    event.preventDefault()
+    const next = tools[(at + step + tools.length) % tools.length]
+    for (const tool of tools) tool.tabIndex = tool === next ? 0 : -1
+    next.focus()
+  })
+  // Controls are built once and updated in place.
+  const toggle = (button) => button.addEventListener("click", () => button.setAttribute("aria-pressed", String(button.getAttribute("aria-pressed") !== "true")))
+  toggle(document.getElementById("sound"))
+  toggle(document.getElementById("mute"))
+  const menu = document.getElementById("menu")
+  document.getElementById("menu-open").addEventListener("click", () => menu.showModal())
+  // Closing the menu into play focuses the game.
+  document.getElementById("resume").addEventListener("click", () => {
+    menu.close()
+    document.getElementById("board").focus()
+  })
+  if (location.hash === "#paused") menu.showModal()
+</script>
