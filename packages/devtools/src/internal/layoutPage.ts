@@ -308,6 +308,8 @@ export const pageScript = String.raw`(() => {
           reported.add(key)
           const over = seen.top === "a" ? a : b
           const under = seen.top === "a" ? b : a
+          // A control under the whole of the other is its backdrop ("tap anywhere", a clickable panel): what is on top takes its own taps.
+          if (under.kind === "control" && contains(under.visible, over.visible)) continue
           add("overlap", [a.owner, b.owner], {
             element: describe(under),
             other: describe(over),
@@ -423,6 +425,8 @@ export const pageScript = String.raw`(() => {
         continue
       }
       if (item.scroller !== undefined || !checks.has("safe-area")) continue
+      // A control over the whole safe area ("tap anywhere to start", a scrim) is meant to fill the screen; its text is judged on its own.
+      if (item.kind === "control" && contains(onScreen, safe)) continue
       const inSafe = meet(onScreen, safe)
       if (area(inSafe) < area(onScreen) - 1) {
         placed.add(item.owner)

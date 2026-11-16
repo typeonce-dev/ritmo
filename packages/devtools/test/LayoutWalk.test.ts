@@ -137,7 +137,7 @@ describe.skipIf(skipped !== undefined)("ritmo-devtools layout", () => {
 
   it("fails on a control past the screen's edge, and on one in the device's own space only where the device keeps it", async () => {
     expect(found(await audit("off-screen"))).toEqual([{ check: "off-screen", severity: "error", pass: "normal", viewport: "phone", text: "Shop", other: "" }])
-    // At the left edge: inside the notch on the phone, fine on a phone without one; the button offset by env() is fine on both.
+    // At the left edge: inside the notch on the phone, fine on a phone without one; the button offset by env() and a full-screen "tap to start" are fine on both.
     expect(found(await audit("safe-area", { viewports: [phone, smallPhone] }))).toEqual([{ check: "safe-area", severity: "error", pass: "normal", viewport: "phone", text: "Menu", other: "" }])
   }, 60_000)
 
