@@ -171,13 +171,17 @@ export const reach = async (opened: Opened, url: string, screen: Screen, settle:
 }
 
 /**
- * The first visible element with this role and accessible name, by the names
+ * The first visible element with this role and accessible name (in the open
+ * menu first, then on the page), by the names
  * this report prints (Chromium's accessibility tree), so a name copied from a
  * report finds its control. Waits up to about `most` milliseconds for it to show.
  */
 export const find = async (opened: Opened, wanted: { readonly role: string; readonly name: string }, most: number): Promise<Described | undefined> => {
   for (let waited = 0; waited <= most; waited += 150) {
-    const candidates = await call(opened.page, "controls", null) as ReadonlyArray<Described>
+    // An open menu first: its button wins over one of the same name behind it (a confirm's "Skip" over the HUD's).
+    const menu = (await opened.state()).menu
+    const inMenu = menu === null ? [] : await call(opened.page, "controls", menu.id) as ReadonlyArray<Described>
+    const candidates = [...inMenu, ...await call(opened.page, "controls", null) as ReadonlyArray<Described>]
     for (const candidate of candidates) {
       const control = await opened.control(candidate)
       if (control.role === wanted.role && control.name === wanted.name) return candidate

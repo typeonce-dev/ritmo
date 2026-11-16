@@ -315,22 +315,35 @@ export const pageScript = String.raw`(() => {
             saw: "they overlap by " + Math.round(width(shared)) + " x " + Math.round(height(shared)) + " px, and the " + over.kind + " is drawn over the " + under.kind + (under.kind === "control" ? ", so a tap there reaches the wrong thing" : "")
           })
         }
-        // A Touch button under something the page draws, or two Touch buttons that share space.
-        const touches = all.filter((item) => item.kind === "touch")
-        for (const touch of touches) {
-          const found = document.elementFromPoint(touch.centre.x, touch.centre.y)
-          if (found !== null && !related(touch.element, found) && found.id !== marksId && (painted(found) || textOf(found) !== "")) {
-            add("overlap", [touch.element, found], { element: describe(touch), other: { kind: "control", selector: selector(found), text: textOf(found).slice(0, 60) }, box: round(touch.rect), saw: "the page draws over the touch button " + JSON.stringify(touch.text) + " at its centre" })
-          }
-        }
-        for (let i = 0; i < touches.length; i++) for (let j = i + 1; j < touches.length; j++) {
-          const a = touches[i], b = touches[j]
-          if (Math.hypot(a.centre.x - b.centre.x, a.centre.y - b.centre.y) < a.radius + b.radius - 2) {
-            add("overlap", [a.element], { element: describe(a), other: describe(b), box: round(meet(a.rect, b.rect)), saw: "touch buttons " + JSON.stringify(a.text) + " and " + JSON.stringify(b.text) + " share space, so a thumb between them presses either" })
-          }
-        }
       } finally {
         force.remove()
+      }
+    }
+
+    // Touch buttons, with hit tests as a finger meets them: what takes a tap at each button's centre.
+    const touches = all.filter((item) => item.kind === "touch")
+    const taken = new Map(touches.map((touch) => {
+      const found = document.elementFromPoint(touch.centre.x, touch.centre.y)
+      return [touch, found === null || related(touch.element, found) ? null : found]
+    }))
+    for (const target of new Set(touches.map((touch) => touch.element))) {
+      const mine = touches.filter((touch) => touch.element === target)
+      // No button of the layout takes a tap: a screen covers the game (a menu, a pause screen), so none is in play.
+      if (mine.every((touch) => taken.get(touch) !== null)) {
+        for (const touch of mine) all.splice(all.indexOf(touch), 1)
+        continue
+      }
+      if (!checks.has("overlap")) continue
+      for (const touch of mine) {
+        const found = taken.get(touch)
+        if (found === null || found === undefined) continue
+        add("overlap", [touch.element, found], { element: describe(touch), other: { kind: "control", selector: selector(found), text: textOf(found).slice(0, 60) }, box: round(touch.rect), saw: "a tap at the centre of the touch button " + JSON.stringify(touch.text) + " reaches " + selector(found) + " instead" })
+      }
+      for (let i = 0; i < mine.length; i++) for (let j = i + 1; j < mine.length; j++) {
+        const a = mine[i], b = mine[j]
+        if (Math.hypot(a.centre.x - b.centre.x, a.centre.y - b.centre.y) < a.radius + b.radius - 2) {
+          add("overlap", [a.element], { element: describe(a), other: describe(b), box: round(meet(a.rect, b.rect)), saw: "touch buttons " + JSON.stringify(a.text) + " and " + JSON.stringify(b.text) + " share space, so a thumb between them presses either" })
+        }
       }
     }
 
@@ -376,9 +389,11 @@ export const pageScript = String.raw`(() => {
     // A control's own box first: its text is judged only when the box is fine.
     for (const item of [...all].sort((a, b) => (a.kind === "text" ? 1 : 0) - (b.kind === "text" ? 1 : 0))) {
       if (item.kind === "touch") {
-        const out = item.rect.l < -1 || item.rect.t < -1 || item.rect.r > screenWidth + 1 || item.rect.b > screenHeight + 1
+        // The button is a circle: how far it reaches past each edge, with the same 2 px allowance as a box.
+        const past = (edges) => Math.max(edges.l - (item.centre.x - item.radius), edges.t - (item.centre.y - item.radius), item.centre.x + item.radius - edges.r, item.centre.y + item.radius - edges.b)
+        const out = past(viewport) > 2
         if (out && checks.has("off-screen")) add("off-screen", [item.element], { element: describe(item), box: round(item.rect), saw: "the touch button " + JSON.stringify(item.text) + " reaches past the edge of the screen" })
-        else if (!out && checks.has("safe-area") && area(meet(item.rect, safe)) < area(item.rect) - 1) add("safe-area", [item.element], { element: describe(item), box: round(item.rect), saw: "the touch button " + JSON.stringify(item.text) + " reaches into the space the device keeps (a notch, a home bar)" })
+        else if (!out && checks.has("safe-area") && past(safe) > 2) add("safe-area", [item.element], { element: describe(item), box: round(item.rect), saw: "the touch button " + JSON.stringify(item.text) + " reaches " + Math.round(past(safe)) + " px into the space the device keeps (a notch, a home bar)" })
         continue
       }
       if (placed.has(item.owner) || area(item.visible) < 1) continue

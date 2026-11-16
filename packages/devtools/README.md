@@ -11,7 +11,8 @@ pnpm add -D @typeonce/ritmo-devtools
 The main import (`Session`, `Fuzz`, `Invariant`, `Replay`, `Lint`, ...) and
 `ritmo-devtools lint` need no peer dependency. Each optional peer is for one
 feature: `playwright` and `vite` for runs in browser engines
-(`PlaywrightEngine`, `ritmo-devtools verify`, `ritmo-devtools keyboard`), `vite` for `ReplayVitePlugin`,
+(`PlaywrightEngine`, `ritmo-devtools verify`, `ritmo-devtools keyboard`,
+`ritmo-devtools layout`), `vite` for `ReplayVitePlugin`,
 and `rolldown` and `oxlint` for `ritmo-devtools scan`.
 
 The package reads the core `Debug` handle, which exists only on runtimes made
@@ -590,9 +591,12 @@ Without `--route` the start page is one screen. A route is a JSON file:
 ```
 
 - `path` is appended to the URL. `steps` run in order after the page
-  settles: `press` takes a key as Playwright names it, `click` a role and
-  the accessible name the report prints, `waitFor` the same and waits up to
-  15 seconds for that control to show, `wait` milliseconds.
+  settles: `press` takes a key as Playwright names it, `type` types text
+  into the focused field, `click` a role and the accessible name the report
+  prints (in the open menu first), `waitFor` the same and waits up to 15
+  seconds for that control to show, `wait` milliseconds. Each screen starts
+  from a fresh page with nothing saved, so a game that asks for a name
+  first starts its steps with `{ "click": { "role": "textbox", "name": "Name" } }, { "type": "Ada" }`.
 - A loaded page has settled when no request is in flight and its menu,
   focus, and visible controls have not changed for 400 ms, or after 1.5
   seconds at the latest. A screen that shows its controls later than that,
@@ -615,6 +619,101 @@ Without `--route` the start page is one screen. A route is a JSON file:
   page threw, or a screen had nothing to check, 2 usage error (arguments, a route that is not valid, a missing
   tool, a dev server that did not start). `--json` prints
   `{ ok, url, screens, failures: [{ check, screen, control?, saw, fix }], outcomes: [{ check, screen, status, decided, undecided }] }`.
+
+## Layout audit
+
+`ritmo-devtools layout` opens each screen of the same route in Chromium at
+several screen sizes and fails on what is broken in the layout the player
+sees, whatever the game. Run it after a change to anything the page shows
+over the game (menus, HUD, touch controls):
+
+```sh
+ritmo-devtools layout --route route.json --screenshots .layout
+# FAIL overlap [home @ phone-landscape] text "Chapter 1" at .home__next > span.label, and control "Play" at .home__play > button.pill: they overlap by 120 x 14 px, and the control is drawn over the text. (.layout/home@phone-landscape.png #1) Fix: ...
+# FAIL small-target [home @ phone-landscape] control "Settings" at .topbar__end > button.round: a tap reaches it over 40 x 50 px (at least 44 x 44). (.layout/home@phone-landscape.png #2) Fix: ...
+# warn truncated-text [practice @ phone-landscape] text "Training Dummy" at button.card > span.card__foot: "Training Dummy" is shortened with an ellipsis: 52 of its 82 px show. (...) Fix: ...
+#
+# [home]
+#   small-phone-landscape: pass 9 more
+#   phone-landscape: FAIL overlap (1), FAIL small-target (1), pass 7 more
+# ...
+# layout audit of http://127.0.0.1:52011/: 2 errors, 1 warning on 4 screens at 4 viewports
+```
+
+It measures what the browser has already laid out, never a picture: each
+line of visible text (the text itself, not the box around it), each
+visible control (as the keyboard walk finds them), and each button of a
+`Touch.actions` layout, which the canvas draws and the page cannot see
+(`Touch.actions` leaves a reader on its target for this). Boxes are in
+screen pixels after every transform, so a UI scaled as one piece is
+measured as shown. Before measuring, it turns on reduced motion and waits
+until the layout holds still. When an open `<dialog>` or `aria-modal`
+element owns the screen, only what is inside it is measured.
+
+Errors fail the run; each is a measurement a game never means:
+
+| check | fails when |
+| --- | --- |
+| `overlap` | two things are drawn over each other and neither is part of the other: text over text, text or a button over a button, the page over a Touch button, two Touch buttons. Hit tests at the shared area confirm both show there with nothing drawn above both, so a control that draws nothing (a touch area over the stage), something behind a scrim, and a badge inside its card are not overlaps |
+| `cut-text` | the edge of a box cuts text, with no ellipsis to say text is missing |
+| `off-screen` | part of a text or control is past the edge of the screen (a box that spans the screen cuts at the screen's edge, so that counts) |
+| `safe-area` | part of a text or control is in the space the viewport's `insets` keep (a notch, the home bar), set through Chromium so `env(safe-area-inset-*)` reads them |
+| `small-target` | the area that takes a tap is under `minTarget` either side, found by hit tests through the control's centre (a `::after` that extends it counts); a Touch button narrower than `minTarget` |
+| `layout-shift` | something moved while nothing was pressed, from Chromium's own layout-shift entries over a still screen |
+| `never-settled` | the layout kept moving, so nothing else was measured (a transform animation is motion, not layout, and settles) |
+
+Warnings are printed and never fail, because a game may mean them:
+
+| check | warns when |
+| --- | --- |
+| `truncated-text` | text is shortened with an ellipsis or a line clamp |
+| `scroll-edge` | a control is half hidden at the edge of a scrolling area, or a scrolling area runs past the screen |
+
+Then each screen is loaded again with every text about 40% longer (each
+text followed by the start of itself, so the width is the font's own), and
+what breaks only then (`overlap`, `cut-text`, `off-screen`, `safe-area`) is
+a warning marked "longer text": a layout with no room to spare for a longer
+name or a translation.
+
+The route is the keyboard walk's, with three fields only the audit reads:
+
+```json
+{
+  "screens": [
+    { "name": "home", "steps": [{ "click": { "role": "button", "name": "Play" } }], "allow": [{ "check": "overlap", "selector": ".card .badge" }] }
+  ],
+  "viewports": [
+    { "name": "phone", "width": 844, "height": 390, "touch": true, "insets": { "left": 47, "right": 47, "bottom": 21 } },
+    { "name": "desktop", "width": 1280, "height": 800 }
+  ],
+  "minTarget": 44,
+  "allow": [{ "check": "truncated-text", "selector": ".card__name" }]
+}
+```
+
+- `viewports` default to a small phone held sideways (667 x 375), an
+  iPhone held sideways (844 x 390, notch and home bar) and upright
+  (390 x 844), and a desktop window (1280 x 800). A game played one way
+  only lists its own.
+- `minTarget` is the smallest tap area in CSS pixels (44 by default). A UI
+  scaled to the screen is smaller on a small phone: set the game's own rule
+  as it comes out at the smallest size.
+- `allow`, on the route or on a screen, leaves out a finding of `check`
+  whose element (or the other element of an overlap) matches `selector` or
+  is inside a match. The summary counts what it left out.
+- `--screenshots <dir>` saves each screen and viewport with findings as
+  `<screen>@<viewport>.png` (and `-longer-text.png`), each finding boxed and
+  numbered as the report names it (red for errors, amber for warnings).
+- It needs what `keyboard` needs, and serves the game the same way. Exit
+  codes: 0 no error (warnings allowed), 1 an error, a route step that
+  failed, a screen that never settled or showed nothing to measure, 2 usage
+  error. `--json` prints `{ ok, url, screens, viewports, findings: [{ check,
+  severity, screen, viewport, pass, element?, other?, box?, saw, fix,
+  screenshot? }], outcomes: [{ check, screen, viewport, status, count,
+  reason? }], allowed }`.
+
+What it cannot see: anything drawn on the canvas other than Touch buttons,
+screens the route does not reach, and how Safari or Firefox lay out text.
 
 ## Fuzzing
 
