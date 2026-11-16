@@ -629,15 +629,16 @@ over the game (menus, HUD, touch controls):
 
 ```sh
 ritmo-devtools layout --route route.json --screenshots .layout
-# FAIL overlap [home @ phone-landscape] text "Chapter 1" at .home__next > span.label, and control "Play" at .home__play > button.pill: they overlap by 120 x 14 px, and the control is drawn over the text. (.layout/home@phone-landscape.png #1) Fix: ...
-# FAIL small-target [home @ phone-landscape] control "Settings" at .topbar__end > button.round: a tap reaches it over 40 x 50 px (at least 44 x 44). (.layout/home@phone-landscape.png #2) Fix: ...
-# warn truncated-text [practice @ phone-landscape] text "Training Dummy" at button.card > span.card__foot: "Training Dummy" is shortened with an ellipsis: 52 of its 82 px show. (...) Fix: ...
+# FAIL small-target [settings @ phone-landscape] control "Close" at div.screen.settings > header.topbar > span.topbar__end > button.round: a tap reaches it over 40 x 50 px (at least 42 x 42). (.layout/settings@phone-landscape.png #1) Fix: ...
+# FAIL safe-area [arena @ phone-landscape] touch button "dash" on #game > canvas:nth-of-type(1): the touch button "dash" reaches 4 px into the space the device keeps (a notch, a home bar). (.layout/arena@phone-landscape.png #1) Fix: ...
+# warn truncated-text [practice @ phone-landscape] text "Training Dummy" at div.cards > button.card:nth-of-type(1) > span.card__foot: "Training Dummy" is shortened with an ellipsis: 55 of its 82 px show. (.layout/practice@phone-landscape.png #1) Fix: ...
+# warn safe-area [home @ phone-landscape, longer text] control "Play Pl" at div.home__play > button.pill:nth-of-type(2): with every text about 40% longer, it reaches into the space the device keeps on the right (47 px: a notch or the home bar). (...) Fix: ...
 #
-# [home]
-#   small-phone-landscape: pass 9 more
-#   phone-landscape: FAIL overlap (1), FAIL small-target (1), pass 7 more
+# [settings]
+#   small-phone-landscape: FAIL small-target (1), pass 8 more
+#   phone-landscape: FAIL small-target (1), pass 8 more
 # ...
-# layout audit of http://127.0.0.1:52011/: 2 errors, 1 warning on 4 screens at 4 viewports
+# layout audit of http://127.0.0.1:5199/: 55 errors, 31 warnings on 12 screens at 3 viewports
 ```
 
 It measures what the browser has already laid out, never a picture: each
@@ -654,10 +655,10 @@ Errors fail the run; each is a measurement a game never means:
 
 | check | fails when |
 | --- | --- |
-| `overlap` | two things are drawn over each other and neither is part of the other: text over text, text or a button over a button, the page over a Touch button, two Touch buttons. Hit tests at the shared area confirm both show there with nothing drawn above both, so a control that draws nothing (a touch area over the stage), something behind a scrim, and a badge inside its card are not overlaps |
+| `overlap` | two things are drawn over each other and neither is part of the other: text over text, text or a button over a button, the page over a Touch button, two Touch buttons. Hit tests at the shared area confirm both show there with nothing drawn above both, so a control that draws nothing (a touch area over the stage), something behind a scrim, a badge inside its card, and a button on a control under the whole of it ("tap anywhere", a clickable panel) are not overlaps |
 | `cut-text` | the edge of a box cuts text, with no ellipsis to say text is missing |
 | `off-screen` | part of a text or control is past the edge of the screen (a box that spans the screen cuts at the screen's edge, so that counts) |
-| `safe-area` | part of a text or control is in the space the viewport's `insets` keep (a notch, the home bar), set through Chromium so `env(safe-area-inset-*)` reads them |
+| `safe-area` | part of a text or control is in the space the viewport's `insets` keep (a notch, the home bar), set through Chromium so `env(safe-area-inset-*)` reads them. A control over the whole safe area ("tap anywhere to start") is meant to fill the screen, and only its text is judged |
 | `small-target` | the area that takes a tap is under `minTarget` either side, found by hit tests through the control's centre (a `::after` that extends it counts); a Touch button narrower than `minTarget` |
 | `layout-shift` | something moved while nothing was pressed, from Chromium's own layout-shift entries over a still screen |
 | `never-settled` | the layout kept moving, so nothing else was measured (a transform animation is motion, not layout, and settles) |
