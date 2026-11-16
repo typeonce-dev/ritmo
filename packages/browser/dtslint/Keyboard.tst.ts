@@ -50,6 +50,26 @@ describe("Keyboard", () => {
     void counted
   })
 
+  it("reads `defaultPrevented` and `focusin`, so it leaves keys the page is using to the page", () => {
+    expect<Keyboard.KeyEvent["defaultPrevented"]>().type.toBe<boolean | undefined>()
+    expect<FocusEvent>().type.toBeAssignableTo<Keyboard.FocusInEvent>()
+    expect<Keyboard.FocusInEvent["target"]>().type.toBe<object | null | undefined>()
+    const handled: Keyboard.KeyEvent = { key: "ArrowRight", repeat: false, defaultPrevented: true, preventDefault() {} }
+    void handled
+    // @ts-expect-error Type 'string' is not assignable to type 'boolean'
+    const named: Keyboard.KeyEvent = { key: "ArrowRight", repeat: false, defaultPrevented: "yes", preventDefault() {} }
+    void named
+  })
+
+  it("requires a host to take `focusin` listeners", () => {
+    const keysOnly = {
+      addEventListener(_type: "keydown" | "keyup" | "blur", _listener: (event: Keyboard.KeyEvent) => void) {},
+      removeEventListener(_type: "keydown" | "keyup" | "blur", _listener: (event: Keyboard.KeyEvent) => void) {}
+    }
+    // @ts-expect-error Type '"focusin"' is not assignable to type '"keydown" | "keyup" | "blur"'
+    Keyboard.actions(keysOnly, { jump: [" "] })
+  })
+
   it("requires at least one key per action", () => {
     // @ts-expect-error Type '[]' is not assignable to type 'readonly [KeyBinding, ...KeyBinding[]]'.
     Keyboard.actions(host, { jump: [] })

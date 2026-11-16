@@ -28,13 +28,22 @@
  * down after that, or after a window blur, is pressed again at its next
  * auto-repeat.
  *
- * Keys typed into a form field are left to the field: a key that goes down
- * in an `<input>` (any type), `<textarea>`, `<select>`, or contenteditable
- * element presses no action and is not `preventDefault`-ed, so a name field
- * on the same page as the game receives "wasd" and the player does not move.
- * Releases are always processed, so a key held before focus moved into a
- * field still releases its action. With `window` as the host this needs no
- * setup.
+ * Keys the page is using are left to the page: a key that goes down in a
+ * form field (`<input>` of any type, `<textarea>`, `<select>`,
+ * contenteditable), on a control the player reached by keyboard (Tab to a
+ * button, link, tab, or any focusable element: the browser shows it with
+ * `:focus-visible`), inside an open modal dialog (`<dialog>` opened with
+ * `showModal()`, or `aria-modal="true"`), or that a listener nearer the
+ * target already handled with `preventDefault()` (a menu's arrows, a
+ * slider's keys) presses no action and is not `preventDefault`-ed. So a name
+ * field receives "wasd" and the player does not move, Enter and Space press
+ * a focused button, and Escape closes a modal `<dialog>`. A control the
+ * player clicked with the mouse keeps focus but not the keys: the game keeps
+ * playing, and Space does not press it again, with no `tabIndex = -1` or
+ * `blur()` in the game. A focused `<canvas>`, or the element passed as the
+ * host, is the game, not page UI. Releases are always processed, so a key
+ * held before focus moved still releases its action. With `window` as the
+ * host this needs no setup; see {@link KeyEvent} for the exact rule.
  *
  * @module Keyboard
  * @docGroup browser
@@ -100,18 +109,41 @@ export type { Direction }
 
 /**
  * The subset of `KeyboardEvent` the module reads. `code` (the physical key),
- * the modifiers, and `target` (the element the key was typed into) are
- * optional so simple test hosts can omit them; browsers always provide them.
- * `ctrlKey` and `metaKey` mark a browser shortcut, which {@link actions}
- * leaves to the browser, and `altKey` tells AltGr (Ctrl and Alt together)
- * from Ctrl.
+ * the modifiers, `defaultPrevented`, and `target` (the focused element the
+ * key went down in) are optional so simple test hosts can omit them;
+ * browsers always provide them. `ctrlKey` and `metaKey` mark a browser
+ * shortcut, which {@link actions} leaves to the browser, and `altKey` tells
+ * AltGr (Ctrl and Alt together) from Ctrl.
  *
- * A target is a form field, whose key presses {@link actions} and
- * {@link presses} leave to it, when its `tagName` is `INPUT` (any type,
- * checkboxes and buttons included), `TEXTAREA`, or `SELECT`, or its
- * `isContentEditable` is `true`. It is read by shape, not `instanceof`, so
- * it works across iframes, and a test host types into a field by passing
- * `{ tagName: "INPUT" }` or `{ isContentEditable: true }`.
+ * {@link actions} and {@link presses} leave a key to the page when any of
+ * these holds:
+ *
+ * - `defaultPrevented` is `true` because a listener nearer the target (a
+ *   roving-focus group's arrows, a custom slider, a menu) handled it, not
+ *   because another `Keyboard.actions` on the same host did;
+ * - the target is a form field: its `tagName` is `INPUT` (any type,
+ *   checkboxes and buttons included), `TEXTAREA`, or `SELECT`, or its
+ *   `isContentEditable` is `true`;
+ * - the target is inside an open modal dialog: `closest` finds a
+ *   `dialog:modal` (opened with `showModal()`) or an `[aria-modal="true"]`
+ *   element, however the dialog was opened;
+ * - the target took focus by keyboard: it matched `:focus-visible` when its
+ *   `focusin` reached the host, and it is not a `<canvas>` or the host
+ *   itself (the game's own surface).
+ *
+ * Focus is judged when it arrives because browsers disagree later: Chromium
+ * turns `:focus-visible` on for a clicked button at the first key the player
+ * presses, so a check at keydown would hand Space back to a "Mute" button
+ * clicked minutes earlier. A focus a script moves (`element.focus()`) counts
+ * as by keyboard after the player last used the keyboard in Chromium and
+ * Safari, never in Firefox; a dialog's own focus is covered by the modal
+ * rule in all three.
+ *
+ * The target is read by shape, not `instanceof`, so it works across
+ * iframes, and a test host types into a field by passing
+ * `{ tagName: "INPUT" }` or `{ isContentEditable: true }`, and focuses a
+ * control by keyboard by sending `focusin` with a target whose
+ * `matches(":focus-visible")` returns `true`.
  */
 export interface KeyEvent {
   readonly key: string
@@ -120,8 +152,17 @@ export interface KeyEvent {
   readonly ctrlKey?: boolean
   readonly metaKey?: boolean
   readonly altKey?: boolean
+  readonly defaultPrevented?: boolean
   readonly target?: object | null
   preventDefault(): void
+}
+
+/**
+ * The subset of the `focusin` event the module reads: the element that took
+ * focus, read by shape like {@link KeyEvent}'s target.
+ */
+export interface FocusInEvent {
+  readonly target?: object | null
 }
 
 /** Every action that is not in use shares this state, so a snapshot of an idle keyboard allocates no states. */
@@ -129,11 +170,81 @@ const idleState: ActionState = { held: false, pressed: false, released: false }
 
 const editableTags: ReadonlySet<string> = new Set(["INPUT", "TEXTAREA", "SELECT"])
 
+/** The members of an element the module reads, all optional: a test host passes plain objects. */
+interface TargetShape {
+  readonly tagName?: unknown
+  readonly isContentEditable?: unknown
+  readonly matches?: unknown
+  readonly closest?: unknown
+}
+
 /** Whether a key event's target is a form field, by the rule on {@link KeyEvent}. */
-const isEditableTarget = (target: object | null | undefined): boolean => {
-  if (target === null || target === undefined) return false
-  const { tagName, isContentEditable } = target as { readonly tagName?: unknown; readonly isContentEditable?: unknown }
+const isEditableTarget = (target: object): boolean => {
+  const { tagName, isContentEditable } = target as TargetShape
   return isContentEditable === true || (typeof tagName === "string" && editableTags.has(tagName.toUpperCase()))
+}
+
+/** `target.matches(selector)`, false for a target without it or a selector the browser does not know. */
+const matchesSelector = (target: object, selector: string): boolean => {
+  const { matches } = target as TargetShape
+  if (typeof matches !== "function") return false
+  try {
+    return (matches as (selector: string) => unknown).call(target, selector) === true
+  } catch {
+    return false
+  }
+}
+
+/** Whether `target.closest(selector)` finds an element, false where it cannot ask. */
+const hasAncestor = (target: object, selector: string): boolean => {
+  const { closest } = target as TargetShape
+  if (typeof closest !== "function") return false
+  try {
+    const found: unknown = (closest as (selector: string) => unknown).call(target, selector)
+    return found !== null && found !== undefined
+  } catch {
+    return false
+  }
+}
+
+/** Whether the target is inside an open modal dialog. `:modal` is asked of dialogs only, since a fullscreen element can match it too. */
+const isInsideModal = (target: object): boolean =>
+  hasAncestor(target, "[aria-modal=\"true\"]") || hasAncestor(target, "dialog:modal")
+
+/**
+ * The key events a `Keyboard.actions` device prevented: another device on
+ * the same host sees them as `defaultPrevented`, and they are still the game's.
+ */
+const preventedByKeyboard = new WeakSet()
+
+/**
+ * Tracks which element took focus by keyboard on `host`, and answers
+ * whether a key belongs to the page by the rule on {@link KeyEvent}.
+ */
+const pageKeys = (host: KeyboardHost): { readonly owns: (event: KeyEvent) => boolean; readonly dispose: () => void } => {
+  // The element that last took focus while it matched `:focus-visible`, read
+  // at `focusin` because Chromium turns it on for a clicked control at the next key.
+  let keyboardFocused: object | null = null
+  const onFocusIn = (event: FocusInEvent): void => {
+    const target = event.target ?? null
+    keyboardFocused = target !== null && matchesSelector(target, ":focus-visible") ? target : null
+  }
+  host.addEventListener("focusin", onFocusIn)
+  const isGameSurface = (target: object): boolean => {
+    const { tagName } = target as TargetShape
+    return target === host || (typeof tagName === "string" && tagName.toUpperCase() === "CANVAS")
+  }
+  return {
+    owns(event) {
+      if (event.defaultPrevented === true && !preventedByKeyboard.has(event)) return true
+      const target = event.target ?? null
+      if (target === null) return false
+      return isEditableTarget(target) || isInsideModal(target) || (target === keyboardFocused && !isGameSurface(target))
+    },
+    dispose() {
+      host.removeEventListener("focusin", onFocusIn)
+    }
+  }
 }
 
 const modifierKeys: ReadonlySet<string> = new Set(["Shift", "Control", "Alt", "AltGraph", "Meta"])
@@ -150,12 +261,16 @@ const isShortcut = (event: KeyEvent): boolean =>
 const isMeta = (event: KeyEvent): boolean => event.key === "Meta" || event.code === "MetaLeft" || event.code === "MetaRight"
 
 /**
- * The event target the module listens on, usually `window`.
+ * The event target the module listens on, usually `window`. `focusin` tells
+ * which control the player reached by keyboard (see {@link KeyEvent}); a
+ * test host that never sends it has no such control.
  */
 export interface KeyboardHost {
   addEventListener(type: "keydown" | "keyup", listener: (event: KeyEvent) => void): void
+  addEventListener(type: "focusin", listener: (event: FocusInEvent) => void): void
   addEventListener(type: "blur", listener: () => void): void
   removeEventListener(type: "keydown" | "keyup", listener: (event: KeyEvent) => void): void
+  removeEventListener(type: "focusin", listener: (event: FocusInEvent) => void): void
   removeEventListener(type: "blur", listener: () => void): void
 }
 
@@ -300,7 +415,10 @@ export interface Actions<B extends Bindings> extends System.Consumes<"snapshot">
 export interface ActionsOptions {
   /**
    * Call `preventDefault()` for bound keys, so arrows and space do not scroll
-   * the page. Defaults to `true`.
+   * the page and a button clicked with the mouse, which keeps focus, is not
+   * pressed again by Space or Enter. Defaults to `true`. With `false`, every
+   * key the game takes also does what the page does with it (Space presses
+   * that clicked button and scrolls); which keys the game takes does not change.
    */
   readonly preventDefault?: boolean
 }
@@ -373,11 +491,17 @@ const shortcutModifierTokens = [
 
 /**
  * Starts tracking bound keys on `host`, usually `window`, until `dispose()`.
- * When the window loses focus every held action is released. A key pressed
- * in a form field (see {@link KeyEvent}) is left to the field, and a browser
- * shortcut (a key pressed with Cmd or Ctrl, unless the bindings use Control
- * or Meta) to the browser: it presses no action and is not
- * `preventDefault`-ed. Each call is
+ * When the window loses focus every held action is released. A key the page
+ * is using (a form field, a control reached by keyboard, an open modal
+ * dialog, a key a widget already handled; see {@link KeyEvent}) is left to
+ * the page, and a browser shortcut (a key pressed with Cmd or Ctrl, unless
+ * the bindings use Control or Meta) to the browser: it presses no action and
+ * is not `preventDefault`-ed. Use it for every key the host reacts to,
+ * one-shot keys too (pause on Escape, mute on M: read their `pressed` edge
+ * in the snapshot), instead of a `keydown` listener on `window` that calls
+ * `preventDefault()` and so takes Enter and Space from a focused button.
+ * Binding Tab keeps a keyboard player from moving focus to the page's
+ * controls, so a page with controls leaves it unbound. Each call is
  * its own device: build one per source (one `Controls` merge, one player
  * of a pool). Use {@link scripted} for tests and headless runs, and
  * {@link presses} to capture an unbound key on a settings screen.
@@ -408,6 +532,7 @@ export const actions = <const B extends Bindings>(
     leavesShortcuts = !shortcutModifierTokens.some((token) => actionsByToken.has(token))
   }
   index()
+  const page = pageKeys(host)
 
   /**
    * Each held token and the actions it holds: those bound to it when it went
@@ -464,9 +589,9 @@ export const actions = <const B extends Bindings>(
       }
       tokens.push(codeToken(event.code))
     }
-    // Typed into a form field, the key belongs to the field; a shortcut
-    // belongs to the browser. Their releases are still processed by `onKeyUp`.
-    if (isEditableTarget(event.target) || (leavesShortcuts && isShortcut(event))) return
+    // A key the page is using belongs to the page; a shortcut belongs to the
+    // browser. Their releases are still processed by `onKeyUp`.
+    if (page.owns(event) || (leavesShortcuts && isShortcut(event))) return
     let handled = false
     for (const token of tokens) {
       const bound = actionsByToken.get(token)
@@ -483,11 +608,14 @@ export const actions = <const B extends Bindings>(
       heldTokens.set(token, new Set(bound))
       for (const name of bound) pressed.add(name)
     }
-    if (handled && preventDefault) event.preventDefault()
+    if (handled && preventDefault) {
+      event.preventDefault()
+      preventedByKeyboard.add(event)
+    }
   }
 
-  // Releases are processed wherever the key was released, form fields
-  // included, so a key held before focus moved into a field still releases.
+  // Releases are processed wherever the key was released, form fields and
+  // focused controls included, so a key held before focus moved still releases.
   const onKeyUp = (event: KeyEvent): void => {
     const character = event.code === undefined ? keyToken(event.key) : keyTokenByCode.get(event.code) ?? keyToken(event.key)
     if (event.code === undefined || !codesByToken.has(character)) release(character)
@@ -556,6 +684,7 @@ export const actions = <const B extends Bindings>(
       host.removeEventListener("keydown", onKeyDown)
       host.removeEventListener("keyup", onKeyUp)
       host.removeEventListener("blur", onBlur)
+      page.dispose()
     }
   }
   return live
@@ -573,17 +702,20 @@ export interface KeyPress {
 export interface Presses extends System.Consumes<"snapshot"> {
   /** The keys that went down since the previous snapshot, in order, without auto-repeats. */
   snapshot(): ReadonlyArray<KeyPress>
-  /** Removes the event listener. */
+  /** Removes the event listeners. */
   dispose(): void
 }
 
 /**
  * Starts collecting every key press on `host`, whatever the bindings, for a
  * settings screen that waits for the key to bind. Use {@link actions} for
- * gameplay. It never calls `preventDefault()`, and skips keys pressed in a
- * form field (see {@link KeyEvent}) and browser shortcuts (a key pressed with
- * Cmd or Ctrl), so Ctrl+R on the settings screen binds nothing; Control and
- * Meta pressed alone are offered.
+ * gameplay. It never calls `preventDefault()`, and skips the keys the page
+ * is using by the same rule as {@link actions} (see {@link KeyEvent}: a
+ * form field, a control reached by keyboard, an open modal dialog, a key a
+ * widget handled) and browser shortcuts (a key pressed with Cmd or Ctrl), so
+ * Ctrl+R on the settings screen binds nothing; Control and Meta pressed
+ * alone are offered. For "press any key" on a title or a cutscene, it is the
+ * host's listener: it leaves Enter on a focused button to the button.
  *
  * @example
  * ```ts
@@ -601,8 +733,9 @@ export interface Presses extends System.Consumes<"snapshot"> {
  */
 export const presses = (host: KeyboardHost): Presses => {
   let pending: Array<KeyPress> = []
+  const page = pageKeys(host)
   const onKeyDown = (event: KeyEvent): void => {
-    if (event.repeat || isEditableTarget(event.target) || isShortcut(event)) return
+    if (event.repeat || page.owns(event) || isShortcut(event)) return
     pending.push({ key: event.key, code: event.code ?? null })
   }
   host.addEventListener("keydown", onKeyDown)
@@ -614,6 +747,7 @@ export const presses = (host: KeyboardHost): Presses => {
     },
     dispose() {
       host.removeEventListener("keydown", onKeyDown)
+      page.dispose()
     }
   }
 }

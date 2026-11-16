@@ -6,8 +6,9 @@
  * clock, `Math.random`, engine-dependent math, or the page, or plays sound,
  * timers counted in floats, data that cannot be saved, casts that skip a
  * brand's check, state values that keep a previous state's fields, query
- * entities and data kept past their run, and runtime results that are
- * dropped. Every report names the Ritmo API to use instead.
+ * entities and data kept past their run, runtime results that are
+ * dropped, and host key listeners that take keys from the page's controls.
+ * Every report names the Ritmo API to use instead.
  *
  * Register the plugin in `.oxlintrc.json` with `"jsPlugins":
  * ["@typeonce/oxlint-plugin-ritmo"]`. Its rules are named `ritmo/<rule>`.
@@ -21,7 +22,7 @@
  *   `ritmo/no-float-timers`, `ritmo/no-brand-cast`.
  * - Every file: `ritmo/handle-runtime-result`,
  *   `ritmo/prefix-descriptor-and-system-names`, `ritmo/no-state-spread`,
- *   `ritmo/no-kept-query-values`.
+ *   `ritmo/no-kept-query-values`, `ritmo/use-keyboard-for-game-keys`.
  *
  * @module oxlint-plugin-ritmo
  */
@@ -36,6 +37,7 @@ import noKeptQueryValues from "./rules/no-kept-query-values.ts"
 import noStateSpread from "./rules/no-state-spread.ts"
 import prefixDescriptorAndSystemNames from "./rules/prefix-descriptor-and-system-names.ts"
 import useClockForTime from "./rules/use-clock-for-time.ts"
+import useKeyboardForGameKeys from "./rules/use-keyboard-for-game-keys.ts"
 import useOpsForMath from "./rules/use-ops-for-math.ts"
 import useRandomForRandomness from "./rules/use-random-for-randomness.ts"
 
@@ -52,6 +54,7 @@ export default definePlugin({
     "handle-runtime-result": handleRuntimeResult,
     "prefix-descriptor-and-system-names": prefixDescriptorAndSystemNames,
     "no-state-spread": noStateSpread,
-    "no-kept-query-values": noKeptQueryValues
+    "no-kept-query-values": noKeptQueryValues,
+    "use-keyboard-for-game-keys": useKeyboardForGameKeys
   }
 })
