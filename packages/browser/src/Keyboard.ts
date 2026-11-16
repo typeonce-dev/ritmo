@@ -30,20 +30,26 @@
  *
  * Keys the page is using are left to the page: a key that goes down in a
  * form field (`<input>` of any type, `<textarea>`, `<select>`,
- * contenteditable), on a control the player reached by keyboard (Tab to a
- * button, link, tab, or any focusable element: the browser shows it with
- * `:focus-visible`), inside an open modal dialog (`<dialog>` opened with
+ * contenteditable), or inside an open modal dialog (`<dialog>` opened with
  * `showModal()`, or `aria-modal="true"`), or that a listener nearer the
  * target already handled with `preventDefault()` (a menu's arrows, a
- * slider's keys) presses no action and is not `preventDefault`-ed. So a name
- * field receives "wasd" and the player does not move, Enter and Space press
- * a focused button, and Escape closes a modal `<dialog>`. A control the
- * player clicked with the mouse keeps focus but not the keys: the game keeps
- * playing, and Space does not press it again, with no `tabIndex = -1` or
- * `blur()` in the game. A focused `<canvas>`, or the element passed as the
- * host, is the game, not page UI. Releases are always processed, so a key
- * held before focus moved still releases its action. With `window` as the
- * host this needs no setup; see {@link KeyEvent} for the exact rule.
+ * slider's keys), and Enter, Space, and Tab on a control the player reached
+ * by keyboard (Tab to a button, link, tab, or any focusable element: the
+ * browser shows it with `:focus-visible`) press no action and are not
+ * `preventDefault`-ed. So a name field receives "wasd" and the player does
+ * not move, Enter and Space press a focused button, and Escape closes a
+ * modal `<dialog>`. Every other key on that focused button is still the
+ * game's: movement and hotkeys keep working after the player tabbed to a
+ * control. A control the player clicked with the mouse keeps focus but none
+ * of the keys: the game keeps playing, and Space does not press it again,
+ * with no `tabIndex = -1` or `blur()` in the game. A focused `<canvas>`, or
+ * the element passed as the host, is the game, not page UI: when a menu the
+ * player used by keyboard closes back into play, focus the canvas
+ * (`canvas.tabIndex = -1`, then `canvas.focus()`), or Enter and Space stay
+ * with the button the menu handed focus back to. Releases are always
+ * processed, so a key held before focus moved still releases its action.
+ * With `window` as the host this needs no setup; see {@link KeyEvent} for
+ * the exact rule.
  *
  * @module Keyboard
  * @docGroup browser
@@ -115,8 +121,7 @@ export type { Direction }
  * shortcut, which {@link actions} leaves to the browser, and `altKey` tells
  * AltGr (Ctrl and Alt together) from Ctrl.
  *
- * {@link actions} and {@link presses} leave a key to the page when any of
- * these holds:
+ * {@link actions} leaves a key to the page when any of these holds:
  *
  * - `defaultPrevented` is `true` because a listener nearer the target (a
  *   roving-focus group's arrows, a custom slider, a menu) handled it, not
@@ -127,9 +132,18 @@ export type { Direction }
  * - the target is inside an open modal dialog: `closest` finds a
  *   `dialog:modal` (opened with `showModal()`) or an `[aria-modal="true"]`
  *   element, however the dialog was opened;
- * - the target took focus by keyboard: it matched `:focus-visible` when its
- *   `focusin` reached the host, and it is not a `<canvas>` or the host
- *   itself (the game's own surface).
+ * - the key is Enter, Space, or Tab (the keys a browser itself acts on for
+ *   a focused control: press it, move focus on) and the target took focus
+ *   by keyboard: it matched `:focus-visible` when its `focusin` reached the
+ *   host, and it is not a `<canvas>` or the host itself (the game's own
+ *   surface). Any other key on that control is the game's, as a page
+ *   shortcut still works with a button focused, unless the control handled
+ *   it (the first rule).
+ *
+ * {@link presses} offers a key the game asked for, usually from inside a
+ * settings dialog, so it skips only a form field's keys and Enter, Space,
+ * and Tab on a control reached by keyboard: an open modal dialog and a key a
+ * widget handled do not hide a press from it.
  *
  * Focus is judged when it arrives because browsers disagree later: Chromium
  * turns `:focus-visible` on for a clicked button at the first key the player
@@ -217,11 +231,23 @@ const isInsideModal = (target: object): boolean =>
  */
 const preventedByKeyboard = new WeakSet()
 
+/** The keys a browser itself acts on for a focused control: Enter and Space press it, Tab moves focus on. */
+const isControlKey = (event: KeyEvent): boolean => event.key === "Enter" || event.key === " " || event.key === "Tab"
+
+/** Which keys belong to the page on one host, by the rule on {@link KeyEvent}. */
+interface PageKeys {
+  /** Whether {@link actions} leaves this key to the page. */
+  readonly owns: (event: KeyEvent) => boolean
+  /** Whether {@link presses} leaves this key to the page: a form field's keys, and a keyboard-focused control's own. */
+  readonly ownsWhileCapturing: (event: KeyEvent) => boolean
+  readonly dispose: () => void
+}
+
 /**
  * Tracks which element took focus by keyboard on `host`, and answers
  * whether a key belongs to the page by the rule on {@link KeyEvent}.
  */
-const pageKeys = (host: KeyboardHost): { readonly owns: (event: KeyEvent) => boolean; readonly dispose: () => void } => {
+const pageKeys = (host: KeyboardHost): PageKeys => {
   // The element that last took focus while it matched `:focus-visible`, read
   // at `focusin` because Chromium turns it on for a clicked control at the next key.
   let keyboardFocused: object | null = null
@@ -234,12 +260,18 @@ const pageKeys = (host: KeyboardHost): { readonly owns: (event: KeyEvent) => boo
     const { tagName } = target as TargetShape
     return target === host || (typeof tagName === "string" && tagName.toUpperCase() === "CANVAS")
   }
+  const isControlPress = (event: KeyEvent, target: object): boolean =>
+    target === keyboardFocused && isControlKey(event) && !isGameSurface(target)
   return {
     owns(event) {
       if (event.defaultPrevented === true && !preventedByKeyboard.has(event)) return true
       const target = event.target ?? null
       if (target === null) return false
-      return isEditableTarget(target) || isInsideModal(target) || (target === keyboardFocused && !isGameSurface(target))
+      return isEditableTarget(target) || isInsideModal(target) || isControlPress(event, target)
+    },
+    ownsWhileCapturing(event) {
+      const target = event.target ?? null
+      return target !== null && (isEditableTarget(target) || isControlPress(event, target))
     },
     dispose() {
       host.removeEventListener("focusin", onFocusIn)
@@ -492,8 +524,9 @@ const shortcutModifierTokens = [
 /**
  * Starts tracking bound keys on `host`, usually `window`, until `dispose()`.
  * When the window loses focus every held action is released. A key the page
- * is using (a form field, a control reached by keyboard, an open modal
- * dialog, a key a widget already handled; see {@link KeyEvent}) is left to
+ * is using (a form field, an open modal dialog, a key a widget already
+ * handled, Enter, Space, and Tab on a control reached by keyboard; see
+ * {@link KeyEvent}) is left to
  * the page, and a browser shortcut (a key pressed with Cmd or Ctrl, unless
  * the bindings use Control or Meta) to the browser: it presses no action and
  * is not `preventDefault`-ed. Use it for every key the host reacts to,
@@ -709,13 +742,15 @@ export interface Presses extends System.Consumes<"snapshot"> {
 /**
  * Starts collecting every key press on `host`, whatever the bindings, for a
  * settings screen that waits for the key to bind. Use {@link actions} for
- * gameplay. It never calls `preventDefault()`, and skips the keys the page
- * is using by the same rule as {@link actions} (see {@link KeyEvent}: a
- * form field, a control reached by keyboard, an open modal dialog, a key a
- * widget handled) and browser shortcuts (a key pressed with Cmd or Ctrl), so
- * Ctrl+R on the settings screen binds nothing; Control and Meta pressed
- * alone are offered. For "press any key" on a title or a cutscene, it is the
- * host's listener: it leaves Enter on a focused button to the button.
+ * gameplay. It never calls `preventDefault()`, and skips keys pressed in a
+ * form field, Enter, Space, and Tab on a control reached by keyboard (see
+ * {@link KeyEvent}), and browser shortcuts (a key pressed with Cmd or Ctrl),
+ * so Ctrl+R on the settings screen binds nothing; Control and Meta pressed
+ * alone are offered. Unlike {@link actions} it still offers a key pressed
+ * inside an open modal dialog or one a widget handled, since the screen that
+ * waits for a key is usually a dialog. For "press any key" on a title or a
+ * cutscene, it is the host's listener: it leaves Enter on a button reached
+ * by keyboard to the button.
  *
  * @example
  * ```ts
@@ -735,7 +770,7 @@ export const presses = (host: KeyboardHost): Presses => {
   let pending: Array<KeyPress> = []
   const page = pageKeys(host)
   const onKeyDown = (event: KeyEvent): void => {
-    if (event.repeat || page.owns(event) || isShortcut(event)) return
+    if (event.repeat || page.ownsWhileCapturing(event) || isShortcut(event)) return
     pending.push({ key: event.key, code: event.code ?? null })
   }
   host.addEventListener("keydown", onKeyDown)

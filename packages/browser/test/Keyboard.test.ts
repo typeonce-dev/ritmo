@@ -370,7 +370,7 @@ describe("Keyboard keys the page is using", () => {
     expect(fake.prevented).toEqual([" ", "Enter"])
   })
 
-  it("(c) leaves every key on a control reached by keyboard to it: no action, no preventDefault", () => {
+  it("(c) leaves Enter, Space, and Tab on a control reached by keyboard to it: no action, no preventDefault", () => {
     for (const tag of ["BUTTON", "A", "SUMMARY", "DIV"]) {
       const fake = makeHost()
       const keys = Keyboard.actions(fake.host, bindings)
@@ -387,6 +387,21 @@ describe("Keyboard keys the page is using", () => {
       expect(presses.snapshot()).toEqual([])
       expect(fake.prevented).toEqual([])
     }
+  })
+
+  it("(c) still plays every other key on a control reached by keyboard, so movement and hotkeys survive a Tab", () => {
+    const fake = makeHost()
+    const keys = Keyboard.actions(fake.host, bindings)
+    const presses = Keyboard.presses(fake.host)
+    const control = element("BUTTON", { keyboard: true })
+    fake.focusIn(control)
+    fake.downIn(control, "ArrowRight", "ArrowRight")
+    fake.downIn(control, "Escape", "Escape")
+    const snapshot = keys.snapshot()
+    expect(snapshot.actions.right.pressed).toBe(true)
+    expect(snapshot.actions.pause.pressed).toBe(true)
+    expect(presses.snapshot()).toEqual([{ key: "ArrowRight", code: "ArrowRight" }, { key: "Escape", code: "Escape" }])
+    expect(fake.prevented).toEqual(["ArrowRight", "Escape"])
   })
 
   it("(d) keeps the keys on a control clicked with the mouse, even once the browser shows it focused", () => {
@@ -424,6 +439,7 @@ describe("Keyboard keys the page is using", () => {
     for (const modal of ["dialog", "aria"] as const) {
       const fake = makeHost()
       const keys = Keyboard.actions(fake.host, bindings)
+      const presses = Keyboard.presses(fake.host)
       const ok = element("BUTTON", { modal })
       fake.focusIn(ok)
       fake.downIn(ok, "Enter", "Enter")
@@ -432,6 +448,8 @@ describe("Keyboard keys the page is using", () => {
       expect(snapshot.actions.confirm).toEqual(idle)
       expect(snapshot.actions.pause).toEqual(idle)
       expect(fake.prevented).toEqual([])
+      // A settings dialog that waits for the key to bind still hears it.
+      expect(presses.snapshot()).toEqual([{ key: "Enter", code: "Enter" }, { key: "Escape", code: "Escape" }])
     }
   })
 
@@ -443,7 +461,8 @@ describe("Keyboard keys the page is using", () => {
     fake.focusIn(item)
     fake.downHandled(item, "ArrowRight", "ArrowRight")
     expect(keys.snapshot().actions.right).toEqual(idle)
-    expect(presses.snapshot()).toEqual([])
+    // The key a settings screen waits for is still offered, whatever the focused widget did with it.
+    expect(presses.snapshot()).toEqual([{ key: "ArrowRight", code: "ArrowRight" }])
   })
 
   it("(f) still plays a key another keyboard on the same host prevented", () => {
