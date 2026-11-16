@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>a press rewrites the region that holds the control</title>
+<div id="bar"></div>
+<script>
+  let count = 0
+  const draw = () => {
+    document.getElementById("bar").innerHTML = '<button id="add">Add (' + count + ')</button>'
+    document.getElementById("add").addEventListener("click", () => {
+      count++
+      draw()
+    })
+  }
+  draw()
+</script>

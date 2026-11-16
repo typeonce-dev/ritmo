@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>a page key listener takes Enter and Space</title>
+<button id="restart">Restart</button>
+<script>
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") event.preventDefault()
+  })
+</script>

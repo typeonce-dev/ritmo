@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>an icon button with no name</title>
+<button><svg width="16" height="16" aria-hidden="true"><rect width="16" height="16" /></svg></button>
+<button>Named</button>
+<div role="toolbar" aria-label="Tools" id="tools">
+  <button tabindex="0">Dig</button>
+  <button tabindex="-1"><svg width="16" height="16" aria-hidden="true"><rect width="16" height="16" /></svg></button>
+</div>
+<script>
+  // A roving group: the icon button is reached by the arrows, never by Tab.
+  const tools = [...document.querySelectorAll("#tools button")]
+  document.getElementById("tools").addEventListener("keydown", (event) => {
+    const at = tools.indexOf(document.activeElement)
+    const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0
+    if (at < 0 || step === 0) return
+    event.preventDefault()
+    const next = tools[(at + step + tools.length) % tools.length]
+    for (const tool of tools) tool.tabIndex = tool === next ? 0 : -1
+    next.focus()
+  })
+</script>

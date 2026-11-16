@@ -1,0 +1,8 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Tab leaves an aria-modal menu</title>
+<button>Menu</button>
+<div role="dialog" aria-modal="true" aria-label="Paused">
+  <button id="resume">Resume</button>
+</div>
+<script>document.getElementById("resume").focus()</script>
