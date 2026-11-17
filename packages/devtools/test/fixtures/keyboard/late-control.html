@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>a control that shows after the page loads</title>
+<button>Start</button>
+<script>
+  const after = Number(new URLSearchParams(location.search).get("after") ?? 300)
+  setTimeout(() => {
+    const options = document.createElement("button")
+    options.textContent = "Options"
+    document.body.append(options)
+  }, after)
+</script>

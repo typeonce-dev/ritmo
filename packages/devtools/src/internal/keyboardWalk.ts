@@ -16,6 +16,17 @@
  * - `unreachable-control`: a visible control neither Tab nor the arrows of
  *   its group reach.
  *
+ * A loaded screen is walked once it has stopped changing: no request in
+ * flight, and the same menu, focus, and visible controls for 400 ms, or
+ * `settle` at the latest. `focus-dropped` presses on several pages at once
+ * (`pages`); a press that did not keep focus is run again with no other page
+ * open, and that second result is the one reported, so a failure never comes
+ * from a busy machine.
+ *
+ * A page that stops answering for `stall` milliseconds (its main thread is
+ * busy, or its renderer hung) is closed and reported as a `page-error`, so
+ * the walk fails instead of waiting for ever.
+ *
  * A screen on which no check could be decided is a failure too
  * (`nothing-checked`): nothing checked is never an exit code of 0.
  *
@@ -42,6 +53,7 @@ export interface ControlName {
 export type Step =
   | { readonly press: string }
   | { readonly click: { readonly role: string; readonly name: string } }
+  | { readonly waitFor: { readonly role: string; readonly name: string } }
   | { readonly wait: number }
 
 /** One screen of the walk: where it starts, how to reach it, and what not to press. */
@@ -81,7 +93,7 @@ const parseControlName = (value: unknown, at: string): Result.Result<ControlName
 
 const parseStep = (value: unknown, at: string): Result.Result<Step, string> => {
   if (!isRecord(value) || Object.keys(value).length !== 1) {
-    return Result.failure(`${at} must be one of { "press": "Escape" }, { "click": { "role": "button", "name": "Play" } }, { "wait": 500 }`)
+    return Result.failure(`${at} must be one of { "press": "Escape" }, { "click": { "role": "button", "name": "Play" } }, { "waitFor": { "role": "button", "name": "Play" } }, { "wait": 500 }`)
   }
   if ("press" in value) {
     return nonEmpty(value["press"]) ? Result.success({ press: value["press"] }) : Result.failure(`${at}.press must be a key name, as Playwright's keyboard.press takes it ("Enter", "Escape", "a")`)
@@ -92,16 +104,18 @@ const parseStep = (value: unknown, at: string): Result.Result<Step, string> => {
       ? Result.success({ wait })
       : Result.failure(`${at}.wait must be a whole number of milliseconds from 0 to 60000`)
   }
-  if ("click" in value) {
-    const click = value["click"]
-    if (!isRecord(click)) return Result.failure(`${at}.click must be an object { "role": string, "name": string }`)
-    const extra = onlyKeys(click, ["role", "name"], `${at}.click`)
+  for (const kind of ["click", "waitFor"] as const) {
+    if (!(kind in value)) continue
+    const named = value[kind]
+    if (!isRecord(named)) return Result.failure(`${at}.${kind} must be an object { "role": string, "name": string }`)
+    const extra = onlyKeys(named, ["role", "name"], `${at}.${kind}`)
     if (extra !== undefined) return Result.failure(extra)
-    if (!nonEmpty(click["role"])) return Result.failure(`${at}.click.role must be a non-empty string: an ARIA role such as "button"`)
-    if (!nonEmpty(click["name"])) return Result.failure(`${at}.click.name must be a non-empty string: the control's accessible name`)
-    return Result.success({ click: { role: click["role"], name: click["name"] } })
+    if (!nonEmpty(named["role"])) return Result.failure(`${at}.${kind}.role must be a non-empty string: an ARIA role such as "button"`)
+    if (!nonEmpty(named["name"])) return Result.failure(`${at}.${kind}.name must be a non-empty string: the control's accessible name`)
+    const control = { role: named["role"], name: named["name"] }
+    return Result.success(kind === "click" ? { click: control } : { waitFor: control })
   }
-  return Result.failure(`${at} must be one of { "press": ... }, { "click": ... }, { "wait": ... }; ${Object.keys(value)[0]} is not a step`)
+  return Result.failure(`${at} must be one of { "press": ... }, { "click": ... }, { "waitFor": ... }, { "wait": ... }; ${Object.keys(value)[0]} is not a step`)
 }
 
 const parseScreen = (value: unknown, at: string): Result.Result<Screen, string> => {
@@ -209,8 +223,12 @@ export const fixes: Record<Failure["check"], string> = {
 export interface Options {
   readonly url: string
   readonly route: Route
-  /** Milliseconds after a page load before the route's steps run (default 1500). */
+  /** The most milliseconds a loaded page gets to stop changing before the route's steps run (default 1500). */
   readonly settle?: number
+  /** How many pages press controls at once for `focus-dropped` (default 1). */
+  readonly pages?: number
+  /** How many milliseconds a page may go without answering before it is closed and reported (default 20000). */
+  readonly stall?: number
 }
 
 interface Described {
@@ -255,7 +273,7 @@ export const walk = async (browser: PlaywrightTypes.Browser, options: Options): 
   const failures: Array<Failure> = []
   const outcomes: Array<Outcome> = []
   for (const screen of options.route.screens) {
-    const result = await walkScreen(browser, options.url, screen, settle)
+    const result = await walkScreen(browser, { url: options.url, settle, pages: Math.max(1, options.pages ?? 1), stall: options.stall ?? 20_000 }, screen)
     failures.push(...result.failures)
     outcomes.push(...result.outcomes)
   }
@@ -265,16 +283,52 @@ export const walk = async (browser: PlaywrightTypes.Browser, options: Options): 
 interface Opened {
   readonly page: PlaywrightTypes.Page
   readonly errors: Array<string>
+  /** Requests in flight, and a count that moves whenever one starts or ends. */
+  readonly network: { inFlight: number; activity: number }
+  /** True once the page stopped answering and was closed for it. */
+  readonly stalled: () => boolean
   readonly state: () => Promise<PageState>
   readonly control: (described: Described) => Promise<Control>
   readonly close: () => Promise<void>
 }
 
-const open = async (browser: PlaywrightTypes.Browser): Promise<Opened> => {
+/** What every page of one walk shares. */
+interface Walk {
+  readonly url: string
+  readonly settle: number
+  readonly pages: number
+  readonly stall: number
+}
+
+const stalledSaw = (stall: number): string => `the page stopped answering for ${stall / 1000} seconds: its main thread is busy, or its renderer hung`
+
+/** Whether the page runs a script within `most` milliseconds. A page that is closed or navigating has answered. */
+const answers = (page: PlaywrightTypes.Page, most: number): Promise<boolean> =>
+  new Promise((resolve) => {
+    // oxlint-disable-next-line ritmo/use-clock-for-time -- a tool on the developer's machine, not a simulation: it times a page that no longer answers, so no page timer or tick can do it
+    const timer = setTimeout(() => resolve(false), most)
+    void page.evaluate(() => true).then(() => true, () => true).then((answered) => {
+      clearTimeout(timer)
+      resolve(answered)
+    })
+  })
+
+const open = async (browser: PlaywrightTypes.Browser, stall: number): Promise<Opened> => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
   await page.addInitScript(pageScript)
   const errors: Array<string> = []
   page.on("pageerror", (error) => errors.push(error.message))
+  const network = { inFlight: 0, activity: 0 }
+  page.on("request", () => {
+    network.inFlight++
+    network.activity++
+  })
+  const ended = (): void => {
+    network.inFlight = Math.max(0, network.inFlight - 1)
+    network.activity++
+  }
+  page.on("requestfinished", ended)
+  page.on("requestfailed", ended)
   const cdp = await page.context().newCDPSession(page)
   const state = () => page.evaluate(() => (Reflect.get(globalThis, "__ritmoKeyboardWalk") as { state: () => PageState }).state())
   const control = async (described: Described): Promise<Control> => {
@@ -291,7 +345,20 @@ const open = async (browser: PlaywrightTypes.Browser): Promise<Opened> => {
       return { role: "", name: "", selector: described.selector }
     }
   }
-  return { page, errors, state, control, close: () => page.close() }
+  // Closing a page that stopped answering rejects every call still waiting on it, so the walk moves on.
+  let stalled = false
+  const watch = async (): Promise<void> => {
+    while (!page.isClosed()) {
+      if (!(await answers(page, stall))) {
+        stalled = !page.isClosed()
+        await page.close().catch(() => undefined)
+        return
+      }
+      await page.waitForTimeout(1000).catch(() => undefined)
+    }
+  }
+  void watch()
+  return { page, errors, network, stalled: () => stalled, state, control, close: () => page.close().catch(() => undefined) }
 }
 
 /** Opens the screen: loads its URL, lets it settle, and runs its steps. A failed step is returned as its message. */
@@ -302,14 +369,17 @@ const reach = async (opened: Opened, url: string, screen: Screen, settle: number
   } catch (error) {
     return `the page did not load: ${error instanceof Error ? error.message : String(error)}`
   }
-  await page.waitForTimeout(settle)
+  await settled(opened, settle)
   for (const [index, step] of screen.steps.entries()) {
     const at = `steps[${index}]`
     try {
       if ("press" in step) await page.keyboard.press(step.press)
       else if ("wait" in step) await page.waitForTimeout(step.wait)
-      else {
-        const target = await find(opened, step.click)
+      else if ("waitFor" in step) {
+        const target = await find(opened, step.waitFor, 15_000)
+        if (target === undefined) return `${at}: no visible ${step.waitFor.role} named ${JSON.stringify(step.waitFor.name)} showed within 15 seconds (names are the ones this report prints)`
+      } else {
+        const target = await find(opened, step.click, 5000)
         if (target === undefined) return `${at}: no visible ${step.click.role} named ${JSON.stringify(step.click.name)} to click (names are the ones this report prints)`
         await page.locator(target.selector).first().click({ timeout: 5000 })
       }
@@ -324,18 +394,59 @@ const reach = async (opened: Opened, url: string, screen: Screen, settle: number
 /**
  * The first visible element with this role and accessible name, by the names
  * this report prints (Chromium's accessibility tree), so a name copied from a
- * report finds its control. Waits up to five seconds for it to show.
+ * report finds its control. Waits up to about `most` milliseconds for it to show.
  */
-const find = async (opened: Opened, wanted: { readonly role: string; readonly name: string }): Promise<Described | undefined> => {
-  for (let tries = 0; tries < 10; tries++) {
+const find = async (opened: Opened, wanted: { readonly role: string; readonly name: string }, most: number): Promise<Described | undefined> => {
+  for (let waited = 0; waited <= most; waited += 150) {
     const candidates = await call(opened.page, "controls", null) as ReadonlyArray<Described>
     for (const candidate of candidates) {
       const control = await opened.control(candidate)
       if (control.role === wanted.role && control.name === wanted.name) return candidate
     }
-    await opened.page.waitForTimeout(500)
+    await opened.page.waitForTimeout(150)
   }
   return undefined
+}
+
+/**
+ * Waits for a loaded page to stop changing: no request in flight, and the
+ * same menu, focus, and visible controls for 400 ms of the page's own clock,
+ * or `most` milliseconds at the latest. A page that never goes quiet (it
+ * polls a server, or keeps redrawing its controls) waits the whole `most`.
+ */
+const settled = async (opened: Opened, most: number): Promise<void> => {
+  const quiet = 400
+  let start: number | undefined
+  let since = 0
+  let seen: string | undefined
+  // The count bounds a page whose clock cannot be read (it is navigating).
+  for (let polls = 0; polls * 50 <= most * 2; polls++) {
+    try {
+      const at = await opened.page.evaluate(() => (Reflect.get(globalThis, "__ritmoKeyboardWalk") as { signature: () => { now: number; key: string } }).signature())
+      const key = `${at.key} ${opened.network.activity}`
+      if (start === undefined || at.now < since) start = since = at.now
+      if (key !== seen || opened.network.inFlight > 0) since = at.now
+      seen = key
+      if (at.now - since >= quiet || at.now - start >= most) return
+    } catch {
+      seen = undefined
+    }
+    await opened.page.waitForTimeout(50)
+  }
+}
+
+/** Runs `run` on every item, at most `most` at once; the results keep the items' order. */
+const inParallel = async <A, B>(items: ReadonlyArray<A>, most: number, run: (item: A) => Promise<B>): Promise<ReadonlyArray<B>> => {
+  const results: Array<B> = []
+  let next = 0
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next++
+      results[index] = await run(items[index]!)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(most, items.length) }, worker))
+  return results
 }
 
 const call = <A>(page: PlaywrightTypes.Page, name: string, argument: A): Promise<unknown> =>
@@ -361,7 +472,7 @@ interface ScreenResult {
   readonly outcomes: ReadonlyArray<Outcome>
 }
 
-const walkScreen = async (browser: PlaywrightTypes.Browser, url: string, screen: Screen, settle: number): Promise<ScreenResult> => {
+const walkScreen = async (browser: PlaywrightTypes.Browser, { url, settle, pages, stall }: Walk, screen: Screen): Promise<ScreenResult> => {
   const failures: Array<Failure> = []
   const outcomes: Array<Outcome> = []
   const fail = (check: Failure["check"], saw: string, control?: Control): void => {
@@ -369,9 +480,16 @@ const walkScreen = async (browser: PlaywrightTypes.Browser, url: string, screen:
   }
   const skipAll = (reason: string): ScreenResult => ({ failures, outcomes: checks.map((check) => notChecked(check, screen.name, reason)) })
 
-  const opened = await open(browser)
+  const opened = await open(browser, stall)
+  // What was seen before a page stopped answering is dropped with it: the report says one thing about the screen.
+  const stalled = (): ScreenResult => {
+    failures.length = 0
+    fail("page-error", stalledSaw(stall))
+    return skipAll("the page stopped answering")
+  }
   try {
     const reached = await reach(opened, url, screen, settle)
+    if (opened.stalled()) return stalled()
     if (reached !== undefined) {
       fail("route-step", reached)
       return skipAll(`the route did not reach this screen (${reached})`)
@@ -521,25 +639,30 @@ const walkScreen = async (browser: PlaywrightTypes.Browser, url: string, screen:
         const skip = screen.noPress
         const results = { decided: 0, undecided: [] as Array<Undecided>, failed: 0 }
         const candidates = stops.filter((stop) => stop.native && stop.keys.length > 0)
+        const skipped = (stop: Described): string | undefined =>
+          matches(controls.get(stop.id)!, skip)
+            ? "the route marks it not to be pressed"
+            : stop.external
+            ? "a link to another site is not pressed for real"
+            : failedIds.has(stop.id)
+            ? "Enter or Space does not press it (key-not-pressed)"
+            : undefined
+        const pressed = await inParallel(candidates.filter((stop) => skipped(stop) === undefined), pages, (stop) => pressForReal(browser, { url, settle, pages, stall }, screen, stop))
+        let at = 0
         for (const stop of candidates) {
           const control = controls.get(stop.id)!
-          if (matches(control, skip)) {
-            results.undecided.push({ control, reason: "the route marks it not to be pressed" })
+          const reason = skipped(stop)
+          if (reason !== undefined) {
+            results.undecided.push({ control, reason })
             continue
           }
-          if (stop.external) {
-            results.undecided.push({ control, reason: "a link to another site is not pressed for real" })
-            continue
-          }
-          if (failedIds.has(stop.id)) {
-            results.undecided.push({ control, reason: "Enter or Space does not press it (key-not-pressed)" })
-            continue
-          }
-          const outcome = await pressForReal(browser, url, screen, settle, stop)
+          let outcome = pressed[at++]!
+          // A press that shared the machine with others and did not keep focus is run again alone: only that result is reported.
+          if (pages > 1 && outcome._tag !== "Kept") outcome = await pressForReal(browser, { url, settle, pages, stall }, screen, stop)
           if (outcome._tag === "Undecided") results.undecided.push({ control, reason: outcome.reason })
           else if (outcome._tag === "PageError") {
-            fail("page-error", `the page threw when ${keyName(outcome.key)} pressed it: ${outcome.message}`, control)
-            results.undecided.push({ control, reason: "the page threw when it was pressed" })
+            fail("page-error", outcome.saw, control)
+            results.undecided.push({ control, reason: outcome.reason })
           } else {
             results.decided++
             if (outcome._tag === "Dropped") {
@@ -558,6 +681,9 @@ const walkScreen = async (browser: PlaywrightTypes.Browser, url: string, screen:
       fail("nothing-checked", "no check could be decided on this screen: no menu is open, and it shows no control")
     }
     return { failures, outcomes: checks.map((check) => outcomes.find((outcome) => outcome.check === check)!) }
+  } catch (error) {
+    if (!opened.stalled()) throw error
+    return stalled()
   } finally {
     await opened.close()
   }
@@ -585,14 +711,15 @@ const probe = async (opened: Opened, stop: number, most: number): Promise<Set<nu
 type Pressed =
   | { readonly _tag: "Kept"; readonly key: string }
   | { readonly _tag: "Dropped"; readonly key: string }
-  | { readonly _tag: "PageError"; readonly key: string; readonly message: string }
+  | { readonly _tag: "PageError"; readonly saw: string; readonly reason: string }
   | { readonly _tag: "Undecided"; readonly reason: string }
 
 /** Reloads the screen, tabs to the control again (by its selector), and presses it with the click let through. */
-const pressForReal = async (browser: PlaywrightTypes.Browser, url: string, screen: Screen, settle: number, stop: Described): Promise<Pressed> => {
-  const opened = await open(browser)
+const pressForReal = async (browser: PlaywrightTypes.Browser, { url, settle, stall }: Walk, screen: Screen, stop: Described): Promise<Pressed> => {
+  const opened = await open(browser, stall)
   try {
     const reached = await reach(opened, url, screen, settle)
+    if (opened.stalled()) return { _tag: "PageError", saw: stalledSaw(stall), reason: "the page stopped answering" }
     if (reached !== undefined) return { _tag: "Undecided", reason: `the route did not reach the screen again (${reached})` }
     let at = await opened.state()
     for (let tabs = 0; at.active?.selector !== stop.selector && tabs < 120; tabs++) {
@@ -612,12 +739,13 @@ const pressForReal = async (browser: PlaywrightTypes.Browser, url: string, scree
     opened.page.off("popup", onPopup)
     await Promise.all(popups.map((popup) => popup.close().catch(() => undefined)))
     if (popups.length > 0) return { _tag: "Undecided", reason: "the press opened another page" }
-    if (opened.errors.length > before) return { _tag: "PageError", key, message: opened.errors[before]! }
+    if (opened.errors.length > before) return { _tag: "PageError", saw: `the page threw when ${keyName(key)} pressed it: ${opened.errors[before]!}`, reason: "the page threw when it was pressed" }
     const after = await opened.state()
     if (after.url.replace(/#.*$/, "") !== at.url.replace(/#.*$/, "")) return { _tag: "Undecided", reason: "the press left the page" }
     if (!result.pressed) return { _tag: "Undecided", reason: `${keyName(key)} did not press it after a reload` }
     return after.active === null ? { _tag: "Dropped", key } : { _tag: "Kept", key }
   } catch (error) {
+    if (opened.stalled()) return { _tag: "PageError", saw: stalledSaw(stall), reason: "the page stopped answering" }
     return { _tag: "Undecided", reason: `the press failed: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}` }
   } finally {
     await opened.close()

@@ -7,6 +7,9 @@
  * It installs `__ritmoKeyboardWalk` with:
  *
  * - `state()`: the focused element and the open menu, each described;
+ * - `signature()`: the page's clock and one string naming the open menu, the
+ *   focused element, and every visible control, to tell when a screen has
+ *   stopped changing;
  * - `controls(scope)`: the visible, enabled controls inside the menu (or the
  *   page), described;
  * - `groupStops(control, stops)`: the Tab stops in the smallest element that
@@ -108,6 +111,8 @@ export const pageScript = String.raw`(() => {
     ...customRoles.map((role) => '[role="' + role + '"]'),
     '[role="slider"]', '[role="spinbutton"]', '[role="combobox"]', '[role="textbox"]'
   ].join(", ")
+  const visibleControls = (root) => [...root.querySelectorAll(controlSelector)]
+    .filter((control) => !control.disabled && control.closest("[inert]") === null && visible(control))
   // A custom control (a switch, a toggle) may act on keydown with no click: a change of its state attributes is a press too.
   const stateOf = (element) => element === null ? "" : ["aria-checked", "aria-pressed", "aria-expanded", "aria-selected"].map((name) => element.getAttribute(name) ?? "").join("|")
   let armed = null
@@ -139,9 +144,15 @@ export const pageScript = String.raw`(() => {
     controls: (scope) => {
       const root = scope === null ? document.body : element(scope)
       if (root === null) return []
-      return [...root.querySelectorAll(controlSelector)]
-        .filter((control) => !control.disabled && control.closest("[inert]") === null && visible(control))
-        .map(describe)
+      return visibleControls(root).map(describe)
+    },
+    signature: () => {
+      const menu = openMenu()
+      const active = focused()
+      return {
+        now: performance.now(),
+        key: [menu, active, ...(document.body === null ? [] : visibleControls(document.body))].map((element) => element === null ? "-" : idOf(element)).join(" ")
+      }
     },
     groupStops: (control, stops) => {
       const target = element(control)

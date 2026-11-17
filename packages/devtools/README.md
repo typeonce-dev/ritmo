@@ -573,7 +573,9 @@ would; a custom control (a `role="switch"`) counts as pressed when its
 `aria-checked`, `aria-pressed`, `aria-expanded`, or `aria-selected` changes.
 `focus-dropped` presses each control for real, on a fresh load of its
 screen, so it does what a player's press does: mark what must not be pressed
-in the route. A link to another site is never pressed for real.
+in the route. A link to another site is never pressed for real. The presses
+run on up to four pages at once; one that did not keep focus is run again
+with no other page open, and that second result is the one reported.
 
 Without `--route` the start page is one screen. A route is a JSON file:
 
@@ -582,18 +584,25 @@ Without `--route` the start page is one screen. A route is a JSON file:
   "screens": [
     { "name": "title" },
     { "name": "play", "path": "?seed=7", "steps": [{ "click": { "role": "button", "name": "Play" } }, { "press": "s" }, { "wait": 800 }] },
-    { "name": "end", "path": "?moment=end", "steps": [{ "wait": 5000 }], "noPress": [{ "name": "Start over", "role": "button" }] }
+    { "name": "end", "path": "?moment=end", "steps": [{ "waitFor": { "role": "button", "name": "Start over" } }], "noPress": [{ "name": "Start over", "role": "button" }] }
   ]
 }
 ```
 
 - `path` is appended to the URL. `steps` run in order after the page
   settles: `press` takes a key as Playwright names it, `click` a role and
-  the accessible name the report prints, `wait` milliseconds.
+  the accessible name the report prints, `waitFor` the same and waits up to
+  15 seconds for that control to show, `wait` milliseconds.
+- A loaded page has settled when no request is in flight and its menu,
+  focus, and visible controls have not changed for 400 ms, or after 1.5
+  seconds at the latest. A screen that shows its controls later than that,
+  or after a quiet moment (a splash, a fade), needs a `waitFor` step;
+  prefer it to `wait`, which is paid again for every control pressed.
 - `noPress` is `true` (press nothing on that screen) or a list of controls
   by name and optional role.
-- A step that cannot run, or an error the page throws, is a failure, and
-  that screen's checks are not checked. A screen on which no check could be
+- A step that cannot run, an error the page throws, or a page that stops
+  answering for 20 seconds is a failure, and that screen's checks are not
+  checked. A screen on which no check could be
   decided is a failure too (`nothing-checked`): the route did not reach the
   game's controls, or the page has none the walk can see.
 
