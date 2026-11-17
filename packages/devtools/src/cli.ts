@@ -78,6 +78,7 @@
  * @docGroup devtools
  */
 import { readFileSync } from "node:fs"
+import { availableParallelism } from "node:os"
 import { resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -335,7 +336,9 @@ const keyboard = async (args: ReadonlyArray<string>): Promise<number> => {
         return 2
       }
     }
-    const report = await KeyboardWalk.walk(browser, { url, route })
+    // Half the cores, four pages at most: each page runs the whole game.
+    const pages = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)))
+    const report = await KeyboardWalk.walk(browser, { url, route, pages })
     console.log(json ? JSON.stringify(report, null, 2) : KeyboardWalk.format(report))
     return report.ok ? 0 : 1
   } finally {

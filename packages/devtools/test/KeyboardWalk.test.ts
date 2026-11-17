@@ -32,12 +32,12 @@ describe("keyboard route", () => {
   it("keeps every kind of step and both kinds of noPress", () => {
     const parsed = KeyboardWalk.parseRoute({
       screens: [
-        { name: "play", path: "?map=8", steps: [{ press: "Escape" }, { click: { role: "button", name: "Play" } }, { wait: 500 }], noPress: [{ name: "Start over", role: "button" }] },
+        { name: "play", path: "?map=8", steps: [{ press: "Escape" }, { click: { role: "button", name: "Play" } }, { waitFor: { role: "button", name: "Resume" } }, { wait: 500 }], noPress: [{ name: "Start over", role: "button" }] },
         { name: "end", noPress: true }
       ]
     })
     expect(parsed.ok && parsed.value.screens).toEqual([
-      { name: "play", path: "?map=8", steps: [{ press: "Escape" }, { click: { role: "button", name: "Play" } }, { wait: 500 }], noPress: [{ name: "Start over", role: "button" }] },
+      { name: "play", path: "?map=8", steps: [{ press: "Escape" }, { click: { role: "button", name: "Play" } }, { waitFor: { role: "button", name: "Resume" } }, { wait: 500 }], noPress: [{ name: "Start over", role: "button" }] },
       { name: "end", path: "", steps: [], noPress: true }
     ])
   })
@@ -54,6 +54,7 @@ describe("keyboard route", () => {
     expect(error({ screens: [{ name: "a" }, { name: "a" }] })).toBe("route.screens[1].name \"a\" is already the name of another screen")
     expect(error({ screens: [{ name: "a", url: "/" }] })).toBe("route.screens[0].url is not a field (expected name, path, steps, noPress)")
     expect(error({ screens: [{ name: "a", steps: [{ click: { role: "button" } }] }] })).toBe("route.screens[0].steps[0].click.name must be a non-empty string: the control's accessible name")
+    expect(error({ screens: [{ name: "a", steps: [{ waitFor: { name: "Play" } }] }] })).toBe("route.screens[0].steps[0].waitFor.role must be a non-empty string: an ARIA role such as \"button\"")
     expect(error({ screens: [{ name: "a", steps: [{ wait: 1.5 }] }] })).toBe("route.screens[0].steps[0].wait must be a whole number of milliseconds from 0 to 60000")
     expect(error({ screens: [{ name: "a", steps: [{ press: "a", wait: 1 }] }] })).toMatch(/^route\.screens\[0\]\.steps\[0\] must be one of/)
     expect(error({ screens: [{ name: "a", steps: [{ type: "abc" }] }] })).toMatch(/type is not a step$/)
@@ -114,8 +115,8 @@ describe.skipIf(skipped !== undefined)("ritmo-devtools keyboard", () => {
     await new Promise((done) => server?.close(done))
   })
 
-  const walk = (screens: ReadonlyArray<Partial<KeyboardWalkModule.Screen> & { readonly name: string }>) =>
-    KeyboardWalk.walk(browser, { url: base, route: { screens: screens.map((screen) => ({ path: "", steps: [], noPress: [], ...screen })) }, settle: 100 })
+  const walk = (screens: ReadonlyArray<Partial<KeyboardWalkModule.Screen> & { readonly name: string }>, options: { readonly settle?: number; readonly pages?: number; readonly stall?: number } = {}) =>
+    KeyboardWalk.walk(browser, { url: base, route: { screens: screens.map((screen) => ({ path: "", steps: [], noPress: [], ...screen })) }, settle: 100, ...options })
   const statuses = (report: KeyboardWalkModule.Report, screen: string) =>
     Object.fromEntries(report.outcomes.filter((outcome) => outcome.screen === screen).map((outcome) => [outcome.check, outcome.status]))
 
@@ -202,6 +203,40 @@ describe.skipIf(skipped !== undefined)("ritmo-devtools keyboard", () => {
     }])
     expect(report.outcomes.every((outcome) => outcome.status === "not-checked")).toBe(true)
     expect(KeyboardWalk.format(report).split("\n").at(-1)).toMatch(/: 1 failure \(1 from the route or the page, not from a check\); checks 0 failed, 0 passed, 6 not checked on 1 screen$/)
+  }, 120_000)
+
+  it("gives the same report when it presses on several pages at once", async () => {
+    const screens = [{ name: "play" }, { name: "paused", path: "#paused" }, { name: "dropped", path: "focus-dropped.html" }]
+    const alone = await walk(screens)
+    const together = await walk(screens, { pages: 3 })
+    expect(together).toEqual(alone)
+    expect(together.failures.map((failure) => [failure.screen, failure.check])).toEqual([["dropped", "focus-dropped"]])
+  }, 180_000)
+
+  it("waits for a screen to stop changing, and for the control a waitFor step names", async () => {
+    const report = await walk([
+      // Shown 300 ms after the load: the page has not settled until it is there.
+      { name: "soon", path: "late-control.html" },
+      // Shown after the page went quiet: only a waitFor step reaches it.
+      { name: "late", path: "late-control.html?after=2500", steps: [{ waitFor: { role: "button", name: "Options" } }] },
+      { name: "missed", path: "late-control.html?after=2500" }
+    ], { settle: 1500 })
+    expect(report.failures).toEqual([])
+    const reached = (screen: string) => report.outcomes.find((outcome) => outcome.screen === screen && outcome.check === "unnamed-control")?.decided
+    expect([reached("soon"), reached("late"), reached("missed")]).toEqual([2, 2, 1])
+  }, 180_000)
+
+  it("reports a page that stops answering, and does not wait for it", async () => {
+    const report = await walk([{ name: "stuck", path: "stuck.html" }, { name: "play" }], { stall: 2000, pages: 2 })
+    expect(report.failures).toEqual([{
+      check: "page-error",
+      screen: "stuck",
+      saw: "the page stopped answering for 2 seconds: its main thread is busy, or its renderer hung",
+      fix: KeyboardWalk.fixes["page-error"]
+    }])
+    expect(report.outcomes.filter((outcome) => outcome.screen === "stuck").every((outcome) => outcome.status === "not-checked")).toBe(true)
+    // The next screen is walked as usual.
+    expect(statuses(report, "play")["focus-dropped"]).toBe("passed")
   }, 120_000)
 
   it("does not press what the route marks", async () => {
