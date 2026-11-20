@@ -1471,9 +1471,7 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       store.set(targetId, [sourceId])
       return
     }
-    if (!entries.includes(sourceId)) {
-      entries.push(sourceId)
-    }
+    entries.push(sourceId)
   }
 
   const removeRelatedSource = (relation: Relation.Relation.Any, targetId: number, sourceId: number): void => {
@@ -1544,7 +1542,9 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
     }
     if (newestMark !== undefined) keepTarget(relation.key, sourceId)
     targets.set(sourceId, targetId)
-    addRelatedSource(relation, targetId, sourceId)
+    // A source is in a target's list exactly when that target is its own, so the list is not searched for it:
+    // a search for each child made relating many children to one parent slower with the square of their number.
+    if (previousTarget !== targetId) addRelatedSource(relation, targetId, sourceId)
     bumpRelation(relation.key)
     if (hooks !== undefined) hooks.related(sourceId, relation, targetId)
     return Result.success(undefined)
@@ -1603,8 +1603,13 @@ export const makeWorld = <S extends Schema.Any>(schema: S, lifecycleCapacity: nu
       hookDepth += 1
     }
     for (const relation of relationDefinitions) {
-      const current = relatedSourceIds(relation, id)
-      const sources = current.length === 0 ? noSources : [...current]
+      const sources = relatedSourceIds(relation, id)
+      if (sources.length > 0) {
+        // The list goes with its target, so it is dropped whole before its sources are let go: each of them
+        // would otherwise search it and remake it without itself, slower with the square of their number.
+        if (newestMark !== undefined) keepSources(relation.key, id)
+        relatedSources.get(relation.key)!.delete(id)
+      }
       if (relation.linkedDespawn) {
         for (const sourceId of sources) {
           destroyEntity(sourceId)
