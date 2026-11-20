@@ -60,7 +60,7 @@ for (const directory of packages) {
     throw new Error(`${manifest.name} tarball contains test or build-info files`)
   }
   if (directory === "core") {
-    for (const required of ["package/skills/ritmo/SKILL.md", "package/skills/ritmo/playbooks/mechanic.md", "package/skills/ritmo/references/spatial-grid.ts", "package/skills/ritmo-prototype/SKILL.md", "package/skills/ritmo-onboarding/SKILL.md", "package/skills/ritmo-polish/SKILL.md", "package/skills/ritmo-pixel-art/SKILL.md", "package/skills/ritmo-sounds/SKILL.md", "package/skills/ritmo-music/SKILL.md", "package/skills/ritmo-fx/SKILL.md", "package/SETUP.md"]) {
+    for (const required of ["package/skills/ritmo/SKILL.md", "package/skills/ritmo/playbooks/mechanic.md", "package/skills/ritmo/references/spatial-grid.ts", "package/skills/ritmo/playbooks/languages.md", "package/skills/ritmo/references/wording.ts", "package/skills/ritmo-prototype/SKILL.md", "package/skills/ritmo-onboarding/SKILL.md", "package/skills/ritmo-polish/SKILL.md", "package/skills/ritmo-pixel-art/SKILL.md", "package/skills/ritmo-sounds/SKILL.md", "package/skills/ritmo-music/SKILL.md", "package/skills/ritmo-fx/SKILL.md", "package/SETUP.md"]) {
       if (!listing.includes(required)) throw new Error(`${manifest.name} tarball is missing ${required}`)
     }
     for (const repoOnly of ["PROTOTYPE.md", "ONBOARDING.md", "POLISH.md", "FX.md", "PIXEL-ART.md"]) if (listing.includes(`package/${repoOnly}`)) throw new Error(`${manifest.name} tarball contains the repo-only ${repoOnly}`)
