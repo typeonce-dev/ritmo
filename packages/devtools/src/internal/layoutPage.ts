@@ -85,6 +85,9 @@ export const pageScript = String.raw`(() => {
   const width = (a) => Math.max(0, a.r - a.l)
   const height = (a) => Math.max(0, a.b - a.t)
   const area = (a) => width(a) * height(a)
+  // What its clips leave no more than a pixel of, either way, is not shown: a collapsed box, or text kept for
+  // screen readers alone (the 1 x 1 "visually hidden" box).
+  const unseen = (item) => width(item.visible) <= 1 || height(item.visible) <= 1
   const contains = (outer, inner) => outer.l <= inner.l + 1 && outer.t <= inner.t + 1 && outer.r >= inner.r - 1 && outer.b >= inner.b - 1
   const round = (a) => ({ l: Math.round(a.l), t: Math.round(a.t), r: Math.round(a.r), b: Math.round(a.b) })
 
@@ -353,7 +356,7 @@ export const pageScript = String.raw`(() => {
     const cut = new Set()
     for (const item of all) {
       if (item.kind !== "text" || cut.has(item.element)) continue
-      if (area(item.visible) < 1) continue
+      if (unseen(item)) continue
       for (const clip of item.clips) {
         if (clip.scroll) break
         const inside = meet(item.rect, clip.box)
@@ -398,7 +401,7 @@ export const pageScript = String.raw`(() => {
         else if (!out && checks.has("safe-area") && past(safe) > 2) add("safe-area", [item.element], { element: describe(item), box: round(item.rect), saw: "the touch button " + JSON.stringify(item.text) + " reaches " + Math.round(past(safe)) + " px into the space the device keeps (a notch, a home bar)" })
         continue
       }
-      if (placed.has(item.owner) || area(item.visible) < 1) continue
+      if (placed.has(item.owner) || unseen(item)) continue
       // A control that draws nothing (a touch area over the stage) has nothing to cut; its text is measured on its own.
       if (item.kind === "control" && !item.painted) continue
       // A box that spans the whole screen (the game's root, the body) cuts at the screen's edge: that is off-screen, not a cut.
