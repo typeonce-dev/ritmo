@@ -875,7 +875,111 @@ describe("Runtime relationships", () => {
     )
   })
 
-  it("lists the descendants of a parent with 200,000 children in breadth order", () => {
+  it("lists a child once when it is related to its parent again, and last when it comes back from another", () => {
+    let firstId: Entity.EntityId<typeof schema, any> | undefined
+    let secondId: Entity.EntityId<typeof schema, any> | undefined
+    let aId: Entity.EntityId<typeof schema, any> | undefined
+    let bId: Entity.EntityId<typeof schema, any> | undefined
+    let step: "spawn" | "again" | "away" | "back" = "spawn"
+    const act = Game.System(
+      "RelateAgain/Act",
+      { commands: Game.System.commands(Game.System.spawns(Name), Game.System.relates(ChildOf)) },
+      ({ commands }) => {
+        if (step === "spawn") {
+          firstId = commands.spawn(Game.Command.spawn([Name, { value: "first" }] as const))
+          secondId = commands.spawn(Game.Command.spawn([Name, { value: "second" }] as const))
+          aId = commands.spawn(Game.Command.relate(Game.Command.spawn([Name, { value: "a" }] as const), ChildOf, firstId))
+          bId = commands.spawn(Game.Command.relate(Game.Command.spawn([Name, { value: "b" }] as const), ChildOf, firstId))
+        }
+        if (step === "again") commands.relate(aId!, ChildOf, firstId!)
+        if (step === "away") commands.relate(aId!, ChildOf, secondId!)
+        if (step === "back") commands.relate(aId!, ChildOf, firstId!)
+      }
+    )
+    let children = ""
+    const observe = Game.System("RelateAgain/Observe", {}, ({ lookup }) => {
+      const name = (id: number) => (id === aId ? "a" : id === bId ? "b" : "?")
+      const of = (parent: Entity.EntityId<typeof schema, any>) => {
+        const sources = lookup.relatedSources(parent, ChildOf)
+        return sources.ok ? sources.value.map(name).join(",") : sources.error._tag
+      }
+      children = `${of(firstId!)}/${of(secondId!)}`
+    })
+    const runtime = makeRuntime()
+    const schedule = Game.Schedule(act, Game.Schedule.applyDeferred(), observe)
+    const after = (next: typeof step) => {
+      step = next
+      runtime.tick(schedule)
+      return children
+    }
+    expect(after("spawn")).toBe("a,b/")
+    expect(after("again")).toBe("a,b/")
+    expect(after("away")).toBe("b/a")
+    expect(after("back")).toBe("b,a/")
+  })
+
+  it("puts a despawned parent's children and a despawned target's sources back in their order when the tick is rewound", () => {
+    let parentId: Entity.EntityId<typeof schema, any> | undefined
+    let targetId: Entity.EntityId<typeof schema, any> | undefined
+    const childIds: Array<number> = []
+    const watcherIds: Array<number> = []
+    let step: "spawn" | "despawn" | "watch" = "spawn"
+    const act = Game.System(
+      "RewoundDespawn/Act",
+      {
+        queries: { named: Game.Query({ selection: { name: Game.Query.read(Name) } }) },
+        commands: Game.System.commands(Game.System.spawns(Name), Game.System.relates(ChildOf), Game.System.relates(Targeting), Game.System.despawns(Name))
+      },
+      ({ queries, commands }) => {
+        if (step === "spawn") {
+          parentId = commands.spawn(Game.Command.spawn([Name, { value: "parent" }] as const))
+          targetId = commands.spawn(Game.Command.spawn([Name, { value: "target" }] as const))
+          for (let index = 0; index < 3; index++) {
+            childIds.push(commands.spawn(Game.Command.relate(Game.Command.spawn([Name, { value: "child" }] as const), ChildOf, parentId)))
+            watcherIds.push(commands.spawn(Game.Command.relate(Game.Command.spawn([Name, { value: "watcher" }] as const), Targeting, targetId)))
+          }
+        }
+        if (step === "despawn") {
+          for (const id of [parentId!, targetId!]) {
+            const entity = queries.named.get(id)
+            if (entity.ok) commands.despawn(entity.value)
+          }
+        }
+      }
+    )
+    let seen = { children: "", watchers: "", alive: 0 }
+    const observe = Game.System(
+      "RewoundDespawn/Observe",
+      { queries: { named: Game.Query({ selection: { name: Game.Query.read(Name) } }) } },
+      ({ queries, lookup }) => {
+        const children = lookup.relatedSources(parentId!, ChildOf)
+        const watchers = lookup.relatedSources(targetId!, Targeting)
+        seen = {
+          children: children.ok ? children.value.join(",") : children.error._tag,
+          watchers: watchers.ok ? watchers.value.join(",") : watchers.error._tag,
+          alive: queries.named.each().length
+        }
+      }
+    )
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services(), resources: { Summary: "" }, checkpoints: 4 }).value
+    const schedule = Game.Schedule(act, Game.Schedule.applyDeferred(), observe)
+    runtime.tick(schedule)
+    const whole = { children: childIds.join(","), watchers: watcherIds.join(","), alive: 8 }
+    expect(seen).toEqual(whole)
+
+    // The parent takes its children with it; the target's watchers stay, pointing at nothing.
+    step = "despawn"
+    const checkpoint = runtime.checkpoint(schedule)
+    runtime.tick(schedule)
+    expect(seen.alive).toBe(3)
+
+    expect(runtime.rewind(checkpoint).ok).toBe(true)
+    step = "watch"
+    runtime.tick(schedule)
+    expect(seen).toEqual(whole)
+  })
+
+  it("lists the descendants of a parent with 200,000 children in breadth order, and despawns them with it", () => {
     let rootId: Entity.EntityId<typeof schema, any> | undefined
     const spawn = Game.System(
       "WideHierarchy/Spawn",
@@ -898,5 +1002,26 @@ describe("Runtime relationships", () => {
     })
     runtime.tick(Game.Schedule(count))
     expect(counted).toEqual([200_001, 200_001])
+
+    // The root takes every descendant with it. Relating the children and letting them go both take time that
+    // grows with their number: when each searched its parent's list, this test ran for minutes.
+    let left = -1
+    const despawn = Game.System(
+      "WideHierarchy/Despawn",
+      { queries: { named: Game.Query({ selection: { name: Game.Query.read(Name) } }) }, commands: Game.System.commands(Game.System.despawns(Name)) },
+      ({ queries, commands }) => {
+        const root = queries.named.get(rootId!)
+        if (root.ok) commands.despawn(root.value)
+      }
+    )
+    const remaining = Game.System(
+      "WideHierarchy/Remaining",
+      { queries: { named: Game.Query({ selection: { name: Game.Query.read(Name) } }) } },
+      ({ queries }) => {
+        left = queries.named.each().length
+      }
+    )
+    runtime.tick(Game.Schedule(despawn, Game.Schedule.applyDeferred(), remaining))
+    expect(left).toBe(0)
   }, 30_000)
 })
