@@ -256,7 +256,7 @@ Catches every member of `Intl` (`Intl.Collator`, `Intl.NumberFormat`, `Intl.Plur
 
 `toLowerCase()`, `toUpperCase()`, `sort()` with no comparator, `<` between strings, `toFixed()`, and `String(n)` answer the same on every engine and are not reported.
 
-Oxlint has no type information, so the methods are found by name on any value: a method of the game's own with one of these names is reported where it is called. A method defined (`class Score { toLocaleString() { ... } }`, `score.toLocaleString = ...`), a key of that name in an object, and a type (`let format: Intl.NumberFormat`) are not reported. `navigator.language` is the page, which `keep-simulation-headless` reports.
+Oxlint has no type information, so the methods are found by name on any value: a method of the game's own with one of these names is reported where it is called. A method defined (`class Score { toLocaleString() { ... } }`, `score.toLocaleString = ...`), a key of that name in an object, and a type (`let format: Intl.NumberFormat`) are not reported. Neither is a method taken off a value by destructuring and called later (`const { localeCompare } = name`). `navigator.language` is the page, which `keep-simulation-headless` reports.
 
 View, UI, and host files are outside the simulation override, so these calls are fine there. For a game in several languages, the `ritmo` skill's [`playbooks/languages.md`](https://github.com/typeonce-dev/ritmo/blob/main/packages/core/skills/ritmo/playbooks/languages.md) has the setup.
 
