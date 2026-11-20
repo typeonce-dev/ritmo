@@ -3,11 +3,12 @@
  *
  * Types catch wrong calls and devtools catch wrong runs; these rules catch
  * the source patterns neither can see: simulation code that reads the wall
- * clock, `Math.random`, engine-dependent math, or the page, or plays sound,
- * timers counted in floats, data that cannot be saved, casts that skip a
- * brand's check, state values that keep a previous state's fields, query
- * entities and data kept past their run, runtime results that are
- * dropped, and host key listeners that take keys from the page's controls.
+ * clock, `Math.random`, engine-dependent math, or the page, plays sound, or
+ * asks how a language orders, cases, or writes a value, timers counted in
+ * floats, data that cannot be saved, casts that skip a brand's check, state
+ * values that keep a previous state's fields, query entities and data kept
+ * past their run, runtime results that are dropped, and host key listeners
+ * that take keys from the page's controls.
  * Every report names the Ritmo API to use instead.
  *
  * Register the plugin in `.oxlintrc.json` with `"jsPlugins":
@@ -19,7 +20,8 @@
  * - Simulation files: `ritmo/use-clock-for-time`,
  *   `ritmo/use-random-for-randomness`, `ritmo/use-ops-for-math`,
  *   `ritmo/keep-simulation-headless`, `ritmo/no-infinity-in-simulation-data`,
- *   `ritmo/no-float-timers`, `ritmo/no-brand-cast`.
+ *   `ritmo/no-float-timers`, `ritmo/no-brand-cast`,
+ *   `ritmo/no-locale-in-simulation`.
  * - Every file: `ritmo/handle-runtime-result`,
  *   `ritmo/prefix-descriptor-and-system-names`, `ritmo/no-state-spread`,
  *   `ritmo/no-kept-query-values`, `ritmo/use-keyboard-for-game-keys`.
@@ -34,6 +36,7 @@ import noBrandCast from "./rules/no-brand-cast.ts"
 import noFloatTimers from "./rules/no-float-timers.ts"
 import noInfinityInSimulationData from "./rules/no-infinity-in-simulation-data.ts"
 import noKeptQueryValues from "./rules/no-kept-query-values.ts"
+import noLocaleInSimulation from "./rules/no-locale-in-simulation.ts"
 import noStateSpread from "./rules/no-state-spread.ts"
 import prefixDescriptorAndSystemNames from "./rules/prefix-descriptor-and-system-names.ts"
 import useClockForTime from "./rules/use-clock-for-time.ts"
@@ -51,6 +54,7 @@ export default definePlugin({
     "no-infinity-in-simulation-data": noInfinityInSimulationData,
     "no-float-timers": noFloatTimers,
     "no-brand-cast": noBrandCast,
+    "no-locale-in-simulation": noLocaleInSimulation,
     "handle-runtime-result": handleRuntimeResult,
     "prefix-descriptor-and-system-names": prefixDescriptorAndSystemNames,
     "no-state-spread": noStateSpread,
