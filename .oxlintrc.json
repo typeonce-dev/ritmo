@@ -45,7 +45,8 @@
         "ritmo/use-ops-for-math": "error",
         "ritmo/keep-simulation-headless": "error",
         "ritmo/no-infinity-in-simulation-data": "error",
-        "ritmo/no-float-timers": "error"
+        "ritmo/no-float-timers": "error",
+        "ritmo/no-locale-in-simulation": "error"
       }
     },
     {
@@ -88,6 +89,7 @@
         "ritmo/keep-simulation-headless": "off",
         "ritmo/no-infinity-in-simulation-data": "off",
         "ritmo/no-float-timers": "off",
+        "ritmo/no-locale-in-simulation": "off",
         // Review pages with their own shortcuts, not games: they take no Ritmo input.
         "ritmo/use-keyboard-for-game-keys": "off"
       }

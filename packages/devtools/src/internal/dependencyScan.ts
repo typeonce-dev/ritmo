@@ -329,7 +329,7 @@ export const run = async (entry: string, cwd: string): Promise<Result.Result<Rep
     groups.set(name, group)
   }
   const packages = [...groups]
-    .sort(([a], [b]) => a === own ? -1 : b === own ? 1 : a.localeCompare(b))
+    .sort(([a], [b]) => a === own ? -1 : b === own ? 1 : a < b ? -1 : a > b ? 1 : 0)
     .map(([name, group]) => ({ name, files: group.files, findings: group.findings }))
   return Result.success({ entry: relative(base, realpathSync(absolute)), files: files.length, packages })
 }

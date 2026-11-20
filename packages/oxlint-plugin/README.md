@@ -5,6 +5,7 @@
 Ritmo's types reject wrong calls, and its devtools lints reject wrong runs. These rules catch the source patterns neither can see:
 
 - simulation code that reads the wall clock, `Math.random`, engine-dependent math, or the page, or plays sound;
+- simulation code that asks how a language orders, cases, or writes a value;
 - timers counted in floats;
 - data that cannot be saved;
 - casts that claim a brand's check without running it;
@@ -46,7 +47,8 @@ Register the plugin and turn the rules on in `.oxlintrc.json`. The simulation ru
         "ritmo/keep-simulation-headless": "error",
         "ritmo/no-infinity-in-simulation-data": "error",
         "ritmo/no-float-timers": "error",
-        "ritmo/no-brand-cast": "error"
+        "ritmo/no-brand-cast": "error",
+        "ritmo/no-locale-in-simulation": "error"
       }
     }
   ]
@@ -71,6 +73,7 @@ const started = performance.now()
 | [`no-infinity-in-simulation-data`](#ritmono-infinity-in-simulation-data) | simulation | `Infinity` / `NaN` in object and array literals | `null` |
 | [`no-float-timers`](#ritmono-float-timers) | simulation | `timer -= dt`, `cooldown = cooldown - time.dt` | `Clock.deadline` / `Clock.reached` |
 | [`no-brand-cast`](#ritmono-brand-cast) | simulation | `raw as UserId`, `1 as Random.State` | the schema or constructor that brands it |
+| [`no-locale-in-simulation`](#ritmono-locale-in-simulation) | simulation | `a.localeCompare(b)`, `label.toLocaleLowerCase()`, `coins.toLocaleString()`, `Intl.*` | a number the world holds or the strings themselves to order, `toLowerCase()`, and words chosen in view code |
 | [`handle-runtime-result`](#ritmohandle-runtime-result) | everywhere | a dropped or unchecked `runtime.tick(...)` / `restore(...)` / `rewind(...)` / `snapshot()` / `checksum()` result | check `.ok` |
 | [`prefix-descriptor-and-system-names`](#ritmoprefix-descriptor-and-system-names) | everywhere | `"Position"`, `Game.System("Move", ...)` | `"Game/Position"` |
 | [`no-state-spread`](#ritmono-state-spread) | everywhere | `{ ...ground, _tag: "air", vy }` | `data.state.transition(entity, { from, to, data })`, `nextMachines.x.transition({ from, to, data })`, or the new state's fields written out |
@@ -79,7 +82,7 @@ const started = performance.now()
 
 ## Simulation rules
 
-The four rules that read globals (`use-clock-for-time`, `use-random-for-randomness`, `use-ops-for-math`, `keep-simulation-headless`) find a global however the file reaches it: by name, as a member of `globalThis`, `self`, or `window` (`globalThis.Date.now()`, `self.Math.sin(x)`), through a `const` that holds it (`const M = Math; M.random()`), or destructured (`const { now } = Date`, `const { Math: { random } } = globalThis`), reported once where the global is read. A local, parameter, or import of the same name, a field of another object (`config.Date.now()`), and a type (`let at: Date`) are not the global. A value passed through a function or another module is not followed.
+The five rules that read globals (`use-clock-for-time`, `use-random-for-randomness`, `use-ops-for-math`, `keep-simulation-headless`, `no-locale-in-simulation`) find a global however the file reaches it: by name, as a member of `globalThis`, `self`, or `window` (`globalThis.Date.now()`, `self.Math.sin(x)`), through a `const` that holds it (`const M = Math; M.random()`), or destructured (`const { now } = Date`, `const { Math: { random } } = globalThis`), reported once where the global is read. A local, parameter, or import of the same name, a field of another object (`config.Date.now()`), and a type (`let at: Date`) are not the global. A value passed through a function or another module is not followed.
 
 ### `ritmo/use-clock-for-time`
 
@@ -232,6 +235,30 @@ Oxlint has no type information, so the rule reads the brand from the code: a cas
 - a branded Ritmo export imported from `@typeonce/ritmo` (or a subpath such as `@typeonce/ritmo/Clock`): `Clock.Deadline`, `Clock.Step`, `Clock.Duration`, `Clock.ClockResource`, `Entity.Handle`, `Entity.EntityId`, `Random.State`, `Checkpoint.Checkpoint`, `Checkpoint.Rewindable`.
 
 Make the value through its check: decode at the boundary with the game's schema, or with Ritmo's constructor or guard (`Random.seed` / `Random.result`, `Clock.deadline` / `Clock.isDeadline`, `Game.Entity.handle` / `Entity.isHandle`). `as const`, `satisfies`, and casts to types without a brand are not reported, nor are brands imported from another file of the game (the rule cannot see them).
+
+### `ritmo/no-locale-in-simulation`
+
+How a language orders, cases, and writes a value comes from two things a replay does not share: the machine's language settings, and the language data its engine ships, which differs between browsers and Node versions. The simulation holds ids and numbers, and view code puts them into words.
+
+```ts
+const order = heroes.sort((a, b) => a.name.localeCompare(b.name))   // reported: "Ärla, Zara" on an English machine, "Zara, Ärla" on a Swedish one
+const kind = kinds[label.toLocaleLowerCase()]                       // reported: "FIRE" is "fıre" on a Turkish machine, and the lookup misses
+log.lines.push(`Earned ${coins.toLocaleString()} coins`)            // reported: "1,234.5" or "1.234,5", saved as written
+
+// instead
+const order = heroes.sort((a, b) => a.rank - b.rank)                                      // a number the world holds
+const byName = heroes.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))   // or the strings themselves
+const kind = kinds[label.toLowerCase()]
+log.lines.push({ _tag: "earned", coins })                                                 // the value; view code words it
+```
+
+Catches every member of `Intl` (`Intl.Collator`, `Intl.NumberFormat`, `Intl.PluralRules`, `Intl.ListFormat`, `Intl.DateTimeFormat`, ...), and `localeCompare`, `toLocaleLowerCase`, `toLocaleUpperCase`, `toLocaleString`, `toLocaleDateString`, and `toLocaleTimeString` on any value. A call that names its language (`a.localeCompare(b, "en")`, `new Intl.NumberFormat("en-US")`) is reported too: the name settles which language, not which version of its data the engine ships.
+
+`toLowerCase()`, `toUpperCase()`, `sort()` with no comparator, `<` between strings, `toFixed()`, and `String(n)` answer the same on every engine and are not reported.
+
+Oxlint has no type information, so the methods are found by name on any value: a method of the game's own with one of these names is reported where it is called. A method defined (`class Score { toLocaleString() { ... } }`, `score.toLocaleString = ...`), a key of that name in an object, and a type (`let format: Intl.NumberFormat`) are not reported. Neither is a method taken off a value by destructuring and called later (`const { localeCompare } = name`). `navigator.language` is the page, which `keep-simulation-headless` reports.
+
+View, UI, and host files are outside the simulation override, so these calls are fine there. For a game in several languages, the `ritmo` skill's [`playbooks/languages.md`](https://github.com/typeonce-dev/ritmo/blob/main/packages/core/skills/ritmo/playbooks/languages.md) has the setup.
 
 ## Rules for every file
 

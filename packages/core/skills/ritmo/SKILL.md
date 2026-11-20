@@ -1,6 +1,6 @@
 ---
 name: ritmo
-description: "Apply on every change to a game built on @typeonce/ritmo: a mechanic, content, UI or rendering, a bug fix, a refactor, saves, netcode, or a Ritmo upgrade. Says where the docs are, routes the change to its playbook, and holds the principles for where code and state belong."
+description: "Apply on every change to a game built on @typeonce/ritmo: a mechanic, content, UI or rendering, languages, a bug fix, a refactor, saves, netcode, or a Ritmo upgrade. Says where the docs are, routes the change to its playbook, and holds the principles for where code and state belong."
 ---
 
 # Ritmo games
@@ -34,6 +34,7 @@ Read it before writing code; a change of several kinds reads each.
 | A rule, mechanic, or behaviour | [`playbooks/mechanic.md`](playbooks/mechanic.md) |
 | Items, kinds, levels, or tuning that reuse behaviour | [`playbooks/content.md`](playbooks/content.md) |
 | A readout, panel, menu, or anything drawn | [`playbooks/ui-and-render.md`](playbooks/ui-and-render.md) |
+| Another language, or text that must read in more than one | [`playbooks/languages.md`](playbooks/languages.md) |
 | Something behaves wrong | [`playbooks/bug-fix.md`](playbooks/bug-fix.md) |
 | Something is slow: a frame, a tick, a bot run | [`playbooks/performance.md`](playbooks/performance.md) |
 | Moving or splitting code without changing behaviour | [`playbooks/refactor.md`](playbooks/refactor.md) |

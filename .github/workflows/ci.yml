@@ -71,13 +71,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Playwright downloads a browser built for the runner's Ubuntu release, and
+      # that build does not start on another release (WebKit links the release's
+      # own ICU), so the cache below is kept for each release.
+      - name: Read the runner's Ubuntu release
+        id: release
+        run: . /etc/os-release && echo "name=$ID-$VERSION_ID" >> "$GITHUB_OUTPUT"
+
       # The browsers match the playwright version in the lockfile.
       - name: Cache Playwright browsers
         id: playwright-cache
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-${{ steps.release.outputs.name }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
