@@ -179,6 +179,16 @@ describe("Touch.actions", () => {
     expect(withMouse.snapshot().actions.attack.held).toBe(true)
   })
 
+  it("lets ritmo-devtools layout read the layout while attached", () => {
+    const fake = makeTarget()
+    const key = Symbol.for("@typeonce/ritmo-browser/Touch.layout")
+    const touch = Touch.actions(fake.target, fake.blurHost, layout)
+    const read = Reflect.get(fake.target, key)
+    expect(typeof read === "function" ? read() : undefined).toEqual(layout(size))
+    touch.dispose()
+    expect(Reflect.has(fake.target, key)).toBe(false)
+  })
+
   it("cancels the long-press context menu only while a tracked finger is down", () => {
     const fake = makeTarget()
     Touch.actions(fake.target, fake.blurHost, layout)

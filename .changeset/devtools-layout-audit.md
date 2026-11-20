@@ -1,0 +1,7 @@
+---
+"@typeonce/ritmo-devtools": minor
+---
+
+`ritmo-devtools layout [--url <url>] [--route <file>] [--screenshots <dir>] [--json]` opens each screen of a route in Chromium at several screen sizes (a small phone and an iPhone held sideways, an iPhone upright with its notch and home bar, and a desktop window, unless the route names its own) and reports what is broken in the layout the player sees. Errors fail the run: two things drawn over each other (`overlap`), text a box cuts with no ellipsis (`cut-text`), text or a control past the screen's edge (`off-screen`) or in the notch or home bar (`safe-area`), a tap area under 44 px (`small-target`, measured by hit tests, so a `::after` that extends it counts), something that moves while nothing is pressed (`layout-shift`), and a layout that never holds still (`never-settled`). Warnings never fail: text shortened with an ellipsis (`truncated-text`), a control half hidden at a scroll edge (`scroll-edge`), and what breaks only when every text is 40% longer. The buttons of a `Touch.actions` layout are checked too. A route's `allow` leaves out what the game means; `--screenshots` saves each screen with its findings boxed and numbered.
+
+The route file is shared with `ritmo-devtools keyboard`: it gains a `type` step (types text into the focused field), and `viewports`, `minTarget`, and `allow`, which only `layout` reads. A `click` step finds its control in the open menu first.

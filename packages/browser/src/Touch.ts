@@ -43,6 +43,12 @@
  * press opens is cancelled while a tracked finger is down. `dispose()`
  * restores the styles.
  *
+ * While attached, the target also carries a function that returns the
+ * layout at its current size, under `Symbol.for("@typeonce/ritmo-browser/Touch.layout")`:
+ * `ritmo-devtools layout` reads it to check the buttons the canvas does not
+ * show to the page (too small to tap, under the notch, under a panel).
+ * `dispose()` removes it.
+ *
  * @module Touch
  * @docGroup browser
  *
@@ -76,6 +82,9 @@ import type * as System from "@typeonce/ritmo/System"
 import { anyUsed } from "./internal/used.ts"
 import type { ActionState } from "./internal/state.ts"
 import type { Vector } from "./internal/vectors.ts"
+
+/** Where `ritmo-devtools layout` reads the layout of an attached target (see the module header). */
+const layoutKey = Symbol.for("@typeonce/ritmo-browser/Touch.layout")
 
 /** A position in CSS pixels relative to the element's top-left corner. */
 export interface Position {
@@ -551,6 +560,7 @@ export const actions = <const B extends string, const V extends string = never, 
   const style = target.style
   const previousStyles = style === undefined ? [] : noBrowserGestures.map((property) => [property, style.getPropertyValue(property)] as const)
   for (const property of noBrowserGestures) style?.setProperty(property, "none")
+  Reflect.set(target, layoutKey, () => layout(sizeOf()))
   target.addEventListener("pointerdown", onDown)
   target.addEventListener("pointermove", onMove)
   target.addEventListener("pointerup", onUp)
@@ -610,6 +620,7 @@ export const actions = <const B extends string, const V extends string = never, 
       blurHost.removeEventListener("blur", onBlur)
       // An empty value removes the property, so a style the element did not have is not left behind.
       for (const [property, value] of previousStyles) style?.setProperty(property, value)
+      Reflect.deleteProperty(target, layoutKey)
     }
   }
 }

@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A page with nothing broken</title>
+<style>
+  body { margin: 0; font: 16px/1.3 sans-serif; background: #123; color: #fff; height: 100vh; overflow: hidden; }
+  main { position: absolute; left: 80px; right: 80px; top: 60px; display: grid; gap: 12px; justify-items: start; }
+  button { font: inherit; min-width: 48px; min-height: 48px; padding: 0 16px; border: 0; border-radius: 8px; background: #eed; color: #123; position: relative; }
+  .card { position: relative; width: 120px; padding: 10px; background: #345; }
+  .badge { position: absolute; right: -6px; top: -6px; background: #e33; padding: 0 4px; font-size: 12px; }
+  .stage { position: fixed; inset: 0; background: transparent; z-index: 0; min-width: 0; min-height: 0; padding: 0; }
+  .over { z-index: 1; }
+  .small { min-width: 0; min-height: 0; width: 24px; height: 24px; padding: 0; }
+  .small::after { content: ""; position: absolute; inset: -12px; }
+  .scrim { position: fixed; left: 0; right: 0; bottom: 0; height: 120px; background: rgba(0, 0, 0, .6); z-index: 2; }
+  .hidden-under { position: fixed; left: 90px; bottom: 50px; }
+  .pulse { animation: pulse 0.8s infinite alternate; }
+  @keyframes pulse { to { transform: scale(1.1); } }
+  .scaled { position: absolute; left: 300px; top: 60px; transform: scale(0.5); transform-origin: 0 0; }
+  .scaled button { min-width: 96px; min-height: 96px; }
+</style>
+<button class="stage" aria-label="Rotate the model"></button>
+<main class="over">
+  <h1 style="margin:0;font-size:20px">Title</h1>
+  <div class="card">Card<span class="badge">3</span></div>
+  <button class="pulse">Play</button>
+  <button class="small" aria-label="Close">x</button>
+</main>
+<div class="scaled"><button>Big</button></div>
+<button class="hidden-under">Hidden</button>
+<div class="scrim" id="scrim"><p style="position:absolute;left:80px;bottom:56px;margin:0">Paused</p></div>

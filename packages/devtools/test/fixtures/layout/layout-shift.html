@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body { margin: 0; font: 16px sans-serif; } p { position: absolute; left: 100px; top: 100px; margin: 0; }</style>
+<p><span id="count">1</span> <span id="after">coins</span></p>
+<script>
+  let big = false
+  setInterval(() => { big = !big; document.getElementById("count").textContent = big ? "1000000" : "1" }, 700)
+</script>

@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  body { margin: 0; font: 16px sans-serif; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+  .hint { position: absolute; left: 380px; top: 290px; width: 80px; height: 40px; background: #333; color: #fff; }
+</style>
+<canvas></canvas>
+<div class="hint">Tip</div>
+<script>
+  // What Touch.actions puts on its target while attached.
+  const canvas = document.querySelector("canvas")
+  canvas[Symbol.for("@typeonce/ritmo-browser/Touch.layout")] = () => ({
+    sticks: { move: { region: { left: 0, top: 0, width: 300, height: 390 }, radius: 50 } },
+    buttons: { jump: { center: { x: 700, y: 300 }, radius: 12 }, dash: { center: { x: 420, y: 310 }, radius: 30 } }
+  })
+</script>

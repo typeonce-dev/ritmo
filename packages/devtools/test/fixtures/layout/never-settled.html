@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body { margin: 0; font: 16px sans-serif; } #drift { position: absolute; top: 100px; }</style>
+<p id="drift">Drifting</p>
+<script>
+  const drift = document.getElementById("drift")
+  const step = (time) => { drift.style.left = 100 + (time / 20) % 200 + "px"; requestAnimationFrame(step) }
+  requestAnimationFrame(step)
+</script>
