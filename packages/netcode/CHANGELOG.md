@@ -1,5 +1,16 @@
 # @typeonce/ritmo-netcode
 
+## 0.25.0
+
+### Patch Changes
+
+- Updated dependencies [ddfca6f]
+- Updated dependencies [cd6bb2e]
+- Updated dependencies [989049f]
+- Updated dependencies [3481d8f]
+- Updated dependencies [bec95ec]
+  - @typeonce/ritmo@0.25.0
+
 ## 0.24.0
 
 ### Patch Changes

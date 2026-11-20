@@ -1,5 +1,25 @@
 # @typeonce/ritmo-devtools
 
+## 0.25.0
+
+### Minor Changes
+
+- 989049f: `ritmo-devtools keyboard [--url <url>] [--route <file>] [--json]` plays the game's page by keyboard in Chromium and fails on what breaks keyboard play: a menu open with focus outside it, Tab leaving an open menu, a control with no accessible name, Enter or Space not pressing the focused control, a press that drops focus to `<body>`, and a visible control the keyboard cannot reach. Each failure names the check, the screen, the control (role, name, selector), what was seen, and the fix; a check it cannot decide is printed as not checked, never as passed, and a screen on which nothing could be checked fails. Without `--url` it serves the working directory with the game's own Vite config. A route file lists the screens to visit and how to reach them (key presses, clicks, `waitFor` a named control, fixed waits); without one, the start page is the only screen. A loaded screen is walked as soon as it stops changing, and the real presses run on up to four pages at once, with any press that did not keep focus run again alone before it is reported. It presses controls for real to check focus, so a route marks what must not be pressed. It uses the optional `playwright` and `vite` peers `verify` already uses, at the same versions.
+- 3481d8f: `ritmo-devtools layout [--url <url>] [--route <file>] [--screenshots <dir>] [--json]` opens each screen of a route in Chromium at several screen sizes (a small phone and an iPhone held sideways, an iPhone upright with its notch and home bar, and a desktop window, unless the route names its own) and reports what is broken in the layout the player sees. Errors fail the run: two things drawn over each other (`overlap`), text a box cuts with no ellipsis (`cut-text`), text or a control past the screen's edge (`off-screen`) or in the notch or home bar (`safe-area`), a tap area under 44 px (`small-target`, measured by hit tests, so a `::after` that extends it counts), something that moves while nothing is pressed (`layout-shift`), and a layout that never holds still (`never-settled`). Warnings never fail: text shortened with an ellipsis (`truncated-text`), a control half hidden at a scroll edge (`scroll-edge`), and what breaks only when every text is 40% longer. The buttons of a `Touch.actions` layout are checked too. A route's `allow` leaves out what the game means; `--screenshots` saves each screen with its findings boxed and numbered.
+  
+  The route file is shared with `ritmo-devtools keyboard`: it gains a `type` step (types text into the focused field), and `viewports`, `minTarget`, and `allow`, which only `layout` reads. A `click` step finds its control in the open menu first.
+
+### Patch Changes
+
+- 1fb5453: `ritmo-devtools scan` lists packages in the same order on every machine. It ordered their names with `localeCompare`, which follows the machine's language; it now compares the names themselves, so two names that differ in case or punctuation can change places in the output (and in `--json`'s `packages`).
+- Updated dependencies [ddfca6f]
+- Updated dependencies [cd6bb2e]
+- Updated dependencies [989049f]
+- Updated dependencies [3481d8f]
+- Updated dependencies [bec95ec]
+  - @typeonce/ritmo@0.25.0
+  - @typeonce/ritmo-netcode@0.25.0
+
 ## 0.24.0
 
 ### Patch Changes

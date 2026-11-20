@@ -1,5 +1,19 @@
 # @typeonce/ritmo
 
+## 0.25.0
+
+### Patch Changes
+
+- ddfca6f: The `ritmo` skill gains a playbook for a game in several languages, `playbooks/languages.md`: a language is one plain object checked against the first one's shape (`satisfies Catalog`), names are tables over the game's closed sets, grammar and its `Intl` formatters stay in one file for each language, and the catalog in use is a service only the projection and the UI are given, so the simulation holds no words. It comes with `references/wording.ts` to copy into the game: `say(table, event)` words a tagged value the simulation reported, and `satisfies Wording<Event>` makes a new tag fail to compile in every language until each has worded it.
+  
+  The mechanic playbook (`mechanic.md`) has a new step 4: what a system tells the player (news, a failure's reason, a toast) is a tagged value with its ids and numbers, never a sentence. Its later steps move down by one.
+- cd6bb2e: The `ritmo` skill's UI playbook (`ui-and-render.md`) gains two steps for DOM controls and menus: build each control once and update it in place, never rewriting a region that holds one, and give it a name a test can find; a menu that stops play is a modal (`showModal()` on a `<dialog>`, or an `aria-modal` element that moves focus in, keeps it there, and makes the page behind inert itself), whose `cancel` and `close` are intents, with a `popover="manual"` for a splash or wipe over it and a modal dialog of its own for a layer the player presses.
+- 989049f: The `ritmo` skill's UI playbook (`ui-and-render.md`) checks a page with DOM controls with `ritmo-devtools keyboard`, on a route through every screen that shows them.
+- 3481d8f: The `ritmo` skill's UI playbook (`ui-and-render.md`) checks the page with `ritmo-devtools layout` on the keyboard walk's route, at every screen size the game targets, and has the agent look at its screenshots.
+- bec95ec: Relating many entities to one target, and despawning a target many entities relate to, no longer slow down with the square of their number. Each `relate` searched the target's list for the source, and each source a despawn let go searched that list and remade it without itself. On one machine, despawning a parent with 10,000 children took 397 ms and now takes 10 ms; with 200,000 children it took 124 s and now takes 0.13 s. Relating 200,000 children to one parent took 4.9 s and now takes under 0.7 s.
+  
+  Nothing a game reads changes: children keep their order, a child related to its parent again is still listed once, and a rewind puts the lists back as they were.
+
 ## 0.24.0
 
 ### Patch Changes
