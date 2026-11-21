@@ -21,6 +21,13 @@
  * out for them; a tick that runs again with other events is reported
  * through `lost()` with the reason `"resync"`, and its new run is not
  * handed out as confirmed a second time.
+ *
+ * A save makes every tick before it final, as the host's world went through
+ * it, though this peer may have run the last of them only on a guess. The
+ * session tells the ledger how far this peer's runs were the host's
+ * (`save`): those ticks are handed out as confirmed; the ones after, up to
+ * the save, are reported through `lost()` with the reason `"save"`, whether
+ * this peer ran them otherwise, confirmed them otherwise, or never ran them.
  */
 import * as Inspector from "@typeonce/ritmo/Inspector"
 import * as System from "@typeonce/ritmo/System"
@@ -39,8 +46,8 @@ interface Reader {
   readonly delivered: Map<number, ReadonlyArray<unknown>>
   /** Ticks a rewind undid after `predicted()` handed out their records, not read yet. */
   readonly withdrawn: Set<number>
-  /** Confirmed events dropped unread, and confirmed ticks a resync ran again with other events: reported apart. */
-  readonly lost: { unread: Range | undefined; resync: Range | undefined }
+  /** Confirmed events dropped unread, confirmed ticks a resync ran again with other events, and ticks a save made final that this peer did not run as the host did: reported apart. */
+  readonly lost: { unread: Range | undefined; resync: Range | undefined; save: Range | undefined }
 }
 
 interface Range {
@@ -57,8 +64,15 @@ export interface Ledger {
   readonly rewind: (from: number) => void
   /** After a rollback ran again: withdraws what readers saw of ticks that did not run again. */
   readonly resolve: () => void
-  /** Every unsettled tick is gone: a resync. Withdraws everything predicted. */
-  readonly reset: () => void
+  /**
+   * A save at tick `at`, restored: every tick before it is final. This
+   * peer's runs before `final` were the host's: their records are handed out
+   * as confirmed. The ticks from `final` up to `at` are lost (`"save"`):
+   * this peer ran them otherwise, confirmed them otherwise, or never ran
+   * them. Every unsettled tick from `at` on is gone, and what was predicted
+   * of it withdrawn.
+   */
+  readonly save: (at: number, final: number) => void
   /** Every tick before `settled` will not run again: hands its records to the readers' confirmed queues once. */
   readonly settle: (previous: number, settled: number) => void
   /** A new reader, from tick `from` on. */
@@ -71,7 +85,7 @@ export interface LedgerHost {
   readonly inspect: (inspector: unknown) => unknown
   /** The ticks before this one are settled. */
   readonly settled: () => number
-  /** How many ticks before `settled()` a resync can run again: the idle ticks after a save. */
+  /** How many ticks before `settled()` a resync can run again: the save's tick and the idle ones after it. */
   readonly resyncReach: number
 }
 
@@ -160,9 +174,23 @@ export const make = (host: LedgerHost, descriptor: { readonly name: string }): L
     resolve: () => {
       for (const reader of readers) for (const tick of reader.delivered.keys()) if (!log.has(tick)) withdraw(reader, tick)
     },
-    reset: () => {
+    save: (at, final) => {
+      const before = [...log.keys()].filter((tick) => tick < at).sort(byTick)
+      for (const reader of readers) {
+        // Not as the host's world went through them: run otherwise, confirmed otherwise, or not run here at all.
+        const from = Math.max(final, reader.from)
+        if (from < at) lose(reader, "save", from, at)
+        for (const tick of before) {
+          if (tick < reader.from) continue
+          if (tick < final) {
+            // Run as the host ran it: what `predicted()` handed out of it stands.
+            for (const value of log.get(tick)!) reader.confirmed.push({ tick, value })
+            reader.delivered.delete(tick)
+          } else if (reader.delivered.has(tick)) withdraw(reader, tick)
+        }
+        for (const tick of reader.delivered.keys()) withdraw(reader, tick)
+      }
       log.clear()
-      for (const reader of readers) for (const tick of reader.delivered.keys()) withdraw(reader, tick)
     },
     settle: (previous, settled) => {
       const ticks = [...log.keys()].filter((tick) => tick < settled).sort(byTick)
@@ -200,7 +228,7 @@ export const make = (host: LedgerHost, descriptor: { readonly name: string }): L
       for (const tick of handedOut.keys()) if (tick < settled - host.resyncReach) handedOut.delete(tick)
     },
     reader: (from) => {
-      const reader: Reader = { from, confirmed: [], delivered: new Map(), withdrawn: new Set(), lost: { unread: undefined, resync: undefined } }
+      const reader: Reader = { from, confirmed: [], delivered: new Map(), withdrawn: new Set(), lost: { unread: undefined, resync: undefined, save: undefined } }
       readers.push(reader)
       return {
         confirmed: () => {
@@ -226,8 +254,8 @@ export const make = (host: LedgerHost, descriptor: { readonly name: string }): L
           return ticks
         },
         lost: (): EventsLost | undefined => {
-          // One report per call, a resync's first: it replaced events the host may have acted on.
-          const reason = reader.lost.resync !== undefined ? "resync" : "unread"
+          // One report per call, a resync's first: it replaced events the host may have acted on; then a save's.
+          const reason = reader.lost.resync !== undefined ? "resync" : reader.lost.save !== undefined ? "save" : "unread"
           const lost = reader.lost[reason]
           if (lost === undefined) return undefined
           reader.lost[reason] = undefined

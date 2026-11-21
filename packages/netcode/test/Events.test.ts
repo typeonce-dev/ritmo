@@ -97,11 +97,11 @@ describe("session.events", () => {
     expect(steps.filter((line) => line.includes("withdrawn"))).toEqual([])
   })
 
-  it("withdraws every predicted tick on a resync", () => {
+  it("on a resync, confirms the predicted ticks before the save that ran as the host's did, and withdraws the rest", () => {
     const match = setUpMatch({ mode: "rollback", latencyMS: 100, jitterMS: 0, inputDelay: 0 })
     const [host] = match.peers
     const watchers = match.peers.map(watch)
-    // Both seats hold fire: every tick has events, and every guess is right, so only the resync withdraws.
+    // Both seats hold fire: every tick has events, and every guess is right, so every tick before the save ran as the host's did.
     const firing = (): PlayerInput => ({ dx: 0, fire: true })
     const resyncs = [0, 0]
     for (let at = 0; at < 300; at++) {
@@ -110,14 +110,25 @@ describe("session.events", () => {
       const before = watchers.map((watcher) => new Set(watcher.outstanding))
       frame(match, at, firing)
       for (const [seat, peer] of match.peers.entries()) {
-        const { withdrawn } = watchers[seat]!.read()
+        const watcher = watchers[seat]!
+        const { withdrawn } = watcher.read()
         if (epochs[seat] === 0 || peer.session.status().epoch === epochs[seat]) continue
         resyncs[seat]! += 1
         expect(before[seat]!.size).toBeGreaterThan(0)
-        for (const tick of before[seat]!) expect(withdrawn).toContain(tick)
+        // Each tick predicted before the save is now confirmed, or withdrawn; the confirmed ones come before the save, the withdrawn ones from it on.
+        const kept = [...before[seat]!].filter((tick) => watcher.history.get(tick)?.at(-1) === "confirmed")
+        const undone = [...before[seat]!].filter((tick) => withdrawn.includes(tick))
+        expect(kept.length + undone.length).toBe(before[seat]!.size)
+        if (undone.length > 0) expect(Math.max(...kept)).toBeLessThan(Math.min(...undone))
+        // The host's save is its world: it ran every tick before it, and withdraws none.
+        if (seat === 0) {
+          expect(kept.length).toBeGreaterThan(0)
+          expect(undone).toEqual([])
+        }
       }
     }
     expect(resyncs).toEqual([1, 1])
+    for (const watcher of watchers) expect(watcher.reader.lost()).toBeUndefined()
   })
 
   it("under lockstep, confirms every event once and predicts nothing", () => {

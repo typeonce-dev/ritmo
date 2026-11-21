@@ -11,7 +11,7 @@
  */
 
 /** Bumped when a message changes shape; peers on another version fail with `ProtocolMismatch`. */
-export const version = 5
+export const version = 6
 
 /**
  * Why a seat is out of the match: it sent nothing for too long, its link
@@ -60,6 +60,12 @@ export interface Hello extends Base {
  * seat, the inputs the host holds for the ticks after the save's idle ones,
  * when the save seats a session: the seats stopped sending those every
  * earlier session acknowledged, and a new one has none of them.
+ *
+ * `ran` is what the host's world went through before the save: from tick
+ * `ranFrom` up to `tick`, the inputs of every seat each tick ran with, one
+ * string a tick (a JSON array of their canonical forms, in seat order). A peer that ran a tick of it
+ * on a guess, with the same inputs from a tick both had confirmed, ran it as
+ * the save did: its events are the match's, and it confirms them.
  */
 export interface Sync extends Base {
   readonly k: "sync"
@@ -70,6 +76,8 @@ export interface Sync extends Base {
   readonly roster: number
   readonly left: ReadonlyArray<Why | null>
   readonly ahead: ReadonlyArray<ReadonlyArray<unknown>>
+  readonly ranFrom: number
+  readonly ran: ReadonlyArray<string>
 }
 
 /** Asks seat 0 for a new save. */
@@ -381,7 +389,10 @@ const parseOne = (raw: unknown, from: number, bundleEpoch: number, seats: number
       if (!isCount(value["roster"]) || !Array.isArray(left) || left.length !== seats || !left.every((why) => why === null || isWhy(why))) return undefined
       const ahead = value["ahead"]
       if (!Array.isArray(ahead) || ahead.length !== seats || !ahead.every((inputs) => Array.isArray(inputs) && inputs.length <= maxInputsAhead)) return undefined
-      return { k: "sync", from, epoch, tick: value["tick"], save: value["save"], returned, sessions, roster: value["roster"], left, ahead }
+      const ran = value["ran"]
+      if (!isTick(value["ranFrom"]) || value["ranFrom"] < 0 || !Array.isArray(ran) || ran.length > maxInputsAhead || !ran.every((key) => typeof key === "string")) return undefined
+      if (value["ranFrom"] + ran.length !== value["tick"]) return undefined
+      return { k: "sync", from, epoch, tick: value["tick"], save: value["save"], returned, sessions, roster: value["roster"], left, ahead, ranFrom: value["ranFrom"], ran }
     }
     case "inputs": {
       const inputs = readInputs(value, maxInputsPerMessage)

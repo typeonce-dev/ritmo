@@ -92,6 +92,9 @@ describe("two peers play the shooter over a slow, reordering network", () => {
       expect(status.verified).toBeGreaterThan(400)
     }
     expect(world(peers[0].runtime)).toBe(world(peers[1].runtime))
+    // The host's saves are its world: it confirms every tick it ran. The other seat may not tell a few ticks before each save, and says so.
+    expect(peers[0].lost).toEqual([])
+    for (const lost of peers[1].lost) expect(lost.to - lost.from).toBeLessThanOrEqual(8)
   })
 })
 
