@@ -333,7 +333,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
 
   // What this session says goes out once per frame, as one bundle per link.
   /** The messages said since the last flush. */
-  let outbox: Array<Wire.Message> = []
+  const outbox: Array<Wire.Message> = []
   /** Messages to say again with the next flushes, once each (`left` stays in the outbox `copies - 1` more frames), against loss. */
   let repeats: Array<{ readonly message: Wire.Message; left: number }> = []
   /** Bundles handed to the links, and their UTF-8 bytes: one per open link per flush. */
@@ -367,9 +367,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   /** Hands the outbox to every open link as one bundle. */
   const flush = (): void => {
     if (outbox.length === 0) return
-    const said = outbox
-    outbox = []
-    const text = Wire.write(seat, epoch, said)
+    const text = Wire.write(seat, epoch, outbox)
+    outbox.length = 0
     const bytes = Wire.utf8Length(text)
     for (let index = 0; index < options.links.length; index++) {
       if (linkClosed[index]) continue
