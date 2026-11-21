@@ -136,10 +136,26 @@ export interface Driver extends Subscription {
   reset(): void
 }
 
+/**
+ * Where one fixed update falls in its host frame, the second argument of
+ * `update`. `last` is true when no further update runs in this frame, by
+ * the accumulator and `maxStepsPerFrame`: code that should act once per
+ * frame after its updates (a networked session sending what the frame's
+ * steps said) acts on it. A `reset()` or `stop()` from an earlier update
+ * ends the frame before the update that would have been `last`.
+ */
+export interface StepInFrame {
+  readonly last: boolean
+}
+
+const lastStep: StepInFrame = { last: true }
+const notLastStep: StepInFrame = { last: false }
+
 /** Input for a fixed-step driver. */
 export interface StartOptions<TTick extends Tick, UpdateError> extends Options {
   readonly source: TickSource<TTick>
-  readonly update: (stepSeconds: number) => Result.Result<void, UpdateError>
+  /** One fixed update: `stepSeconds` is `step.dt`, and `at` where it falls in the host frame. */
+  readonly update: (stepSeconds: number, at: StepInFrame) => Result.Result<void, UpdateError>
   readonly render: (frame: Frame) => void
   readonly onFailure: (failure: Failure<UpdateError>) => void
   /**
@@ -238,7 +254,9 @@ export const start = <TTick extends Tick, UpdateError>(
     let fixedSteps = 0
     while (accumulator >= options.step.dt && fixedSteps < options.maxStepsPerFrame) {
       const resetsBefore = resets
-      const update = options.update(options.step.dt)
+      // The loop's own condition, as it will read after this update.
+      const last = !(accumulator - options.step.dt >= options.step.dt && fixedSteps + 1 < options.maxStepsPerFrame)
+      const update = options.update(options.step.dt, last ? lastStep : notLastStep)
       if (!update.ok) {
         fail({ kind: "UpdateFailure", error: update.error })
         return
