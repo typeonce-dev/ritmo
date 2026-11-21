@@ -115,7 +115,11 @@ describe("Netcode.rollback", () => {
       match.hostClock.adjust(stepMS)
     }
     expect(failure?._tag).toBe("Desynced")
-    // Still stopped.
+    // The other peer stops too once the checksum reaches it, and both stay stopped.
+    for (let at = 0; at < 10; at++) {
+      for (const peer of match.peers) peer.session.advance(idle)
+      match.hostClock.adjust(stepMS)
+    }
     expect(guest!.session.advance(idle).ok || host!.session.advance(idle).ok).toBe(false)
     // Only seat 1 asks: seat 0 hosts the resync either way.
     guest!.session.resync()
@@ -227,7 +231,7 @@ describe("Netcode.rollback", () => {
     const link: NetworkLink.NetworkLink = { send: () => {}, receive: () => inbox.splice(0), status: () => NetworkLink.open }
     const peer = makePeer()
     const session = valueOf(Netcode.rollback(peer.runtime, { simulate, seats: peer.seats, seat: 0, links: [link], hostClock, step }))
-    inbox.push("not json", JSON.stringify({ v: 4, k: "hello", from: 7, epoch: 0 }))
+    inbox.push("not json", JSON.stringify({ v: 5, from: 7, epoch: 0, m: [{ k: "hello", session: 1 }] }))
     expect(session.advance(idle).ok).toBe(true)
     expect(session.status().dropped).toBe(2)
     inbox.push(JSON.stringify({ v: 1, k: "hello", from: 1, epoch: 0 }))

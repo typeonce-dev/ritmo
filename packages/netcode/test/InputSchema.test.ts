@@ -68,7 +68,7 @@ describe("the local input", () => {
       for (let at = 0; at < 300; at++) {
         current = [idle, at === 20 ? { dx: 5, fire: false } : idle]
         for (const peer of peers) {
-          const updated = peer.update()
+          const updated = peer.update(step.dt, { last: true })
           if (!updated.ok) throw new Error(JSON.stringify(updated.error))
         }
         hostClock.adjust(step.dt * 1000)

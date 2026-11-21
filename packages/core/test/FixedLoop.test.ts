@@ -44,6 +44,35 @@ describe("FixedLoop.start", () => {
     expect(stopped).toBe(false)
   })
 
+  it("tells each update whether it is the frame's last", () => {
+    let tick: ((value: FixedLoop.Tick) => void) | undefined
+    const lasts: Array<Array<boolean>> = []
+    const driver = FixedLoop.start({
+      source: FixedLoop.source((onTick) => {
+        tick = onTick
+        return { stop: () => {} }
+      }),
+      step: Clock.hz(100),
+      maxFrameSeconds: 0.1,
+      maxStepsPerFrame: 3,
+      update: (_, at) => {
+        lasts[lasts.length - 1]!.push(at.last)
+        return Result.success(undefined)
+      },
+      render: () => {},
+      onFailure: () => {
+        throw new Error("unexpected loop failure")
+      }
+    })
+    expect(driver.ok).toBe(true)
+    // Two steps and a half; one more with the half; none; then more than maxStepsPerFrame allows.
+    for (const deltaMS of [25, 10, 4, 100]) {
+      lasts.push([])
+      tick?.({ deltaMS })
+    }
+    expect(lasts).toEqual([[false, true], [true], [], [false, false, true]])
+  })
+
   it("bounds catch-up work and reports expected update failures", () => {
     let tick: ((value: FixedLoop.Tick) => void) | undefined
     let stopCount = 0

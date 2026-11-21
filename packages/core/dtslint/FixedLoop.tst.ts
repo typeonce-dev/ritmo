@@ -32,6 +32,11 @@ describe("FixedLoop.start", () => {
     })
   })
 
+  it("tells update where its step falls in the frame", () => {
+    expect<Parameters<FixedLoop.StartOptions<FixedLoop.Tick, never>["update"]>>().type.toBe<[stepSeconds: number, at: FixedLoop.StepInFrame]>()
+    expect<FixedLoop.StepInFrame>().type.toBe<{ readonly last: boolean }>()
+  })
+
   it("reads an optional rate per frame", () => {
     expect<FixedLoop.StartOptions<FixedLoop.Tick, never>["rate"]>().type.toBe<(() => number) | undefined>()
     expect<Extract<FixedLoop.Failure<never>, { readonly kind: "InvalidRate" }>>().type.toBe<{ readonly kind: "InvalidRate"; readonly rate: number }>()

@@ -1,12 +1,17 @@
 /**
- * The session protocol: JSON messages, each with the protocol version, the
- * seat that sent it, and the save number (epoch) it knows. Parsed once
- * here; the session trusts the shapes after that. Inputs stay in their
- * saved form until the session decodes them with the game's schema.
+ * The session protocol: what a session says in one frame goes out as one
+ * text, a bundle: the protocol version, the seat that sent it, the save
+ * number (epoch) it knows, and its messages, each of which names its own
+ * epoch only when that is another one. A run of inputs is written as the
+ * distinct inputs once and which of them each tick had (a held input is
+ * one pair of numbers, not a value per tick), and acknowledgements as how
+ * far behind the sender's next tick they are. Parsed once here; the
+ * session trusts the shapes after that. Inputs stay in their saved form
+ * until the session decodes them with the game's schema.
  */
 
 /** Bumped when a message changes shape; peers on another version fail with `ProtocolMismatch`. */
-export const version = 4
+export const version = 5
 
 /**
  * Why a seat is out of the match: it sent nothing for too long, its link
@@ -191,10 +196,16 @@ export interface Out extends Base {
 
 export type Message = Hello | Sync | Resync | Inputs | Sum | Ping | Pong | Hidden | Gone | Left | Out
 
+/**
+ * A bundle's messages, and how many of them were malformed (dropped, the
+ * rest kept), or a bundle that is malformed as a whole, or of another
+ * version.
+ */
 export type Parsed =
-  | { readonly _tag: "Message"; readonly message: Message }
+  | { readonly _tag: "Bundle"; readonly messages: ReadonlyArray<Message>; readonly malformed: number }
   | { readonly _tag: "Malformed" }
   | { readonly _tag: "OtherVersion"; readonly version: unknown }
+
 
 const isTick = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= -1
 const isTime = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value)
@@ -203,9 +214,127 @@ const isWhy = (value: unknown): value is Why => whys.includes(value)
 
 const isSeat = (value: unknown, seats: number): value is number => Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) < seats
 
-const malformed: Parsed = { _tag: "Malformed" }
+const malformed = { _tag: "Malformed" } as const
 
-/** Parses one message for a match of `seats` seats. */
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
+
+const isIndex = (index: unknown, length: number): index is number => Number.isSafeInteger(index) && (index as number) >= 0 && (index as number) < length
+
+/**
+ * A run of inputs as written: `d`, each distinct input once, and which of
+ * them each tick had, as `i` (an index into `d` per tick) or as `r` (pairs
+ * of an index and how many ticks in a row had it), whichever is shorter.
+ * `undefined` when malformed or longer than `most`. Reads `i` in place: the
+ * parsed array is this message's own.
+ */
+const readInputs = (value: Record<string, unknown>, most: number): ReadonlyArray<unknown> | undefined => {
+  const distinct = value["d"]
+  if (!Array.isArray(distinct)) return undefined
+  let inputs: Array<unknown>
+  if ("r" in value) {
+    const runs = value["r"]
+    if ("i" in value || !Array.isArray(runs) || runs.length % 2 !== 0) return undefined
+    inputs = []
+    for (let at = 0; at < runs.length; at += 2) {
+      const index = runs[at]
+      const length = runs[at + 1]
+      if (!isIndex(index, distinct.length) || !Number.isSafeInteger(length) || length < 1 || inputs.length + length > most) return undefined
+      for (let tick = 0; tick < length; tick++) inputs.push(distinct[index])
+    }
+  } else {
+    const indices = value["i"]
+    if (!Array.isArray(indices) || indices.length > most) return undefined
+    for (let at = 0; at < indices.length; at++) {
+      const index: unknown = indices[at]
+      if (!isIndex(index, distinct.length)) return undefined
+      indices[at] = distinct[index]
+    }
+    inputs = indices
+  }
+  // Every distinct input is one some tick had.
+  return distinct.length > inputs.length ? undefined : inputs
+}
+
+/**
+ * Whether two inputs in their saved form (plain JSON data) are the same
+ * value: compared in place, since a session compares each of its inputs it
+ * has not seen acknowledged in every frame's bundle.
+ */
+const same = (a: unknown, b: unknown): boolean => {
+  if (a === b) return true
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
+    for (let index = 0; index < a.length; index++) if (!same(a[index], b[index])) return false
+    return true
+  }
+  const left = a as Record<string, unknown>
+  const right = b as Record<string, unknown>
+  let keys = 0
+  for (const key in left) {
+    keys += 1
+    if (!(key in right) || !same(left[key], right[key])) return false
+  }
+  for (const _ in right) keys -= 1
+  return keys === 0
+}
+
+/** Writes a run of inputs into `into` as `d` and `i` or `r` (see {@link readInputs}). */
+const writeInputs = (inputs: ReadonlyArray<unknown>, into: Record<string, unknown>): void => {
+  const d: Array<unknown> = []
+  const indices: Array<number> = new Array<number>(inputs.length)
+  let runs = 0
+  for (let tick = 0; tick < inputs.length; tick++) {
+    // A value JSON cannot write (a tick with no input) arrives as null, as it did in a plain array.
+    const raw = inputs[tick]
+    const input = raw === undefined ? null : raw
+    // Few inputs are distinct: a search beats a map.
+    let index = -1
+    for (let at = 0; at < d.length && index === -1; at++) if (same(d[at], input)) index = at
+    if (index === -1) {
+      index = d.length
+      d.push(input)
+    }
+    if (tick === 0 || indices[tick - 1] !== index) runs += 1
+    indices[tick] = index
+  }
+  into["d"] = d
+  // A held input is one run: a pair instead of an index per tick.
+  if (runs * 2 >= indices.length) {
+    into["i"] = indices
+    return
+  }
+  const pairs: Array<number> = new Array<number>(runs * 2)
+  let at = -2
+  for (let tick = 0; tick < indices.length; tick++) {
+    if (tick > 0 && indices[tick] === indices[tick - 1]) pairs[at + 1]! += 1
+    else {
+      at += 2
+      pairs[at] = indices[tick]!
+      pairs[at + 1] = 1
+    }
+  }
+  into["r"] = pairs
+}
+
+/**
+ * Acknowledgements as written: per seat, how far behind `next` the tick is
+ * (a small number, where the tick itself grows all match long). Read in
+ * place: the parsed array is this message's own.
+ */
+const readAcks = (value: unknown, next: number, seats: number): ReadonlyArray<number> | undefined => {
+  if (!Array.isArray(value) || value.length !== seats) return undefined
+  for (let seat = 0; seat < seats; seat++) {
+    const behind: unknown = value[seat]
+    if (!Number.isSafeInteger(behind)) return undefined
+    const ack = next - (behind as number)
+    if (!isTick(ack)) return undefined
+    value[seat] = ack
+  }
+  return value as Array<number>
+}
+
+/** Parses one bundle for a match of `seats` seats. */
 export const parse = (text: string, seats: number): Parsed => {
   let raw: unknown
   try {
@@ -213,75 +342,87 @@ export const parse = (text: string, seats: number): Parsed => {
   } catch {
     return malformed
   }
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return malformed
-  const value = raw as Record<string, unknown>
-  if (value["v"] !== version) return { _tag: "OtherVersion", version: value["v"] }
-  const from = value["from"]
-  const epoch = value["epoch"]
-  if (!Number.isSafeInteger(from) || (from as number) < 0 || (from as number) >= seats || !isTick(epoch) || epoch < 0) return malformed
-  const base = { from: from as number, epoch }
+  if (!isRecord(raw)) return malformed
+  if (raw["v"] !== version) return { _tag: "OtherVersion", version: raw["v"] }
+  const from = raw["from"]
+  const epoch = raw["epoch"]
+  const list = raw["m"]
+  if (!Number.isSafeInteger(from) || (from as number) < 0 || (from as number) >= seats || !isTick(epoch) || epoch < 0 || !Array.isArray(list)) return malformed
+  // Each message takes the place of its text in the parsed list, and a malformed one is dropped from it.
+  let kept = 0
+  for (let index = 0; index < list.length; index++) {
+    const parsed = parseOne(list[index], from as number, epoch, seats)
+    if (parsed !== undefined) list[kept++] = parsed
+  }
+  const dropped = list.length - kept
+  if (dropped > 0) list.length = kept
+  return { _tag: "Bundle", messages: list as Array<Message>, malformed: dropped }
+}
+
+/** One message of a bundle from `from`, whose epoch is the bundle's unless the message names its own (`undefined`: malformed). */
+const parseOne = (raw: unknown, from: number, bundleEpoch: number, seats: number): Message | undefined => {
+  if (!isRecord(raw)) return undefined
+  const value = raw
+  const epoch = "epoch" in value ? value["epoch"] : bundleEpoch
+  if (!isTick(epoch) || epoch < 0) return undefined
   switch (value["k"]) {
     case "hello":
-      if (!isTime(value["session"])) return malformed
-      return { _tag: "Message", message: { k: "hello", ...base, session: value["session"] } }
+      if (!isTime(value["session"])) return undefined
+      return { k: "hello", from, epoch, session: value["session"] }
     case "resync":
-      return { _tag: "Message", message: { k: "resync", ...base } }
+      return { k: "resync", from, epoch }
     case "sync": {
       const returned = value["returned"]
       const sessions = value["sessions"]
-      if (!isTick(value["tick"]) || value["tick"] < 0 || !("save" in value)) return malformed
-      if (!Array.isArray(returned) || returned.length !== seats || !returned.every(isCount)) return malformed
-      if (!Array.isArray(sessions) || sessions.length !== seats || !sessions.every(isTime)) return malformed
+      if (!isTick(value["tick"]) || value["tick"] < 0 || !("save" in value)) return undefined
+      if (!Array.isArray(returned) || returned.length !== seats || !returned.every(isCount)) return undefined
+      if (!Array.isArray(sessions) || sessions.length !== seats || !sessions.every(isTime)) return undefined
       const left = value["left"]
-      if (!isCount(value["roster"]) || !Array.isArray(left) || left.length !== seats || !left.every((why) => why === null || isWhy(why))) return malformed
+      if (!isCount(value["roster"]) || !Array.isArray(left) || left.length !== seats || !left.every((why) => why === null || isWhy(why))) return undefined
       const ahead = value["ahead"]
-      if (!Array.isArray(ahead) || ahead.length !== seats || !ahead.every((inputs) => Array.isArray(inputs) && inputs.length <= maxInputsAhead)) return malformed
-      return { _tag: "Message", message: { k: "sync", ...base, tick: value["tick"], save: value["save"], returned, sessions, roster: value["roster"], left, ahead } }
+      if (!Array.isArray(ahead) || ahead.length !== seats || !ahead.every((inputs) => Array.isArray(inputs) && inputs.length <= maxInputsAhead)) return undefined
+      return { k: "sync", from, epoch, tick: value["tick"], save: value["save"], returned, sessions, roster: value["roster"], left, ahead }
     }
     case "inputs": {
-      const acks = value["acks"]
-      const inputs = value["inputs"]
-      if (!isCount(value["roster"]) || !isTick(value["next"]) || !isTick(value["start"]) || value["start"] < 0) return malformed
-      if (!Array.isArray(acks) || acks.length !== seats || !acks.every(isTick) || !Array.isArray(inputs)) return malformed
-      if (inputs.length > maxInputsPerMessage) return malformed
-      return { _tag: "Message", message: { k: "inputs", ...base, roster: value["roster"], next: value["next"], acks, start: value["start"], inputs } }
+      const inputs = readInputs(value, maxInputsPerMessage)
+      if (!isCount(value["roster"]) || !isTick(value["next"]) || !isTick(value["start"]) || value["start"] < 0) return undefined
+      const acks = readAcks(value["acks"], value["next"], seats)
+      if (acks === undefined || inputs === undefined) return undefined
+      return { k: "inputs", from, epoch, roster: value["roster"], next: value["next"], acks, start: value["start"], inputs }
     }
     case "sum":
-      if (!isCount(value["roster"]) || !isTick(value["tick"]) || typeof value["sum"] !== "string" || value["sum"].length > sumLength) return malformed
-      return { _tag: "Message", message: { k: "sum", ...base, roster: value["roster"], tick: value["tick"], sum: value["sum"] } }
+      if (!isCount(value["roster"]) || !isTick(value["tick"]) || typeof value["sum"] !== "string" || value["sum"].length > sumLength) return undefined
+      return { k: "sum", from, epoch, roster: value["roster"], tick: value["tick"], sum: value["sum"] }
     case "ping":
-      if (!isTime(value["session"]) || !isTime(value["at"]) || !isCount(value["shown"])) return malformed
-      return { _tag: "Message", message: { k: "ping", ...base, session: value["session"], at: value["at"], shown: value["shown"] } }
+      if (!isTime(value["session"]) || !isTime(value["at"]) || !isCount(value["shown"])) return undefined
+      return { k: "ping", from, epoch, session: value["session"], at: value["at"], shown: value["shown"] }
     case "pong": {
       const to = value["to"]
-      if (!isTime(value["at"]) || !Number.isSafeInteger(to) || (to as number) < 0 || (to as number) >= seats) return malformed
-      return { _tag: "Message", message: { k: "pong", ...base, to: to as number, at: value["at"] } }
+      if (!isTime(value["at"]) || !Number.isSafeInteger(to) || (to as number) < 0 || (to as number) >= seats) return undefined
+      return { k: "pong", from, epoch, to: to as number, at: value["at"] }
     }
     case "hidden": {
       const seat = value["seat"]
-      const inputs = value["inputs"]
-      if (!Number.isSafeInteger(seat) || (seat as number) < 0 || (seat as number) >= seats) return malformed
-      if (!isCount(value["roster"]) || !isCount(value["n"]) || value["n"] < 1 || !isTick(value["last"]) || typeof value["away"] !== "boolean") return malformed
-      if (!isCount(value["start"]) || !Array.isArray(inputs) || inputs.length > maxInputsPerMessage) return malformed
+      const inputs = readInputs(value, maxInputsPerMessage)
+      if (!Number.isSafeInteger(seat) || (seat as number) < 0 || (seat as number) >= seats) return undefined
+      if (!isCount(value["roster"]) || !isCount(value["n"]) || value["n"] < 1 || !isTick(value["last"]) || typeof value["away"] !== "boolean") return undefined
+      if (!isCount(value["start"]) || inputs === undefined) return undefined
       // The inputs it carries are its own, so they end at `last` at the latest.
-      if (value["start"] + inputs.length - 1 > value["last"]) return malformed
-      return {
-        _tag: "Message",
-        message: { k: "hidden", ...base, roster: value["roster"], seat: seat as number, n: value["n"], last: value["last"], away: value["away"], start: value["start"], inputs }
-      }
+      if (value["start"] + inputs.length - 1 > value["last"]) return undefined
+      return { k: "hidden", from, epoch, roster: value["roster"], seat: seat as number, n: value["n"], last: value["last"], away: value["away"], start: value["start"], inputs }
     }
     case "gone": {
       const seat = value["seat"]
-      const inputs = value["inputs"]
-      if (!isSeat(seat, seats) || seat === from || !isWhy(value["why"]) || !isTick(value["have"])) return malformed
-      if (!isCount(value["start"]) || !Array.isArray(inputs) || inputs.length > maxInputsPerMessage) return malformed
+      const inputs = readInputs(value, maxInputsPerMessage)
+      if (!isSeat(seat, seats) || seat === from || !isWhy(value["why"]) || !isTick(value["have"])) return undefined
+      if (!isCount(value["start"]) || inputs === undefined) return undefined
       // It reports what it has, so the inputs it carries end at `have` at the latest.
-      if (value["start"] + inputs.length - 1 > value["have"]) return malformed
-      return { _tag: "Message", message: { k: "gone", ...base, seat, why: value["why"], have: value["have"], start: value["start"], inputs } }
+      if (value["start"] + inputs.length - 1 > value["have"]) return undefined
+      return { k: "gone", from, epoch, seat, why: value["why"], have: value["have"], start: value["start"], inputs }
     }
     case "out":
-      if (!isSeat(value["seat"], seats) || value["seat"] === from || !isWhy(value["why"]) || !isTick(value["last"]) || !isCount(value["tick"])) return malformed
-      return { _tag: "Message", message: { k: "out", ...base, seat: value["seat"], why: value["why"], last: value["last"], tick: value["tick"] } }
+      if (!isSeat(value["seat"], seats) || value["seat"] === from || !isWhy(value["why"]) || !isTick(value["last"]) || !isCount(value["tick"])) return undefined
+      return { k: "out", from, epoch, seat: value["seat"], why: value["why"], last: value["last"], tick: value["tick"] }
     case "left": {
       const by = value["by"]
       const out = value["seats"]
@@ -289,25 +430,75 @@ export const parse = (text: string, seats: number): Parsed => {
       const last = value["last"]
       const tick = value["tick"]
       const seat = value["seat"]
-      const inputs = value["inputs"]
-      if (!isCount(value["roster"]) || value["roster"] < 1 || !isSeat(by, seats)) return malformed
-      if (!Array.isArray(out) || out.length < 1 || out.length >= seats || !out.every((one) => isSeat(one, seats) && one !== by) || new Set(out).size !== out.length) return malformed
-      if (!Array.isArray(why) || why.length !== out.length || !why.every(isWhy)) return malformed
-      if (!Array.isArray(last) || last.length !== out.length || !last.every(isTick)) return malformed
+      const inputs = readInputs(value, maxInputsPerMessage)
+      if (!isCount(value["roster"]) || value["roster"] < 1 || !isSeat(by, seats)) return undefined
+      if (!Array.isArray(out) || out.length < 1 || out.length >= seats || !out.every((one) => isSeat(one, seats) && one !== by) || new Set(out).size !== out.length) return undefined
+      if (!Array.isArray(why) || why.length !== out.length || !why.every(isWhy)) return undefined
+      if (!Array.isArray(last) || last.length !== out.length || !last.every(isTick)) return undefined
       // Its input is the `left` one only after its last own one.
-      if (!Array.isArray(tick) || tick.length !== out.length || !tick.every((first, index) => isCount(first) && first > (last[index] as number))) return malformed
+      if (!Array.isArray(tick) || tick.length !== out.length || !tick.every((first, index) => isCount(first) && first > (last[index] as number))) return undefined
       const index = out.indexOf(seat)
-      if (index === -1 || !isCount(value["start"]) || !Array.isArray(inputs) || inputs.length > maxInputsPerMessage) return malformed
-      if (value["start"] + inputs.length - 1 > (last[index] as number)) return malformed
-      return {
-        _tag: "Message",
-        message: { k: "left", ...base, roster: value["roster"], by, seats: out, why, last, tick, seat: seat as number, start: value["start"], inputs }
-      }
+      if (index === -1 || !isCount(value["start"]) || inputs === undefined) return undefined
+      if (value["start"] + inputs.length - 1 > (last[index] as number)) return undefined
+      return { k: "left", from, epoch, roster: value["roster"], by, seats: out, why, last, tick, seat: seat as number, start: value["start"], inputs }
     }
     default:
-      return malformed
+      return undefined
   }
 }
 
-/** The text of a message. */
-export const write = (message: Message): string => JSON.stringify({ v: version, ...message })
+/**
+ * One message as a bundle writes it: no `from` (the bundle's), no `epoch`
+ * when it is the bundle's, its inputs as `d` and `i` or `r`, and an
+ * `inputs`' acknowledgements as how far behind its `next` they are.
+ */
+const writeOne = (message: Message, epoch: number): object => {
+  const own = message.epoch === epoch ? undefined : message.epoch
+  if (message.k === "inputs") {
+    // The message every frame says, built member by member.
+    const acks: Array<number> = new Array<number>(message.acks.length)
+    for (let seat = 0; seat < acks.length; seat++) acks[seat] = message.next - message.acks[seat]!
+    const written: Record<string, unknown> = { k: "inputs", epoch: own, roster: message.roster, next: message.next, acks, start: message.start }
+    writeInputs(message.inputs, written)
+    return written
+  }
+  const written: Record<string, unknown> = {}
+  const fields = message as unknown as Record<string, unknown>
+  for (const key in fields) if (key !== "from" && key !== "epoch" && key !== "inputs") written[key] = fields[key]
+  written["epoch"] = own
+  if ("inputs" in message) writeInputs(message.inputs, written)
+  return written
+}
+
+/** The bundle {@link write} fills: writing is synchronous, so one serves every session. */
+const none: ReadonlyArray<object> = []
+const scratch: { v: number; from: number; epoch: number; m: ReadonlyArray<object> } = { v: version, from: 0, epoch: 0, m: none }
+
+/** The text of a bundle: `messages`, all sent by `from`, which knows `epoch`. */
+export const write = (from: number, epoch: number, messages: ReadonlyArray<Message>): string => {
+  const m: Array<object> = new Array<object>(messages.length)
+  for (let index = 0; index < messages.length; index++) m[index] = writeOne(messages[index]!, epoch)
+  scratch.from = from
+  scratch.epoch = epoch
+  scratch.m = m
+  // Members left undefined (an `epoch` that is the bundle's) are not written.
+  const text = JSON.stringify(scratch)
+  scratch.m = none
+  return text
+}
+
+/** The length of `text` in UTF-8, as a transport counts it. */
+export const utf8Length = (text: string): number => {
+  let bytes = 0
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index)
+    if (code < 0x80) bytes += 1
+    else if (code < 0x800) bytes += 2
+    else if (code >= 0xd800 && code < 0xdc00 && index + 1 < text.length) {
+      // A surrogate pair: one character of four bytes.
+      bytes += 4
+      index += 1
+    } else bytes += 3
+  }
+  return bytes
+}

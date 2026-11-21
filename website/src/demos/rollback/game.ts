@@ -139,9 +139,9 @@ export const mount = async (host: HTMLElement): Promise<() => void> => {
     maxStepsPerFrame: 5,
     // One loop drives both peers here, so they never drift apart: a real peer
     // passes its session's `rate` and its update straight to its own loop.
-    update: () => {
+    update: (seconds, at) => {
       for (const update of match.updates) {
-        const ran = update()
+        const ran = update(seconds, at)
         if (!ran.ok) return ran
       }
       return Result.success(undefined)

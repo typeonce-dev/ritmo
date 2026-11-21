@@ -3,241 +3,241 @@
     "tolerance": 0.25,
     "allocationTolerance": 0.1,
     "allocationSlackBytes": 1024,
-    "calibrationMs": 2.9835,
+    "calibrationMs": 2.9794,
     "environment": "Apple M1 / node v24.16.0 / darwin",
     "cases": {
       "top-down/frame-x60": {
-        "minMs": 0.3947,
-        "medianMs": 0.4264,
-        "score": 0.1316,
-        "bytesPerRun": 791188
+        "minMs": 0.3933,
+        "medianMs": 0.4095,
+        "score": 0.1319,
+        "bytesPerRun": 791068
       },
       "random/next-100k": {
-        "minMs": 0.793,
-        "medianMs": 0.8086,
-        "score": 0.2644,
-        "bytesPerRun": 800335
+        "minMs": 0.7935,
+        "medianMs": 0.7993,
+        "score": 0.2661,
+        "bytesPerRun": 800328
       },
       "random/draw-resource-100k": {
-        "minMs": 3.8234,
-        "medianMs": 3.9643,
-        "score": 1.2749,
-        "bytesPerRun": 3060234
+        "minMs": 3.7912,
+        "medianMs": 3.8564,
+        "score": 1.2725,
+        "bytesPerRun": 3060597
       },
       "ops/steer-10k": {
-        "minMs": 0.908,
-        "medianMs": 0.9547,
-        "score": 0.3023,
-        "bytesPerRun": 1760392
+        "minMs": 0.8736,
+        "medianMs": 0.891,
+        "score": 0.2931,
+        "bytesPerRun": 1760399
       },
       "clock/advance-1000": {
-        "minMs": 0.1623,
-        "medianMs": 0.181,
-        "score": 0.0544,
-        "bytesPerRun": 423932
+        "minMs": 0.1643,
+        "medianMs": 0.1802,
+        "score": 0.0551,
+        "bytesPerRun": 423904
       },
       "spawn/10k-3c": {
-        "minMs": 6.8922,
-        "medianMs": 7.1016,
-        "score": 2.2982,
-        "bytesPerRun": 20430330
+        "minMs": 6.5764,
+        "medianMs": 6.9084,
+        "score": 2.2054,
+        "bytesPerRun": 20430358
       },
       "despawn/10k": {
-        "minMs": 9.6658,
-        "medianMs": 11.2189,
-        "score": 3.2231,
-        "bytesPerRun": 9099760
+        "minMs": 9.4083,
+        "medianMs": 10.7152,
+        "score": 3.1551,
+        "bytesPerRun": 9099753
       },
       "query/iterate-read-10k-of-20k": {
-        "minMs": 0.0797,
-        "medianMs": 0.0829,
-        "score": 0.0265,
+        "minMs": 0.0791,
+        "medianMs": 0.0794,
+        "score": 0.0266,
         "bytesPerRun": 1648
       },
       "query/optional-read-20k": {
-        "minMs": 0.2029,
-        "medianMs": 0.208,
-        "score": 0.0677,
+        "minMs": 0.2091,
+        "medianMs": 0.2123,
+        "score": 0.0701,
         "bytesPerRun": 1629
       },
       "query/rows-10k": {
-        "minMs": 0.4956,
-        "medianMs": 0.5048,
-        "score": 0.1653,
+        "minMs": 0.4833,
+        "medianMs": 0.488,
+        "score": 0.1621,
         "bytesPerRun": 1041966
       },
       "query/iterate-write-10k": {
-        "minMs": 0.1798,
-        "medianMs": 0.1953,
-        "score": 0.0603,
+        "minMs": 0.1716,
+        "medianMs": 0.1737,
+        "score": 0.0575,
         "bytesPerRun": 401491
       },
       "query/number-write-10k": {
         "minMs": 0.0983,
-        "medianMs": 0.1013,
-        "score": 0.0327,
+        "medianMs": 0.0991,
+        "score": 0.033,
         "bytesPerRun": 1473
       },
       "query/set-raw-10k": {
-        "minMs": 0.6286,
-        "medianMs": 0.678,
-        "score": 0.2096,
+        "minMs": 0.6508,
+        "medianMs": 0.6681,
+        "score": 0.2183,
         "bytesPerRun": 1281581
       },
       "entity-state/update-transition-10k": {
-        "minMs": 1.5723,
-        "medianMs": 1.9196,
-        "score": 0.5243,
-        "bytesPerRun": 3583323
+        "minMs": 1.5572,
+        "medianMs": 1.8858,
+        "score": 0.5225,
+        "bytesPerRun": 3583296
       },
       "machine/update-10k": {
-        "minMs": 2.6962,
-        "medianMs": 2.7534,
-        "score": 0.899,
+        "minMs": 2.4407,
+        "medianMs": 2.467,
+        "score": 0.8192,
         "bytesPerRun": 5522969
       },
       "query/single-in-20k-x1000": {
         "minMs": 0.1616,
-        "medianMs": 0.164,
-        "score": 0.0539,
+        "medianMs": 0.1636,
+        "score": 0.0542,
         "bytesPerRun": 288321
       },
       "query/changed-100-of-10k-x20": {
-        "minMs": 0.1989,
-        "medianMs": 0.2035,
-        "score": 0.0663,
+        "minMs": 0.1983,
+        "medianMs": 0.2018,
+        "score": 0.0666,
         "bytesPerRun": 341047
       },
       "structural/insert-remove-1k": {
         "minMs": 0.1804,
-        "medianMs": 0.1926,
+        "medianMs": 0.1989,
         "score": 0.0605,
-        "bytesPerRun": 666319
+        "bytesPerRun": 666333
       },
       "schedule/100-systems-x10": {
-        "minMs": 0.0416,
-        "medianMs": 0.0448,
-        "score": 0.014,
-        "bytesPerRun": 9634
+        "minMs": 0.0421,
+        "medianMs": 0.0428,
+        "score": 0.0141,
+        "bytesPerRun": 9627
       },
       "schedule/150-systems-thistick-x10": {
-        "minMs": 0.0866,
-        "medianMs": 0.0886,
-        "score": 0.0288,
+        "minMs": 0.0846,
+        "medianMs": 0.0859,
+        "score": 0.0284,
         "bytesPerRun": 18377
       },
       "lookup/get-10k": {
-        "minMs": 0.6422,
-        "medianMs": 0.66,
-        "score": 0.2138,
-        "bytesPerRun": 1617
+        "minMs": 0.6451,
+        "medianMs": 0.6554,
+        "score": 0.2163,
+        "bytesPerRun": 1609
       },
       "events/emit-read-10k": {
-        "minMs": 0.0958,
-        "medianMs": 0.099,
-        "score": 0.032,
-        "bytesPerRun": 248139
+        "minMs": 0.0961,
+        "medianMs": 0.098,
+        "score": 0.0322,
+        "bytesPerRun": 248132
       },
       "relations/descendants-100x100": {
-        "minMs": 0.2976,
-        "medianMs": 0.3034,
-        "score": 0.0992,
+        "minMs": 0.2997,
+        "medianMs": 0.3065,
+        "score": 0.1006,
         "bytesPerRun": 329778
       },
       "snapshot/json-roundtrip-10k": {
-        "minMs": 21.874,
-        "medianMs": 22.5813,
-        "score": 7.294,
-        "bytesPerRun": 32366761
+        "minMs": 21.531,
+        "medianMs": 22.8133,
+        "score": 7.2266,
+        "bytesPerRun": 32366705
       },
       "frame/50-systems-5k": {
-        "minMs": 1.7777,
-        "medianMs": 1.8718,
-        "score": 0.5918,
-        "bytesPerRun": 3031185
+        "minMs": 1.7606,
+        "medianMs": 1.8217,
+        "score": 0.5909,
+        "bytesPerRun": 3031199
       },
       "checkpoint/take-tick-10k": {
-        "minMs": 0.2767,
-        "medianMs": 0.3001,
-        "score": 0.0927,
-        "bytesPerRun": 514931
+        "minMs": 0.2641,
+        "medianMs": 0.2766,
+        "score": 0.0886,
+        "bytesPerRun": 514982
       },
       "checkpoint/rollback-8-of-5k": {
-        "minMs": 2.6436,
-        "medianMs": 2.8452,
-        "score": 0.8801,
+        "minMs": 2.694,
+        "medianMs": 2.8384,
+        "score": 0.9042,
         "bytesPerRun": 4515720
       },
       "math/vec2-steer-10k": {
-        "minMs": 1.2167,
-        "medianMs": 1.2957,
-        "score": 0.4051,
-        "bytesPerRun": 3567291
+        "minMs": 1.2133,
+        "medianMs": 1.2387,
+        "score": 0.4071,
+        "bytesPerRun": 3567298
       },
       "math/scalar-spring-10k": {
-        "minMs": 0.5461,
-        "medianMs": 0.5595,
-        "score": 0.1821,
+        "minMs": 0.5456,
+        "medianMs": 0.5533,
+        "score": 0.1831,
         "bytesPerRun": 1655520
       },
       "math/flow-field-search": {
-        "minMs": 0.1872,
-        "medianMs": 0.1953,
-        "score": 0.0624,
-        "bytesPerRun": 382
+        "minMs": 0.1869,
+        "medianMs": 0.1958,
+        "score": 0.0627,
+        "bytesPerRun": 375
       },
       "math/flow-field-way-1k": {
-        "minMs": 0.0924,
-        "medianMs": 0.0943,
-        "score": 0.0308,
+        "minMs": 0.0923,
+        "medianMs": 0.0959,
+        "score": 0.031,
         "bytesPerRun": 116471
       },
       "math/collide-move-circle-1k": {
-        "minMs": 0.5152,
-        "medianMs": 0.5274,
-        "score": 0.1718,
-        "bytesPerRun": 246848
+        "minMs": 0.5119,
+        "medianMs": 0.5151,
+        "score": 0.1717,
+        "bytesPerRun": 246855
       },
       "math/collide-move-circle-segments-1k": {
-        "minMs": 2.2302,
-        "medianMs": 2.2964,
+        "minMs": 2.2272,
+        "medianMs": 2.2433,
         "score": 0.7475,
-        "bytesPerRun": 254535
+        "bytesPerRun": 254542
       },
       "netcode/rollback-frame-2-peers": {
-        "minMs": 0.0659,
-        "medianMs": 0.0904,
-        "score": 0.0219,
-        "bytesPerRun": 190837
+        "minMs": 0.0607,
+        "medianMs": 0.0715,
+        "score": 0.0204,
+        "bytesPerRun": 189691
       },
       "netcode/lockstep-frame-2-peers": {
-        "minMs": 0.0089,
-        "medianMs": 0.0099,
-        "score": 0.003,
-        "bytesPerRun": 26215
+        "minMs": 0.0086,
+        "medianMs": 0.0093,
+        "score": 0.0029,
+        "bytesPerRun": 25170
       },
       "render/sync-1k-changed-of-10k": {
-        "minMs": 0.2317,
-        "medianMs": 0.2585,
-        "score": 0.0772,
+        "minMs": 0.2211,
+        "medianMs": 0.2379,
+        "score": 0.0741,
         "bytesPerRun": 326545
       },
       "render/sync-hierarchy-1k-changed-of-10k": {
-        "minMs": 0.4137,
-        "medianMs": 0.458,
-        "score": 0.1377,
+        "minMs": 0.4022,
+        "medianMs": 0.4301,
+        "score": 0.135,
         "bytesPerRun": 366447
       },
       "render/sync-spawn-despawn-500": {
-        "minMs": 1.4494,
-        "medianMs": 1.6079,
-        "score": 0.4825,
-        "bytesPerRun": 1892511
+        "minMs": 1.428,
+        "medianMs": 1.5785,
+        "score": 0.4789,
+        "bytesPerRun": 1892532
       },
       "render/interpolate-10k": {
-        "minMs": 0.2897,
-        "medianMs": 0.2958,
-        "score": 0.0971,
+        "minMs": 0.2911,
+        "medianMs": 0.2955,
+        "score": 0.0976,
         "bytesPerRun": 1489
       }
     }
@@ -246,8 +246,8 @@
     "tolerance": 0.05,
     "typescript": "Version 7.0.2",
     "metrics": {
-      "types": 138626,
-      "instantiations": 1516105
+      "types": 138656,
+      "instantiations": 1516132
     }
   }
 }

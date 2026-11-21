@@ -7,7 +7,10 @@
  * to every other peer. Every message names the seat it comes from, so a
  * session does not care which. The session owns what the text says (inputs,
  * checksums, saves); a link only carries it, in any order, and may lose
- * some: sessions repeat what was not acknowledged.
+ * some: sessions repeat what was not acknowledged. A session hands its
+ * link one message per frame (everything that frame's steps said, when
+ * `session.update` drives it), so a link sends each as it is, with no
+ * batching or copies of its own.
  *
  * Opening a connection, signaling, retrying, and reconnecting belong to the
  * game, before and around the link: an adapter wraps a connection that is

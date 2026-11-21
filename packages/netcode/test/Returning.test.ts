@@ -3,7 +3,7 @@ import { HostClock } from "@typeonce/ritmo"
 import { Netcode, NetworkLink } from "@typeonce/ritmo-netcode"
 
 import { idle, makePeer, simulate, step } from "./game.ts"
-import { checksumOf, flaky, frame, leave, playOn, reload, setUpMatch, settleOn, staying, stepMS } from "./match.ts"
+import { checksumOf, flaky, frame, leave, playOn, reload, setUpMatch, settleOn, staying, stepMS, wire } from "./match.ts"
 
 const held = { dx: 1, fire: false }
 
@@ -83,7 +83,7 @@ describe("a page that loads again mid-match", () => {
     let frames = 0
     for (; frames < 200 && ended === undefined; frames++) {
       // Seat 0 is in epoch 3 and never answers this session.
-      inbox.push(JSON.stringify({ v: 4, k: "inputs", from: 0, epoch: 3, roster: 0, next: 500, acks: [499, 480], start: 500, inputs: [idle] }))
+      inbox.push(wire({ k: "inputs", from: 0, epoch: 3, roster: 0, next: 500, acks: [499, 480], start: 500, inputs: [idle] }))
       const advanced = session.advance(idle)
       if (!advanced.ok) ended = advanced.error
       hostClock.adjust(stepMS)
@@ -97,7 +97,7 @@ describe("a page that loads again mid-match", () => {
     const match = setUpMatch({ mode: "rollback", latencyMS: 20, jitterMS: 0 })
     playOn(match, 60)
     // Another tab of seat 1 says hello where seat 1's session hears it.
-    const asks = JSON.stringify({ v: 4, k: "hello", from: 1, epoch: 0, session: 123456 })
+    const asks = wire({ k: "hello", from: 1, epoch: 0, session: 123456 })
     const heard: Array<string> = [asks]
     const link = match.links[1]!
     const original = link.receive
