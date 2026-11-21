@@ -267,3 +267,15 @@ export const checksumOf = (peer: Peer): string => {
   if (!sum.ok) throw new Error("the peer did not checksum")
   return sum.value
 }
+
+/**
+ * One message as a session's bundle writes it (protocol 5): for tests that
+ * hand a session what no honest peer sends. `inputs` becomes the distinct
+ * inputs (`d`) and an index per tick (`i`).
+ */
+export const wire = (message: { readonly from: number; readonly epoch: number; readonly inputs?: ReadonlyArray<unknown> } & Record<string, unknown>): string => {
+  const { from, epoch, inputs, ...rest } = message
+  const acks = rest["k"] === "inputs" ? { acks: (rest["acks"] as ReadonlyArray<number>).map((ack) => (rest["next"] as number) - ack) } : {}
+  const written = { ...rest, ...acks, ...(inputs === undefined ? {} : { d: inputs, i: inputs.map((_, index) => index) }) }
+  return JSON.stringify({ v: 5, from, epoch, m: [written] })
+}

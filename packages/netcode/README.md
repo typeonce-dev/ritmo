@@ -47,6 +47,17 @@ FixedLoop.start({
 })
 ```
 
+## Traffic
+
+A session says everything of one frame in one message per link: driven by `session.update` from a `FixedLoop`, that is one per host frame however many steps the frame ran (a frame that runs none sends nothing); each `advance` called directly is a frame of its own. A relay that bills per message (a Cloudflare Durable Object) sees one message per peer per frame, so a link sends each as it is, with no outbox or batching of its own. A game whose `update` wraps the session's passes both of the loop's arguments through:
+
+```ts
+const tick = session.value.update({ input: readLocalInput, onHalted: (error) => console.error(error) })
+FixedLoop.start({ ...loop, update: (seconds, at) => tick(seconds, at) })
+```
+
+Each message still carries every input a peer has not acknowledged, so one that is lost costs nothing the next one does not repeat, but it writes each distinct input once (a held input is two numbers however many ticks it was held). The input's saved form (what `seats`' schema encodes) is the rest of the weight: a small one, such as a packed integer, is the lightest. `status().sent` counts the messages handed to the links and their bytes in UTF-8; read it twice for a rate. Over 120 ms with 60 ms of jitter and 5% loss, 8 peers at 60 Hz on pages that sometimes run two or three steps in a frame send about 390 messages and 70 to 100 KiB a second in all.
+
 ## Input delay
 
 A session records the local input for a tick a few ticks ahead (`inputDelay`, 2 by default): a little lag that lets the input reach the other peers before its tick runs, so rollback guesses less often and lockstep waits less. The right value depends on the connection, which changes during a match. Give `adaptiveDelay` instead and the session moves the delay with the measured round trip:

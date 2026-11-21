@@ -83,7 +83,7 @@ const match = (simulate: "readingDespawns" | "carryingStreak") => {
   const frame = (skip?: number) => {
     for (const [seat, peer] of peers.entries()) {
       if (seat === skip) continue
-      const updated = peer.update()
+      const updated = peer.update(step.dt, { last: true })
       if (!updated.ok) throw new Error(JSON.stringify(updated.error))
     }
     hostClock.adjust(step.dt * 1000)

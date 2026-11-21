@@ -274,6 +274,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   let suspects = 0
   /** Reports go out at once, not with the next ping. */
   let reportNow = false
+  /** The frames a new report still goes out in, against loss. */
+  let reportFrames = 0
   /** Per seat, what each peer reported of it in this epoch: its last input there, and the inputs it carried. */
   const reports: Array<Map<number, { have: number; readonly inputs: Map<number, unknown> }>> = Array.from({ length: count }, () => new Map())
   /** The changes of the roster in this epoch, by the roster each made, to pass on. */
@@ -329,9 +331,62 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   let held: Array<Wire.Hidden> = []
   let unsubscribe: (() => void) | undefined
 
+  // What this session says goes out once per frame, as one bundle per link.
+  /** The messages said since the last flush. */
+  let outbox: Array<Wire.Message> = []
+  /** Messages to say again with the next flushes, once each (`left` stays in the outbox `copies - 1` more frames), against loss. */
+  let repeats: Array<{ readonly message: Wire.Message; left: number }> = []
+  /** Bundles handed to the links, and their UTF-8 bytes: one per open link per flush. */
+  let sentMessages = 0
+  let sentBytes = 0
+
+  /**
+   * Says `message` with this frame's bundle. An `inputs` or `hello` replaces
+   * the one said before it in the frame: each says everything the earlier
+   * one did, and more.
+   */
   const broadcast = (message: Wire.Message): void => {
-    const text = Wire.write(message)
-    for (let index = 0; index < options.links.length; index++) if (!linkClosed[index]) options.links[index]!.send(text)
+    if (message.k === "inputs" || message.k === "hello") {
+      for (let earlier = 0; earlier < outbox.length; earlier++) {
+        if (outbox[earlier]!.k !== message.k) continue
+        outbox[earlier] = message
+        return
+      }
+    }
+    outbox.push(message)
+  }
+
+  /** Says `messages` now and with each of the next `copies - 1` flushes: one bundle more lost does not lose them. */
+  const broadcastCopies = (messages: ReadonlyArray<Wire.Message>): void => {
+    for (const message of messages) {
+      broadcast(message)
+      repeats.push({ message, left: copies - 1 })
+    }
+  }
+
+  /** Hands the outbox to every open link as one bundle. */
+  const flush = (): void => {
+    if (outbox.length === 0) return
+    const said = outbox
+    outbox = []
+    const text = Wire.write(seat, epoch, said)
+    const bytes = Wire.utf8Length(text)
+    for (let index = 0; index < options.links.length; index++) {
+      if (linkClosed[index]) continue
+      options.links[index]!.send(text)
+      sentMessages += 1
+      sentBytes += bytes
+    }
+  }
+
+  /** At the start of a frame's bundle: the copies still owed. */
+  const sayRepeats = (): void => {
+    if (repeats.length === 0) return
+    for (const repeat of repeats) {
+      outbox.push(repeat.message)
+      repeat.left -= 1
+    }
+    repeats = repeats.filter((repeat) => repeat.left > 0)
   }
 
   /** Whether `other` plays: in the match, and not played around while its page is hidden. */
@@ -1012,7 +1067,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     changes.set(head.roster, parts)
     applyChange(parts[0]!, carried)
     if (ended !== undefined) return
-    for (let copy = 0; copy < copies; copy++) for (const part of parts) broadcast(part)
+    broadcastCopies(parts)
   }
 
   /** A save: this peer's match starts again from it, when it is in it. */
@@ -1162,7 +1217,13 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
         const parsed = Wire.parse(text, count)
         if (parsed._tag === "Malformed") dropped += 1
         else if (parsed._tag === "OtherVersion") end({ _tag: "ProtocolMismatch", version: parsed.version })
-        else receive(parsed.message, index)
+        else {
+          dropped += parsed.malformed
+          for (const message of parsed.messages) {
+            receive(message, index)
+            if (ended !== undefined) return
+          }
+        }
         if (ended !== undefined) return
       }
       const status = link.status()
@@ -1279,7 +1340,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     const now = clock.now()
     if (now - lastPing >= pingEveryMS) {
       lastPing = now
-      broadcast({ k: "ping", from: seat, epoch, session: sessionId, at: now, shown: tracker.shown[seat]! })
+      // To the millisecond: a round trip needs no finer, and the digits would go out four times a second.
+      broadcast({ k: "ping", from: seat, epoch, session: sessionId, at: Math.round(now), shown: tracker.shown[seat]! })
       announce()
       adapt()
     }
@@ -1290,12 +1352,13 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       return
     }
     // The seats this peer stopped waiting for, until they are out: at once, then with every ping. A peer played around has no say.
-    if (suspects > 0 && (reportNow || pinged) && !Hidden.away(tracker, seat)) {
-      for (let copy = reportNow ? copies : 1; copy > 0; copy--) {
-        for (let other = 0; other < count; other++) if (suspected[other] !== undefined) for (const part of reportOn(other)) broadcast(part)
-      }
-    }
+    // A new report goes out with the next `copies` frames, then with every ping.
+    if (reportNow) reportFrames = copies
     reportNow = false
+    if (suspects > 0 && (reportFrames > 0 || pinged) && !Hidden.away(tracker, seat)) {
+      for (let other = 0; other < count; other++) if (suspected[other] !== undefined) for (const part of reportOn(other)) broadcast(part)
+    }
+    if (reportFrames > 0) reportFrames -= 1
     if (wantSync && now - lastResyncAsk >= pingEveryMS) {
       lastResyncAsk = now
       broadcast({ k: "resync", from: seat, epoch })
@@ -1413,7 +1476,29 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     waitingTick = tick
   }
 
-  const advance = (pressed: unknown): Result.Result<Advanced, SessionError<unknown>> => {
+  /** Whether this frame's bundle is open: a step of the frame ran, and its last one has not. */
+  let inFrame = false
+
+  /**
+   * One step of a frame: `last` is false while more steps of the same frame
+   * follow, and what the step says waits for the frame's bundle.
+   */
+  const advanceStep = (pressed: unknown, last: boolean): Result.Result<Advanced, SessionError<unknown>> => {
+    if (!inFrame) {
+      inFrame = true
+      sayRepeats()
+    }
+    const advanced = advanceOnce(pressed)
+    if (last) {
+      inFrame = false
+      flush()
+    }
+    return advanced
+  }
+
+  const advance = (pressed: unknown): Result.Result<Advanced, SessionError<unknown>> => advanceStep(pressed, true)
+
+  const advanceOnce = (pressed: unknown): Result.Result<Advanced, SessionError<unknown>> => {
     const waitedOn = waitingSeat
     waitingSeat = -1
     if (ended !== undefined) return Result.failure(ended)
@@ -1513,8 +1598,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     update: (step) => {
       // One report per halt: the session stays halted until the resync's save arrives.
       let reported = false
-      return () => {
-        const advanced = advance(step.input())
+      return (_stepSeconds, at) => {
+        const advanced = advanceStep(step.input(), at.last)
         if (advanced.ok) {
           reported = false
           return Result.success(undefined)
@@ -1543,7 +1628,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       roundTripMS: roundTrip.map((value, other) => other === seat ? 0 : value),
       hidden: tracker.hides.map((_, other) => gone[other] === undefined && hiddenNow(other)),
       left: gone.slice(),
-      waiting: waitingSeat === -1 ? undefined : { seat: waitingSeat, tick: waitingTick, forMS: Math.max(0, clock.now() - waitingSince) }
+      waiting: waitingSeat === -1 ? undefined : { seat: waitingSeat, tick: waitingTick, forMS: Math.max(0, clock.now() - waitingSince) },
+      sent: { messages: sentMessages, bytes: sentBytes }
     }),
     events: (descriptor) => {
       let ledger = ledgers.get(descriptor)
@@ -1567,7 +1653,11 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       if (nowHidden) {
         hide()
         // Now, and more than once: a hidden page's frames stop, so these may be its last messages for a while.
-        for (let copy = 0; copy < copies; copy++) for (const part of announcements[seat]!) broadcast(part)
+        // Each copy is a bundle of its own: no frame follows to carry the next.
+        for (let copy = 0; copy < copies; copy++) {
+          for (const part of announcements[seat]!) broadcast(part)
+          flush()
+        }
         return
       }
       Hidden.show(tracker, seat)

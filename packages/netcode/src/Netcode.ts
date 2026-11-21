@@ -102,7 +102,7 @@
  * })
  * ```
  */
-import type { Clock, HostClock } from "@typeonce/ritmo"
+import type { Clock, FixedLoop, HostClock } from "@typeonce/ritmo"
 import type * as Checkpoint from "@typeonce/ritmo/Checkpoint"
 import type * as Descriptor from "@typeonce/ritmo/Descriptor"
 import * as Result from "@typeonce/ritmo/Result"
@@ -391,6 +391,15 @@ export interface Status {
    * play on.
    */
   readonly waiting: { readonly seat: number; readonly tick: number; readonly forMS: number } | undefined
+  /**
+   * What this session handed its links, in total: `messages`, one per open
+   * link per frame that said anything, and their `bytes` in UTF-8. A
+   * session says everything of one frame in one message, however many steps
+   * the frame ran (when driven by `update`; each `advance` called directly
+   * is a frame of its own), so a relay that bills per message sees one per
+   * peer per frame. Read it twice to measure a rate for a budget.
+   */
+  readonly sent: { readonly messages: number; readonly bytes: number }
 }
 
 /** One event the simulation published, and the session tick that published it. */
@@ -481,7 +490,9 @@ export interface Session<Input, TickError, Events extends Descriptor.Descriptor<
    * Runs this frame: reads the links, rolls back if real input contradicts
    * a guess (rollback), records `local` as this seat's input for the tick
    * `status().inputDelay` ticks ahead, ticks the simulation, and sends what
-   * the other peers need. Call it once per fixed step, from `FixedLoop`'s `update`.
+   * the other peers need, as one message per link. Each call is a frame of
+   * its own: a game on a `FixedLoop` uses `update`, which sends once per
+   * host frame however many steps it runs.
    *
    * `local` goes through the seats' input schema as it will on the other
    * peers (encoded, written as JSON, decoded), and this peer simulates the
@@ -524,16 +535,20 @@ export interface Session<Input, TickError, Events extends Descriptor.Descriptor<
   readonly rate: () => number
   /**
    * The `update` of the `FixedLoop` that drives this session: each step
-   * advances it with `input()`. A halt is reported to `onHalted` once (a
-   * desync is a bug in the game's determinism: log it) and answered with
-   * `resync()`, and the loop keeps running; the loop stops with the error
-   * once the session ended.
+   * advances it with `input()`, and what the frame's steps say goes out as
+   * one message per link after its last step (`FixedLoop.StepInFrame`). A
+   * halt is reported to `onHalted` once (a desync is a bug in the game's
+   * determinism: log it) and answered with `resync()`, and the loop keeps
+   * running; the loop stops with the error once the session ended.
+   *
+   * Pass it to `FixedLoop.start` as it is, or call it from the loop's own
+   * `update` with both of the loop's arguments: `(seconds, at) => tick(seconds, at)`.
    */
   readonly update: (options: {
     /** This seat's input for the step, read once per step. */
     readonly input: () => Input
     readonly onHalted: (error: Halted<TickError>) => void
-  }) => () => Result.Result<void, Ended>
+  }) => (stepSeconds: number, at: FixedLoop.StepInFrame) => Result.Result<void, Ended>
   readonly status: () => Status
   /**
    * A new host reader of `descriptor`'s events, an event of the runtime's

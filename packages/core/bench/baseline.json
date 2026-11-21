@@ -214,7 +214,7 @@
         "minMs": 0.0089,
         "medianMs": 0.0099,
         "score": 0.003,
-        "bytesPerRun": 26215
+        "bytesPerRun": 33280
       },
       "render/sync-1k-changed-of-10k": {
         "minMs": 0.2317,

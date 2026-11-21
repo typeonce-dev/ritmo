@@ -249,6 +249,20 @@ describe("session.update", () => {
     expect(session.value.update).type.not.toBeCallableWith({ input: () => ({ dx: "left" }), onHalted: () => {} })
   })
 
+  it("needs the loop's step, to send once per frame, when called from the game's own update", () => {
+    const session = Netcode.rollback(runtime, { ...options, simulate })
+    if (!session.ok) return
+    const tick = session.value.update({ input: () => ({ dx: 0 }), onHalted: () => {} })
+    FixedLoop.start({
+      source: FixedLoop.source(() => ({ stop() {} })), step, maxFrameSeconds: 0.25, maxStepsPerFrame: 5,
+      update: (seconds, at) => tick(seconds, at),
+      render: () => {},
+      onFailure: () => {}
+    })
+    // @ts-expect-error Expected 2 arguments, but got 0
+    tick()
+  })
+
   it("narrows a halt from an end", () => {
     const error = {} as Netcode.SessionError<"Overflow">
     if (Netcode.isHalted(error)) expect(error).type.toBe<Netcode.Halted<"Overflow">>()
@@ -334,6 +348,14 @@ describe("status().waiting", () => {
     expect(waiting).type.toBe<{ readonly seat: number; readonly tick: number; readonly forMS: number } | undefined>()
     // @ts-expect-error 'waiting' is possibly 'undefined'
     waiting.seat.toFixed()
+  })
+})
+
+describe("status().sent", () => {
+  it("counts the messages and bytes handed to the links", () => {
+    const session = Netcode.rollback(runtime, { ...options, simulate })
+    if (!session.ok) return
+    expect(session.value.status().sent).type.toBe<{ readonly messages: number; readonly bytes: number }>()
   })
 })
 

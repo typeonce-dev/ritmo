@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest"
 
 import { idle, pressed } from "./game.ts"
-import { checksumOf, frame, playOn, setUpMatch, settleOn } from "./match.ts"
+import { checksumOf, frame, playOn, setUpMatch, settleOn, wire } from "./match.ts"
 
 /** A message seat 1's link carries to seat 0, written by hand. */
 const inputs = (start: number, length: number) =>
-  JSON.stringify({ v: 4, k: "inputs", from: 1, epoch: 1, roster: 0, next: -1, acks: [-1, -1], start, inputs: Array.from({ length }, () => idle) })
-const sum = (tick: number, text: string) => JSON.stringify({ v: 4, k: "sum", from: 1, epoch: 1, roster: 0, tick, sum: text })
+  wire({ k: "inputs", from: 1, epoch: 1, roster: 0, next: -1, acks: [-1, -1], start, inputs: Array.from({ length }, () => idle) })
+const sum = (tick: number, text: string) => wire({ k: "sum", from: 1, epoch: 1, roster: 0, tick, sum: text })
 
 describe("what a peer stores for another", () => {
   it("drops inputs and checksums no honest peer sends, and plays on", () => {

@@ -3,7 +3,7 @@ import { HostClock } from "@typeonce/ritmo"
 import { MemoryNetworkLink, MemoryVisibility, Netcode } from "@typeonce/ritmo-netcode"
 
 import { Fired, idle, makePeer, pressed, simulate, step, type PlayerInput } from "./game.ts"
-import { checksumOf, leave, playOn, reference, setUpMatch, settleOn, staying, stepMS, type MatchPeer } from "./match.ts"
+import { checksumOf, leave, playOn, reference, setUpMatch, settleOn, staying, stepMS, wire, type MatchPeer } from "./match.ts"
 
 type Match = ReturnType<typeof setUpMatch>
 
@@ -184,7 +184,7 @@ describe("messages about the roster", () => {
     const match = setUpMatch({ mode: "rollback", count: 3, latencyMS: 0, jitterMS: 0 })
     const [host] = match.peers
     playOn(match, 30)
-    const send = (from: number, message: object) => match.links[from]!.send(JSON.stringify({ v: 4, from, epoch: 1, ...message }))
+    const send = (from: number, message: object) => match.links[from]!.send(wire({ from, epoch: 1, ...message }))
     const change = { k: "left", roster: 1, by: 0, seats: [2], why: ["timeout"], last: [5], tick: [6], seat: 2, start: 6, inputs: [] }
     // The seat that decides is one of those it puts out; a seat whose `left` input starts on its last own tick; a seat twice; inputs past the last one.
     send(1, { ...change, by: 2 })

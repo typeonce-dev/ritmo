@@ -14,6 +14,7 @@
 - **A seat leaves and the match plays on.** What a seat without a driver does is a rule of the game, so it lives in the simulation: give `Netcode.seats` a `left` input no player can send, and let one system read it (park it, remove it, hand it to a bot). Never decide it in host code from `status().left`: that is for the HUD, and peers would disagree.
 - **Tell the session what the transport knows.** A relay sees a socket close at once: pass it on with `session.drop(seat)`, or every player waits `timeoutMS` behind a stall. Wait before calling it only if a short disconnect should stall the match instead of costing the seat.
 - **`onFailure` means this page is out, or alone.** `Disconnected.who` says which, and each gets its own message. Other seats leaving never reach it.
+- **A link sends each message as it is.** A session says one message per link per host frame when `session.update` drives it, however many steps the frame ran, and repeats what a lossy link lost, so a link adds no outbox, batching, or copies of its own. A game's own `update` that wraps `session.update` passes the loop's two arguments through. Measure with `status().sent`, and keep the input's saved form small: it is what goes over the wire.
 - **A page that comes back builds its session again.** After a reload, make the runtime and the session for the same seat: the match seats it with a save. Nothing of the old page carries over.
 
 Order matters for the proofs, which come before shipping:
