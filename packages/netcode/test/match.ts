@@ -4,7 +4,7 @@
  * one runtime ticked with the input each seat's session recorded.
  */
 import { Clock, HostClock } from "@typeonce/ritmo"
-import { MemoryNetworkLink, MemoryVisibility, Netcode } from "@typeonce/ritmo-netcode"
+import { MemoryNetworkLink, MemoryVisibility, Netcode, type NetworkLink } from "@typeonce/ritmo-netcode"
 
 import { Fired, Game, idle, makePeer, pressed, Seats, simulate, step, type Peer, type PlayerInput } from "./game.ts"
 
@@ -30,6 +30,10 @@ export interface MatchOptions {
   readonly timeoutMS?: number
   /** The `hidden` option of every peer, on its own page (`peer.visibility`). */
   readonly hidden?: { readonly afterMS: number; readonly then: Netcode.HiddenPolicy }
+  /** What the simulation reads for a seat that left (`seats.left`): idle when omitted. */
+  readonly left?: PlayerInput
+  /** The link each seat's session is given, around its memory link (a connection that drops, for example). */
+  readonly wrap?: (seat: number, link: NetworkLink.NetworkLink) => NetworkLink.NetworkLink
 }
 
 export interface MatchPeer extends Peer {
@@ -55,13 +59,15 @@ export const setUpMatch = (options: MatchOptions) => {
     loss: options.loss ?? 0
   })
   if (!links.ok) throw new Error(links.error.field)
-  const peers: Array<MatchPeer> = Array.from({ length: count }, (_, seat) => {
-    const peer = makePeer({ count, setUp: seat === 0, ...(options.checkpoints === undefined ? {} : { checkpoints: options.checkpoints }) })
+  /** A peer for `seat`: its runtime, its page, and its session over the seat's link. `fresh` is a page that loaded again: it sets nothing up. */
+  const join = (seat: number, fresh: boolean): MatchPeer => {
+    const peer = makePeer({ count, setUp: seat === 0 && !fresh, ...(options.checkpoints === undefined ? {} : { checkpoints: options.checkpoints }), ...(options.left === undefined ? {} : { left: options.left }) })
     const visibility = MemoryVisibility.make()
+    const link = links.value[seat]!
     const shared = {
       seats: peer.seats,
       seat,
-      links: [links.value[seat]!],
+      links: [options.wrap?.(seat, link) ?? link],
       hostClock,
       step,
       ...(options.adaptiveDelay !== undefined
@@ -76,11 +82,57 @@ export const setUpMatch = (options: MatchOptions) => {
       : Netcode.lockstep(peer.runtime, { ...shared, simulate })
     if (!session.ok) throw new Error(session.error.reason)
     return { ...peer, session: session.value, recorded: new Map(), results: [], visibility }
-  })
+  }
+  const peers: Array<MatchPeer> = Array.from({ length: count }, (_, seat) => join(seat, false))
   /** Every failed `advance` of {@link playOn}, as `seat <n>: <tag>`. */
   const halts: Array<string> = []
-  return { hostClock, links: links.value, peers, halts }
+  /** The seats whose page is gone ({@link leave}): they advance no more. */
+  const departed = new Set<number>()
+  /** The seats whose session ended in {@link playOn}, and how: they advance no more until a test reloads them. */
+  const ended = new Map<number, Netcode.Ended>()
+  return { hostClock, links: links.value, peers, halts, departed, ended, options, join }
 }
+
+/**
+ * A connection per seat that drops and comes back under one link, as a
+ * game's reconnecting socket does: pass `wrap` to {@link setUpMatch}. A seat
+ * in `down` sends and hears nothing; one in `mute` hears, and sends nothing.
+ */
+export const flaky = () => {
+  const down = new Set<number>()
+  const mute = new Set<number>()
+  const wrap = (seat: number, link: NetworkLink.NetworkLink): NetworkLink.NetworkLink => ({
+    send: (message) => {
+      if (!down.has(seat) && !mute.has(seat)) link.send(message)
+    },
+    receive: () => {
+      const arrived = link.receive()
+      return down.has(seat) ? [] : arrived
+    },
+    status: link.status
+  })
+  return { down, mute, wrap }
+}
+
+/**
+ * `seat`'s page loads again: its earlier session stops for good, and a new
+ * one, with an empty world, takes its place in `match.peers` and its link.
+ */
+export const reload = (match: ReturnType<typeof setUpMatch>, seat: number): MatchPeer => {
+  const fresh = match.join(seat, true)
+  match.peers[seat] = fresh
+  match.ended.delete(seat)
+  return fresh
+}
+
+/** `seat`'s page is gone, as when its tab closes: its link closes and it advances no more. The others hear nothing of it. */
+export const leave = (match: ReturnType<typeof setUpMatch>, seat: number): void => {
+  match.links[seat]!.close("the page is gone")
+  match.departed.add(seat)
+}
+
+/** The peers still there. */
+export const staying = (match: ReturnType<typeof setUpMatch>): ReadonlyArray<MatchPeer> => match.peers.filter((_, seat) => !match.departed.has(seat) && !match.ended.has(seat))
 
 /** One frame: every seat advances with its input, then the clock moves one step. */
 export const frame = (
@@ -90,7 +142,7 @@ export const frame = (
   skip: (seat: number) => boolean = () => false
 ): void => {
   for (const [seat, peer] of match.peers.entries()) {
-    if (skip(seat)) continue
+    if (skip(seat) || match.departed.has(seat)) continue
     const local = input(seat)
     const advanced = peer.session.advance(local)
     if (!advanced.ok) throw new Error(`seat ${seat} at frame ${at}: ${JSON.stringify(advanced.error)}`)
@@ -126,9 +178,14 @@ export const playOn = (
   const input = options.input ?? pressed
   for (let at = 0; at < frames; at++) {
     for (const [seat, peer] of match.peers.entries()) {
-      if (peer.visibility.hidden() || options.skip?.(seat) === true) continue
-      const advanced = peer.session.advance(input(seat, at))
-      if (!advanced.ok) match.halts.push(`seat ${seat}: ${advanced.error._tag}`)
+      if (peer.visibility.hidden() || match.departed.has(seat) || match.ended.has(seat) || options.skip?.(seat) === true) continue
+      const local = input(seat, at)
+      const advanced = peer.session.advance(local)
+      if (!advanced.ok) {
+        match.halts.push(`seat ${seat}: ${advanced.error._tag}`)
+        if (!Netcode.isHalted(advanced.error)) match.ended.set(seat, advanced.error)
+      }
+      else if (advanced.value._tag !== "Waiting" && advanced.value.input !== undefined) peer.recorded.set(advanced.value.input, local)
     }
     match.hostClock.adjust(stepMS)
   }
@@ -142,7 +199,7 @@ export const playOn = (
  */
 export const settleOn = (match: ReturnType<typeof setUpMatch>): void => {
   playOn(match, 90, { input: () => idle })
-  const shown = (seat: number): boolean => !match.peers[seat]!.visibility.hidden()
+  const shown = (seat: number): boolean => !match.peers[seat]!.visibility.hidden() && !match.departed.has(seat) && !match.ended.has(seat)
   for (let at = 0; at < 1200; at++) {
     const ticks = match.peers.map((peer) => peer.session.status().tick)
     const lowest = Math.min(...ticks.filter((_, seat) => shown(seat)))
@@ -150,6 +207,7 @@ export const settleOn = (match: ReturnType<typeof setUpMatch>): void => {
     const stuck = match.peers.some((peer, seat) => ticks[seat] === lowest && (peer.session.status().waiting?.forMS ?? 0) > 500)
     playOn(match, 1, { input: () => idle, skip: (seat) => ticks[seat] !== lowest && !stuck })
   }
+  throw new Error(`the peers never settled on one tick: ${match.peers.map((peer) => peer.session.status().tick).join(", ")}`)
 }
 
 const ReadFired = Game.Inspector("NetTest/ReadFired", { events: { fired: Game.System.readEvent(Fired) } }, ({ events }) => events.fired.all())
@@ -159,8 +217,16 @@ const ReadFired = Game.Inspector("NetTest/ReadFired", { events: { fired: Game.Sy
  * restored at tick 0, then each tick with the input each seat's session
  * recorded (idle otherwise). `sums` is the checksum at the start of each
  * tick, `fired` every `Fired` event with the tick that published it.
+ *
+ * A seat that left (`left`, a staying peer's `status().left`) has its own
+ * input up to `lastInput`, idle after it, and `leftInput` from `tick`.
  */
-export const reference = (peers: ReadonlyArray<MatchPeer>, ticks: number) => {
+export const reference = (
+  peers: ReadonlyArray<MatchPeer>,
+  ticks: number,
+  left: ReadonlyArray<Netcode.Left | undefined> = [],
+  leftInput: PlayerInput = idle
+) => {
   const count = peers.length
   let current: ReadonlyArray<PlayerInput> = Array.from({ length: count }, () => idle)
   const source: Netcode.Source<PlayerInput> = { snapshot: () => current }
@@ -180,7 +246,12 @@ export const reference = (peers: ReadonlyArray<MatchPeer>, ticks: number) => {
     const sum = runtime.checksum()
     if (!sum.ok) throw new Error("the reference did not checksum")
     sums.push(sum.value)
-    current = peers.map((peer) => peer.recorded.get(tick) ?? idle)
+    current = peers.map((peer, seat) => {
+      const out = left[seat]
+      if (out !== undefined && tick >= out.tick) return leftInput
+      if (out !== undefined && tick > out.lastInput) return idle
+      return peer.recorded.get(tick) ?? idle
+    })
     const ran = runtime.tick(simulate)
     if (!ran.ok) throw new Error("the reference failed a tick")
     for (const value of runtime.inspect(ReadFired)) fired.push({ tick, value })

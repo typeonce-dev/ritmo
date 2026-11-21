@@ -57,6 +57,8 @@ export interface SeatsState {
   readonly codec: Descriptor.Codec<any, any>
   /** `idle` as every peer simulates it. */
   readonly idle: Sent
+  /** `left` as every peer simulates it. */
+  readonly left: Sent
   current: ReadonlyArray<unknown>
   owner: object | undefined
 }
@@ -68,16 +70,19 @@ export const stateOf = (seats: Seats<unknown>): SeatsState | undefined => states
 
 export const make = (
   codec: Descriptor.Codec<any, any>,
-  options: { readonly count: number; readonly idle: unknown }
+  options: { readonly count: number; readonly idle: unknown; readonly left?: unknown }
 ): Result.Result<Seats<unknown>, InvalidOptions> => {
   if (!Number.isSafeInteger(options.count) || options.count < 2) {
     return Result.failure({ _tag: "InvalidOptions", field: "count", value: options.count, reason: "a networked game has 2 or more seats" })
   }
   const idle = send(codec, options.idle)
   if (!idle.ok) return Result.failure({ _tag: "InvalidOptions", field: "idle", value: options.idle, reason: `idle ${idle.error}` })
-  const state: SeatsState = { codec, idle: idle.value, current: Array.from({ length: options.count }, () => options.idle), owner: undefined }
+  const gone = "left" in options ? options.left : options.idle
+  const left = send(codec, gone)
+  if (!left.ok) return Result.failure({ _tag: "InvalidOptions", field: "left", value: gone, reason: `left ${left.error}` })
+  const state: SeatsState = { codec, idle: idle.value, left: left.value, current: Array.from({ length: options.count }, () => options.idle), owner: undefined }
   const source: Source<unknown> = { snapshot: () => state.current }
-  const seats: Seats<unknown> = { count: options.count, idle: options.idle, source }
+  const seats: Seats<unknown> = { count: options.count, idle: options.idle, left: gone, source }
   states.set(seats, state)
   return Result.success(seats)
 }

@@ -6,11 +6,11 @@
  * pings carry how many have ended (`shown`). Counts only grow, so messages
  * that arrive late or twice change nothing.
  *
- * An away seat (`"resync-on-return"`, never seat 0) is played around: its
- * input after `last` is idle on every peer, so they agree without it, until
- * a save from seat 0 answers its return (`returned` reaches its spell).
- * Seat 0 answers once it has seen the spell end; the seat restores that
- * save and plays again from it.
+ * An away seat (`"resync-on-return"`, never the host: a seat decides when
+ * it hides) is played around: its input after `last` is idle on every peer,
+ * so they agree without it, until a save from the host answers its return
+ * (`returned` reaches its spell). The host answers once it has seen the
+ * spell end; the seat restores that save and plays again from it.
  */
 
 export interface Tracker {
@@ -39,13 +39,13 @@ export const hidden = (tracker: Tracker, seat: number): boolean => tracker.hides
 
 /** Whether `seat` is played around: hidden under `"resync-on-return"`, or back and waiting for its save. */
 export const away = (tracker: Tracker, seat: number): boolean =>
-  seat !== 0 && tracker.away[seat]! && tracker.hides[seat]! > tracker.answered[seat]!
+  tracker.away[seat]! && tracker.hides[seat]! > tracker.answered[seat]!
 
 /** This peer hid: its `n`th spell, with its inputs ending at `last`. */
 export const hide = (tracker: Tracker, seat: number, last: number, playedAround: boolean): void => {
   tracker.hides[seat]! += 1
   tracker.last[seat] = last
-  tracker.away[seat] = playedAround && seat !== 0
+  tracker.away[seat] = playedAround
 }
 
 /** This peer shows again. */
@@ -75,5 +75,19 @@ export const synced = (tracker: Tracker, returned: ReadonlyArray<number>, floor:
   }
 }
 
-/** For seat 0: `seat` is away and back, so the next save answers it. */
+/**
+ * A save seats `seat` again after it left the match. The same session keeps
+ * its counts, with no spell open; another one (a reloaded page) starts from
+ * none, so its first hide is its first.
+ */
+export const seated = (tracker: Tracker, seat: number, sameSession: boolean): void => {
+  const spells = sameSession ? tracker.hides[seat]! : 0
+  tracker.hides[seat] = spells
+  tracker.shown[seat] = spells
+  tracker.answered[seat] = spells
+  tracker.away[seat] = false
+  tracker.last[seat] = -1
+}
+
+/** For the host: `seat` is away and back, so the next save answers it. */
 export const returned = (tracker: Tracker, seat: number): boolean => away(tracker, seat) && tracker.shown[seat]! >= tracker.hides[seat]!

@@ -39,10 +39,45 @@
  * last sent one, on every peer, and counts as confirmed once that input
  * arrived; the others play on without waiting for it.
  *
+ * The host is the lowest seat that plays (in the match, and not played
+ * around): seat 0 until it leaves. It starts the match, and makes every
+ * save after it.
+ *
+ * The roster: which seats are in the match. A seat leaves it without a
+ * save, so no tick a peer confirmed runs again:
+ *
+ * 1. A peer stops waiting for a seat (it was silent for `timeoutMS`, its
+ *    link closed, another session said hello for it, or the game called
+ *    `drop`). It takes no more of that seat's inputs, so the last one it
+ *    has is final, and reports it (`gone`) with the inputs another peer
+ *    may lack.
+ * 2. The lowest playing seat a peer does not suspect decides for it: that
+ *    seat takes up any peer's report about a higher seat, and the others
+ *    take up its own. A report about that seat itself needs a peer's own
+ *    reason, so a seat leaves only when no playing peer hears it. A peer
+ *    that reports the deciding seat while that seat hears it is the one
+ *    that cannot hear, and goes; unless the deciding seat was silent itself
+ *    (its page froze), which it knows from its own clock: then it decides
+ *    nothing while it is reported, and the next seat puts it out.
+ * 3. Once every playing peer reported, that seat sends the change (`left`):
+ *    the seat's own inputs end at the furthest any of them had (`last`), it
+ *    is idle after it, and from `tick` its input is the seats' `left` one.
+ *    No peer confirmed a tick past its own report, so none has to undo one;
+ *    ticks run on a guess past `last` run again, as after any wrong guess.
+ *
+ * Each change makes the next roster number. A peer takes no input sent
+ * under a roster it has not reached (the sender sends again, and any peer
+ * that sees one behind passes the change on), so a tick is never confirmed
+ * with a roster the others do not have. A seat that is out and still plays
+ * is told so (`out`).
+ *
+ * A seat comes back with a save: a session that is not in the match says
+ * hello (a new one after a reload, or one that learned it was left out), and
+ * the host's next save seats it again, as a resync does for a hidden seat.
+ *
  * Sessions: each session tells itself apart from another of the same seat
  * (a reloaded page) by its `hostClock` reading when it was made, in its
- * hellos and pings; seat 0's saves name the session of every seat. A peer that hears
- * another session of a seat in the match ends with `"restarted"`.
+ * hellos and pings; the saves name the session of every seat.
  */
 import type { HostClock } from "@typeonce/ritmo"
 import type * as Checkpoint from "@typeonce/ritmo/Checkpoint"
@@ -51,7 +86,7 @@ import type { Descriptor } from "@typeonce/ritmo/Descriptor"
 import * as Result from "@typeonce/ritmo/Result"
 import type * as Snapshot from "@typeonce/ritmo/Snapshot"
 
-import type { AdaptiveDelay, Advanced, Ended, Halted, HiddenOptions, InvalidOptions, Seats, Session, SessionError, Status } from "../Netcode.ts"
+import type { AdaptiveDelay, Advanced, Ended, Halted, HiddenOptions, InvalidOptions, Left, Seats, Session, SessionError, Status } from "../Netcode.ts"
 import * as Delay from "./delay.ts"
 import * as Events from "./events.ts"
 import { isHalted } from "./halted.ts"
@@ -94,7 +129,7 @@ type Mode = "rollback" | "lockstep"
 
 const pingEveryMS = 250
 const resendSyncEveryMS = 500
-/** A message that may be a session's last for a while (a hide, a new seat 0's hello as it ends) goes out this many times, against loss. */
+/** A message the others should not wait a ping for (a hide, a report of a seat gone, a change of the roster) goes out this many times, against loss. */
 const copies = 5
 /** Below this, `rate` would stretch a frame too far for a player to miss. */
 const slowestRate = 0.9
@@ -170,15 +205,17 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   // Idle as the other peers decode it, like every local input.
   const idleSent = seatsState.idle
   const idle = idleSent.value
+  /** What the simulation reads for a seat that left. */
+  const leftInput = seatsState.left.value
   const predict = options.predict ?? ((previous: unknown) => previous)
   const clock = options.hostClock
   const stepMS = options.step.dt * 1000
-  const host = seat === 0
   const keyOf = (value: unknown): string => {
     const encoded = encode(codec, value)
     return encoded.ok ? canonical(encoded.value) : `unencodable:${canonical(value)}`
   }
   const idleKey = keyOf(idle)
+  const leftKey = keyOf(leftInput)
 
   // Match state.
   let epoch = 0
@@ -188,6 +225,10 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   let next = 0
   let localNext = 0
   const inputs: Array<Map<number, unknown>> = Array.from({ length: count }, () => new Map())
+  /** The other seats' inputs as their messages carried them, for the peer that lacks them when a seat is gone. */
+  const raw: Array<Map<number, unknown>> = Array.from({ length: count }, () => new Map())
+  /** Per seat, the first tick `raw` may still hold: what is before it was let go. */
+  const rawFrom: Array<number> = Array.from({ length: count }, () => 0)
   /** This seat's inputs in their saved form, to send. */
   const sent = new Map<number, unknown>()
   const contiguous: Array<number> = Array.from({ length: count }, () => -1)
@@ -218,8 +259,41 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   let lastPing = -Infinity
   let lastResyncAsk = -Infinity
   let syncMessage: Wire.Sync | undefined
+  /** The seat whose save started this epoch. */
+  let syncFrom = 0
   let pendingSync = false
   let wantSync = false
+
+  // The roster.
+  /** How many times the seats in the match changed. */
+  let roster = 0
+  /** Per seat, once it is out of the match: why, its last own input, and the first tick its input is the `left` one. */
+  const gone: Array<Left | undefined> = Array.from({ length: count }, () => undefined)
+  /** Per seat this peer stopped waiting for and that is still in the match: why. It takes no more of its inputs. */
+  const suspected: Array<Wire.Why | undefined> = Array.from({ length: count }, () => undefined)
+  let suspects = 0
+  /** Reports go out at once, not with the next ping. */
+  let reportNow = false
+  /** Per seat, what each peer reported of it in this epoch: its last input there, and the inputs it carried. */
+  const reports: Array<Map<number, { have: number; readonly inputs: Map<number, unknown> }>> = Array.from({ length: count }, () => new Map())
+  /** The changes of the roster in this epoch, by the roster each made, to pass on. */
+  const changes = new Map<number, Array<Wire.Left>>()
+  /** The next change, while its messages have not all arrived. */
+  let pendingChange: { readonly parts: Array<Wire.Left>; readonly inputs: Map<number, Map<number, unknown>> } | undefined
+  const changeSentAt: Array<number> = Array.from({ length: count }, () => -Infinity)
+  /** Sessions that said hello for a seat that is not theirs in the match, and when. */
+  const asking = new Map<number, { readonly session: number; readonly at: number }>()
+  /** This seat is out of the match (the others went on without it), since when, and why: it asks for a save that seats it. */
+  let out: { readonly since: number; readonly why: Wire.Why } | undefined
+  /** Per seat, when it last reported this seat gone. */
+  const accusedAt: Array<number> = Array.from({ length: count }, () => -Infinity)
+  /** When this session last ran `advance`: a long gap is this page's own silence (a hitch, a frozen tab), not the others'. */
+  let lastAdvance = clock.now()
+  /** After such a gap, until when a report of this seat is taken as fair. */
+  let excusedUntil = -Infinity
+  /** Per seat, the link its messages arrive on (-1: none yet). */
+  const linkOf: Array<number> = Array.from({ length: count }, () => -1)
+  const linkClosed: Array<boolean> = options.links.map(() => false)
 
   // Outcomes.
   let ended: Ended | undefined
@@ -257,14 +331,27 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
 
   const broadcast = (message: Wire.Message): void => {
     const text = Wire.write(message)
-    for (const link of options.links) link.send(text)
+    for (let index = 0; index < options.links.length; index++) if (!linkClosed[index]) options.links[index]!.send(text)
   }
 
-  /** Another seat this peer plays around: its input after `tracker.last` is idle. */
-  const playedAround = (other: number): boolean => other !== seat && Hidden.away(tracker, other)
+  /** Whether `other` plays: in the match, and not played around while its page is hidden. */
+  const plays = (other: number): boolean => gone[other] === undefined && !Hidden.away(tracker, other)
+
+  /** The lowest seat that plays makes the saves (`-1`: none does). */
+  const hostSeat = (): number => {
+    for (let other = 0; other < count; other++) if (plays(other)) return other
+    return -1
+  }
+  const isHost = (): boolean => out === undefined && hostSeat() === seat
+
+  /** Another seat this peer plays around: it left, or its page is hidden. Its input after its last own one is not its own. */
+  const playedAround = (other: number): boolean => other !== seat && (gone[other] !== undefined || Hidden.away(tracker, other))
+
+  /** The last tick of a played-around seat's own input. */
+  const lastOf = (other: number): number => gone[other]?.lastInput ?? tracker.last[other]!
 
   /** A seat played around whose real input all arrived: nothing more to wait for. */
-  const filled = (other: number): boolean => playedAround(other) && contiguous[other]! >= tracker.last[other]!
+  const filled = (other: number): boolean => playedAround(other) && contiguous[other]! >= lastOf(other)
 
   const confirmed = (): number => {
     let lowest = Infinity
@@ -290,19 +377,26 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   }
 
   const inputFor = (other: number, tick: number): unknown => {
-    if (tick > tracker.last[other]! && playedAround(other)) return idle
+    const left = gone[other]
+    if (left !== undefined) {
+      if (tick >= left.tick) return leftInput
+      if (tick > left.lastInput) return idle
+    } else if (tick > tracker.last[other]! && playedAround(other)) return idle
     const known = inputs[other]!.get(tick)
     return known !== undefined ? known : guess(other, tick)
   }
 
   /** Real input for a tick that ran: the earliest tick whose input now differs from the one it ran with is wrong. */
-  const confirmRemote = (other: number, tick: number, input: unknown): void => {
+  const confirmRemote = (other: number, tick: number, input: unknown, wire: unknown): void => {
     const known = inputs[other]!
     // Known already: confirmed (a save confirms the ticks before its floor), or out of order.
     if (tick <= contiguous[other]! || known.has(tick)) return
-    // Played around: idle after its last input, whatever arrives.
-    if (tick > tracker.last[other]! && playedAround(other)) return
+    // This peer stopped waiting for it: what it has of it is what it reported.
+    if (suspected[other] !== undefined) return
+    // Played around: not its own after its last input, whatever arrives.
+    if (tick > lastOf(other) && playedAround(other)) return
     known.set(tick, input)
+    raw[other]!.set(tick, wire)
     extend(other)
     if (mode !== "rollback" || tick >= next) return
     const ran = used[other]!
@@ -323,16 +417,45 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     unsubscribe = undefined
   }
 
-  /** Another session of `other` than the one in the match: the match cannot go on with either. */
-  const restarted = (other: number, detail: string): void => {
-    end({ _tag: "Disconnected", seat: other, reason: "restarted", detail })
+  /**
+   * Stops waiting for `other`, for `why`: this peer takes no more of its
+   * inputs, and reports the last one it has until the seat is out of the
+   * match.
+   */
+  const suspect = (other: number, why: Wire.Why): void => {
+    if (other === seat || epoch === 0 || out !== undefined || gone[other] !== undefined || suspected[other] !== undefined) return
+    suspected[other] = why
+    suspects += 1
+    reportNow = true
+  }
+
+  const trust = (other: number): void => {
+    if (suspected[other] === undefined) return
+    suspected[other] = undefined
+    suspects -= 1
+  }
+
+  /** The others went on without this seat: it waits for a save that seats it again, as long as `timeoutMS`. */
+  const leaveMatch = (why: Wire.Why, detail: string): void => {
+    if (why === "restarted") {
+      end({ _tag: "Disconnected", who: "self", seat, reason: "restarted", detail })
+      return
+    }
+    // One link per peer, and the one to a seat that plays is closed: no save could bring this seat back to it.
+    for (let other = 0; other < count; other++) {
+      if (other === seat || gone[other] !== undefined || linkOf[other] === -1 || !linkClosed[linkOf[other]!]) continue
+      end({ _tag: "Disconnected", who: "self", seat, reason: why, detail: `${detail}, and its link to seat ${other} is closed` })
+      return
+    }
+    out ??= { since: clock.now(), why }
   }
 
   /** Rollback: a seat now played around ran ticks after its last input with a guess that was not idle. */
   const lookAway = (): void => {
     for (let other = 0; other < count; other++) {
       const now = playedAround(other)
-      if (now && !wasAway[other] && mode === "rollback") {
+      // A seat that left was looked at when it did (`applyChange`).
+      if (now && !wasAway[other] && mode === "rollback" && gone[other] === undefined) {
         const ran = used[other]!
         for (let at = tracker.last[other]! + 1; at < next; at++) {
           const before = ran.get(at)
@@ -351,6 +474,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     const theirs = remoteSums.get(tick)
     if (mine === undefined || theirs === undefined || !sentSums.has(tick)) return
     for (const [other, sum] of theirs) {
+      // A seat that left may have run on with its own input.
+      if (gone[other] !== undefined) continue
       if (sum !== mine.sum) {
         halted ??= { _tag: "Desynced", tick, seat: other, mine: mine.sum, theirs: sum, snapshot: mine.snapshot }
         return
@@ -415,17 +540,19 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     return ran
   }
 
-  /** Restores a save every peer restores at `tick`, and runs again up to where this peer was. */
-  const applySync = (newEpoch: number, tick: number, save: unknown, returned: ReadonlyArray<number>): void => {
-    const restored = runtime.restore(save)
+  /** Restores a save every peer restores at its tick, takes its roster, and runs again up to where this peer was. */
+  const applySync = (message: Wire.Sync): void => {
+    const restored = runtime.restore(message.save)
     if (!restored.ok) {
       end({ _tag: "SyncFailed", error: restored.error })
       return
     }
+    const tick = message.tick
     const previous = next
     // Every unsettled tick is gone: the save replaces them.
     for (const ledger of ledgers.values()) ledger.reset()
-    epoch = newEpoch
+    epoch = message.epoch
+    syncFrom = message.from
     syncTick = tick
     floorTick = tick + saveDelay
     next = tick
@@ -433,13 +560,53 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     wrong = undefined
     halted = undefined
     wantSync = false
+    // Seated again: what this peer made of the others while they played without it is of no use.
+    if (out !== undefined) for (let other = 0; other < count; other++) trust(other)
+    out = undefined
     sums.clear()
     sentSums.clear()
     remoteSums.clear()
     verified = -1
+    // The roster is the save's: the changes before it are in it, and reports are of an epoch.
+    roster = message.roster
+    changes.clear()
+    pendingChange = undefined
+    for (const told of reports) told.clear()
     const now = clock.now()
     for (let other = 0; other < count; other++) {
-      for (let at = tick; at < floorTick; at++) inputs[other]!.set(at, idle)
+      const why = message.left[other]!
+      const before = gone[other]
+      if (why !== null) {
+        // Out from this save on, whatever inputs of its own were still to run.
+        gone[other] = { reason: before?.reason ?? why, lastInput: Math.min(before?.lastInput ?? Infinity, tick - 1), tick: Math.min(before?.tick ?? Infinity, tick) }
+        trust(other)
+      } else if (before !== undefined || message.sessions[other] !== sessions[other]) {
+        // Seated by this save.
+        const same = message.sessions[other] === sessions[other]
+        gone[other] = undefined
+        trust(other)
+        asking.delete(other)
+        Hidden.seated(tracker, other, same)
+        announcements[other] = []
+        held = held.filter((hide) => hide.seat !== other)
+        // Another session (a reloaded page): nothing its earlier one sent or acknowledged is its own.
+        if (!same && other !== seat) {
+          inputs[other]!.clear()
+          raw[other]!.clear()
+          contiguous[other] = -1
+          acks[other]!.fill(-1)
+          remoteNext[other] = undefined
+          roundTrip[other] = undefined
+        }
+      }
+    }
+    sessions = message.sessions
+    for (let other = 0; other < count; other++) {
+      for (let at = tick; at < floorTick; at++) {
+        inputs[other]!.set(at, idle)
+        if (other !== seat) raw[other]!.set(at, idleSent.wire)
+      }
+      rawFrom[other] = Math.min(rawFrom[other]!, tick)
       used[other]!.clear()
       contiguous[other] = Math.max(contiguous[other]!, floorTick - 1)
       extend(other)
@@ -447,12 +614,12 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     }
     for (let at = tick; at < floorTick; at++) sent.set(at, idleSent.wire)
     localNext = Math.max(localNext, floorTick)
-    Hidden.synced(tracker, returned, floorTick)
-    if (held.length > 0) {
-      const ready = held.filter((message) => message.epoch <= newEpoch)
-      held = held.filter((message) => message.epoch > newEpoch)
-      for (const message of ready) heardHidden(message)
-    }
+    // What the host held past the idle ticks, for a session this save seats: the seats no longer send what its earlier session acknowledged.
+    for (let other = 0; other < count; other++) if (other !== seat) takeInputs(other, floorTick, message.ahead[other]!)
+    // Messages of the epoch before are still on their way: whoever hosts now gives the save time to arrive before it sends another.
+    syncSentAt.fill(now)
+    Hidden.synced(tracker, message.returned, floorTick)
+    releaseHeld()
     for (let other = 0; other < count; other++) wasAway[other] = playedAround(other)
     if (mode === "rollback") runUpTo(previous)
   }
@@ -466,18 +633,44 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     }
     // Restore what the others will parse, not the object itself, so every peer restores the same data.
     const save: unknown = JSON.parse(JSON.stringify(saved.value))
-    syncMessage = { k: "sync", from: seat, epoch: epoch + 1, tick: next, save, returned: tracker.shown.slice(), sessions: sessions as ReadonlyArray<number> }
-    applySync(syncMessage.epoch, syncMessage.tick, save, syncMessage.returned)
+    // A seat that left and says hello gets its seat back with this save.
+    const now = clock.now()
+    const left: Array<Wire.Why | null> = gone.map((one) => one?.reason ?? null)
+    const named = sessions.slice() as Array<number>
+    let seated = 0
+    for (const [other, ask] of asking) {
+      if (now - ask.at > timeoutMS) asking.delete(other)
+      else if (gone[other] !== undefined) {
+        left[other] = null
+        named[other] = ask.session
+        seated += 1
+      }
+    }
+    // For a session it seats: every seat's inputs past the save's idle ticks, as far as this peer has them all.
+    const ahead: Array<Array<unknown>> = Array.from({ length: count }, () => [])
+    if (seated > 0) {
+      for (let other = 0; other < count; other++) {
+        // Not those of a seat's earlier session.
+        if (gone[other] !== undefined || named[other] !== sessions[other]) continue
+        const known = other === seat ? sent : raw[other]!
+        const last = other === seat ? localNext - 1 : contiguous[other]!
+        for (let at = next + saveDelay; at <= last && known.has(at) && ahead[other]!.length < Wire.maxInputsAhead; at++) ahead[other]!.push(known.get(at))
+      }
+    }
+    syncMessage = { k: "sync", from: seat, epoch: epoch + 1, tick: next, save, returned: tracker.shown.slice(), sessions: named, roster: roster + (seated > 0 ? 1 : 0), left, ahead }
+    applySync(syncMessage)
     broadcast(syncMessage)
     syncSentAt.fill(clock.now())
   }
 
+  /** For the host: `other` is behind this epoch. The save that started it again, or a new one when another seat made that one. */
   const resendSync = (other: number): void => {
-    if (!host || syncMessage === undefined) return
+    if (!isHost()) return
     const now = clock.now()
     if (now - syncSentAt[other]! < resendSyncEveryMS) return
     syncSentAt[other] = now
-    broadcast(syncMessage)
+    if (syncMessage !== undefined && syncMessage.epoch === epoch) broadcast(syncMessage)
+    else pendingSync = true
   }
 
   /** A message for ticks no honest peer is at yet. Not counted while this seat is played around: the others ran on without it, and the save that ends it moves this seat to them. */
@@ -500,7 +693,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
         dropped += 1
         return
       }
-      confirmRemote(other, tick, decoded.value)
+      confirmRemote(other, tick, decoded.value, carried[index])
     }
   }
 
@@ -521,12 +714,20 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     held.push(message)
   }
 
+  /** After a save or a change of the roster: the hides that waited for it. */
+  const releaseHeld = (): void => {
+    if (held.length === 0) return
+    const ready = held.filter((message) => message.epoch <= epoch && message.roster <= roster)
+    held = held.filter((message) => message.epoch > epoch || message.roster > roster)
+    for (const message of ready) heardHidden(message)
+  }
+
   /** A hide of `message.seat`, from itself or passed on by another peer. */
   const heardHidden = (message: Wire.Hidden): void => {
     const other = message.seat
-    if (other === seat) return
-    // A newer epoch's waits for its save: until then this peer's floor is not that epoch's.
-    if (message.epoch > epoch) {
+    if (other === seat || gone[other] !== undefined) return
+    // A newer epoch's waits for its save: until then this peer's floor is not that epoch's. One of a roster this peer has not reached waits for it too.
+    if (message.epoch > epoch || message.roster > roster) {
       hold(message)
       return
     }
@@ -539,66 +740,377 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       if (!same) announcements[other] = [message]
       else if (!known.some((part) => part.start === message.start)) announcements[other] = [...known, message]
     }
-    if (host && epoch > 0 && Hidden.returned(tracker, other)) pendingSync = true
+    if (isHost() && epoch > 0 && Hidden.returned(tracker, other)) pendingSync = true
   }
 
   /** Before this peer's first save: a hello or ping names its session, and a peer already in a match shows there is one. */
   const beforeMatch = (message: Wire.Message): void => {
     const other = message.from
-    if (host && (message.k === "hello" || message.k === "ping") && message.epoch === 0) {
+    // Seat 0 starts a match: it names the session of every seat that is not in one yet.
+    if (seat === 0 && (message.k === "hello" || message.k === "ping") && message.epoch === 0) {
       sessions = sessions.map((known, at) => at === other ? message.session : known)
     }
-    if (message.epoch === 0) return
-    if (!host) {
-      matchSeenAt ??= clock.now()
-      return
-    }
-    // Only seat 0 starts epochs: if it hears one it did not start, an earlier session of seat 0 did. Its hellos tell that match's peers, which may not have heard this session yet.
-    for (let copy = 0; copy < copies; copy++) broadcast({ k: "hello", from: seat, epoch, session: sessionId })
-    restarted(seat, `seat ${other} is in a match an earlier session of seat 0 started`)
+    // A match already runs: this session's hellos ask for its seat in it.
+    if (message.epoch > 0) matchSeenAt ??= clock.now()
   }
 
-  const receive = (message: Wire.Message): void => {
+  /** The lowest seat that plays and that this peer does not suspect: the one that decides who is out (`-1`: none). */
+  const decider = (): number => {
+    for (let other = 0; other < count; other++) if (plays(other) && suspected[other] === undefined) return other
+    return -1
+  }
+
+  /**
+   * This peer's report on `about`, a seat it stopped waiting for: the last
+   * input it has of it, and those from the first one a playing peer may
+   * lack, as far back as this peer still holds them.
+   */
+  const reportOn = (about: number): ReadonlyArray<Wire.Gone> => {
+    const have = contiguous[about]!
+    let lowest = have
+    for (let other = 0; other < count; other++) {
+      if (other !== seat && other !== about && plays(other)) lowest = Math.min(lowest, acks[other]![about]!)
+    }
+    const known = raw[about]!
+    let start = have + 1
+    while (start - 1 > lowest && start - 1 >= floorTick && known.has(start - 1)) start -= 1
+    const parts: Array<Wire.Gone> = []
+    do {
+      const carried: Array<unknown> = []
+      for (let tick = start; tick <= have && carried.length < Wire.maxInputsPerMessage; tick++) carried.push(known.get(tick))
+      parts.push({ k: "gone", from: seat, epoch, seat: about, why: suspected[about]!, have, start, inputs: carried })
+      start += carried.length
+    } while (start <= have)
+    return parts
+  }
+
+  /** `message.from` stopped waiting for `message.seat`. */
+  const heardGone = (message: Wire.Gone): void => {
     const other = message.from
-    if ((message.k === "hello" || message.k === "ping") && message.session !== sessions[other] && sessions[other] !== undefined && (epoch > 0 || other === seat)) {
-      // Answered first, so the new session hears the save that names the other one.
-      if (host) {
-        syncSentAt[other] = -Infinity
-        resendSync(other)
-      }
-      restarted(other, `seat ${other} started a new session (a reloaded page) while its earlier one was in the match`)
+    const about = message.seat
+    // A seat this peer stopped waiting for has no say, nor one whose page is hidden: a save replaces its world.
+    if (message.epoch !== epoch || suspected[other] !== undefined || Hidden.away(tracker, other) || gone[about] !== undefined) return
+    const decides = decider()
+    if (about === seat) {
+      accusedAt[other] = clock.now()
+      // This peer hears it, so it is the one that cannot hear: of the two, the seat that decides stays. Not when this peer was silent itself: then the report is fair.
+      if (decides === seat && clock.now() >= excusedUntil) suspect(other, "timeout")
       return
     }
-    if (other === seat) return
+    if (message.have > localNext + furthestAhead) {
+      tooFarAhead()
+      return
+    }
+    const told = reports[about]!
+    let report = told.get(other)
+    if (report === undefined) told.set(other, report = { have: message.have, inputs: new Map() })
+    report.have = message.have
+    // Kept as carried: decoded if the seat goes, with the change that says how far its inputs count.
+    for (let index = 0; index < message.inputs.length; index++) {
+      const tick = message.start + index
+      if (tick > contiguous[about]!) report.inputs.set(tick, message.inputs[index])
+    }
+    // The seat that decides says so, or this peer decides and any playing peer does: stop waiting for it too.
+    if (other === decides || decides === seat) suspect(about, message.why)
+  }
+
+  const sameChange = (one: Wire.Left, other: Wire.Left): boolean =>
+    one.roster === other.roster && one.by === other.by && one.seats.length === other.seats.length &&
+    one.seats.every((out, index) => out === other.seats[index] && one.last[index] === other.last[index] && one.tick[index] === other.tick[index])
+
+  /** After a change of the roster: the session ends when no other seat is in the match and none asks for its seat. */
+  const alone = (lastOut: number, why: Wire.Why): void => {
+    for (let other = 0; other < count; other++) if (other !== seat && gone[other] === undefined) return
+    const now = clock.now()
+    for (const [other, ask] of asking) {
+      if (gone[other] !== undefined && now - ask.at <= timeoutMS) {
+        // A session waits for the seat (a page reloaded): the next save seats it.
+        pendingSync = true
+        return
+      }
+    }
+    end({ _tag: "Disconnected", who: "others", seat: lastOut, reason: why, detail: `seat ${lastOut} left the match (${why}), and no other seat is in it` })
+  }
+
+  /** Takes a change of the roster: the seats' inputs up to their last one, then nothing of their own. */
+  const applyChange = (head: Wire.Left, carried: ReadonlyMap<number, ReadonlyMap<number, unknown>>): void => {
+    roster = head.roster
+    pendingChange = undefined
+    let mine: Wire.Why | undefined
+    let lastOut = -1
+    for (const [index, about] of head.seats.entries()) {
+      const left: Left = { reason: head.why[index]!, lastInput: head.last[index]!, tick: head.tick[index]! }
+      if (about === seat) {
+        mine = left.reason
+        gone[seat] = left
+        continue
+      }
+      lastOut = about
+      trust(about)
+      reports[about]!.clear()
+      const known = inputs[about]!
+      // More than the others agreed on (this peer was not asked): past the last one, they do not count.
+      for (let tick = contiguous[about]!; tick > left.lastInput; tick--) {
+        known.delete(tick)
+        raw[about]!.delete(tick)
+      }
+      contiguous[about] = Math.min(contiguous[about]!, left.lastInput)
+      const more = carried.get(about)
+      for (let tick = contiguous[about] + 1; tick <= left.lastInput; tick++) {
+        if (known.has(tick)) continue
+        const wire = more?.get(tick)
+        const decoded = decode(codec, wire)
+        // Every peer decodes the same message, so every peer falls back the same way.
+        if (!decoded.ok) dropped += 1
+        confirmRemote(about, tick, decoded.ok ? decoded.value : idle, wire)
+      }
+      gone[about] = left
+      // Rollback: ticks past its last input ran with a guess of it.
+      if (mode === "rollback") {
+        const ran = used[about]!
+        for (let at = left.lastInput + 1; at < next; at++) {
+          const before = ran.get(at)
+          if (before !== undefined && before !== (at >= left.tick ? leftKey : idleKey)) {
+            wrong = wrong === undefined ? at : Math.min(wrong, at)
+            break
+          }
+        }
+      }
+      wasAway[about] = true
+    }
+    if (mine !== undefined) {
+      leaveMatch(mine, `seat ${head.by} and the seats with it went on without seat ${seat} (${mine})`)
+      return
+    }
+    releaseHeld()
+    alone(lastOut, head.why[head.seats.indexOf(lastOut)]!)
+  }
+
+  /**
+   * Whether `head` is the next change as this peer sees the match: made by
+   * the lowest seat that plays once its seats are out.
+   */
+  const validChange = (head: Wire.Left): boolean => {
+    if (gone[head.by] !== undefined || Hidden.away(tracker, head.by)) return false
+    for (const about of head.seats) if (gone[about] !== undefined) return false
+    for (let lower = 0; lower < head.by; lower++) if (plays(lower) && !head.seats.includes(lower)) return false
+    return true
+  }
+
+  const heardLeft = (message: Wire.Left): void => {
+    if (message.epoch !== epoch) return
+    if (message.roster <= roster) {
+      const mine = changes.get(message.roster)?.[0]
+      // Two seats each put the other out, and this peer took the higher one's change: the lower seat's match is the one that goes on.
+      if (mine !== undefined && message.by < mine.by && !sameChange(mine, message)) {
+        leaveMatch("dropped", `seat ${message.by} and seat ${mine.by} each went on without the other, and seat ${message.by}'s match stands`)
+      }
+      return
+    }
+    if (message.roster !== roster + 1 || !validChange(message)) return
+    if (pendingChange === undefined || !sameChange(pendingChange.parts[0]!, message)) pendingChange = { parts: [], inputs: new Map() }
+    const pending = pendingChange
+    if (!pending.parts.some((part) => part.seat === message.seat && part.start === message.start)) pending.parts.push(message)
+    let carried = pending.inputs.get(message.seat)
+    if (carried === undefined) pending.inputs.set(message.seat, carried = new Map())
+    for (let index = 0; index < message.inputs.length; index++) carried.set(message.start + index, message.inputs[index])
+    // Complete once this peer has every seat's inputs up to its last one.
+    for (const [index, about] of message.seats.entries()) {
+      if (about === seat) continue
+      const more = pending.inputs.get(about)
+      for (let tick = contiguous[about]! + 1; tick <= message.last[index]!; tick++) {
+        if (!inputs[about]!.has(tick) && more?.has(tick) !== true) return
+      }
+    }
+    changes.set(message.roster, pending.parts)
+    applyChange(message, pending.inputs)
+  }
+
+  /** `other` is behind this peer's roster: the changes it missed, passed on. */
+  const resendChanges = (other: number, theirs: number): void => {
+    if (theirs >= roster) return
+    const now = clock.now()
+    if (now - changeSentAt[other]! < pingEveryMS) return
+    changeSentAt[other] = now
+    for (const [made, parts] of changes) {
+      if (made > theirs) for (const part of parts) broadcast(part.from === seat ? part : { ...part, from: seat })
+    }
+  }
+
+  /**
+   * When this peer decides (it is the lowest playing seat it does not
+   * suspect) and every other playing peer reported the seats it stopped
+   * waiting for: they are out. Each seat's own inputs end at the furthest
+   * one any of those peers has, so no peer confirmed a tick past it.
+   */
+  const decide = (): void => {
+    if (suspects === 0 || epoch === 0 || out !== undefined || decider() !== seat) return
+    // A playing peer reports this seat gone, and this peer does not hold it wrong: the others may be putting this seat out, and two changes at once would split the match.
+    const now = clock.now()
+    for (let other = 0; other < count; other++) {
+      if (other !== seat && plays(other) && suspected[other] === undefined && now - accusedAt[other]! <= 2 * pingEveryMS) return
+    }
+    const out_: Array<number> = []
+    const voters: Array<number> = []
+    for (let other = 0; other < count; other++) {
+      if (other === seat || gone[other] !== undefined) continue
+      if (suspected[other] !== undefined) out_.push(other)
+      else if (plays(other)) voters.push(other)
+    }
+    const why: Array<Wire.Why> = []
+    const last: Array<number> = []
+    const tick: Array<number> = []
+    const lowest: Array<number> = []
+    const carried = new Map<number, Map<number, unknown>>()
+    for (const about of out_) {
+      const told = reports[about]!
+      let furthest = contiguous[about]!
+      let least = furthest
+      for (const voter of voters) {
+        const report = told.get(voter)
+        if (report === undefined) return
+        furthest = Math.max(furthest, report.have)
+        least = Math.min(least, report.have)
+      }
+      const known = raw[about]!
+      const more = new Map<number, unknown>()
+      for (let at = least + 1; at <= furthest; at++) {
+        if (known.has(at)) {
+          more.set(at, known.get(at))
+          continue
+        }
+        let found = false
+        for (const voter of voters) {
+          const report = told.get(voter)!
+          if (!report.inputs.has(at)) continue
+          more.set(at, report.inputs.get(at))
+          found = true
+          break
+        }
+        // A report that carries it is still to come.
+        if (!found) return
+      }
+      carried.set(about, more)
+      why.push(suspected[about]!)
+      last.push(furthest)
+      lowest.push(least)
+      // A seat already played around was idle on ticks the peers confirmed: its input changes on a tick none has, the next one this peer sends an input for.
+      tick.push(Hidden.away(tracker, about) ? Math.max(furthest + 1, localNext) : furthest + 1)
+    }
+    const head = { k: "left" as const, from: seat, epoch, roster: roster + 1, by: seat, seats: out_, why, last, tick }
+    const parts: Array<Wire.Left> = []
+    for (const [index, about] of out_.entries()) {
+      const more = carried.get(about)!
+      let start = lowest[index]! + 1
+      do {
+        const some: Array<unknown> = []
+        for (let at = start; at <= last[index]! && some.length < Wire.maxInputsPerMessage; at++) some.push(more.get(at))
+        parts.push({ ...head, seat: about, start, inputs: some })
+        start += some.length
+      } while (start <= last[index]!)
+    }
+    changes.set(head.roster, parts)
+    applyChange(parts[0]!, carried)
+    if (ended !== undefined) return
+    for (let copy = 0; copy < copies; copy++) for (const part of parts) broadcast(part)
+  }
+
+  /** A save: this peer's match starts again from it, when it is in it. */
+  const heardSync = (message: Wire.Sync): void => {
+    const from = message.from
+    if (from === seat || message.left[from] !== null) return
+    // A newer epoch, or this one from a lower seat: two seats that both made a save settle on the lower seat's.
+    if (!(message.epoch > epoch || (message.epoch === epoch && epoch > 0 && from < syncFrom))) return
+    // A seat out of this peer's match makes saves of its own until it learns: only a later roster says it came back.
+    if (out === undefined && gone[from] !== undefined && message.roster <= roster) return
+    const why = message.left[seat]!
+    if (why !== null) {
+      // The save's match goes on without this seat.
+      if (epoch > 0) {
+        gone[seat] ??= { reason: why, lastInput: message.tick - 1, tick: message.tick }
+        leaveMatch(why, `seat ${from}'s save is of a match without seat ${seat} (${why})`)
+      }
+      return
+    }
+    if (message.sessions[seat] !== sessionId) {
+      // Before its first save, it may be one made before this session asked: it goes on asking. After it, another session has the seat.
+      if (epoch > 0) end({ _tag: "Disconnected", who: "self", seat, reason: "restarted", detail: `the match has another session of seat ${seat} (another page took its place)` })
+      return
+    }
+    applySync(message)
+  }
+
+  const receive = (message: Wire.Message, link: number): void => {
+    const other = message.from
+    if (other === seat) {
+      // Another session says hello for this seat while this one plays: another page took its place.
+      if (message.k === "hello" && message.session !== sessionId && epoch > 0 && out === undefined) {
+        end({ _tag: "Disconnected", who: "self", seat, reason: "restarted", detail: `another session of seat ${seat} asks for its place (a reloaded page, another tab)` })
+      }
+      return
+    }
+    linkOf[other] = link
+    // Out of the match: only a save that seats this session matters.
+    if (out !== undefined) {
+      if (message.k === "sync") heardSync(message)
+      return
+    }
+    if (epoch > 0 && message.k === "hello") {
+      const known = message.session === sessions[other]
+      if (gone[other] !== undefined || !known) {
+        // A session that is not in the match asks for its seat: the next save gives it, once the seat's earlier session is out.
+        asking.set(other, { session: message.session, at: clock.now() })
+        if (gone[other] === undefined) suspect(other, "restarted")
+        else if (isHost()) pendingSync = true
+        return
+      }
+      lastHeard[other] = clock.now()
+      // In the match as this peer has it, and asking: it missed a save, or its own match went another way.
+      if (message.epoch < epoch) resendSync(other)
+      else if (isHost() && clock.now() - syncSentAt[other]! >= resendSyncEveryMS) {
+        syncSentAt[other] = clock.now()
+        pendingSync = true
+      }
+      return
+    }
+    // A ping of a session that is not the seat's in the match: its hellos ask, and nothing else of it counts.
+    if (epoch > 0 && message.k === "ping" && message.session !== sessions[other]) return
+    if (gone[other] !== undefined) {
+      // It is out and plays on (it missed the change, or the save after it): tell it, so it asks for its seat. Its saves are of its own match, unless a later roster seats it.
+      if (message.k === "inputs" && clock.now() - changeSentAt[other]! >= pingEveryMS) {
+        changeSentAt[other] = clock.now()
+        const left = gone[other]
+        broadcast({ k: "out", from: seat, epoch, seat: other, why: left.reason, last: left.lastInput, tick: left.tick })
+      } else if (message.k === "sync") heardSync(message)
+      return
+    }
     lastHeard[other] = clock.now()
     if (epoch === 0) beforeMatch(message)
     if (ended !== undefined) return
-    if (host && message.epoch < epoch) resendSync(other)
+    if (message.epoch < epoch) resendSync(other)
     switch (message.k) {
       case "hello":
         return
       case "resync":
-        if (host && epoch > 0 && message.epoch === epoch) pendingSync = true
+        if (isHost() && epoch > 0 && message.epoch === epoch) pendingSync = true
         return
       case "sync":
-        if (other !== 0 || message.epoch <= epoch) return
-        if (message.sessions[seat] !== sessionId) {
-          restarted(seat, `seat 0's match has another session of seat ${seat}: this one started after it (a reloaded page)`)
-          return
-        }
-        sessions = message.sessions
-        applySync(message.epoch, message.tick, message.save, message.returned)
+        heardSync(message)
         return
       case "inputs": {
         // Another epoch's: an older one's are replaced by the save, a newer one's wait for it.
         if (message.epoch !== epoch) return
+        // Sent under a roster this peer has not reached: they wait for the change, so no tick is confirmed without it.
+        if (message.roster > roster) return
+        if (message.roster < roster) resendChanges(other, message.roster)
         takeAcks(other, message.acks)
         remoteNext[other] = { tick: message.next, at: clock.now() }
         takeInputs(other, message.start, message.inputs)
         return
       }
       case "sum": {
-        if (message.epoch !== epoch || message.tick < syncTick) return
+        // Of a roster this peer has not reached: it may count a seat out that this peer still runs.
+        if (message.epoch !== epoch || message.tick < syncTick || message.roster > roster) return
         if (message.tick > localNext + furthestAhead) {
           tooFarAhead()
           return
@@ -612,10 +1124,23 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       case "ping":
         broadcast({ k: "pong", from: seat, epoch, to: other, at: message.at })
         Hidden.pinged(tracker, other, message.shown)
-        if (host && epoch > 0 && Hidden.returned(tracker, other)) pendingSync = true
+        if (isHost() && epoch > 0 && Hidden.returned(tracker, other)) pendingSync = true
         return
       case "hidden":
         heardHidden(message)
+        return
+      case "gone":
+        heardGone(message)
+        return
+      case "left":
+        heardLeft(message)
+        return
+      case "out":
+        // The sender's match, as far on as this peer's or further, goes on without this seat.
+        if (message.seat === seat && message.epoch >= epoch) {
+          gone[seat] ??= { reason: message.why, lastInput: message.last, tick: message.tick }
+          leaveMatch(message.why, `seat ${other}'s match goes on without seat ${seat} (${message.why})`)
+        }
         return
       case "pong": {
         if (message.to !== seat) return
@@ -628,51 +1153,74 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   }
 
   const readLinks = (): void => {
-    for (const link of options.links) {
+    let open = 0
+    let closed: string | undefined
+    for (let index = 0; index < options.links.length; index++) {
+      if (linkClosed[index]) continue
+      const link = options.links[index]!
       for (const text of link.receive()) {
         const parsed = Wire.parse(text, count)
         if (parsed._tag === "Malformed") dropped += 1
         else if (parsed._tag === "OtherVersion") end({ _tag: "ProtocolMismatch", version: parsed.version })
-        else receive(parsed.message)
+        else receive(parsed.message, index)
         if (ended !== undefined) return
       }
       const status = link.status()
-      if (status._tag === "Closed") {
-        end({ _tag: "Disconnected", seat: undefined, reason: "closed", detail: status.reason })
-        return
+      if (status._tag === "Open") {
+        open += 1
+        continue
       }
+      linkClosed[index] = true
+      closed = status.reason
+      // Before the match no seat can be played around; in it, the seats this link carried are gone.
+      if (epoch === 0) break
+      for (let other = 0; other < count; other++) if (linkOf[other] === index) suspect(other, "closed")
+    }
+    if (closed !== undefined && (open === 0 || epoch === 0)) {
+      end({ _tag: "Disconnected", who: "self", seat, reason: "closed", detail: closed })
+      return
     }
     if (epoch === 0) {
-      // A match ran before this session asked to join, and seat 0 sent no save naming it: an earlier session of this seat is in it.
+      // A match runs and gave this session no seat: its earlier session is still in it, or nobody answers.
       if (matchSeenAt !== undefined && clock.now() - matchSeenAt > timeoutMS) {
-        restarted(seat, `a match is running without this session for ${timeoutMS} ms: an earlier session of seat ${seat} is in it`)
+        end({ _tag: "Disconnected", who: "self", seat, reason: "timeout", detail: `a match is running and did not seat this session for ${timeoutMS} ms` })
+      }
+      return
+    }
+    if (out !== undefined) {
+      if (clock.now() - out.since > timeoutMS) {
+        end({ _tag: "Disconnected", who: "self", seat, reason: out.why, detail: `the match went on without seat ${seat} (${out.why}) and did not seat it again for ${timeoutMS} ms` })
       }
       return
     }
     const now = clock.now()
     for (let other = 0; other < count; other++) {
-      if (other === seat) continue
+      if (other === seat || gone[other] !== undefined || suspected[other] !== undefined) continue
       const limit = hiddenNow(other) ? timeoutMS + graceMS : timeoutMS
-      if (now - lastHeard[other]! > limit) {
-        const what = limit === timeoutMS ? "sent nothing" : "hid and sent nothing"
-        end({ _tag: "Disconnected", seat: other, reason: "timeout", detail: `seat ${other} ${what} for ${limit} ms` })
-        return
-      }
+      if (now - lastHeard[other]! > limit) suspect(other, "timeout")
     }
   }
 
   const prune = (): void => {
     const done = confirmed()
     let acked = Infinity
-    for (let other = 0; other < count; other++) if (other !== seat) acked = Math.min(acked, acks[other]![seat]!)
+    for (let other = 0; other < count; other++) if (other !== seat && gone[other] === undefined) acked = Math.min(acked, acks[other]![seat]!)
     // Inputs of ticks this peer has not run yet stay, and so does the last one before them: the guesses start from it.
     const base = Math.min(done, next - 1)
     for (let other = 0; other < count; other++) {
       const keepFrom = other === seat ? Math.min(base, acked + 1) : base
       for (const tick of inputs[other]!.keys()) if (tick < keepFrom) inputs[other]!.delete(tick)
       for (const tick of used[other]!.keys()) if (tick < base) used[other]!.delete(tick)
+      if (other === seat) continue
+      // Another seat's inputs stay, as carried, until every playing peer has them: if the seat goes, this peer may be the one that holds them.
+      let held = base
+      for (let peer = 0; peer < count; peer++) if (peer !== seat && peer !== other && plays(peer)) held = Math.min(held, acks[peer]![other]! + 1)
+      // They arrive in order past the ones this peer has, so what it lets go is a run of ticks.
+      for (let tick = rawFrom[other]!; tick < held; tick++) raw[other]!.delete(tick)
+      if (held > rawFrom[other]!) rawFrom[other] = held
     }
-    for (const tick of sent.keys()) if (tick <= acked) sent.delete(tick)
+    // This seat's own stay as sent from the tick it runs next: a save that seats a session carries them.
+    for (const tick of sent.keys()) if (tick <= acked && tick < base) sent.delete(tick)
     for (const tick of history.keys()) if (tick < next - maxRollback - 1) history.delete(tick)
     // A seat that never answers a checksum does not keep the others' forever.
     for (const tick of sums.keys()) if (tick < done - every * 4) sums.delete(tick)
@@ -691,7 +1239,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       if (input === undefined) break
       payload.push(input)
     }
-    return { k: "inputs", from: seat, epoch, next, acks: contiguous.slice(), start, inputs: payload }
+    return { k: "inputs", from: seat, epoch, roster, next, acks: contiguous.slice(), start, inputs: payload }
   }
 
   /** This seat's announcement of its latest spell: its inputs from the first one a seat it waits on has not acknowledged, up to `last`. */
@@ -704,7 +1252,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     do {
       const carried: Array<unknown> = []
       for (let tick = start; tick <= last && carried.length < Wire.maxInputsPerMessage; tick++) carried.push(sent.get(tick))
-      parts.push({ k: "hidden", from: seat, epoch, seat, n: tracker.hides[seat]!, last, away: tracker.away[seat]!, start, inputs: carried })
+      parts.push({ k: "hidden", from: seat, epoch, roster, seat, n: tracker.hides[seat]!, last, away: tracker.away[seat]!, start, inputs: carried })
       start += carried.length
     } while (start <= last)
     return parts
@@ -718,7 +1266,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   const announce = (): void => {
     for (let other = 0; other < count; other++) {
       const parts = announcements[other]!
-      if (parts.length === 0 || parts[0]!.n !== tracker.hides[other]) continue
+      if (parts.length === 0 || parts[0]!.n !== tracker.hides[other] || gone[other] !== undefined) continue
       if (other === seat) {
         if (Hidden.hidden(tracker, seat) || Hidden.away(tracker, seat)) for (const part of parts) broadcast(part)
       } else if (Hidden.hidden(tracker, other)) {
@@ -735,10 +1283,19 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       announce()
       adapt()
     }
-    if (epoch === 0) {
+    const pinged = lastPing === now
+    // Not in a match: this session asks for its seat.
+    if (epoch === 0 || out !== undefined) {
       broadcast({ k: "hello", from: seat, epoch, session: sessionId })
       return
     }
+    // The seats this peer stopped waiting for, until they are out: at once, then with every ping. A peer played around has no say.
+    if (suspects > 0 && (reportNow || pinged) && !Hidden.away(tracker, seat)) {
+      for (let copy = reportNow ? copies : 1; copy > 0; copy--) {
+        for (let other = 0; other < count; other++) if (suspected[other] !== undefined) for (const part of reportOn(other)) broadcast(part)
+      }
+    }
+    reportNow = false
     if (wantSync && now - lastResyncAsk >= pingEveryMS) {
       lastResyncAsk = now
       broadcast({ k: "resync", from: seat, epoch })
@@ -749,7 +1306,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     if (!Hidden.away(tracker, seat)) for (const [tick, { sum }] of sums) {
       if (sentSums.has(tick) || tick - 1 > done) continue
       sentSums.add(tick)
-      broadcast({ k: "sum", from: seat, epoch, tick, sum })
+      broadcast({ k: "sum", from: seat, epoch, roster, tick, sum })
       compare(tick)
     }
     prune()
@@ -782,7 +1339,7 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   const adapt = (): void => {
     let slowest = 0
     for (let other = 0; other < count; other++) {
-      if (other === seat) continue
+      if (other === seat || gone[other] !== undefined) continue
       const measured = roundTrip[other]
       if (measured === undefined) return
       slowest = Math.max(slowest, measured)
@@ -864,13 +1421,27 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     const sentInput = send(codec, pressed)
     if (!sentInput.ok) throw new Error(`Netcode: the local input ${sentInput.error}`)
     const local = sentInput.value
+    // This page ran nothing for a while (a hitch, a frozen tab): the others' silence was not theirs, and their reports of this seat are fair.
+    const now = clock.now()
+    if (epoch > 0 && now - lastAdvance > timeoutMS / 2) {
+      lastHeard.fill(now)
+      excusedUntil = now + timeoutMS
+    }
+    lastAdvance = now
     // Read before correct() and performSync(): the ticks they run again are this advance's too
     const before = again
     readLinks()
     if (ended !== undefined) return Result.failure(ended)
+    // Out of the match: wait for a save that seats this session again.
+    if (out !== undefined) {
+      sendAll()
+      return Result.success({ _tag: "Waiting" })
+    }
+    decide()
+    if (ended !== undefined) return Result.failure(ended)
     lookAway()
     if (epoch === 0) {
-      if (host && sessions.every((known) => known !== undefined)) performSync()
+      if (seat === 0 && sessions.every((known) => known !== undefined)) performSync()
       if (ended !== undefined) return Result.failure(ended)
       if (epoch === 0) {
         sendAll()
@@ -879,10 +1450,20 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     }
     // Played around: wait for the save that answers this seat's return.
     if (Hidden.away(tracker, seat)) {
+      // No seat plays that could make it: the ones that did are gone.
+      if (decider() === -1) {
+        let lost = -1
+        for (let other = count - 1; other >= 0; other--) if (other !== seat && (suspected[other] !== undefined || gone[other] !== undefined)) lost = other
+        if (lost !== -1) {
+          const why = suspected[lost] ?? gone[lost]!.reason
+          end({ _tag: "Disconnected", who: "others", seat: lost, reason: why, detail: `seat ${lost} is gone (${why}), and no seat plays that could make the save seat ${seat} waits for` })
+          return Result.failure(ended!)
+        }
+      }
       sendAll()
       return Result.success({ _tag: "Waiting" })
     }
-    if (host && pendingSync) performSync()
+    if (isHost() && (pendingSync || wantSync)) performSync()
     if (ended !== undefined) return Result.failure(ended)
     if (halted === undefined && mode === "rollback") correct()
     if (halted !== undefined) {
@@ -916,8 +1497,14 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     advance,
     resync: () => {
       if (ended !== undefined || epoch === 0) return
-      if (host) pendingSync = true
+      if (isHost()) pendingSync = true
       else wantSync = true
+    },
+    drop: (other) => {
+      if (!Number.isSafeInteger(other) || other < 0 || other >= count || other === seat) {
+        throw new Error(`Netcode: drop(${other}) names no other seat of this match: give another seat's number, 0 to ${count - 1}, not this session's own (${seat})`)
+      }
+      if (ended === undefined) suspect(other, "dropped")
     },
     rate: () => {
       const lead = ahead()
@@ -954,7 +1541,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       inputDelay: policy.delay(),
       delayChanges: policy.changes(),
       roundTripMS: roundTrip.map((value, other) => other === seat ? 0 : value),
-      hidden: tracker.hides.map((_, other) => hiddenNow(other)),
+      hidden: tracker.hides.map((_, other) => gone[other] === undefined && hiddenNow(other)),
+      left: gone.slice(),
       waiting: waitingSeat === -1 ? undefined : { seat: waitingSeat, tick: waitingTick, forMS: Math.max(0, clock.now() - waitingSince) }
     }),
     events: (descriptor) => {
@@ -969,7 +1557,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     const resyncs = hiddenOptions.then === "resync-on-return"
     const hide = (): void => {
       // Every input recorded is real: the announcement carries those the others may not have, since this page may send nothing more.
-      Hidden.hide(tracker, seat, localNext - 1, resyncs)
+      // The host is never played around: the saves are its world.
+      Hidden.hide(tracker, seat, localNext - 1, resyncs && hostSeat() !== seat)
       announcements[seat] = announcement()
     }
     if (visibility.hidden()) hide()

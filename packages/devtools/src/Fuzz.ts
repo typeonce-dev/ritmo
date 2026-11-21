@@ -24,9 +24,11 @@
  * from `make`, joined to the others by a seeded `MemoryNetworkLink`
  * (latency, jitter, loss) and driven by a `Netcode.rollback` session. A
  * desync, or any other session failure, is a `SessionFailed` violation, and
- * shrinking shrinks the input timeline with the network seed fixed. Run
- * `Netcode.syncTest` first: it finds state a rewind cannot put back on one
- * peer, faster.
+ * shrinking shrinks the input timeline with the network seed fixed. With
+ * `network.leave`, seats also leave the match for good on frames drawn from
+ * the run's seed, so what the game does with a seat that has no driver is
+ * fuzzed too. Run `Netcode.syncTest` first: it finds state a rewind cannot
+ * put back on one peer, faster.
  *
  * @module Fuzz
  * @docGroup devtools
@@ -111,13 +113,16 @@ export interface Seats<Name extends string = string, Data = unknown> extends Inp
   readonly count: number
   /** The input of a seat that pressed nothing, as given to `Netcode.seats`. */
   readonly idle: Data
+  /** The input of a seat that left the match, as given to `Netcode.seats` (`idle` when the game gives none). */
+  readonly left: Data
 }
 
 /**
  * Declares how to fuzz the seats of a networked game: the
- * `Netcode.Source` service its simulation captures, the input `codec` and
- * `idle` input the game gives `Netcode.seats`, `count` seats, and
- * `generate` for one seat's input on a frame. Pass it as the only input of a
+ * `Netcode.Source` service its simulation captures, the input `codec`,
+ * `idle` input, and `left` input (when it has one) the game gives
+ * `Netcode.seats`, `count` seats, and `generate` for one seat's input on a
+ * frame. Pass it as the only input of a
  * `run` with `network`; `make` provides the service with
  * `playback.source(descriptor)` (over a network, that is the peer's
  * `seats.source`). Use `input` for a game without seats.
@@ -129,12 +134,14 @@ export const seats = <const Name extends string, const C extends CoreDescriptor.
     readonly count: number
     readonly generate: (random: Random.Random, frame: number, seat: number) => NoInfer<CoreDescriptor.CodecType<C>>
     readonly idle: NoInfer<CoreDescriptor.CodecType<C>>
+    readonly left?: NoInfer<CoreDescriptor.CodecType<C>>
   }
 ): Seats<Name, CoreDescriptor.CodecType<C>> => ({
   name: descriptor.name,
   codec: options.codec,
   count: options.count,
   idle: options.idle,
+  left: options.left === undefined ? options.idle : options.left,
   neutral: Array.from({ length: options.count }, () => options.idle),
   generate: (random, frame) => Array.from({ length: options.count }, (_, seat) => options.generate(random, frame, seat))
 })
@@ -160,6 +167,21 @@ export interface Network {
   readonly maxRollback?: number
   /** Ticks between checksum comparisons (10 by default here, to find a desync close to its cause). */
   readonly checksumEvery?: number
+  /**
+   * Makes up to `seats` seats leave the match for good in each run (a whole
+   * number from 1 to the seats' `count - 2`, so two peers always play on):
+   * which ones, and on which frame, are drawn from the run's seed. Such a
+   * seat's page is gone (its link closes and it runs no more), and every
+   * peer still there is told with `session.drop` once the link's latency
+   * passed, as a relay that saw the socket close tells them. From the tick
+   * the peers agree on, the simulation reads the seats' `left` input for it:
+   * invariants are checked on the peers still there, and a peer that halts
+   * or ends is a `SessionFailed` violation, so a rule of the game that
+   * breaks without a driver, or a system that is not deterministic about
+   * it, is found like any other bug. Shrinking keeps the seats and frames
+   * of the run that failed.
+   */
+  readonly leave?: { readonly seats: number }
 }
 
 /** What `run` fuzzes, how long, and how hard it shrinks. */
@@ -231,6 +253,12 @@ export interface Found {
    * (the failing frame, but over a `network`, where a desync shows a few frames after its cause).
    */
   readonly shrink: { readonly attempts: number; readonly steps: number; readonly fromFrames: number; readonly toFrames: number }
+  /**
+   * With `network.leave`: the seats that left in the failing run, and the
+   * frame each one's page was gone from. The replay holds the seats' `left`
+   * input for them from that frame on. Empty otherwise.
+   */
+  readonly left: ReadonlyArray<{ readonly seat: number; readonly frame: number }>
 }
 
 /** A run failed, but the same input did not fail again: the simulation reads something besides its input. */
@@ -404,8 +432,11 @@ export const run = <
     const seated = only as Seats
     const settle = network.settle ?? 120
     if (!Number.isSafeInteger(settle) || settle < 0) return invalid("network.settle must be a whole number, 0 or more")
+    if (network.leave !== undefined && (!Number.isSafeInteger(network.leave.seats) || network.leave.seats < 1 || network.leave.seats > seated.count - 2)) {
+      return invalid(`network.leave.seats must be a whole number from 1 to ${seated.count - 2}: two of the ${seated.count} seats play on, or a session ends for want of another seat`)
+    }
     plan = {
-      name: seated.name, codec: seated.codec, count: seated.count, idle: seated.idle,
+      name: seated.name, codec: seated.codec, count: seated.count, idle: seated.idle, left: seated.left,
       make, schedule: options.schedule, setup: options.setup, invariants: options.invariants ?? [],
       step: network.step, seed: network.seed, latencyMS: network.latencyMS, jitterMS: network.jitterMS ?? 0, loss: network.loss ?? 0, settle,
       inputDelay: network.inputDelay, maxRollback: network.maxRollback, checksumEvery: network.checksumEvery ?? 10
@@ -483,13 +514,21 @@ export const run = <
     return { kind: "violated", violation: found, frame, file }
   }
 
-  /** Over the network: every seat on its own peer. The replay plays the same timeline on one runtime. */
+  /** The seats that leave in the run being played, and the frame each one's page is gone from. */
+  let leaves: ReadonlyArray<FuzzNetwork.Leave> = []
+
+  /** Over the network: every seat on its own peer. The replay plays the same timeline on one runtime, with the `left` input for a seat from the frame it left on. */
   const simulate = (timeline: Timeline, record: ((violation: Violation, frame: number) => string) | undefined): Outcome => {
     if (plan === undefined) return simulateOne(timeline, record)
-    const played = FuzzNetwork.play(plan, timeline)
+    const played = FuzzNetwork.play(plan, timeline, leaves)
     if (played.kind === "invalid") return { kind: "invalid", error: { _tag: "InvalidOptions", message: played.message } }
     if (played.kind === "passed") return played
-    const one = record === undefined ? undefined : simulateOne(timeline.slice(0, played.frame), record(played.violation, played.frame))
+    const { left } = plan
+    // With seats that left, the replay runs to the failing frame, so it shows the ticks they sat out after the last press.
+    const without = leaves.length === 0 ? timeline : Array.from({ length: played.frame }, (_, frame) => [
+      ((timeline[frame] ?? neutral)[0] as ReadonlyArray<unknown>).map((value, seat) => leaves.some((leave) => leave.seat === seat && leave.frame <= frame) ? left : value)
+    ])
+    const one = record === undefined ? undefined : simulateOne(without.slice(0, played.frame), record(played.violation, played.frame))
     return { kind: "violated", violation: played.violation, frame: played.frame, file: one?.kind === "invalid" ? undefined : one?.file }
   }
 
@@ -498,6 +537,17 @@ export const run = <
     const random = Random.make(seed)
     const timeline: Array<ReadonlyArray<unknown>> = []
     for (let frame = 1; frame <= options.frames; frame++) timeline.push(inputs.map((entry) => entry.generate(random, frame)))
+    // Drawn after the timeline, so the same seed presses the same inputs with and without `leave`.
+    leaves = []
+    if (plan !== undefined && network?.leave !== undefined) {
+      const seats = Array.from({ length: plan.count }, (_, seat) => seat)
+      const drawn: Array<FuzzNetwork.Leave> = []
+      for (let left = random.integer(1, network.leave.seats + 1); left > 0; left--) {
+        const [seat] = seats.splice(random.integer(0, seats.length), 1)
+        drawn.push({ seat: seat!, frame: random.integer(0, options.frames) })
+      }
+      leaves = drawn.sort((one, other) => one.frame - other.frame || one.seat - other.seat)
+    }
     const first = simulate(timeline, undefined)
     if (first.kind === "invalid") return Result.failure(first.error)
     if (first.kind === "passed") continue
@@ -555,7 +605,8 @@ export const run = <
       frame: final.frame,
       replay: final.file,
       reproduces: replayed !== undefined && replayed._tag !== "InvalidOptions" && signature(replayed) === target,
-      shrink: { attempts, steps, fromFrames: Math.min(first.frame, timeline.length), toFrames: best.length }
+      shrink: { attempts, steps, fromFrames: Math.min(first.frame, timeline.length), toFrames: best.length },
+      left: leaves
     })
   }
   return Result.success(Rendered.make(

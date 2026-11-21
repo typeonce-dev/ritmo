@@ -58,6 +58,13 @@ describe("Netcode.seats", () => {
     // @ts-expect-error give it a ~encode schema back to the saved form
     Netcode.seats(Transforming, { count: 2, idle: new Date(0) })
   })
+
+  it("takes the input of a seat that left, of the schema's type, and carries it", () => {
+    expect(Netcode.seats(InputSchema, { count: 4, idle: { dx: 0 }, left: { dx: -1 } })).type.toBe<Result.Result<Netcode.Seats<Input>, Netcode.InvalidOptions>>()
+    expect(theSeats.left).type.toBe<Input>()
+    // @ts-expect-error Type 'string' is not assignable to type 'number'
+    Netcode.seats(InputSchema, { count: 4, idle: { dx: 0 }, left: { dx: "gone" } })
+  })
 })
 
 describe("Netcode.rollback", () => {
@@ -330,9 +337,32 @@ describe("status().waiting", () => {
   })
 })
 
+describe("a seat that leaves", () => {
+  it("is dropped by its number, and nothing comes back", () => {
+    const session = Netcode.rollback(runtime, { ...options, simulate })
+    if (!session.ok) return
+    expect(session.value.drop(1)).type.toBe<void>()
+    expect(session.value.drop).type.not.toBeCallableWith()
+    expect(session.value.drop).type.not.toBeCallableWith("1")
+  })
+
+  it("is named in status().left with why and when, or not at all", () => {
+    const session = Netcode.lockstep(runtime, { ...options, simulate })
+    if (!session.ok) return
+    const left = session.value.status().left
+    expect(left).type.toBe<ReadonlyArray<Netcode.Left | undefined>>()
+    expect<Netcode.Left>().type.toBe<{ readonly reason: Netcode.LeftReason; readonly lastInput: number; readonly tick: number }>()
+    expect<Netcode.LeftReason>().type.toBe<"timeout" | "closed" | "dropped" | "restarted">()
+    // @ts-expect-error Object is possibly 'undefined'
+    left[1].tick.toFixed()
+  })
+})
+
 describe("Disconnected", () => {
-  it("says whether a link closed, a seat went quiet, or a seat started a new session", () => {
-    expect<Netcode.Disconnected["reason"]>().type.toBe<"closed" | "timeout" | "restarted">()
+  it("says who is out of the match, which seat, and why", () => {
+    expect<Netcode.Disconnected["who"]>().type.toBe<"self" | "others">()
+    expect<Netcode.Disconnected["reason"]>().type.toBe<Netcode.LeftReason>()
+    expect<Netcode.Disconnected["seat"]>().type.toBe<number>()
     const onFailure = (ended: Netcode.Ended): void => {
       // @ts-expect-error and '"rejoined"' have no overlap
       if (ended._tag === "Disconnected" && ended.reason === "rejoined") throw new Error("not a reason")

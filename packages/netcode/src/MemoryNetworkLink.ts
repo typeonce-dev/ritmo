@@ -8,7 +8,9 @@
  * `HostClock.test()` the test moves), and the jitter and loss come from
  * `seed`, so a test that fails fails the same way again. A link's
  * `setLatency` changes its peer's latency mid-match, and `close` makes it
- * leave.
+ * leave: stop advancing its session, and the others play on without it
+ * once it was silent for `timeoutMS`, or at once when a test tells them
+ * (`session.drop`).
  *
  * @module MemoryNetworkLink
  * @docGroup netcode

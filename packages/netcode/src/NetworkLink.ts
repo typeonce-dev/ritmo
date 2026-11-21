@@ -42,7 +42,11 @@ export interface Open {
   readonly _tag: "Open"
 }
 
-/** The link will deliver nothing more: the session that reads it fails with `Disconnected`. */
+/**
+ * The link will deliver nothing more. The session that reads it plays on
+ * without the seats it carried, and ends with `Disconnected` once every
+ * link it has is closed.
+ */
 export interface Closed {
   readonly _tag: "Closed"
   readonly reason: string

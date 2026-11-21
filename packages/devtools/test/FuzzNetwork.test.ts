@@ -108,6 +108,82 @@ describe("Fuzz.run over a network", () => {
     expect(rejected.ok ? undefined : rejected.error).toMatchObject({ _tag: "InvalidOptions", message: expect.stringContaining("FuzzNet/Extra") })
   })
 
+  describe("with seats that leave", () => {
+    const gone: Pad = { dx: 9, fire: false }
+    /**
+     * Four seats, and a game that handles a seat without a driver: it
+     * counts the ticks each such seat sat out. `leaks` plants the bug: on
+     * those ticks it also adds the counter every peer in the process shares.
+     */
+    const Out = Descriptor.ConstructedResource(Codecs.integer)("FuzzNet/Out")
+    const Table = Schema.bind(Schema.fragment({ resources: { Score, Out } }), Schema.defineRoot("FuzzNetLeave"))
+    const sit = (leaks: boolean) => Table.System(leaks ? "FuzzNet/SitLeaky" : "FuzzNet/Sit", {
+      services: { seats: Table.System.consumeService(Seats) },
+      resources: { score: Table.System.writeResource(Score), out: Table.System.writeResource(Out) }
+    }, ({ services, resources }) => {
+      for (const input of services.seats.snapshot()) {
+        if (input.dx === gone.dx) {
+          resources.out.update((ticks) => ticks + 1)
+          if (leaks) resources.score.update((score) => (score + (shared += 1)) % 1_000_003)
+        } else resources.score.update((score) => (score * 3 + input.dx + (input.fire ? 7 : 0)) % 1_000_003)
+      }
+    })
+    const makeTable = (leaks: boolean) => (playback: Replay.Playback) => {
+      const made = Table.Runtime.make({
+        services: Table.Runtime.services(Table.Runtime.service(Seats, playback.source(Seats))),
+        resources: { Score: 0, Out: 0 },
+        debug: { hostClock }
+      })
+      if (!made.ok) throw new Error("fixture")
+      return { runtime: made.value, schedules: { update: Table.Schedule(sit(leaks)) }, hostClock }
+    }
+    const Four = Fuzz.seats(Seats, { codec: Pad, count: 4, generate: (random) => ({ dx: random.integer(-1, 2), fire: random.next() < 0.2 }), idle, left: gone })
+    const leaving = { ...network, leave: { seats: 2 } } as const
+
+    it("plays every run on without them, and checks the invariants on the peers still there", () => {
+      let sat = 0
+      let checked = 0
+      const Counted = Invariant.fromInspector(Table.Inspector("seats out", { resources: { out: Table.System.readResource(Out) } }, ({ resources }) => {
+        checked += 1
+        sat = Math.max(sat, resources.out.get())
+        return undefined
+      }))
+      const passed = Fuzz.run(makeTable(false), { schedule: "update", inputs: [Four], invariants: [Counted], frames: 240, runs: 4, seed: 3, network: leaving })
+      expect(passed).toMatchObject({ ok: true, value: { data: { runs: 4, frames: 240, seed: 3 } } })
+      // The simulation read the `left` input for the seats that left, on every peer still there.
+      expect(sat).toBeGreaterThan(100)
+      // Fewer checks than four peers on every frame: a page that is gone is not checked.
+      expect(checked).toBeLessThan(4 * 4 * (240 + 120))
+      expect(checked).toBeGreaterThanOrEqual(4 * 2 * (240 + 120))
+    })
+
+    it("finds what the game does wrong with a seat that left, and names the seats and frames", { timeout: 30_000 }, () => {
+      shared = 0
+      const found = Fuzz.run(makeTable(true), { schedule: "update", inputs: [Four], frames: 240, seed: 3, network: leaving, shrinkAttempts: 20 })
+      if (found.ok || found.error._tag !== "Found") throw new Error(JSON.stringify(found))
+      expect(found.error.violation).toMatchObject({ _tag: "SessionFailed", error: { _tag: "Desynced" } })
+      expect(found.error.left.length).toBeGreaterThan(0)
+      for (const { seat, frame } of found.error.left) {
+        expect(seat).toBeLessThan(4)
+        expect(frame).toBeLessThan(240)
+      }
+      // The replay holds the `left` input for a seat from the frame it left on.
+      const [first] = found.error.left
+      const seated = found.error.replay.ticks.map((record) => (record.services?.[Seats.name]?.[0] as ReadonlyArray<Pad> | undefined)?.[first!.seat])
+      expect(seated.filter((input) => input?.dx === gone.dx).length).toBeGreaterThan(0)
+      // The same game without the leaves never reads `left`: nothing to find.
+      shared = 0
+      expect(Fuzz.run(makeTable(true), { schedule: "update", inputs: [Four], frames: 240, seed: 3, network }).ok).toBe(true)
+    })
+
+    it("rejects more leaving seats than leave two to play on", () => {
+      const rejected = Fuzz.run(makeTable(false), { schedule: "update", inputs: [Four], frames: 10, seed: 1, network: { ...network, leave: { seats: 3 } } })
+      expect(rejected.ok ? undefined : rejected.error).toMatchObject({ _tag: "InvalidOptions", message: expect.stringContaining("from 1 to 2") })
+      const none = Fuzz.run(makeGame(false), { schedule: "update", inputs: [Pads], frames: 10, seed: 1, network: { ...network, leave: { seats: 1 } } })
+      expect(none.ok ? undefined : none.error).toMatchObject({ _tag: "InvalidOptions", message: expect.stringContaining("from 1 to 0") })
+    })
+  })
+
   it("leaves the single-peer fuzzer reading every seat from one runtime", () => {
     const passed = Fuzz.run(makeGame(false), { schedule: "update", inputs: [Pads], frames: 30, runs: 1, seed: 1 })
     expect(passed.ok).toBe(true)

@@ -207,7 +207,7 @@ describe("Netcode.rollback", () => {
       const advanced = quiet.peers[0]!.session.advance(idle)
       quiet.hostClock.adjust(stepMS)
       if (!advanced.ok) {
-        expect(advanced.error).toMatchObject({ _tag: "Disconnected", seat: 1, reason: "timeout" })
+        expect(advanced.error).toMatchObject({ _tag: "Disconnected", who: "others", seat: 1, reason: "timeout" })
         break
       }
       expect(at).toBeLessThan(330)
@@ -216,7 +216,7 @@ describe("Netcode.rollback", () => {
     for (let at = 0; at < 10; at++) frame(closed, at, () => idle)
     closed.links[0]!.close("left the room")
     const advanced = closed.peers[0]!.session.advance(idle)
-    expect(advanced.ok ? undefined : advanced.error).toEqual({ _tag: "Disconnected", seat: undefined, reason: "closed", detail: "left the room" })
+    expect(advanced.ok ? undefined : advanced.error).toEqual({ _tag: "Disconnected", who: "self", seat: 0, reason: "closed", detail: "left the room" })
     // The session stays ended.
     expect(closed.peers[0]!.session.advance(idle).ok).toBe(false)
   })
@@ -227,7 +227,7 @@ describe("Netcode.rollback", () => {
     const link: NetworkLink.NetworkLink = { send: () => {}, receive: () => inbox.splice(0), status: () => NetworkLink.open }
     const peer = makePeer()
     const session = valueOf(Netcode.rollback(peer.runtime, { simulate, seats: peer.seats, seat: 0, links: [link], hostClock, step }))
-    inbox.push("not json", JSON.stringify({ v: 3, k: "hello", from: 7, epoch: 0 }))
+    inbox.push("not json", JSON.stringify({ v: 4, k: "hello", from: 7, epoch: 0 }))
     expect(session.advance(idle).ok).toBe(true)
     expect(session.status().dropped).toBe(2)
     inbox.push(JSON.stringify({ v: 1, k: "hello", from: 1, epoch: 0 }))

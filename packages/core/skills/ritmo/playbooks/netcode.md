@@ -11,12 +11,15 @@
 - **A desync is a bug, not noise.** Log every halt; fix the determinism bug a `Desynced` names, don't retry past it.
 - **Effects come from `session.events(...)`, never from host systems reading the world's events.** Ticks rolled back publish their events again; the session hands out confirmed, predicted, and withdrawn events so nothing plays twice.
 - **A browser tab hides.** Pass the session `hidden` and draw who everyone is waiting for (`status().hidden`, `status().waiting`); without it a hidden peer times out the match.
-- **A reloaded page ends the match.** There is no rejoin: every peer, the reloaded one too, ends with `Disconnected` `reason: "restarted"`. `onFailure` shows that the match ended and offers a new one.
+- **A seat leaves and the match plays on.** What a seat without a driver does is a rule of the game, so it lives in the simulation: give `Netcode.seats` a `left` input no player can send, and let one system read it (park it, remove it, hand it to a bot). Never decide it in host code from `status().left`: that is for the HUD, and peers would disagree.
+- **Tell the session what the transport knows.** A relay sees a socket close at once: pass it on with `session.drop(seat)`, or every player waits `timeoutMS` behind a stall. Wait before calling it only if a short disconnect should stall the match instead of costing the seat.
+- **`onFailure` means this page is out, or alone.** `Disconnected.who` says which, and each gets its own message. Other seats leaving never reach it.
+- **A page that comes back builds its session again.** After a reload, make the runtime and the session for the same seat: the match seats it with a save. Nothing of the old page carries over.
 
 Order matters for the proofs, which come before shipping:
 
 1. A `Netcode.syncTest` over scripted or recorded input, rewinding every tick: it names the first tick a rewind cannot reproduce.
-2. A headless match over a seeded faulty `MemoryNetworkLink`, then a fuzzed one (`Fuzz.run` with `network`), which shrinks a desync to the presses that cause it.
+2. A headless match over a seeded faulty `MemoryNetworkLink`, then a fuzzed one (`Fuzz.run` with `network`), which shrinks a desync to the presses that cause it. With more than two seats, both again with seats that leave: close a seat's link and stop advancing it, and fuzz with `network.leave`.
 3. A committed replay of a scripted match, verified across engines (`ritmo-devtools verify ... --engines node,chromium,webkit,firefox`) in CI: an engine that diverges is a desync waiting to happen between players on those browsers.
 
-**Check:** the sync test passes; the headless match plays every seat with latency, jitter, and loss, rolls back (`status().rollbacks > 0` on the peer ahead, for rollback), ends with every peer's `runtime.checksum()` equal to one runtime ticked with the recorded inputs, and keeps `status().verified` climbing through a `resync()`; the cross-engine verify passes in CI.
+**Check:** the sync test passes; the headless match plays every seat with latency, jitter, and loss, rolls back (`status().rollbacks > 0` on the peer ahead, for rollback), ends with every peer's `runtime.checksum()` equal to one runtime ticked with the recorded inputs, and keeps `status().verified` climbing through a `resync()`; with more than two seats, the peers still playing keep running and agreeing after one leaves, the host too; the cross-engine verify passes in CI.

@@ -27,6 +27,21 @@
  * every peer, seat 0 too, restores that save at the same tick, so readers
  * start equal everywhere. The same step, `resync()`, recovers from a desync.
  *
+ * A match outlives the seats that leave it. When a seat goes silent for
+ * `timeoutMS`, its link closes, or the game tells a session the transport
+ * saw it go (`session.drop(seat)`), the peers agree on its last input and
+ * play on: from the same tick on every peer its input is `seats.left`
+ * (which the simulation reads, to park its car or hand it to a bot) and
+ * `status().left` names it for a HUD. No tick runs again for it that a peer
+ * confirmed, so `session.events(...)` readers lose and repeat nothing. The
+ * host is the lowest seat still playing: when seat 0 leaves, the next one
+ * makes the saves. A seat that left gets its seat back with a save when its
+ * session reaches the others again, or when a new one says hello for it (a
+ * reloaded page). A session ends with {@link Disconnected} only when it is
+ * the last one in the match, or out of it (its `who` says which). Before
+ * the match starts nothing times out: a seat that never says hello is the
+ * lobby's to handle.
+ *
  * Every `checksumEvery` ticks, peers compare `runtime.checksum()` of a
  * confirmed tick (one every seat's real input reached). A mismatch is a bug
  * in the game's determinism: `advance` fails with `Desynced` until the game
@@ -125,6 +140,12 @@ export interface Seats<Input> {
    * a save, and for the ticks a rise of an adaptive delay skips.
    */
   readonly idle: Input
+  /**
+   * The input of a seat that left the match, from the tick every peer
+   * agrees on (`status().left[seat].tick`) until a save seats it again.
+   * `idle` unless {@link seats} was given one.
+   */
+  readonly left: Input
   /** The service the simulation reads input from. One session fills it. */
   readonly source: Source<Input>
 }
@@ -143,10 +164,28 @@ export interface InvalidOptions {
  * component's). Every peer simulates an input as it decodes from its
  * message, the local seat's own too, so a schema that normalizes (a clamp,
  * a default) gives every peer the same value. `idle` must encode and decode.
+ *
+ * `left` is what the simulation reads for a seat that left the match (it
+ * closed its tab, lost its connection, was dropped): `idle` when omitted,
+ * so its player stands still. Give an input no player can send (a flag in
+ * the schema, a value the game's own packing never produces) and the
+ * simulation can tell a seat without a driver from one that presses
+ * nothing, on the same tick on every peer: remove what it controls, or hand
+ * it to a bot. It must encode and decode too.
+ *
+ * @example
+ * ```ts
+ * const PlayerInput = z.object({ dx: z.number(), fire: z.boolean(), gone: z.boolean() })
+ * const seats = Netcode.seats(PlayerInput, {
+ *   count: 4,
+ *   idle: { dx: 0, fire: false, gone: false },
+ *   left: { dx: 0, fire: false, gone: true } // a system reads `gone` and parks that seat's player
+ * })
+ * ```
  */
 export const seats = <const S extends Descriptor.Codec<any, any>>(
   codec: S & Descriptor.CheckedCodec<S>,
-  options: { readonly count: number; readonly idle: Descriptor.CodecType<S> }
+  options: { readonly count: number; readonly idle: Descriptor.CodecType<S>; readonly left?: Descriptor.CodecType<S> }
 ): Result.Result<Seats<Descriptor.CodecType<S>>, InvalidOptions> =>
   SeatsInternal.make(codec, options) as Result.Result<Seats<Descriptor.CodecType<S>>, InvalidOptions>
 
@@ -158,9 +197,10 @@ export const seats = <const S extends Descriptor.Codec<any, any>>(
  */
 export type Advanced =
   /**
-   * No match yet: seat 0 has not heard from every seat, or this peer has not
-   * received its save (also while hidden under `"resync-on-return"`, and
-   * until seat 0's save answers its return). The input was dropped.
+   * Not in a match: seat 0 has not heard from every seat, or this peer has
+   * not received its save (also while hidden under `"resync-on-return"`
+   * until the host's save answers its return, and while the match went on
+   * without this seat, until a save seats it again). The input was dropped.
    */
   | { readonly _tag: "Waiting" }
   /**
@@ -207,7 +247,7 @@ export interface TickFailed<TickError> {
 }
 
 /**
- * Seat 0 could not save its world, or this peer could not restore the save
+ * The host could not save its world, or this peer could not restore the save
  * or take a checksum: the peers run different versions of the game, a value
  * does not encode, or commands were still queued (`QueuedCommands`: end
  * `simulate` with `Game.Schedule.applyDeferred()`). Ends the session. A
@@ -219,23 +259,64 @@ export interface SyncFailed {
 }
 
 /**
- * The match lost a seat. Ends the session. `reason`:
+ * Why a seat is out of the match:
  *
- * - `"closed"`: a link closed (`seat` is unknown).
- * - `"timeout"`: `seat` sent nothing for `timeoutMS` (`timeoutMS + afterMS`
- *   while it is hidden, with the `hidden` option).
- * - `"restarted"`: `seat` started a new session while its earlier one was in
- *   the match (its page reloaded). A session cannot join a match in
- *   progress, so the others end with this, and the new session too (at once
- *   when seat 0's save reaches it, or after `timeoutMS` of a match running
- *   without it). Sessions are told apart by their `hostClock` reading when
- *   made: two of one seat made at the same reading are not. Start a new
- *   match to play on.
+ * - `"timeout"`: it sent nothing for `timeoutMS` (`timeoutMS + afterMS`
+ *   while hidden, with the `hidden` option).
+ * - `"closed"`: the link that carried it closed (one link per peer: a
+ *   WebRTC mesh).
+ * - `"dropped"`: the game told a session it was gone (`session.drop`).
+ * - `"restarted"`: another session said hello for it (its page reloaded).
+ *   That session is given the seat with the next save.
+ */
+export type LeftReason = "timeout" | "closed" | "dropped" | "restarted"
+
+/**
+ * A seat that left the match, in `status().left`. Every peer in the match
+ * when it left has the same two ticks; a peer that came in later (with a
+ * save) has the save's tick for both.
+ */
+export interface Left {
+  readonly reason: LeftReason
+  /**
+   * The last tick that ran with the seat's own input: the furthest one any
+   * peer still playing had received. Ticks after it and before `tick` ran
+   * with `seats.idle`.
+   */
+  readonly lastInput: number
+  /**
+   * The first tick the simulation reads `seats.left` for the seat. The tick
+   * after `lastInput`, or later for a seat already played around while its
+   * page was hidden.
+   */
+  readonly tick: number
+}
+
+/**
+ * This session is no longer in a match with another seat. Ends the session.
+ * `who` says which of the two messages a game shows:
+ *
+ * - `"others"`: everyone else left. `seat` is the last other seat that was
+ *   in the match, and `reason` why it left. A match of more seats plays on
+ *   without a seat that leaves (`status().left`), and ends this way only
+ *   for the last peer in it.
+ * - `"self"`: this session is the one out, and `seat` is its own. `reason`
+ *   is `"closed"` when every one of its links closed; `"restarted"` when
+ *   another session of its seat took its place (a reloaded page, another
+ *   tab); otherwise why the others went on without it, with no save that
+ *   seated it again within `timeoutMS` (it could not reach them, or they
+ *   all left). A session that never ran ends with `"timeout"` when a match
+ *   was running and did not seat it.
+ *
+ * `detail` says it in words, for a log. Sessions are told apart by their
+ * `hostClock` reading when made: two of one seat made at the same reading
+ * are not.
  */
 export interface Disconnected {
   readonly _tag: "Disconnected"
-  readonly seat: number | undefined
-  readonly reason: "closed" | "timeout" | "restarted"
+  readonly who: "self" | "others"
+  readonly seat: number
+  readonly reason: LeftReason
   readonly detail: string
 }
 
@@ -245,7 +326,7 @@ export interface ProtocolMismatch {
   readonly version: unknown
 }
 
-/** Stops the session until `resync()`: every peer then starts again from seat 0's world. */
+/** Stops the session until `resync()`: every peer then starts again from the host's world. */
 export type Halted<TickError> = Desynced | CheckpointLost | TickFailed<TickError>
 
 /** Ends the session: every later `advance` fails with the same error. */
@@ -287,6 +368,14 @@ export interface Status {
    * announced with the `hidden` option: draw who everyone is waiting for.
    */
   readonly hidden: ReadonlyArray<boolean>
+  /**
+   * Per seat, `undefined` while it is in the match, and why and when it
+   * left once it is not (this seat's own too, while the others play
+   * without it): draw who left ("Ada left"). The simulation learns it from
+   * `seats.left`, on the same tick everywhere; this is for host code. A
+   * seat is in it again once a save seats it.
+   */
+  readonly left: ReadonlyArray<Left | undefined>
   /** The input delay this seat uses now, in ticks: `inputDelay`, or where `adaptiveDelay` moved it. */
   readonly inputDelay: number
   /** How many times `adaptiveDelay` moved the delay, in total (0 with a fixed `inputDelay`). */
@@ -298,7 +387,8 @@ export interface Status {
    * lockstep on any seat without input for the next tick. `undefined` while
    * the session runs, and while it waits for a save (`Waiting`) or is
    * halted. For a HUD ("waiting for seat 1") and tests; a seat that stays
-   * silent ends the session after `timeoutMS`.
+   * silent is out of the match after `timeoutMS` (`left`), and the others
+   * play on.
    */
   readonly waiting: { readonly seat: number; readonly tick: number; readonly forMS: number } | undefined
 }
@@ -327,8 +417,8 @@ export interface EventsLost {
    *   call `confirmed()` for more than {@link eventWindow} ticks, or one
    *   tick published more than the runtime's `streamCapacity` events.
    * - `"resync"`: these ticks were handed out as confirmed, then a resync
-   *   ran them again with other events (a peer ahead of seat 0 confirms
-   *   ticks that seat 0's save makes idle). The new run's events are not
+   *   ran them again with other events (a peer ahead of the host confirms
+   *   ticks that the host's save makes idle). The new run's events are not
    *   handed out; undo or ignore what the old ones started if it matters
    *   (a score sent to a server).
    */
@@ -402,11 +492,31 @@ export interface Session<Input, TickError, Events extends Descriptor.Descriptor<
    */
   readonly advance: (local: Input) => Result.Result<Advanced, SessionError<TickError>>
   /**
-   * Starts the match again from seat 0's world: seat 0 saves it, and every
-   * peer restores the save at the same tick. Clears `Desynced`,
+   * Starts the match again from the host's world (the lowest seat still
+   * playing: seat 0 until it leaves): the host saves it, and every peer
+   * restores the save at the same tick. Clears `Desynced`,
    * `CheckpointLost`, and `TickFailed`; does nothing once the session ended.
    */
   readonly resync: () => void
+  /**
+   * Tells this session that `seat` is gone, when the game's transport knows
+   * before the session can: a relay saw its socket close, a server put a
+   * player out. The session stops waiting for the seat at once instead of
+   * after `timeoutMS`, and tells the others, so one peer that calls it is
+   * enough (a relay can tell every peer, a mesh only the one whose channel
+   * closed). The seat is then out of the match on every peer
+   * (`status().left`, `reason: "dropped"`), as after a timeout. A link that
+   * reads `Closed` does this by itself for the seats it carried: `drop` is
+   * for a transport whose link stays open (one link to a relay).
+   *
+   * The seat that decides is the lowest one playing, so a seat dropped by
+   * mistake while it still reaches the others is put out too, and seated
+   * again by a save a moment later; and a `drop` of that lowest seat counts
+   * only once no playing peer hears it. Does nothing before the match
+   * starts, once the seat is out, and once the session ended. Throws for a
+   * `seat` that is not another seat of the match: a defect in the game.
+   */
+  readonly drop: (seat: number) => void
   /**
    * How fast this peer should run, for `FixedLoop`'s `rate`: below 1 while
    * it runs ahead of the others, so peers stay within reach of each other.
@@ -439,10 +549,11 @@ export interface Session<Input, TickError, Events extends Descriptor.Descriptor<
  *   `maxRollback` ticks on guesses, then stalls; lockstep stalls at once),
  *   and the hidden seat goes on from where it stopped when it shows again.
  * - `"resync-on-return"`: they play on, with idle input for the hidden seat
- *   after its last sent input. When it shows again, seat 0 sends a save and
- *   it restores it, as in `resync()`; until then its `advance` is
- *   `Waiting`. Seat 0 itself is never played around (every save comes from
- *   its world): when seat 0 hides, the others wait, as with `"stall"`.
+ *   after its last sent input. When it shows again, the host sends a save
+ *   and it restores it, as in `resync()`; until then its `advance` is
+ *   `Waiting`. The host itself (the lowest seat playing: seat 0 until it
+ *   leaves) is never played around, since every save comes from its world:
+ *   when it hides, the others wait, as with `"stall"`.
  */
 export type HiddenPolicy = "stall" | "resync-on-return"
 
@@ -456,7 +567,7 @@ export interface HiddenOptions {
   /**
    * How long the others hold the policy for a hidden seat before its
    * silence counts again: a seat that hides and never returns (the tab was
-   * closed) ends the session with `Disconnected` at most `afterMS +
+   * closed) is out of the match (`status().left`) at most `afterMS +
    * timeoutMS` after it hid.
    */
   readonly afterMS: number
@@ -466,9 +577,13 @@ export interface HiddenOptions {
 /** Options both sessions take, with one of {@link Delay}'s. */
 export interface Options<Input> {
   readonly seats: Seats<Input>
-  /** This peer's seat: `0` hosts. */
+  /** This peer's seat: `0` hosts, until it leaves. */
   readonly seat: number
-  /** One link per other peer, or one to a relay. */
+  /**
+   * One link per other peer, or one to a relay. When a link closes during a
+   * match, the seats it carried are out of it (`"closed"`); the session
+   * ends once every link closed.
+   */
   readonly links: ReadonlyArray<NetworkLink>
   /** For round trips, pacing, and timeouts. */
   readonly hostClock: HostClock.HostClock
@@ -476,7 +591,7 @@ export interface Options<Input> {
   readonly step: Clock.Step
   /** Ticks between checksum comparisons (30 by default). */
   readonly checksumEvery?: number
-  /** A seat that sends nothing for this long is gone (5000 by default). */
+  /** A seat that sends nothing for this long is out of the match, and the others play on (5000 by default). */
   readonly timeoutMS?: number
   /** Keeps the save of each compared tick until the peers agree, so `Desynced` carries it. Costs a save per comparison. */
   readonly keepSnapshots?: boolean
@@ -484,7 +599,7 @@ export interface Options<Input> {
    * Announces to the other peers when this page hides, so they apply a
    * policy (and show it in `status().hidden`) instead of timing out. The
    * session unsubscribes from `visibility` once it ends. Without it, a
-   * hidden peer is silent, and the others end with `Disconnected` after
+   * hidden peer is silent, and the others play on without it after
    * `timeoutMS`.
    */
   readonly hidden?: HiddenOptions

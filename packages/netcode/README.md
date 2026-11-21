@@ -1,6 +1,6 @@
 # `@typeonce/ritmo-netcode`
 
-Online multiplayer for ritmo: peers that run the same simulation and agree on it. A session per peer exchanges inputs over any transport and ticks the simulation with every seat's input: `Netcode.rollback` runs at once on guesses and rolls back when real input contradicts one (with the runtime's checkpoints); `Netcode.lockstep` waits for every seat's input. Sessions start and resync every peer from one save, pace the peer that runs ahead, and compare checksums to catch a desync the tick it happens.
+Online multiplayer for ritmo: peers that run the same simulation and agree on it. A session per peer exchanges inputs over any transport and ticks the simulation with every seat's input: `Netcode.rollback` runs at once on guesses and rolls back when real input contradicts one (with the runtime's checkpoints); `Netcode.lockstep` waits for every seat's input. Sessions start and resync every peer from one save, pace the peer that runs ahead, compare checksums to catch a desync the tick it happens, and play on when a seat leaves.
 
 ```sh
 pnpm add @typeonce/ritmo-netcode @typeonce/ritmo
@@ -30,7 +30,7 @@ const runtime = Game.Runtime.make({
 const session = Netcode.rollback(runtime, {
   simulate,
   seats: seats.value,
-  seat: 0, // seat 0 hosts: it starts the match and answers resyncs
+  seat: 0, // seat 0 hosts: it starts the match and answers resyncs, until it leaves
   links: [WebSocketNetworkLink.make(socket)],
   hostClock: BrowserHostClock.make(window),
   step
@@ -43,7 +43,7 @@ FixedLoop.start({
   // Advances the session each step. A halt (a desync, a failed tick) is reported and answered with a resync.
   update: session.value.update({ input: readLocalInput, onHalted: (error) => console.error(error) }),
   render: () => runtime.tick(draw),
-  onFailure: (failure) => showDisconnected(failure) // the session ended: a peer left or reloaded its page, or the peers run different versions
+  onFailure: (failure) => showDisconnected(failure) // the session ended: this page is out of the match or the last one in it (Disconnected's `who`), or the peers run different versions
 })
 ```
 
@@ -85,7 +85,7 @@ When checksums differ, `advance` fails with `Desynced` until `resync()`. With `k
 
 ## Hidden tabs
 
-A browser stops a hidden tab's animation frames, so that peer sends nothing, and after `timeoutMS` the others end with `Disconnected`. With the `hidden` option, the session hears the moment its page hides (`Visibility`, a contract: `BrowserVisibility.make(document)` from [`@typeonce/ritmo-browser`](https://github.com/typeonce-dev/ritmo/blob/main/packages/browser/README.md), `MemoryVisibility.make()` in tests), tells the others, and they apply the policy:
+A browser stops a hidden tab's animation frames, so that peer sends nothing, and after `timeoutMS` the others count it out and play on without it (see [Seats that leave](#seats-that-leave)). With the `hidden` option, the session hears the moment its page hides (`Visibility`, a contract: `BrowserVisibility.make(document)` from [`@typeonce/ritmo-browser`](https://github.com/typeonce-dev/ritmo/blob/main/packages/browser/README.md), `MemoryVisibility.make()` in tests), tells the others, and they apply the policy:
 
 ```ts
 const session = Netcode.rollback(runtime, {
@@ -98,15 +98,52 @@ const session = Netcode.rollback(runtime, {
 The announcement carries the inputs the others still need, goes out several times, and every peer that heard it passes it on with its pings while the seat is hidden, so it survives a link that loses messages (a WebRTC channel with `maxRetransmits: 0`). With two seats no other peer can pass it on: it is lost only when all five copies are.
 
 - `"stall"`: the others wait for the hidden seat's input, as for a slow one (rollback runs `maxRollback` ticks on guesses, then stalls), and it goes on from where it stopped when it shows again.
-- `"resync-on-return"`: the others play on with idle input for the hidden seat after its last sent input. When it shows again, seat 0 sends a save and it restores it, as in `resync()`; until then its `advance` is `Waiting`. Seat 0 is never played around, since every save is its world: while seat 0 is hidden, the others wait for it.
+- `"resync-on-return"`: the others play on with idle input for the hidden seat after its last sent input. When it shows again, the host sends a save and it restores it, as in `resync()`; until then its `advance` is `Waiting`. The host (the lowest seat playing: seat 0 until it leaves) is never played around, since every save is its world: while it is hidden, the others wait for it.
 
-The bound: a hidden seat's silence counts only after `afterMS`, so a seat that hides and never returns (the tab was closed) ends the session with `Disconnected` at most `afterMS + timeoutMS` after it hid. Every peer passes the same `afterMS` and `then`; without `hidden`, a hidden peer is silent and times out as before. The session unsubscribes from the visibility once it ends. On return, `FixedLoop` drops the hidden time beyond `maxFrameSeconds` and `maxStepsPerFrame`, so the loop does not burst through the missed frames. Pausing a single-player game on a hidden tab is the game's own policy (read `BrowserVisibility` in host code).
+The bound: a hidden seat's silence counts only after `afterMS`, so a seat that hides and never returns (the tab was closed) is out of the match at most `afterMS + timeoutMS` after it hid: from then on the simulation reads `seats.left` for it, and `status().left` names it. If its page does show again later, a save seats it again. Every peer passes the same `afterMS` and `then`; without `hidden`, a hidden peer is silent and is counted out after `timeoutMS`. The session unsubscribes from the visibility once it ends. On return, `FixedLoop` drops the hidden time beyond `maxFrameSeconds` and `maxStepsPerFrame`, so the loop does not burst through the missed frames. Pausing a single-player game on a hidden tab is the game's own policy (read `BrowserVisibility` in host code).
 
-## Stalls and reloaded pages
+## Seats that leave
 
-`advance` returns `Stalled` while it waits for another seat's input (lockstep at once, rollback `maxRollback` ticks past it). `status().waiting` names what it waits for, `{ seat, tick, forMS }`, or is `undefined` while it runs, so a HUD can say "waiting for seat 1" and a headless test can say why a match stopped. A seat that stays silent ends the session after `timeoutMS`.
+A match outlives the seats that leave it. A seat is out of the match once it sent nothing for `timeoutMS` (5000 by default), once the link that carried it closed (one link per peer), or once the game tells a session that its transport saw the seat go:
 
-A session cannot join a match in progress. When a seat's page reloads and its new session reaches the others, every peer ends with `Disconnected` with `reason: "restarted"` and that `seat`, and so does the new session, instead of waiting for each other forever. Show that the match ended (`onFailure`) and start a new one. Sessions are told apart by their `hostClock` reading when made.
+```ts
+// A relay sees a socket close long before timeoutMS: tell the session.
+room.onPlayerGone((seat) => session.drop(seat))
+```
+
+One peer that knows is enough, since it tells the others: a relay can tell every page, and in a mesh the peer whose channel closed learns it from its own link. The peers still playing then agree on the seat's last input and go on, with no save and no restart:
+
+```ts
+const seats = Netcode.seats(PlayerInput, {
+  count: 8,
+  idle: { steer: 0, gone: false },
+  left: { steer: 0, gone: true } // what the simulation reads for a seat that left (idle when omitted)
+})
+
+// In a system, the game decides what a seat without a driver does: park it, remove it, hand it to a bot.
+if (inputs[car.seat].gone) { ... }
+
+// In host code, for the HUD ("Ada left"):
+session.status().left[seat] // undefined, or { reason: "timeout" | "closed" | "dropped" | "restarted", lastInput, tick }
+```
+
+- **Every peer agrees on the tick.** Each peer stops taking the seat's inputs and reports the last one it has. The seat's own inputs end at the furthest one any of them received (`lastInput`), and from `tick` on, the same on every peer, the simulation reads `seats.left` for it. That is a value in the simulation's input like any other, so what the game does with it is rewound, replayed and checksummed with the rest.
+- **Events stay exact.** No peer confirmed a tick past its own report, so no confirmed tick runs again: `session.events(...)` readers lose and repeat nothing. Ticks a peer ran on a guess of the seat's input are withdrawn and predicted again, as after any wrong guess.
+- **No seat is special.** The host is the lowest seat still playing. When seat 0 leaves, the next seat answers `resync()`, seats the sessions that come back, and decides who else is out.
+- **How long the others wait.** They run `maxRollback` ticks on guesses, then stall (`status().waiting` names the seat) until they agree it is gone: `timeoutMS` for a seat that went silent, about one round trip after a `drop` or a closed link.
+- **Coming back.** A seat that left gets its seat back with a save, as a hidden seat does: when its session reaches the others again (the same page, over a link the game reconnected), or when a new session says hello for the seat (the page reloaded: build the runtime and the session again, with the same `seat`). From that save's tick the simulation reads its real input again. Until the save arrives its `advance` is `Waiting` and `status().left` names its own seat; without one for `timeoutMS`, it ends with `Disconnected`.
+- **When a session ends.** With `Disconnected`, whose `who` says which message to show. `"others"`: everyone else left, and `seat` is the last other seat that was in the match (`reason` is why it left). `"self"`: this session is the one out, and `seat` is its own: every link closed (`"closed"`), another page took its seat (`"restarted"`), or the others went on without it and no save seated it again. A match of two therefore ends as before when the other seat leaves: after `timeoutMS`, or at once on `drop`. What changed for two: a page that reloads within `timeoutMS` gets its seat back instead of ending both.
+- **Before the match starts, nothing times out.** A match begins once every seat said hello; a seat that never does (a tab closed while the game loads) leaves every session `Waiting`, and `drop` does nothing there, since there is no match to play on. What to do about a seat that never arrives is the lobby's job: end those sessions and start a match with the seats that are there.
+
+The seat that decides is the lowest one playing, and its word counts over a higher seat's. So a seat dropped by mistake while it still reaches the others is put out and seated again a moment later, and a `drop` of the host counts only once no playing peer hears it: until then the session that called it is the one put out, and seated again. A page that froze for longer than `timeoutMS` (a suspended laptop, a debugger) is counted out like any silent seat, the host too, and seated again when it wakes: a session knows from its own clock that it was the silent one. In a mesh, when the channel between two peers closes, one of them is out for good, since no save could bring it back to a peer it cannot reach: its session ends.
+
+What does not survive: a match whose every playing page is gone at once, with only hidden pages left under `"resync-on-return"`, since nobody holds the world they would resync from; they end with `Disconnected` when they show again. And a match still starts only once every seat said hello: a session cannot take a seat that was never in the match, and there are no spectators.
+
+In tests, close a seat's `MemoryNetworkLink` and stop advancing it. `Fuzz.run` with `network.leave` in [`@typeonce/ritmo-devtools`](https://github.com/typeonce-dev/ritmo/blob/main/packages/devtools/README.md) makes seats leave on seeded frames, so what the game does with `seats.left` is fuzzed too.
+
+## Stalls
+
+`advance` returns `Stalled` while it waits for another seat's input (lockstep at once, rollback `maxRollback` ticks past it). `status().waiting` names what it waits for, `{ seat, tick, forMS }`, or is `undefined` while it runs, so a HUD can say "waiting for seat 1" and a headless test can say why a match stopped. A seat that stays silent is out of the match after `timeoutMS`, and the others run again.
 
 ## Sync test
 
@@ -124,7 +161,7 @@ for (const local of scriptedInput) {
 }
 ```
 
-It takes `rollback`'s types: a `simulate` that cannot be rewound, or a runtime that cannot save, does not compile here either, and a `rewind` deeper than the runtime's checkpoints fails at construction. `status()` counts the forced rollbacks. A failure (`RewindDiffers`, `TickFailed`, `CheckpointLost`, or `SyncFailed` when the world does not checksum) is final: fix the game. To shake out two peers over a faulty network, `Fuzz.run` with `network` in [`@typeonce/ritmo-devtools`](https://github.com/typeonce-dev/ritmo/blob/main/packages/devtools/README.md) drives `rollback` sessions over a seeded `MemoryNetworkLink`.
+It takes `rollback`'s types: a `simulate` that cannot be rewound, or a runtime that cannot save, does not compile here either, and a `rewind` deeper than the runtime's checkpoints fails at construction. `status()` counts the forced rollbacks. A failure (`RewindDiffers`, `TickFailed`, `CheckpointLost`, or `SyncFailed` when the world does not checksum) is final: fix the game. To shake out peers over a faulty network, `Fuzz.run` with `network` in [`@typeonce/ritmo-devtools`](https://github.com/typeonce-dev/ritmo/blob/main/packages/devtools/README.md) drives `rollback` sessions over a seeded `MemoryNetworkLink`.
 
 Released together with [`@typeonce/ritmo`](https://github.com/typeonce-dev/ritmo/blob/main/packages/core/README.md), always with the same version.
 

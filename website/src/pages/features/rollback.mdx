@@ -47,7 +47,8 @@ checksums agree with peer A's up to tick 570, after 48 rollbacks.
   inputDelay: 2,
   delayChanges: 0,
   roundTripMS: [ 408.6436663522086, 0 ],
-  hidden: [ false, false ]
+  hidden: [ false, false ],
+  left: [ undefined, undefined ]
 }
 ```
 
@@ -172,7 +173,7 @@ FixedLoop.start({
     onHalted: (error) => console.error(error)
   }),
   render: draw, // outside the simulation: never rolls back
-  onFailure: showDisconnected // a peer left, or runs another version
+  onFailure: showDisconnected // this page is out of the match, or alone in it
 })
 ```
 
@@ -321,7 +322,7 @@ const session = Netcode.rollback(runtime, {
   step,
   hidden: { // [!code highlight]
     visibility: BrowserVisibility.make(document), // [!code highlight]
-    // A tab closed while hidden still ends the match, 30 s + timeoutMS later
+    // A tab closed while hidden is out of the match 30 s + timeoutMS later
     afterMS: 30_000,
     then: "resync-on-return" // [!code highlight]
   } // [!code highlight]
@@ -332,6 +333,41 @@ if (!session.ok) throw new Error(session.error.reason)
 const away = session.value
   .status()
   .hidden.flatMap((hidden, seat) => (hidden ? [names[seat]] : []))
+```
+
+</Claim>
+
+<Claim title="A player who leaves does not end the match">
+
+A closed tab or a lost connection takes one seat out of the match, not the
+match with it. The peers still playing agree on the seat's last input and go
+on, and from the same tick on every peer the simulation reads the input the
+game chose for a seat without a driver. When seat 0 leaves, the next seat
+hosts. A page that reloads gets its seat back.
+
+```ts twoslash title="leaving.ts"
+import type { Descriptor } from "@typeonce/ritmo"
+import { Netcode } from "@typeonce/ritmo-netcode"
+interface PlayerInput { readonly steer: number; readonly gone: boolean }
+declare const PlayerInput: Descriptor.StandardSchema<PlayerInput, PlayerInput>
+declare const session: Netcode.Session<PlayerInput, never>
+declare const room: { onPlayerGone(listener: (seat: number) => void): void }
+declare const names: ReadonlyArray<string>
+// ---cut---
+const seats = Netcode.seats(PlayerInput, {
+  count: 8,
+  idle: { steer: 0, gone: false },
+  // What a system reads for a seat that left: park its car, or hand it to a bot
+  left: { steer: 0, gone: true } // [!code highlight]
+})
+
+// The relay saw a socket close: no need to wait for the timeout
+room.onPlayerGone((seat) => session.drop(seat)) // [!code highlight]
+
+// In the HUD: who left
+const left = session
+  .status()
+  .left.flatMap((gone, seat) => (gone === undefined ? [] : [names[seat]]))
 ```
 
 </Claim>

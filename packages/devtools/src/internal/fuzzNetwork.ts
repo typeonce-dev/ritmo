@@ -2,8 +2,8 @@
  * The network half of `Fuzz.run`: one simulation of every seat as its own
  * peer, each a fresh runtime from the game's factory, joined by a seeded
  * `MemoryNetworkLink` on one test clock and driven by `Netcode.rollback`
- * sessions. Deterministic for a timeline and a network seed, so shrinking
- * can run it again.
+ * sessions. Deterministic for a timeline, a network seed, and the frames
+ * seats leave on, so shrinking can run it again.
  */
 import { HostClock } from "@typeonce/ritmo"
 import type * as Clock from "@typeonce/ritmo/Clock"
@@ -26,6 +26,8 @@ export interface NetworkPlan {
   readonly codec: Descriptor.Codec<any, any>
   readonly count: number
   readonly idle: unknown
+  /** What the simulation reads for a seat that left (`Netcode.seats`' `left`). */
+  readonly left: unknown
   /** The game's factory, and the schedules it is fuzzed with. */
   readonly make: (playback: Replay.Playback) => { readonly runtime: unknown; readonly schedules: Readonly<Record<string, unknown>> }
   readonly schedule: string
@@ -53,15 +55,27 @@ export type NetworkViolation =
   | { readonly _tag: "InvariantViolated"; readonly invariant: string; readonly message: string }
   | { readonly _tag: "Defect"; readonly invariant: string | undefined; readonly error: unknown }
 
-/** Plays `timeline` (per frame, the seats input's value: every seat's local input) on one peer per seat, then `settle` idle frames. */
-export const play = (plan: NetworkPlan, timeline: ReadonlyArray<ReadonlyArray<unknown>>): NetworkOutcome<NetworkViolation> => {
+/** A seat whose page is gone from `frame` on (0: before the first one). */
+export interface Leave {
+  readonly seat: number
+  readonly frame: number
+}
+
+/**
+ * Plays `timeline` (per frame, the seats input's value: every seat's local
+ * input) on one peer per seat, then `settle` idle frames. A seat of `leaves`
+ * closes its link and runs no more from its frame on; every peer still there
+ * is told (`session.drop`) once the link's latency passed, as a relay that
+ * saw the socket close tells them.
+ */
+export const play = (plan: NetworkPlan, timeline: ReadonlyArray<ReadonlyArray<unknown>>, leaves: ReadonlyArray<Leave> = []): NetworkOutcome<NetworkViolation> => {
   const hostClock = HostClock.test()
   const links = MemoryNetworkLink.make({ peers: plan.count, hostClock, seed: plan.seed, latencyMS: plan.latencyMS, jitterMS: plan.jitterMS, loss: plan.loss })
   if (!links.ok) return { kind: "invalid", message: `network.${links.error.field} is out of range: ${links.error.value}` }
   const peers: Array<{ readonly runtime: Peer; readonly session: Netcode.Session<unknown, unknown> }> = []
   for (let seat = 0; seat < plan.count; seat++) {
-    const seats = Netcode.seats(plan.codec, { count: plan.count, idle: plan.idle })
-    if (!seats.ok) return { kind: "invalid", message: `the seats' idle input: ${seats.error.reason}` }
+    const seats = Netcode.seats(plan.codec, { count: plan.count, idle: plan.idle, left: plan.left })
+    if (!seats.ok) return { kind: "invalid", message: `the seats' ${seats.error.field} input: ${seats.error.reason}` }
     const unknown: Array<string> = []
     const playback: Replay.Playback = {
       source: <const SourceName extends string, Value extends Source<unknown>>(descriptor: Descriptor.Descriptor<"service", SourceName, Value>): Source<Replay.SourceData<Value>> => {
@@ -102,9 +116,19 @@ export const play = (plan: NetworkPlan, timeline: ReadonlyArray<ReadonlyArray<un
 
   const stepMS = plan.step.dt * 1000
   const frames = timeline.length + plan.settle
+  const tellAfter = Math.ceil(plan.latencyMS / stepMS)
+  const gone = new Set<number>()
   for (let frame = 0; frame < frames; frame++) {
+    for (const leave of leaves) {
+      if (leave.frame === frame) {
+        links.value[leave.seat]!.close("the seat left")
+        gone.add(leave.seat)
+      }
+      if (leave.frame + tellAfter === frame) for (const [seat, { session }] of peers.entries()) if (!gone.has(seat)) session.drop(leave.seat)
+    }
     const values = timeline[frame]?.[0] as ReadonlyArray<unknown> | undefined
     for (const [seat, { session }] of peers.entries()) {
+      if (gone.has(seat)) continue
       let advanced: ReturnType<typeof session.advance>
       try {
         advanced = session.advance(values === undefined ? plan.idle : values[seat])
@@ -113,7 +137,9 @@ export const play = (plan: NetworkPlan, timeline: ReadonlyArray<ReadonlyArray<un
       }
       if (!advanced.ok) return { kind: "violated", violation: { _tag: "SessionFailed", seat, error: advanced.error }, frame: frame + 1 }
     }
-    for (const { runtime } of peers) {
+    for (const [seat, { runtime }] of peers.entries()) {
+      // A page that is gone holds a world nobody plays.
+      if (gone.has(seat)) continue
       for (const invariant of plan.invariants) {
         let message: unknown
         try {

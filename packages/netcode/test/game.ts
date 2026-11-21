@@ -89,7 +89,7 @@ const join = (count: number) => Game.System(`NetTest/Join${count}`, {
 }, ({ commands }) => {
   for (let seat = 0; seat < count; seat++) commands.spawn(Game.Command.spawn([Player, { seat, x: seat * 100 }]))
 })
-const setups = new Map([2, 3].map((count) => [count, Game.Schedule(join(count), Game.Schedule.applyDeferred())] as const))
+const setups = new Map(Array.from({ length: 7 }, (_, index) => index + 2).map((count) => [count, Game.Schedule(join(count), Game.Schedule.applyDeferred())] as const))
 
 const Bump = Game.System("NetTest/Bump", { resources: { drift: Game.System.writeResource(Drift) } }, ({ resources }) => {
   resources.drift.update((drift) => drift + 1)
@@ -98,8 +98,8 @@ const Bump = Game.System("NetTest/Bump", { resources: { drift: Game.System.write
 export const drift = Game.Schedule(Bump)
 
 /** A runtime of the game and its seats, set up. Peers other than seat 0 need no setup: they restore seat 0's save. */
-export const makePeer = (options: { readonly count?: number; readonly checkpoints?: number; readonly setUp?: boolean; readonly drift?: number } = {}) => {
-  const seats = Netcode.seats(PlayerInput, { count: options.count ?? 2, idle })
+export const makePeer = (options: { readonly count?: number; readonly checkpoints?: number; readonly setUp?: boolean; readonly drift?: number; readonly left?: PlayerInput } = {}) => {
+  const seats = Netcode.seats(PlayerInput, { count: options.count ?? 2, idle, ...(options.left === undefined ? {} : { left: options.left }) })
   if (!seats.ok) throw new Error(seats.error.reason)
   const made = Game.Runtime.make({
     services: Game.Runtime.services(Game.Runtime.service(Seats, seats.value.source)),
