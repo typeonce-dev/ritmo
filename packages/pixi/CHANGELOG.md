@@ -1,5 +1,11 @@
 # @typeonce/ritmo-pixi
 
+## 0.26.0
+
+### Patch Changes
+
+- @typeonce/ritmo-render@0.26.0
+
 ## 0.25.0
 
 ### Patch Changes
