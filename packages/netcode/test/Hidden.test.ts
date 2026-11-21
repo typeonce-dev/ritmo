@@ -111,7 +111,7 @@ describe("hidden: \"stall\"", () => {
     // Not before afterMS + timeoutMS, and soon after.
     expect(frames * stepMS).toBeGreaterThan(3000)
     expect(frames * stepMS).toBeLessThan(3100)
-    expect(host!.failure).toMatchObject({ _tag: "Disconnected", seat: 1, reason: "timeout" })
+    expect(host!.failure).toMatchObject({ _tag: "Disconnected", who: "others", seat: 1, reason: "timeout" })
     expect(host!.visibility.listeners()).toBe(0)
     expect(guest!.visibility.listeners()).toBe(1)
   })

@@ -808,6 +808,14 @@ if (!found.ok && found.error._tag === "Found" && found.error.violation._tag === 
   at a time. The `replay` plays the shrunk timeline on one runtime (step it
   to see each tick); `reproduces` is `false` for a desync, which needs two
   peers: find it again with the same `seed`, `runs: 1`, and `network`.
+- With `network: { ..., leave: { seats: 2 } }`, up to that many seats leave
+  the match for good in each run, on frames drawn from the run's seed: the
+  seat's link closes, it runs no more, and the peers still playing are told
+  with `session.drop` once the link's latency passed. The simulation then
+  reads the seats' `left` input for it (give `Fuzz.seats` the `left` the
+  game gives `Netcode.seats`), so what the game does with a seat that has no
+  driver is fuzzed too. `Found.left` names the seats and frames; two peers
+  always play on (`leave.seats` is at most `count - 2`).
 - A `simulate` that cannot be rewound, or a runtime that cannot save, does
   not compile, as for `Netcode.rollback`. Run `Netcode.syncTest` first: it
   finds state a rewind cannot put back on one peer, faster.

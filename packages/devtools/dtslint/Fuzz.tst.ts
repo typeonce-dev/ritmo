@@ -175,6 +175,17 @@ describe("Fuzz.seats and run's network", () => {
     // @ts-expect-error Property 'step' is missing
     Fuzz.run(networked, { schedule: "update", inputs: [Moves], frames: 10, seed: 1, network: { seed: 1, latencyMS: 40 } })
   })
+
+  it("makes seats leave, with the input the game gives a seat that left", () => {
+    const Four = Fuzz.seats(Seats, { codec: MoveCodec, count: 4, generate: () => ({ dx: 0 }), idle: { dx: 0 }, left: { dx: -1 } })
+    expect(Four.left).type.toBe<{ readonly dx: number }>()
+    expect(Fuzz.run).type.toBeCallableWith(networked, { schedule: "update", inputs: [Four], frames: 10, seed: 1, network: { ...network, leave: { seats: 2 } } })
+    expect<Fuzz.Found["left"]>().type.toBe<ReadonlyArray<{ readonly seat: number; readonly frame: number }>>()
+    // @ts-expect-error Type 'string' is not assignable to type 'number'
+    Fuzz.seats(Seats, { codec: MoveCodec, count: 4, generate: () => ({ dx: 0 }), idle: { dx: 0 }, left: { dx: "gone" } })
+    // @ts-expect-error Type 'boolean' is not assignable to type '{ readonly seats: number; }'
+    Fuzz.run(networked, { schedule: "update", inputs: [Four], frames: 10, seed: 1, network: { ...network, leave: true } })
+  })
 })
 
 describe("Replay.session", () => {
