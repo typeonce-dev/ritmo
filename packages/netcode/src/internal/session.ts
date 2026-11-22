@@ -573,18 +573,20 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     // After a rollback the checkpoint it rewound to is still held and is this tick's: taking another would spend a slot of the runtime's window for nothing.
     if (mode === "rollback" && !history.has(tick)) history.set(tick, runtime.checkpoint(options.simulate))
     const current: Array<unknown> = []
-    const keys: Array<string> = []
+    // Each key is the canonical JSON of an input, so the list is a JSON array: two runs with other inputs never share it. Lockstep runs nothing on a guess, and a save names none of its ticks.
+    let ran = "["
     for (let other = 0; other < count; other++) {
       const input = inputFor(other, tick)
       current.push(input)
-      const key = keyOf(input)
-      keys.push(key)
+      const key = other !== seat || mode === "rollback" ? keyOf(input) : ""
       if (other !== seat) used[other]!.set(tick, key)
+      if (mode === "rollback") ran += other === 0 ? key : `,${key}`
     }
     seatsState.current = current
-    // Each key is the canonical JSON of an input, so the list is a JSON array: two runs with other inputs never share it.
-    ranKeys.set(tick, `[${keys.join(",")}]`)
-    ranKeys.delete(tick - ranReach)
+    if (mode === "rollback") {
+      ranKeys.set(tick, `${ran}]`)
+      ranKeys.delete(tick - ranReach)
+    }
     for (const ledger of ledgers.values()) ledger.skip()
     const ticked = runtime.tick(options.simulate)
     if (ticked.ok) for (const ledger of ledgers.values()) ledger.record(tick)
