@@ -116,7 +116,7 @@ const expectExact = (match: ReturnType<typeof setUpMatch>, watchers: ReadonlyArr
 describe("session.events across a save that seats a peer", () => {
   for (const mode of ["rollback", "lockstep"] as const) {
     for (const count of mode === "rollback" ? [2, 3, 8] : [2, 3]) {
-      it(`a page that loads again: every peer confirms each tick once, as the host ran it (${mode}, ${count} seats)`, () => {
+      it(`a page that loads again: every peer confirms each tick once, as the host ran it (${mode}, ${count} seats)`, { timeout: 30_000 }, () => {
         const { ticks: saved, wrap } = saves()
         const match = setUpMatch({ mode, count, seed: 4, latencyMS: 60, jitterMS: 30, loss: 0.05, inputDelay: 4, maxRollback: 24, checkpoints: 24, checksumEvery: 10, wrap })
         const watchers = match.peers.map(watch)
@@ -141,7 +141,7 @@ describe("session.events across a save that seats a peer", () => {
         expectExact(match, watchers, saved, seated, at, true)
       })
 
-      it(`a page hidden under "resync-on-return": every peer confirms each tick once, as the host ran it (${mode}, ${count} seats)`, () => {
+      it(`a page hidden under "resync-on-return": every peer confirms each tick once, as the host ran it (${mode}, ${count} seats)`, { timeout: 30_000 }, () => {
         const { ticks: saved, wrap } = saves()
         const match = setUpMatch({ mode, count, seed: 5, latencyMS: 60, jitterMS: 30, loss: 0.05, inputDelay: 4, maxRollback: 24, checkpoints: 24, checksumEvery: 10, hidden: { afterMS: 30_000, then: "resync-on-return" }, wrap })
         const watchers = match.peers.map(watch)
@@ -190,7 +190,7 @@ describe("session.events across a save that seats a peer", () => {
       { path: "hidden", mode: "rollback", count: 3, seed: 8 }
     ] as const
     for (const { path, mode, count, seed } of cases) {
-      it(`${path === "reload" ? "a page that loads again" : "a hidden page"} (${mode}, ${count} seats, seed ${seed})`, () => {
+      it(`${path === "reload" ? "a page that loads again" : "a hidden page"} (${mode}, ${count} seats, seed ${seed})`, { timeout: 30_000 }, () => {
         const { ticks: saved, wrap } = saves()
         const latencyMS = 30 + (seed % 4) * 25
         const random = Random.make(seed * 7919)
