@@ -1,5 +1,54 @@
 # @typeonce/ritmo-netcode
 
+## 0.27.0
+
+### Minor Changes
+
+- e7078d5: **`session.events` confirms the ticks a save makes final.** A save (the match's start, `resync()`, a page seated again after it loaded again, a hidden page back under `"resync-on-return"`) is the host's world as it ran, guesses of other seats' input included. Until now every peer, the host too, withdrew the ticks it had run before the save but not confirmed yet, and never confirmed them: their events were gone without a word. Under rollback that is up to `maxRollback` ticks on every page at each save: a page that reloads mid-match lets the others run on guesses of its seat until it is back, so a lap, a checkpoint, or a sound of that stretch never reached any page. The page the save seated was not affected: it confirms every tick from the save on, as before.
+  
+  - The host confirms every tick it ran before its save.
+  - The save carries the inputs each of its last ticks ran with on the host. Every other peer confirms the ticks it ran with the same inputs, from a tick both confirmed; what `predicted()` handed out of them stands.
+  - The ticks before the save that a peer ran otherwise, confirmed otherwise (it had an input the host's world never got), or did not run at all, are reported by `lost()` with the new reason `"save"`, and what was predicted of them is withdrawn. A page the save seats for its first match (one that loaded again) is told nothing of the ticks before it: the save's world holds them.
+  - Fixed: a peer ahead of the host can confirm the save's own tick and the `inputDelay` ticks after it; `lost()` reported one tick fewer when a resync ran them again with other events.
+  
+  The sync message carries the inputs (protocol version 6, with this release's other session changes): every page of a match runs this release.
+  
+  **Breaking (types only):** `EventsLost["reason"]` is `"unread" | "resync" | "save"`. A `switch` over it adds a case; ticks reported `"save"` are ones whose events this peer cannot tell, like `"resync"`:
+  
+  ```ts
+  const lost = hits.lost()
+  if (lost !== undefined && lost.reason !== "unread") {
+    // "resync" or "save": the match ran ticks lost.from to lost.to otherwise than this page acted on
+  }
+  ```
+- 7828818: **A session sends one message per link per frame, and lighter ones.** Until now a session handed its links a message for each thing it said (inputs, checksums, pings, pongs), every step, so a frame that ran several steps sent several of each, and a relay that bills per message (a Cloudflare Durable Object) paid for all of them. Now everything one frame says goes out as one message per link, a bundle: driven by `session.update` from a `FixedLoop`, one per host frame however many steps it ran; each `advance` called directly is a frame of its own.
+  
+  - A bundle names the protocol, the sender, and its epoch once. It still carries every input a peer has not acknowledged (a lost message costs nothing the next one does not repeat), but writes each distinct input once and which of them each tick had: a held input is two numbers however many ticks it was held. Acknowledgements are written as how far behind the sender's tick they are.
+  - A message that must survive loss (a seat reported gone, a change of who plays) goes out with the next five frames' bundles instead of five times in one frame. A page that hides still sends its announcement five times at once: no frame follows.
+  - `status().sent` counts the messages handed to the links and their bytes in UTF-8.
+  
+  Over 120 ms with 60 ms of jitter and 5% loss, on pages at 60 Hz that sometimes run two or three steps in a frame: 2 peers went from 139 messages and 62 KiB a second to 97 and 16 to 23 KiB; 8 peers from 728 and 290 KiB to 387 and 73 to 103 KiB (the lower figure for input held 20 frames, the higher for input that changes nearly every frame).
+  
+  **Breaking: every page of a match must run this version.** The session protocol changed (version 6): a peer on 0.26 or older ends with `ProtocolMismatch`.
+  
+  **Breaking: the function `session.update(...)` returns takes the loop's two arguments.** Passed to `FixedLoop.start` as it is, nothing changes. Called from the game's own `update`, pass them through, so the session knows the frame's last step:
+  
+  ```diff
+   const tick = session.update({ input: readInput, onHalted })
+   FixedLoop.start({
+     ...loop,
+  -  update: () => tick(),
+  +  update: (seconds, at) => tick(seconds, at),
+   })
+  ```
+  
+  A link that batched the session's messages itself (an outbox flushed once per task) can send each as it is now.
+
+### Patch Changes
+
+- Updated dependencies [7828818]
+  - @typeonce/ritmo@0.27.0
+
 ## 0.26.0
 
 ### Minor Changes
