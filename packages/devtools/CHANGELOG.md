@@ -1,5 +1,15 @@
 # @typeonce/ritmo-devtools
 
+## 0.27.0
+
+### Patch Changes
+
+- Updated dependencies [7828818]
+- Updated dependencies [e7078d5]
+- Updated dependencies [7828818]
+  - @typeonce/ritmo@0.27.0
+  - @typeonce/ritmo-netcode@0.27.0
+
 ## 0.26.0
 
 ### Minor Changes
