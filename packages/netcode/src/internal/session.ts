@@ -234,6 +234,13 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   const contiguous: Array<number> = Array.from({ length: count }, () => -1)
   /** Per seat, the key of the input each tick ran with. */
   const used: Array<Map<number, string>> = Array.from({ length: count }, () => new Map())
+  /**
+   * Per tick, the keys of every seat's input it last ran with, in seat order,
+   * as one JSON array: a save carries the host's (`Wire.Sync.ran`), so a
+   * peer that ran those ticks on a guess knows which of its runs were the
+   * host's.
+   */
+  const ranKeys = new Map<number, string>()
   let wrong: number | undefined
   /** Ticks a rise of the delay skipped, filled idle by the next `record`. */
   let raised = 0
@@ -544,6 +551,14 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     }
   }
 
+  /**
+   * How far back `ranKeys` reaches: past every tick a save's `ran` can name.
+   * A save names its host's ticks from `maxRollback` before its settled
+   * ones, which are at most `maxRollback` before its next tick; a peer runs
+   * up to `furthestAhead` past that.
+   */
+  const ranReach = furthestAhead + 2 * maxRollback
+
   /** Ticks `tick` with the input of every seat, after its checksum and checkpoint. */
   const runTick = (tick: number): boolean => {
     if ((tick - syncTick) % every === 0) {
@@ -558,12 +573,20 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     // After a rollback the checkpoint it rewound to is still held and is this tick's: taking another would spend a slot of the runtime's window for nothing.
     if (mode === "rollback" && !history.has(tick)) history.set(tick, runtime.checkpoint(options.simulate))
     const current: Array<unknown> = []
+    // Each key is the canonical JSON of an input, so the list is a JSON array: two runs with other inputs never share it. Lockstep runs nothing on a guess, and a save names none of its ticks.
+    let ran = "["
     for (let other = 0; other < count; other++) {
       const input = inputFor(other, tick)
       current.push(input)
-      if (other !== seat) used[other]!.set(tick, keyOf(input))
+      const key = other !== seat || mode === "rollback" ? keyOf(input) : ""
+      if (other !== seat) used[other]!.set(tick, key)
+      if (mode === "rollback") ran += other === 0 ? key : `,${key}`
     }
     seatsState.current = current
+    if (mode === "rollback") {
+      ranKeys.set(tick, `${ran}]`)
+      ranKeys.delete(tick - ranReach)
+    }
     for (const ledger of ledgers.values()) ledger.skip()
     const ticked = runtime.tick(options.simulate)
     if (ticked.ok) for (const ledger of ledgers.values()) ledger.record(tick)
@@ -594,6 +617,26 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     return ran
   }
 
+  /**
+   * The tick up to which this peer's runs before `message`'s save were the
+   * host's: from a tick both confirmed with every seat's real input, each
+   * tick ran with the same inputs as the host's (`ran`), so the world went
+   * through it the same way. The ticks after it, up to the save, are lost
+   * to this peer's readers. The host's own save is its world: every tick
+   * it ran. A session the save seats for its first match has no ticks
+   * before it to lose.
+   */
+  const ranAsSaved = (message: Wire.Sync): number => {
+    if (message.from === seat || epoch === 0) return message.tick
+    // Another history than the save's: a save between missed, or ticks run while out of the match.
+    if (message.epoch !== epoch + 1 || out !== undefined) return settled
+    // The host's ticks before `ranFrom` ran with real inputs, as this peer's settled ones did: the worlds agree up to the first of either.
+    if (message.ranFrom > settled) return settled
+    const until = Math.min(message.tick, next)
+    for (let at = message.ranFrom; at < until; at++) if (ranKeys.get(at) !== message.ran[at - message.ranFrom]) return at
+    return until
+  }
+
   /** Restores a save every peer restores at its tick, takes its roster, and runs again up to where this peer was. */
   const applySync = (message: Wire.Sync): void => {
     const restored = runtime.restore(message.save)
@@ -603,8 +646,15 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     }
     const tick = message.tick
     const previous = next
-    // Every unsettled tick is gone: the save replaces them.
-    for (const ledger of ledgers.values()) ledger.reset()
+    // The ticks before the save are final, as the host's world went through them: the ones this peer ran as the host did are confirmed.
+    const final = ranAsSaved(message)
+    for (const ledger of ledgers.values()) {
+      // Ticks a resync ran again before this save, and not settled yet: compared with what was handed out of them.
+      ledger.settle(settled, settled)
+      ledger.save(tick, final)
+    }
+    settled = Math.max(settled, tick)
+    ranKeys.clear()
     epoch = message.epoch
     syncFrom = message.from
     syncTick = tick
@@ -711,7 +761,13 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
         for (let at = next + saveDelay; at <= last && known.has(at) && ahead[other]!.length < Wire.maxInputsAhead; at++) ahead[other]!.push(known.get(at))
       }
     }
-    syncMessage = { k: "sync", from: seat, epoch: epoch + 1, tick: next, save, returned: tracker.shown.slice(), sessions: named, roster: roster + (seated > 0 ? 1 : 0), left, ahead }
+    // What this world went through before the save, from `maxRollback` before the ticks it settled (a peer may have settled fewer): the inputs of every tick a peer may have run on a guess. Lockstep runs none on a guess.
+    let ranFrom = next
+    const lowest = mode === "rollback" ? Math.max(syncTick, settled - maxRollback) : next
+    while (ranFrom > lowest && ranKeys.has(ranFrom - 1)) ranFrom -= 1
+    const ran: Array<string> = []
+    for (let at = ranFrom; at < next; at++) ran.push(ranKeys.get(at)!)
+    syncMessage = { k: "sync", from: seat, epoch: epoch + 1, tick: next, save, returned: tracker.shown.slice(), sessions: named, roster: roster + (seated > 0 ? 1 : 0), left, ahead, ranFrom, ran }
     applySync(syncMessage)
     broadcast(syncMessage)
     syncSentAt.fill(clock.now())
@@ -1632,7 +1688,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     }),
     events: (descriptor) => {
       let ledger = ledgers.get(descriptor)
-      if (ledger === undefined) ledgers.set(descriptor, ledger = Events.make({ schema: runtime.schema, inspect: runtime.inspect, settled: () => settled, resyncReach: saveDelay }, descriptor))
+      // A peer ahead of the host settles up to the host's own inputs, which reach `saveDelay` past the tick it saves at: a resync runs that tick and the `saveDelay` after it again (`resyncReach`).
+      if (ledger === undefined) ledgers.set(descriptor, ledger = Events.make({ schema: runtime.schema, inspect: runtime.inspect, settled: () => settled, resyncReach: saveDelay + 1 }, descriptor))
       return ledger.reader(next) as never
     }
   }

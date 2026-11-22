@@ -10,7 +10,7 @@
 
 Over 120 ms with 60 ms of jitter and 5% loss, on pages at 60 Hz that sometimes run two or three steps in a frame: 2 peers went from 139 messages and 62 KiB a second to 97 and 16 to 23 KiB; 8 peers from 728 and 290 KiB to 387 and 73 to 103 KiB (the lower figure for input held 20 frames, the higher for input that changes nearly every frame).
 
-**Breaking: every page of a match must run this version.** The session protocol changed (version 5): a peer on 0.26 or older ends with `ProtocolMismatch`.
+**Breaking: every page of a match must run this version.** The session protocol changed (version 6): a peer on 0.26 or older ends with `ProtocolMismatch`.
 
 **Breaking: the function `session.update(...)` returns takes the loop's two arguments.** Passed to `FixedLoop.start` as it is, nothing changes. Called from the game's own `update`, pass them through, so the session knows the frame's last step:
 

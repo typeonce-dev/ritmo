@@ -277,5 +277,5 @@ export const wire = (message: { readonly from: number; readonly epoch: number; r
   const { from, epoch, inputs, ...rest } = message
   const acks = rest["k"] === "inputs" ? { acks: (rest["acks"] as ReadonlyArray<number>).map((ack) => (rest["next"] as number) - ack) } : {}
   const written = { ...rest, ...acks, ...(inputs === undefined ? {} : { d: inputs, i: inputs.map((_, index) => index) }) }
-  return JSON.stringify({ v: 5, from, epoch, m: [written] })
+  return JSON.stringify({ v: 6, from, epoch, m: [written] })
 }

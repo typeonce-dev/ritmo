@@ -118,7 +118,7 @@ describe("session.events", () => {
     expect(hits.lost()).type.toBe<Netcode.EventsLost | undefined>()
     const lost = hits.lost()
     if (lost !== undefined) {
-      expect(lost.reason).type.toBe<"unread" | "resync">()
+      expect(lost.reason).type.toBe<"unread" | "resync" | "save">()
       // @ts-expect-error and '"rollback"' have no overlap
       if (lost.reason === "rollback") throw new Error("not a reason")
     }

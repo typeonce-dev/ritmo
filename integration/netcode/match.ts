@@ -19,6 +19,8 @@ export interface Peer {
   readonly heard: Array<Netcode.EventRecord<HitValue>>
   /** Hits on screen as a flash: started when predicted, taken down when withdrawn, by tick. */
   readonly flashes: Map<number, Array<HitValue>>
+  /** Ticks before a resync's save that this peer ran on a guess the host's world did not share: their hits are not known here. */
+  readonly lost: Array<Netcode.EventsLost>
 }
 
 type HitValue = { readonly seat: number; readonly shot: number }
@@ -55,7 +57,7 @@ export const match = (options: MatchOptions): readonly [Peer, Peer] => {
     const shared = { simulate, seats: seats.value, seat, links: [links.value[seat]!], hostClock, step }
     const session = options.mode === "rollback" ? Netcode.rollback(runtime, shared) : Netcode.lockstep(runtime, shared)
     if (!session.ok) return fail("session", session.error)
-    return { runtime, screen, session: session.value, recorded: new Map(), heard: [], flashes: new Map() }
+    return { runtime, screen, session: session.value, recorded: new Map(), heard: [], flashes: new Map(), lost: [] }
   }
   const peers = [peer(0), peer(1)] as const
   // The host's effects read the simulation's hits through the session: one reader each.
@@ -76,7 +78,9 @@ export const match = (options: MatchOptions): readonly [Peer, Peer] => {
       for (const { tick } of reader.withdrawn()) flashes.delete(tick)
       for (const { tick, value } of reader.predicted()) flashes.set(tick, [...flashes.get(tick) ?? [], value])
       const lost = reader.lost()
-      if (lost !== undefined) fail(`seat ${seat} lost hits`, lost)
+      // A save can make final ticks this peer ran otherwise than the host: said, never silent. Nothing else is lost.
+      if (lost !== undefined && lost.reason === "save") peers[seat]!.lost.push(lost)
+      else if (lost !== undefined) fail(`seat ${seat} lost hits`, lost)
     }
     if (!hostClock.adjust(stepMS).ok) fail("clock", frame)
   }

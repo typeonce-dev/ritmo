@@ -430,8 +430,15 @@ export interface EventsLost {
    *   ticks that the host's save makes idle). The new run's events are not
    *   handed out; undo or ignore what the old ones started if it matters
    *   (a score sent to a server).
+   * - `"save"`: a save made these ticks final, and this peer cannot tell
+   *   their events as the match ran them: it ran them on a guess of another
+   *   seat's input that the host's world did not share (the host saves its
+   *   world as it ran, guesses included), or it confirmed them and the
+   *   host's world went through them otherwise. What `predicted()` handed
+   *   out of them is withdrawn. The ticks this peer ran as the host did are
+   *   confirmed, and the host's own runs always are.
    */
-  readonly reason: "unread" | "resync"
+  readonly reason: "unread" | "resync" | "save"
 }
 
 /** How many confirmed ticks of events a reader of `session.events(...)` that stopped reading keeps; older ones are {@link EventsLost}. */
@@ -450,15 +457,21 @@ export const eventWindow: number = EventsInternal.window
  * rollback runs again keeps what `predicted()` handed out when it publishes
  * the same events (plain data compared by value; a class instance or a map
  * counts as changed); otherwise it is withdrawn, and its new events are
- * predicted again. A resync withdraws every predicted tick. A reader sees
- * the ticks run from when it was made.
+ * predicted again. A save (the match's start, a resync, a page seated
+ * again) makes every tick before it final: the ticks this peer ran as the
+ * host's world did are confirmed, the others reported through `lost()`,
+ * and every predicted tick from the save on is withdrawn and runs again.
+ * Ticks before the save that this peer never ran are in the save's world,
+ * and no reader is told their events. A reader sees the ticks run from when
+ * it was made.
  */
 export interface EventStreams<Value> {
   /**
    * Events of ticks that will not run again, each handed out once: a
    * rolled-back tick is handed out only as it finally ran. A lockstep
    * session confirms every tick it runs. Final within one epoch: a resync
-   * can replace ticks it handed out, which `lost()` reports.
+   * can replace ticks it handed out, which `lost()` reports. A save confirms
+   * the ticks before it that this peer ran as the host did.
    */
   readonly confirmed: () => ReadonlyArray<EventRecord<Value>>
   /**
@@ -475,8 +488,8 @@ export interface EventStreams<Value> {
   readonly withdrawn: () => ReadonlyArray<Withdrawn>
   /**
    * Confirmed events lost since the previous report: `undefined` when none.
-   * One report per call: when both reasons are pending, a `"resync"` one
-   * comes first and the `"unread"` one on the next call.
+   * One report per call: when several reasons are pending, a `"resync"` one
+   * comes first, then `"save"`, then `"unread"`, one on each call.
    */
   readonly lost: () => EventsLost | undefined
 }
