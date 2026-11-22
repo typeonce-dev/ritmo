@@ -60,8 +60,9 @@ const saves = () => {
   const ticks = new Set<number>()
   const wrap = (_seat: number, link: NetworkLink.NetworkLink): NetworkLink.NetworkLink => {
     const note = (text: string) => {
-      const message = JSON.parse(text) as { readonly k: string; readonly tick?: number }
-      if (message.k === "sync") ticks.add(message.tick!)
+      // One bundle a frame: its messages in `m`.
+      const bundle = JSON.parse(text) as { readonly m: ReadonlyArray<{ readonly k: string; readonly tick?: number }> }
+      for (const message of bundle.m) if (message.k === "sync") ticks.add(message.tick!)
     }
     return {
       send: (text) => {
