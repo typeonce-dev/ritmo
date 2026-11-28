@@ -47,6 +47,22 @@ FixedLoop.start({
 })
 ```
 
+## One socket for the lobby and the match
+
+A page usually keeps one WebSocket to its room, for the lobby's messages and the match's. Give the link a `prefix`: it writes it before every message it sends, reads only the text messages that start with it, and leaves the rest to the game. The relay forwards both kinds as they are.
+
+```ts
+const socket = new WebSocket("wss://relay.example.com/room/42")
+const link = WebSocketNetworkLink.make(socket, { prefix: "n" })
+socket.addEventListener("message", (event) => {
+  if (typeof event.data !== "string" || event.data.startsWith("n")) return // the session's
+  lobby.receive(JSON.parse(event.data))
+})
+lobby.send = (message) => socket.send(JSON.stringify(message)) // JSON never starts with "n"
+```
+
+The game's own messages must never start with the prefix (an empty one does not compile). The link costs one string join per message sent and one slice per message read. A WebRTC data channel needs no prefix: open a channel of its own for the match beside the lobby's.
+
 ## Traffic
 
 A session says everything of one frame in one message per link: driven by `session.update` from a `FixedLoop`, that is one per host frame however many steps the frame ran (a frame that runs none sends nothing); each `advance` called directly is a frame of its own. A relay that bills per message (a Cloudflare Durable Object) sees one message per peer per frame, so a link sends each as it is, with no outbox or batching of its own. A game whose `update` wraps the session's passes both of the loop's arguments through:

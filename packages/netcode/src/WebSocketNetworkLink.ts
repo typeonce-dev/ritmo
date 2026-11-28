@@ -9,6 +9,11 @@
  * is open, so it is the simplest transport; under packet loss its in-order
  * delivery holds up later messages, where `WebRtcNetworkLink` does not.
  *
+ * One socket often carries a lobby and its match: give `make` a `prefix`
+ * and the link writes it before each message it sends, reads only the
+ * messages that start with it (without it), and leaves the rest to the
+ * game. The relay forwards the session's messages as they are.
+ *
  * @module WebSocketNetworkLink
  * @docGroup netcode
  *
@@ -19,6 +24,22 @@
  * // ---cut---
  * const socket = new WebSocket("wss://relay.example.com/match/42")
  * socket.addEventListener("open", () => startMatch([WebSocketNetworkLink.make(socket)]))
+ * ```
+ *
+ * @example
+ * ```ts
+ * declare const startMatch: (links: ReadonlyArray<NetworkLink.NetworkLink>) => void
+ * declare const lobby: { receive(message: unknown): void }
+ * // ---cut---
+ * // One socket to the room: the lobby's messages are JSON, the match's start with "n".
+ * const socket = new WebSocket("wss://relay.example.com/room/42")
+ * startMatch([WebSocketNetworkLink.make(socket, { prefix: "n" })])
+ * socket.addEventListener("message", (event) => {
+ *   // The link reads the messages that start with its prefix: the game reads the rest.
+ *   if (typeof event.data !== "string" || event.data.startsWith("n")) return
+ *   lobby.receive(JSON.parse(event.data))
+ * })
+ * const sendToLobby = (message: object) => socket.send(JSON.stringify(message)) // never starts with "n"
  * ```
  */
 import * as NetworkLink from "./NetworkLink.ts"
@@ -31,22 +52,52 @@ export interface Socket {
   addEventListener(type: "message" | "close", listener: (event: { readonly data?: unknown; readonly reason?: string }) => void): void
 }
 
+/** Resolves to the prefix when it is one, otherwise to the fix. */
+export type ValidPrefix<Prefix extends string> = Prefix extends "" ? "prefix is a non-empty string that the game's own messages never start with" : Prefix
+
+/** Options of {@link make}. */
+export interface Options<Prefix extends string> {
+  /**
+   * For a socket that also carries the game's own messages (a lobby): the
+   * link writes `prefix` before each message it sends and reads only the
+   * text messages that start with it, which it hands on without it. The
+   * game's own messages must never start with it: a lobby that sends JSON
+   * never starts with `"n"`, for example. Without it, the link reads every
+   * text message on the socket.
+   */
+  readonly prefix: ValidPrefix<Prefix>
+}
+
 const OPEN = 1
 
-/** A link that sends and receives over `socket`. Messages that are not text are ignored. */
-export const make = (socket: Socket): NetworkLink.NetworkLink => {
+/**
+ * A link that sends and receives over `socket`. Messages that are not text
+ * are ignored, and with `prefix`, every message that does not start with it.
+ * Throws for an empty `prefix`: a defect, which the types reject too.
+ */
+export const make = <const Prefix extends string>(socket: Socket, options?: Options<Prefix>): NetworkLink.NetworkLink => {
+  const prefix: string = options?.prefix ?? ""
+  if (options !== undefined && prefix === "") throw new Error(`WebSocketNetworkLink: prefix is a non-empty string that the game's own messages never start with`)
   let inbox: Array<string> = []
   let closedReason: string | undefined
-  socket.addEventListener("message", (event) => {
-    if (typeof event.data === "string") inbox.push(event.data)
-  })
+  socket.addEventListener("message", prefix === ""
+    ? (event) => {
+      if (typeof event.data === "string") inbox.push(event.data)
+    }
+    : (event) => {
+      if (typeof event.data === "string" && event.data.startsWith(prefix)) inbox.push(event.data.slice(prefix.length))
+    })
   socket.addEventListener("close", (event) => {
     closedReason ??= event.reason === undefined || event.reason === "" ? "the WebSocket closed" : event.reason
   })
   return {
-    send: (message) => {
-      if (socket.readyState === OPEN) socket.send(message)
-    },
+    send: prefix === ""
+      ? (message) => {
+        if (socket.readyState === OPEN) socket.send(message)
+      }
+      : (message) => {
+        if (socket.readyState === OPEN) socket.send(prefix + message)
+      },
     receive: () => {
       const arrived = inbox
       inbox = []

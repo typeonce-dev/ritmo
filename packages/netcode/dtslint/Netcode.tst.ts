@@ -42,6 +42,7 @@ const hostClock = HostClock.test()
 declare const link: NetworkLink.NetworkLink
 declare const theLinks: ReadonlyArray<MemoryNetworkLink.MemoryNetworkLink>
 const options = { seats: theSeats, seat: 0, links: [link], hostClock, step }
+declare const channelName: string
 
 describe("Netcode.seats", () => {
   it("infers the input type from the schema", () => {
@@ -220,6 +221,15 @@ describe("WebSocketNetworkLink and WebRtcNetworkLink", () => {
     expect(WebSocketNetworkLink.make).type.toBeCallableWith(new WebSocket("wss://relay.example.com"))
     expect(WebRtcNetworkLink.make).type.toBeCallableWith(new RTCPeerConnection().createDataChannel("ritmo"))
     expect(WebSocketNetworkLink.make(new WebSocket("wss://relay.example.com"))).type.toBe<NetworkLink.NetworkLink>()
+  })
+
+  it("share a socket under a prefix the game's own messages never start with", () => {
+    expect(WebSocketNetworkLink.make(new WebSocket("wss://relay.example.com"), { prefix: "n" })).type.toBe<NetworkLink.NetworkLink>()
+    expect(WebSocketNetworkLink.make).type.toBeCallableWith(new WebSocket("wss://relay.example.com"), { prefix: channelName })
+    // @ts-expect-error prefix is a non-empty string that the game's own messages never start with
+    WebSocketNetworkLink.make(new WebSocket("wss://relay.example.com"), { prefix: "" })
+    expect(WebSocketNetworkLink.make).type.not.toBeCallableWith(new WebSocket("wss://relay.example.com"), { prefix: 1 })
+    expect(WebSocketNetworkLink.make).type.not.toBeCallableWith(new WebSocket("wss://relay.example.com"), {})
   })
 
   it("reject what is not a socket", () => {
