@@ -364,6 +364,9 @@ const seats = Netcode.seats(PlayerInput, {
 // The relay saw a socket close: no need to wait for the timeout
 room.onPlayerGone((seat) => session.drop(seat)) // [!code highlight]
 
+// This player quits to the lobby: the others see the seat leave at once
+session.leave() // [!code highlight]
+
 // In the HUD: who left
 const left = session
   .status()
