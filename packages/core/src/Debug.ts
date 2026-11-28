@@ -98,6 +98,13 @@ export interface Handle<S extends Schema.Any = Schema.Any, Root = unknown> {
    * replaces the list.
    */
   readonly declareHostEvents: (events: ReadonlyArray<Schema.EventDescriptor<S>>) => void
+  /**
+   * Declares the events the host reads (`runtime.events(...)`, or a netcode
+   * session's `session.events(...)`), so `describe()` counts them as read
+   * (`event-never-read`): the lint target or devtools session does not run
+   * the host code that makes the readers. Declaring again replaces the list.
+   */
+  readonly declareHostReads: (events: ReadonlyArray<Schema.EventDescriptor<S>>) => void
   /** The static description of the schema and the named schedules. */
   readonly describe: () => Description
   /** The current world as plain data. */
@@ -345,7 +352,8 @@ export interface ScheduleDescription {
  * Read from declarations of the named schedules:
  * - `event-never-read` / `event-never-written`: an event with writers and no
  *   reader, or readers and no writer. Events declared with
- *   `declareHostEvents` or sent with `runtime.send(...)` count as written.
+ *   `declareHostEvents` or sent with `runtime.send(...)` count as written,
+ *   and events declared with `declareHostReads` count as read.
  * - `next-state-never-applied`: next states are queued, but no schedule has
  *   an `applyStateTransitions(...)` marker.
  * - `resource-changed-never-written`: a `changedResource` read nobody writes.

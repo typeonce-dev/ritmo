@@ -10,7 +10,8 @@
  * filters, `removed`/`despawned` records, and events show what happened since
  * that inspector's own previous evaluation, once. Events are not held for
  * inspectors, so one evaluated less often than events are dropped reports
- * `lagged()` instead.
+ * `lagged()` instead: host code that acts on a tick's events (sounds,
+ * particles) reads them with `runtime.events(...)`, which holds them.
  *
  * An inspector is the one typed read-only view of the world: tests, saves, UI,
  * `Game.Condition.check(...)` projections, and devtools invariants
