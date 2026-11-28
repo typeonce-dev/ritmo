@@ -123,7 +123,9 @@ component, and `changed` keeps only what changed since this system last ran.
 
 Every read in Ritmo works this way: changes, events, and transitions are
 streams per reader. Each system sees what was published since its own
-previous run, once.
+previous run, once. Host code (sounds, particles) reads a tick's events the
+same way, with a reader of its own: `runtime.events(Hit).take()` hands out
+what the ticks since its previous take published.
 
 ```ts twoslash title="queries.ts"
 import { Descriptor, Schema } from "@typeonce/ritmo"
