@@ -108,6 +108,7 @@ import * as Result from "@typeonce/ritmo/Result"
 import { boundKeys } from "./internal/introspect.ts"
 import type { ReportsBoundKeys } from "./internal/introspect.ts"
 import { anyUsed } from "./internal/used.ts"
+import { isAnalogBinding } from "./internal/analogs.ts"
 import { digital, directionName, directions, isVectorBinding } from "./internal/vectors.ts"
 import type { ActionState } from "./internal/state.ts"
 import type { Direction, Vector } from "./internal/vectors.ts"
@@ -418,16 +419,28 @@ export interface VectorBinding {
 }
 
 /**
- * Action name to the keys that trigger it (at least one), or to a
- * {@link vector} binding for a direction such as movement.
+ * Keys for an analog action (a pedal, a charge), built with {@link analog}.
  */
-export type Bindings = Readonly<Record<string, Keys | VectorBinding>>
+export interface AnalogBinding {
+  readonly _tag: "Analog"
+  readonly keys: Keys
+}
+
+/**
+ * Action name to the keys that trigger it (at least one), to a
+ * {@link vector} binding for a direction such as movement, or to an
+ * {@link analog} binding for a value from 0 to 1 such as a pedal.
+ */
+export type Bindings = Readonly<Record<string, Keys | VectorBinding | AnalogBinding>>
 
 /** The bound button actions: the names bound to keys. */
-export type ButtonNames<B> = { [K in keyof B]: B[K] extends VectorBinding ? never : K }[keyof B] & string
+export type ButtonNames<B> = { [K in keyof B]: B[K] extends VectorBinding | AnalogBinding ? never : K }[keyof B] & string
 
 /** The bound vector actions: the names bound with {@link vector}. */
 export type VectorNames<B> = { [K in keyof B]: B[K] extends VectorBinding ? K : never }[keyof B] & string
+
+/** The bound analog actions: the names bound with {@link analog}. */
+export type AnalogNames<B> = { [K in keyof B]: B[K] extends AnalogBinding ? K : never }[keyof B] & string
 
 /**
  * Binds a vector action to keys for its four directions. The snapshot's
@@ -451,6 +464,24 @@ export const vector = (keys: { readonly up: Keys; readonly down: Keys; readonly 
 })
 
 /**
+ * Binds an analog action (gas and brake pedals, a charge) to keys. A key
+ * has no pull, so the snapshot's `analogs` reports 1 while any of them is
+ * held and 0 otherwise; a pad's trigger bound to the same action in
+ * `Controls` gives the values in between.
+ *
+ * @example
+ * ```ts
+ * const bindings = {
+ *   gas: Keyboard.analog(["w", "ArrowUp"]),
+ *   brake: Keyboard.analog(["s", "ArrowDown"])
+ * } as const
+ * const keys = Keyboard.actions(window, bindings)
+ * const throttle = keys.snapshot().analogs.gas // 1 while W or Up is held
+ * ```
+ */
+export const analog = (keys: Keys): AnalogBinding => ({ _tag: "Analog", keys })
+
+/**
  * A binding to a physical key by its `KeyboardEvent.code`.
  *
  * @example
@@ -471,16 +502,20 @@ export interface Snapshot<B extends Bindings> {
   readonly actions: { readonly [Action in ButtonNames<B>]: ActionState }
   /** Each vector action's direction, length at most 1, `y` growing down. */
   readonly vectors: { readonly [Action in VectorNames<B>]: Vector }
+  /** Each analog action's value: 1 while one of its keys is held, otherwise 0 (see {@link analog}). */
+  readonly analogs: { readonly [Action in AnalogNames<B>]: number }
   /** Some key bound to an action was pressed in this window or is held: the player is using the keyboard. */
   readonly used: boolean
 }
 
 /**
  * New keys for the same actions, for {@link Actions.rebind}: keys for a
- * button action, a {@link vector} for a vector action. Load saved ones with
- * {@link parseRebinding}.
+ * button action, a {@link vector} for a vector action, an {@link analog}
+ * for an analog action. Load saved ones with {@link parseRebinding}.
  */
-export type Rebinding<B extends Bindings> = { readonly [Action in keyof B]: B[Action] extends VectorBinding ? VectorBinding : Keys }
+export type Rebinding<B extends Bindings> = {
+  readonly [Action in keyof B]: B[Action] extends VectorBinding ? VectorBinding : B[Action] extends AnalogBinding ? AnalogBinding : Keys
+}
 
 /**
  * Rejects actions a rebinding names that the bindings do not have, so
@@ -540,7 +575,8 @@ const flatten = (bindings: Bindings): Readonly<Record<string, Keys>> => {
   for (const [name, entry] of Object.entries(bindings)) {
     if (isVectorBinding(entry)) {
       for (const direction of directions) flat[directionName(name, direction)] = entry[direction]
-    } else flat[name] = entry
+    } else if (isAnalogBinding(entry)) flat[name] = entry.keys
+    else flat[name] = entry
   }
   return flat
 }
@@ -549,13 +585,15 @@ const flatten = (bindings: Bindings): Readonly<Record<string, Keys>> => {
 const assemble = (bindings: Bindings, state: (name: string) => ActionState, used: boolean): Snapshot<Bindings> => {
   const actions: Record<string, ActionState> = {}
   const vectors: Record<string, Vector> = {}
+  const analogs: Record<string, number> = {}
   for (const [name, entry] of Object.entries(bindings)) {
     if (isVectorBinding(entry)) {
       const held = (direction: Direction): boolean => state(directionName(name, direction)).held
       vectors[name] = digital(held("up"), held("down"), held("left"), held("right"))
-    } else actions[name] = state(name)
+    } else if (isAnalogBinding(entry)) analogs[name] = state(name).held ? 1 : 0
+    else actions[name] = state(name)
   }
-  return { actions, vectors, used }
+  return { actions, vectors, analogs, used }
 }
 
 /**
@@ -865,7 +903,8 @@ export const presses = (host: KeyboardHost): Presses => {
 /**
  * Input changes applied just before one snapshot. `frame` is the snapshot's
  * index, counting from 0 at the first `snapshot()` call. Entries name
- * actions, and a vector action by direction (`"move.right"`). An action in both
+ * actions (an analog action is held at 1 from its press to its release),
+ * and a vector action by direction (`"move.right"`). An action in both
  * `press` and `release` changed twice within the frame: a tap shorter than a
  * frame when it was up, a release and a new press when it was held.
  */
@@ -876,10 +915,10 @@ export interface TimelineEntry<B extends Bindings> {
 }
 
 /**
- * What a timeline presses and releases: a button action, or one direction
- * of a vector action (`"move.right"`).
+ * What a timeline presses and releases: a button or analog action, or one
+ * direction of a vector action (`"move.right"`).
  */
-export type TimelineName<B extends Bindings> = ButtonNames<B> | `${VectorNames<B>}.${Direction}`
+export type TimelineName<B extends Bindings> = ButtonNames<B> | AnalogNames<B> | `${VectorNames<B>}.${Direction}`
 
 /**
  * Input changes by snapshot index. Plain data, so it round-trips through
@@ -1022,8 +1061,8 @@ export interface InvalidTimeline {
 /**
  * Validates untrusted data, such as a parsed JSON file, as a timeline for
  * `bindings`: an array of entries with a non-negative integer `frame` and
- * optional `press`/`release` arrays of bound action names (a vector action
- * by direction, `"move.right"`).
+ * optional `press`/`release` arrays of bound action names (button and
+ * analog actions, and a vector action by direction, `"move.right"`).
  */
 export const parseTimeline = <const B extends Bindings>(
   bindings: B,
@@ -1082,7 +1121,8 @@ export interface InvalidRebinding {
  * keys for `bindings`: an object with exactly the same action names, each
  * mapped to a non-empty array of characters or `{ code }` physical keys
  * (for a vector action, an object with such keys for `up`, `down`, `left`,
- * and `right`, as `Keyboard.vector` saves).
+ * and `right`, as `Keyboard.vector` saves; for an analog action, `{ keys }`,
+ * as `Keyboard.analog` saves).
  * Pass the result to {@link Actions.rebind}; on failure, keep the defaults.
  *
  * @example
@@ -1117,7 +1157,7 @@ export const parseRebinding = <const B extends Bindings>(
     }
     return Result.success(keys as unknown as Keys)
   }
-  const rebinding: Record<string, Keys | VectorBinding> = {}
+  const rebinding: Record<string, Keys | VectorBinding | AnalogBinding> = {}
   for (const name of names) {
     const value = fields[name]
     if (isVectorBinding(bindings[name])) {
@@ -1129,6 +1169,13 @@ export const parseRebinding = <const B extends Bindings>(
         parts[direction] = keys.value
       }
       rebinding[name] = vector(parts as Record<Direction, Keys>)
+      continue
+    }
+    if (isAnalogBinding(bindings[name])) {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) return invalid(name, "expected { keys } for an analog action")
+      const keys = keysAt((value as Readonly<Record<string, unknown>>)["keys"], `${name}.keys`)
+      if (!keys.ok) return keys
+      rebinding[name] = analog(keys.value)
       continue
     }
     const keys = keysAt(value, name)

@@ -93,8 +93,9 @@ describe("Controls", () => {
     expect(Actions.idle({ keyboard: Keyboard.idle(keyBindings) })).toEqual({
       actions: { jump: idle, pause: idle },
       vectors: {},
+      analogs: {},
       available: { jump: true, pause: true },
-      devices: { keyboard: { actions: { jump: idle, pause: idle }, vectors: {}, used: false } },
+      devices: { keyboard: { actions: { jump: idle, pause: idle }, vectors: {}, analogs: {}, used: false } },
       lastUsed: null
     })
   })

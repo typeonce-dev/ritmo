@@ -174,8 +174,8 @@ describe("Controls.players", () => {
   it("starts idle with every slot empty and joining closed", () => {
     expect(Players.idle({ left: Keyboard.idle(leftKeys), pads: Gamepad.idle(padKeys) })).toEqual({
       joining: false,
-      p1: { joined: false, device: null, connected: false, event: null, devices: {}, actions: { join: idle, back: idle, jump: idle }, vectors: { move: { x: 0, y: 0 } }, available: { join: true, back: true, jump: true, move: true } },
-      p2: { joined: false, device: null, connected: false, event: null, devices: {}, actions: { join: idle, back: idle, jump: idle }, vectors: { move: { x: 0, y: 0 } }, available: { join: true, back: true, jump: true, move: true } }
+      p1: { joined: false, device: null, connected: false, event: null, devices: {}, actions: { join: idle, back: idle, jump: idle }, vectors: { move: { x: 0, y: 0 } }, analogs: {}, available: { join: true, back: true, jump: true, move: true } },
+      p2: { joined: false, device: null, connected: false, event: null, devices: {}, actions: { join: idle, back: idle, jump: idle }, vectors: { move: { x: 0, y: 0 } }, analogs: {}, available: { join: true, back: true, jump: true, move: true } }
     })
   })
 

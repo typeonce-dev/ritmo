@@ -464,6 +464,7 @@ describe("Touch.idle and Touch.scripted with sticks", () => {
     expect(Touch.idle({ buttons: ["dash"], sticks: ["move", "aim"] })).toEqual({
       actions: { dash: { held: false, pressed: false, released: false, aim: null, cancelled: false } },
       vectors: { move: { x: 0, y: 0, active: false }, aim: { x: 0, y: 0, active: false } },
+      analogs: {},
       swipe: { active: false, delta: { x: 0, y: 0 } },
       used: false
     })
@@ -485,5 +486,28 @@ describe("Touch.idle and Touch.scripted with sticks", () => {
     expect(touch.snapshot().used).toBe(false)
     expect(touch.view().sticks).toEqual({ move: null, aim: null })
     expect(touch.view().layout.sticks.aim?.radius).toBe(1)
+  })
+})
+
+describe("Touch pedals", () => {
+  it("reports a button named in analogs as an analog action, 1 while a finger is on it", () => {
+    const fake = makeTarget()
+    const touch = Touch.actions(fake.target, fake.blurHost, layout, { analogs: ["dash"] })
+    const first = touch.snapshot()
+    expect(first.analogs).toEqual({ dash: 0 })
+    expect(Object.keys(first.actions)).toEqual(["attack"])
+    fake.down(1, 800 - 250, 400 - 60)
+    const held = touch.snapshot()
+    expect(held.analogs.dash).toBe(1)
+    expect(held.used).toBe(true)
+    expect(touch.view().buttons.dash.held).toBe(true)
+    fake.up(1, 800 - 250, 400 - 60)
+    expect(touch.snapshot().analogs.dash).toBe(0)
+  })
+
+  it("plays pedals in a timeline and starts idle at 0", () => {
+    const scripted = Touch.scripted({ buttons: ["gas", "pause"], sticks: [], analogs: ["gas"] }, [{ frame: 0, press: ["gas"] }, { frame: 2, release: ["gas"] }])
+    expect([0, 1, 2].map(() => scripted.snapshot().analogs.gas)).toEqual([1, 1, 0])
+    expect(Touch.idle({ buttons: ["gas", "pause"], sticks: [], analogs: ["gas"] })).toMatchObject({ analogs: { gas: 0 }, actions: { pause: { held: false } } })
   })
 })

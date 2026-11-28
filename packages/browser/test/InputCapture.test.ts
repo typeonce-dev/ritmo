@@ -14,8 +14,8 @@ describe("InputCapture", () => {
     const Game = Schema.bind(Schema.fragment({ resources: { Input } }), Root)
 
     const queued: Array<Keyboard.Snapshot<typeof bindings>> = [
-      { actions: { jump: { held: true, pressed: true, released: false }, left: { held: false, pressed: false, released: false } }, vectors: {}, used: true },
-      { actions: { jump: { held: false, pressed: false, released: true }, left: { held: true, pressed: true, released: false } }, vectors: {}, used: true }
+      { actions: { jump: { held: true, pressed: true, released: false }, left: { held: false, pressed: false, released: false } }, vectors: {}, analogs: {}, used: true },
+      { actions: { jump: { held: false, pressed: false, released: true }, left: { held: true, pressed: true, released: false } }, vectors: {}, analogs: {}, used: true }
     ]
     const seen: Array<string> = []
     const Capture = InputCapture.system(Game, { name: "CaptureTest/Capture", source: Source, resource: Input })
@@ -70,6 +70,7 @@ describe("InputCapture", () => {
         left: { held: false, pressed: false, released: false }
       },
       vectors: {},
+      analogs: {},
       used: false
     })
   })

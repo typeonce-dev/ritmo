@@ -152,6 +152,8 @@ export interface Snapshot<B extends Bindings> {
   readonly actions: { readonly [Action in keyof B]: ActionState }
   /** None: a pointer binds no vector actions (read `position` and `movement`); there for the snapshot core every device shares. */
   readonly vectors: { readonly [Action in never]: Delta }
+  /** None: a pointer binds no analog actions (its buttons have no pull); there for the snapshot core every device shares. */
+  readonly analogs: { readonly [Action in never]: number }
   /** Every button's state by name, whatever the bindings (capture the button to bind from here). */
   readonly buttons: { readonly [Name in Button]: ActionState }
   /** The last position the pointer was seen at, or where it was last left. */
@@ -315,6 +317,7 @@ export interface ActionsOptions {
 export const idle = <const B extends Bindings>(bindings: B, position: Position = { x: 0, y: 0 }): Snapshot<B> => ({
   actions: idleActions(bindings),
   vectors: {},
+  analogs: {},
   buttons: idleButtons(buttonNames),
   position: { x: position.x, y: position.y },
   movement: { x: 0, y: 0 },
@@ -369,7 +372,7 @@ const tracker = <B extends Bindings>(initial: B, start: Position) => {
     snapshot(over: boolean, locked: boolean): Snapshot<B> {
       const taken = buttons.take()
       const used = moved || movement.x !== 0 || movement.y !== 0 || wheel.x !== 0 || wheel.y !== 0 || anyUsed(taken.buttons)
-      const snapshot = { ...taken, vectors: {}, position: { x: position.x, y: position.y }, movement, wheel, over, locked, used }
+      const snapshot = { ...taken, vectors: {}, analogs: {}, position: { x: position.x, y: position.y }, movement, wheel, over, locked, used }
       moved = false
       movement = { x: 0, y: 0 }
       wheel = { x: 0, y: 0 }

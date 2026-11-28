@@ -26,6 +26,10 @@
  * once, as a cancel, and that finger does nothing until it lifts: a thumb
  * resting on the walking stick does not keep walking a car.
  *
+ * A button listed in the `analogs` option is a pedal: it reports an analog
+ * action (1 while a finger is on it, 0 otherwise) in `analogs` instead of an
+ * action, so it merges with a pad's trigger in `Controls`.
+ *
  * Games read one snapshot per update, like keyboard actions: each stick's
  * vector, and per button `held`/`pressed`/`released` edges that survive taps
  * shorter than a frame, plus the drag `aim`, which is still reported on the
@@ -210,15 +214,17 @@ export interface Swipe {
 }
 
 /**
- * The controls' state. Each button is an action named like it and each
- * stick a vector named like it, so the snapshot has the same core as the
- * other devices' (`actions`, `vectors`, and `used`) and `Controls` can
- * merge it.
+ * The controls' state. Each button is an action named like it (or an analog
+ * action, for the buttons in the `analogs` option) and each stick a vector
+ * named like it, so the snapshot has the same core as the other devices'
+ * (`actions`, `vectors`, `analogs`, and `used`) and `Controls` can merge it.
  */
-export interface Snapshot<B extends string, V extends string = never> {
+export interface Snapshot<B extends string, V extends string = never, N extends string = never> {
   readonly actions: { readonly [K in B]: ButtonState }
   /** Each stick's vector, and whether a thumb is on it. */
   readonly vectors: { readonly [K in V]: StickState }
+  /** Each pedal's value (the buttons in the `analogs` option): 1 while a finger is on it, otherwise 0. */
+  readonly analogs: { readonly [K in N]: number }
   readonly swipe: Swipe
   /**
    * A button was pressed in this window or is held, or a finger is on a
@@ -227,14 +233,32 @@ export interface Snapshot<B extends string, V extends string = never> {
   readonly used: boolean
 }
 
-const snapshotOf = <B extends string, V extends string>(
+const snapshotOf = <B extends string, V extends string, N extends string = never>(
   vectors: { readonly [K in V]: StickState },
   actions: { readonly [K in B]: ButtonState },
-  swipe: Swipe
-): Snapshot<B, V> => {
+  swipe: Swipe,
+  analogs: { readonly [K in N]: number } = {} as { readonly [K in N]: number }
+): Snapshot<B, V, N> => {
   let held = false
   for (const name in vectors) held ||= vectors[name].active
-  return { actions, vectors, swipe, used: held || swipe.active || anyUsed(actions) }
+  for (const name in analogs) held ||= analogs[name] > 0
+  return { actions, vectors, analogs, swipe, used: held || swipe.active || anyUsed(actions) }
+}
+
+/** Each button's snapshot, split into actions and the pedals' analog values. */
+const splitButtons = <B extends string, N extends B>(
+  names: ReadonlyArray<B>,
+  analogs: ReadonlySet<string>,
+  state: (name: B) => ButtonState
+): { readonly actions: { readonly [K in Exclude<B, N>]: ButtonState }; readonly analogs: { readonly [K in N]: number } } => {
+  const actions: Record<string, ButtonState> = {}
+  const values: Record<string, number> = {}
+  for (const name of names) {
+    const button = state(name)
+    if (analogs.has(name)) values[name] = button.held ? 1 : 0
+    else actions[name] = button
+  }
+  return { actions: actions as { readonly [K in Exclude<B, N>]: ButtonState }, analogs: values as { readonly [K in N]: number } }
 }
 
 /** Where a held stick was centered and where its knob is drawn (on the rim at most). */
@@ -258,9 +282,9 @@ export interface View<B extends string, V extends string = never, H extends B | 
  * `Controls` (through `lacking(...)` for actions with no on-screen
  * control). There is no `rebind`: the layout is the binding.
  */
-export interface Actions<B extends string, V extends string = never, H extends B | V = B | V> extends System.Consumes<"snapshot"> {
+export interface Actions<B extends string, V extends string = never, H extends B | V = B | V, N extends B = never> extends System.Consumes<"snapshot"> {
   /** Returns the controls' state and starts a new press/release window. */
-  snapshot(): Snapshot<B, V>
+  snapshot(): Snapshot<Exclude<B, N>, V, N>
   /** The live state for drawing. */
   view(): View<B, V, H>
   /** Removes the event listeners and restores the element's `touch-action`. */
@@ -298,9 +322,16 @@ export interface BlurHost {
 }
 
 /** Options for {@link actions}. */
-export interface ActionsOptions {
+export interface ActionsOptions<N extends string = never> {
   /** `PointerEvent.pointerType`s that drive the controls. Defaults to `["touch"]`. */
   readonly pointerTypes?: ReadonlyArray<string>
+  /**
+   * The buttons that are pedals (gas, brake): each reports an analog action
+   * in `analogs`, 1 while a finger is on it and 0 otherwise, instead of an
+   * action, so it merges with a pad's trigger declared in
+   * `Controls.actions({ analogs })`.
+   */
+  readonly analogs?: ReadonlyArray<N>
 }
 
 const zero: Vector = { x: 0, y: 0 }
@@ -313,11 +344,13 @@ const resting: StickState = { x: 0, y: 0, active: false }
 const released = (): ButtonState => ({ held: false, pressed: false, released: false, aim: null, cancelled: false })
 
 /** The names a layout's controls report, for {@link idle} and {@link scripted}. */
-export interface Names<B extends string, V extends string = never> {
+export interface Names<B extends string, V extends string = never, N extends B = never> {
   /** The layout's button keys: the actions they report. */
   readonly buttons: ReadonlyArray<B>
   /** The layout's stick keys: the vectors they drive (`[]` for buttons only). */
   readonly sticks: ReadonlyArray<V>
+  /** The buttons that are pedals, as the `analogs` option of {@link actions}. */
+  readonly analogs?: ReadonlyArray<N>
 }
 
 /** Rejects a name given both as a stick and as a button. */
@@ -331,10 +364,15 @@ const byName = <K extends string, T>(names: ReadonlyArray<K>, value: (name: K) =
 /**
  * A snapshot with nothing held, for initializing an input resource before
  * the first capture: pass the layout's button and stick names, as
- * `Touch.idle({ buttons: ["dash"], sticks: ["move", "aim"] })`.
+ * `Touch.idle({ buttons: ["dash"], sticks: ["move", "aim"] })`, and its
+ * pedals as `analogs`.
  */
-export const idle = <const B extends string, const V extends string = never>(names: Names<B, V> & DistinctNames<B, V>): Snapshot<B, V> =>
-  snapshotOf<B, V>(byName(names.sticks, () => resting), byName(names.buttons, released), { active: false, delta: zero })
+export const idle = <const B extends string, const V extends string = never, const N extends B = never>(
+  names: Names<B, V, N> & DistinctNames<B, V>
+): Snapshot<Exclude<B, NoInfer<N>>, V, NoInfer<N>> => {
+  const split = splitButtons<B, N>(names.buttons, new Set(names.analogs ?? []), released)
+  return snapshotOf(byName(names.sticks, () => resting), split.actions, { active: false, delta: zero }, split.analogs)
+}
 
 /** `offset / radius`, clamped to length 1, with the inner `deadZone` fraction mapped to zero. */
 const tilt = (offset: Position, radius: number, deadZone: number): Vector => {
@@ -416,13 +454,14 @@ interface StickTrack {
  * held controls when the page loses focus. Use `Pointer.actions` for mouse
  * and pen input.
  */
-export const actions = <const B extends string, const V extends string = never, L extends Layout<B, V> = Layout<B, V>>(
+export const actions = <const B extends string, const V extends string = never, L extends Layout<B, V> = Layout<B, V>, const N extends B = never>(
   target: TouchTarget,
   blurHost: BlurHost,
   layout: (size: Size) => Layout<B, V> & L,
-  options: ActionsOptions = {}
-): Actions<B, V, Hideable<L>> => {
+  options: ActionsOptions<N> = {}
+): Actions<B, V, Hideable<L>, NoInfer<N>> => {
   const pointerTypes = options.pointerTypes ?? ["touch"]
+  const pedals: ReadonlySet<string> = new Set(options.analogs ?? [])
   const sizeOf = (): Size => {
     const rect = target.getBoundingClientRect()
     return { width: rect.width, height: rect.height }
@@ -591,11 +630,8 @@ export const actions = <const B extends string, const V extends string = never, 
   return {
     snapshot() {
       relayout()
-      const snapshot = snapshotOf<B, V>(
-        byName(stickNames, stickState),
-        byName(names, (name) => buttonSnapshot(buttons.get(name)!)),
-        { active: swipe !== undefined, delta: swiped }
-      )
+      const split = splitButtons<B, N>(names, pedals, (name) => buttonSnapshot(buttons.get(name)!))
+      const snapshot = snapshotOf(byName(stickNames, stickState), split.actions, { active: swipe !== undefined, delta: swiped }, split.analogs)
       for (const button of buttons.values()) startWindow(button)
       swiped = zero
       return snapshot
@@ -649,7 +685,7 @@ export interface TimelineEntry<B extends string, V extends string = never> {
 export type Timeline<B extends string, V extends string = never> = ReadonlyArray<TimelineEntry<B, V>>
 
 /** Touch controls driven by a timeline instead of an element. */
-export interface Scripted<B extends string, V extends string = never> extends Actions<B, V> {
+export interface Scripted<B extends string, V extends string = never, N extends B = never> extends Actions<B, V, B | V, N> {
   /** Number of snapshots taken so far, which is the next frame index. */
   readonly frames: () => number
 }
@@ -659,11 +695,12 @@ export interface Scripted<B extends string, V extends string = never> extends Ac
  * by the vectors they drive): before the snapshot at index `frame`, every
  * entry for that frame is applied. Vectors longer than 1 are clamped.
  */
-export const scripted = <const B extends string, const V extends string = never>(
-  names: Names<B, V> & DistinctNames<B, V>,
+export const scripted = <const B extends string, const V extends string = never, const N extends B = never>(
+  names: Names<B, V, N> & DistinctNames<B, V>,
   timeline: Timeline<NoInfer<B>, NoInfer<V>>
-): Scripted<B, V> => {
+): Scripted<B, V, NoInfer<N>> => {
   const buttons = names.buttons
+  const pedals: ReadonlySet<string> = new Set(names.analogs ?? [])
   const stickNames = names.sticks
   const byFrame = new Map<number, Array<TimelineEntry<B, V>>>()
   for (const entry of timeline) {
@@ -707,13 +744,15 @@ export const scripted = <const B extends string, const V extends string = never>
         for (const name of entry.cancel ?? []) lift(tracks.get(name)!, true)
       }
       frame += 1
-      return snapshotOf<B, V>(
+      const split = splitButtons<B, N>(buttons, pedals, (name) => buttonSnapshot(tracks.get(name)!))
+      return snapshotOf(
         byName(stickNames, (name) => {
           const vector = sticks.get(name)
           return vector === undefined ? resting : { x: vector.x, y: vector.y, active: true }
         }),
-        byName(buttons, (name) => buttonSnapshot(tracks.get(name)!)),
-        { active: swipe.active, delta: { x: swipe.x, y: swipe.y } }
+        split.actions,
+        { active: swipe.active, delta: { x: swipe.x, y: swipe.y } },
+        split.analogs
       )
     },
     view() {

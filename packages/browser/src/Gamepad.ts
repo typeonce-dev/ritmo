@@ -70,6 +70,7 @@ import type { ActionState } from "./internal/state.ts"
 import type { Vector } from "./internal/vectors.ts"
 import * as ButtonsInternal from "./internal/buttons.ts"
 import { buttonTracker, flattenButtons, idleActions, idleButtons, idleVectors, splitActions } from "./internal/buttons.ts"
+import { idleAnalogs, isAnalogBinding, unit } from "./internal/analogs.ts"
 import { digital, isVectorBinding, longer } from "./internal/vectors.ts"
 import { anyUsed } from "./internal/used.ts"
 
@@ -121,16 +122,29 @@ export interface VectorBinding {
 }
 
 /**
- * Action name to the buttons that trigger it (at least one), or to a
- * {@link vector} binding for a direction such as movement.
+ * An analog action (a pedal, a charge) on the pad, built with
+ * {@link analog}: the buttons whose pull it reads.
  */
-export type Bindings = Readonly<Record<string, Buttons | VectorBinding>>
+export interface AnalogBinding {
+  readonly _tag: "Analog"
+  readonly buttons: Buttons
+}
+
+/**
+ * Action name to the buttons that trigger it (at least one), to a
+ * {@link vector} binding for a direction such as movement, or to an
+ * {@link analog} binding for a value from 0 to 1 such as a pedal.
+ */
+export type Bindings = Readonly<Record<string, Buttons | VectorBinding | AnalogBinding>>
 
 /** The bound button actions: the names bound to buttons. */
-export type ButtonNames<B> = { [K in keyof B]: B[K] extends VectorBinding ? never : K }[keyof B] & string
+export type ButtonNames<B> = { [K in keyof B]: B[K] extends VectorBinding | AnalogBinding ? never : K }[keyof B] & string
 
 /** The bound vector actions: the names bound with {@link vector}. */
 export type VectorNames<B> = { [K in keyof B]: B[K] extends VectorBinding ? K : never }[keyof B] & string
+
+/** The bound analog actions: the names bound with {@link analog}. */
+export type AnalogNames<B> = { [K in keyof B]: B[K] extends AnalogBinding ? K : never }[keyof B] & string
 
 /**
  * Binds a vector action to a stick, to buttons for its four directions, or
@@ -153,11 +167,34 @@ export const vector = (
 ): VectorBinding => ({ _tag: "Vector", ...binding })
 
 /**
- * New buttons for the same actions, for {@link Actions.rebind}: buttons for
- * a button action, a {@link vector} for a vector action. Load saved ones
- * with {@link parseRebinding}.
+ * Binds an analog action (gas and brake pedals, a charge) to buttons: the
+ * snapshot's `analogs` reports the strongest of them, from 0 to 1. A
+ * trigger gives how far it is pulled (a half pull is 0.5), and every other
+ * button 1 while held. Bind the same trigger as a button action too when
+ * the game also needs its press edge; `triggerThreshold` decides only that
+ * button's `held`, never the analog value.
+ *
+ * @example
+ * ```ts
+ * const bindings = {
+ *   gas: Gamepad.analog(["rightTrigger", "south"]),
+ *   brake: Gamepad.analog(["leftTrigger", "west"]),
+ *   steer: Gamepad.vector({ stick: "left" })
+ * } as const
+ * const pad = Gamepad.actions(window, bindings)
+ * const throttle = pad.snapshot().analogs.gas // 0.5 on a half pull, 1 while south is held
+ * ```
  */
-export type Rebinding<B extends Bindings> = { readonly [Action in keyof B]: B[Action] extends VectorBinding ? VectorBinding : Buttons }
+export const analog = (buttons: Buttons): AnalogBinding => ({ _tag: "Analog", buttons })
+
+/**
+ * New buttons for the same actions, for {@link Actions.rebind}: buttons for
+ * a button action, a {@link vector} for a vector action, an {@link analog}
+ * for an analog action. Load saved ones with {@link parseRebinding}.
+ */
+export type Rebinding<B extends Bindings> = {
+  readonly [Action in keyof B]: B[Action] extends VectorBinding ? VectorBinding : B[Action] extends AnalogBinding ? AnalogBinding : Buttons
+}
 
 /** One button's reading, the subset of the browser's `GamepadButton` the module reads. */
 export interface ButtonReading {
@@ -198,6 +235,8 @@ export interface Snapshot<B extends Bindings> {
   readonly actions: { readonly [Action in ButtonNames<B>]: ActionState }
   /** Each vector action's direction, length at most 1, `y` growing down. */
   readonly vectors: { readonly [Action in VectorNames<B>]: Vector }
+  /** Each analog action's value from 0 to 1: the strongest of its buttons (see {@link analog}). */
+  readonly analogs: { readonly [Action in AnalogNames<B>]: number }
   /** Every button's state by name, whatever the bindings. */
   readonly buttons: { readonly [Name in Button]: ActionState }
   /** The left stick's tilt, whatever the bindings. */
@@ -273,7 +312,7 @@ const zero: Vector = { x: 0, y: 0 }
  * resource before the first capture.
  */
 export const idle = <const B extends Bindings>(bindings: B): Snapshot<B> => {
-  return { actions: idleActions(bindings), vectors: idleVectors(bindings) as Snapshot<B>["vectors"], buttons: idleButtons(buttonNames), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, used: false, standard: true, connected: false, id: null }
+  return { actions: idleActions(bindings), vectors: idleVectors(bindings) as Snapshot<B>["vectors"], analogs: idleAnalogs(bindings) as Snapshot<B>["analogs"], buttons: idleButtons(buttonNames), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, used: false, standard: true, connected: false, id: null }
 }
 
 const sameVector = (a: Vector, b: Vector): boolean => a.x === b.x && a.y === b.y
@@ -300,21 +339,41 @@ const tracker = <B extends Bindings>(initial: B) => {
       bindings = next
       buttons.rebind(flattenButtons<Button>(next))
     },
-    snapshot(analog: Omit<Snapshot<B>, "actions" | "vectors" | "buttons" | "used">): Snapshot<B> {
+    snapshot(analog: Omit<Snapshot<B>, "actions" | "vectors" | "analogs" | "buttons" | "used">): Snapshot<B> {
       const taken = buttons.take()
       // The actions are fixed at creation; a rebind only changes how each is bound.
       const { actions, held } = splitActions(initial, taken.actions)
       const vectors: Record<string, Vector> = {}
+      const analogs: Record<string, number> = {}
       for (const [name, entry] of Object.entries(initial)) {
+        if (isAnalogBinding(entry)) {
+          analogs[name] = analogValue((bindings[name] as AnalogBinding).buttons, buttons.held, analog)
+          continue
+        }
         if (!isVectorBinding(entry)) continue
         const binding = bindings[name] as VectorBinding
         const pad = digital(held(name, "up"), held(name, "down"), held(name, "left"), held(name, "right"))
         vectors[name] = binding.stick === undefined ? pad : longer(analog[binding.stick], pad)
       }
       const used = anyUsed(taken.buttons) || !sameVector(analog.left, zero) || !sameVector(analog.right, zero)
-      return { actions, vectors, buttons: taken.buttons, ...analog, used } as Snapshot<B>
+      return { actions, vectors, analogs, buttons: taken.buttons, ...analog, used } as Snapshot<B>
     }
   }
+}
+
+/**
+ * An analog action's value: the strongest of its buttons, a trigger by its
+ * pull (1 while held when the pad reports no pull, as a pad without the
+ * standard mapping or a timeline that only presses it), any other button 1
+ * while held.
+ */
+const analogValue = (bound: Buttons, held: ReadonlySet<Button>, pulls: { readonly leftTrigger: number; readonly rightTrigger: number }): number => {
+  let value = 0
+  for (const button of bound) {
+    const pull = button === "leftTrigger" ? pulls.leftTrigger : button === "rightTrigger" ? pulls.rightTrigger : 0
+    value = Math.max(value, pull > 0 ? unit(pull) : held.has(button) ? 1 : 0)
+  }
+  return value
 }
 
 /** Whether the pad's axes are the standard mapping's sticks; any other pad's axes are unknown. */
@@ -647,7 +706,7 @@ export interface Recording<B extends Bindings> extends Actions<B> {
  */
 export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B> => {
   const entries: Array<TimelineEntry> = []
-  let previous: Omit<Snapshot<B>, "actions" | "vectors" | "id" | "used" | "standard"> = { buttons: idleButtons(buttonNames), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, connected: false }
+  let previous: Omit<Snapshot<B>, "actions" | "vectors" | "analogs" | "id" | "used" | "standard"> = { buttons: idleButtons(buttonNames), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, connected: false }
   let frame = 0
   return {
     snapshot() {
@@ -756,7 +815,8 @@ export type InvalidRebinding = ButtonsInternal.InvalidRebinding
  * buttons for `bindings`: an object with exactly the same action names, each
  * mapped to a non-empty array of button names (for a vector action, an
  * object with an optional `stick` and buttons for all four directions or
- * none, as `Gamepad.vector` saves). Pass the result to
+ * none, as `Gamepad.vector` saves; for an analog action, `{ buttons }`, as
+ * `Gamepad.analog` saves). Pass the result to
  * {@link Actions.rebind}; on failure, keep the defaults.
  *
  * @example

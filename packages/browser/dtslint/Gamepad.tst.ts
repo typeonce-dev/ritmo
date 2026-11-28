@@ -108,3 +108,27 @@ describe("Gamepad.pads", () => {
     Gamepad.pads(host, { jump: ["south"] }, count)
   })
 })
+
+describe("Gamepad.analog", () => {
+  it("types analog actions apart from buttons and vectors", () => {
+    const input = Gamepad.actions(host, { gas: Gamepad.analog(["rightTrigger", "south"]), jump: ["south"] })
+    expect(input.snapshot().analogs).type.toBe<{ readonly gas: number }>()
+    expect(Gamepad.idle({ gas: Gamepad.analog(["rightTrigger"]) }).analogs.gas).type.toBe<number>()
+    expect(Gamepad.analog(["leftTrigger"])).type.toBe<Gamepad.AnalogBinding>()
+    // @ts-expect-error Property 'gas' does not exist
+    input.snapshot().actions.gas
+    // @ts-expect-error Property 'jump' does not exist
+    input.snapshot().analogs.jump
+    // @ts-expect-error Type '"pedal"' is not assignable to type
+    Gamepad.analog(["pedal"])
+    // @ts-expect-error Source has 0 element(s) but target requires 1
+    Gamepad.analog([])
+  })
+
+  it("rebinds an analog action only to an analog binding", () => {
+    const input = Gamepad.actions(host, { gas: Gamepad.analog(["rightTrigger"]), jump: ["south"] })
+    expect(input.rebind).type.toBeCallableWith({ gas: Gamepad.analog(["leftTrigger"]), jump: ["east"] })
+    expect(input.rebind).type.not.toBeCallableWith({ gas: ["leftTrigger"], jump: ["east"] })
+    expect(input.rebind).type.not.toBeCallableWith({ gas: Gamepad.vector({ stick: "left" }), jump: ["east"] })
+  })
+})
