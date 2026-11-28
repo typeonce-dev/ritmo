@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { Netcode } from "@typeonce/ritmo-netcode"
+import * as Runtime from "@typeonce/ritmo/Runtime"
 
 import { Fired, idle, pressed, type PlayerInput } from "./game.ts"
 import { frame, reference, setUpMatch, type MatchPeer } from "./match.ts"
@@ -21,7 +22,7 @@ const watch = (peer: MatchPeer) => {
   }
   /** Ticks handed out as predicted and not withdrawn or confirmed since. */
   const outstanding = new Set<number>()
-  const confirmed: Array<Netcode.EventRecord<{ readonly seat: number; readonly x: number }>> = []
+  const confirmed: Array<Runtime.EventRecord<{ readonly seat: number; readonly x: number }>> = []
   const read = () => {
     const settled = reader.confirmed()
     for (const record of settled) {
@@ -167,14 +168,14 @@ describe("session.events", () => {
     const match = setUpMatch({ mode: "lockstep", latencyMS: 0, jitterMS: 0, inputDelay: 0 })
     const [host] = match.peers
     const reader = host!.session.events(Fired)
-    const frames = Netcode.eventWindow * 2
+    const frames = Runtime.eventWindow * 2
     for (let at = 0; at < frames; at++) frame(match, at, (seat) => ({ ...pressed(seat, at), fire: true }))
     const { tick } = host!.session.status()
     const lost = reader.lost()
     expect(lost?._tag).toBe("EventsLost")
     expect(lost!.reason).toBe("unread")
     expect(lost!.from).toBeLessThan(10)
-    expect(lost!.to).toBe(tick - Netcode.eventWindow)
+    expect(lost!.to).toBe(tick - Runtime.eventWindow)
     // Reported once.
     expect(reader.lost()).toBeUndefined()
     const kept = reader.confirmed()
@@ -243,7 +244,7 @@ describe("session.events", () => {
     })
 
     it("reports a resync first, and what the reader did not read in time on the next call", () => {
-      const { otherReader, resyncAt } = resyncAhead(() => ({ dx: 1, fire: true }), { tail: Netcode.eventWindow + 60, read: false })
+      const { otherReader, resyncAt } = resyncAhead(() => ({ dx: 1, fire: true }), { tail: Runtime.eventWindow + 60, read: false })
       expect(otherReader.lost()).toEqual({ _tag: "EventsLost", from: resyncAt, to: resyncAt + 2, reason: "resync" })
       expect(otherReader.lost()).toMatchObject({ _tag: "EventsLost", from: 2, reason: "unread" })
       expect(otherReader.lost()).toBeUndefined()

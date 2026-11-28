@@ -80,6 +80,7 @@ import { makeQueryEngine } from "./internal/queries.ts"
 import type { Reverts as QueryReverts } from "./internal/queries.ts"
 import { requirementIndex } from "./internal/requirements.ts"
 import * as Streams from "./internal/streams.ts"
+import * as HostReadersInternal from "./internal/hostReaders.ts"
 import { deepFreeze } from "./internal/freeze.ts"
 import { makeWorld } from "./internal/world.ts"
 import type { WorldHooks, WorldMark, WorldRewind } from "./internal/world.ts"
@@ -831,6 +832,104 @@ export interface Runtime<
    * running is a defect and throws: inside a tick, emit from a system.
    */
   readonly send: <D extends Schema.EventDescriptor<S>>(descriptor: D, value: ReadonlyValue<Descriptor.Value<D>>) => void
+  /**
+   * A new host reader of `descriptor`'s events, an event of the runtime's
+   * schema: the host's way out of a tick (sounds, particles, rumble, a HUD
+   * flash). It holds every event a system publishes from the next tick on,
+   * however many ticks run before the host reads (a `FixedLoop` frame of
+   * several steps), until the host takes them; see {@link EventReader}.
+   * Events the host sent with `send` are not handed back. Make one reader
+   * per place that acts on the event, once, next to the runtime; take from
+   * it after ticking (from `FixedLoop`'s `render`). A reader that is no
+   * longer read is closed, or it keeps the last {@link eventWindow} ticks.
+   *
+   * Under a netcode session, read `session.events(...)` instead: a rollback
+   * rewinds the runtime and runs ticks again, which this reader reports on
+   * every rollback (`"rewind"`), while the session's reader hands out each
+   * tick once, as it finally ran. On a debug runtime, the devtools lints
+   * count an event as read only when a system reads it or it is declared
+   * as read by the host (`debug.declareHostReads`, or `hostReads` in a lint
+   * target or devtools session).
+   *
+   * Throws for an event outside the schema, like `send`.
+   *
+   * @example
+   * ```ts
+   * declare const playSound: (amount: number) => void
+   * // ---cut---
+   * const hits = runtime.events(Hit)
+   * // In the frame loop's render, after the frame's steps ran:
+   * for (const { value } of hits.take()) playSound(value.amount)
+   * const lost = hits.lost() // EventsLost when the reader fell behind, a restore, or a rewind; never silent
+   * ```
+   */
+  readonly events: <D extends Schema.EventDescriptor<S>>(descriptor: D) => EventReader<ReadonlyValue<Descriptor.Value<D>>>
+}
+
+/**
+ * One event the simulation published, and the tick that published it: for
+ * `runtime.events(...)`, how many ticks the runtime had begun (the first
+ * tick is 1; the count never goes back, even across a restore or a rewind);
+ * for a netcode session's `session.events(...)`, the session's tick.
+ */
+export interface EventRecord<Value> {
+  readonly tick: number
+  readonly value: Value
+}
+
+/**
+ * Events of ticks `from` up to `to` (excluded) that a host reader cannot
+ * rely on, and why (`reason`). The reasons of `runtime.events(...)`:
+ *
+ * - `"unread"`: dropped before the reader took them: it was not read for
+ *   more than {@link eventWindow} ticks, or one tick published more than
+ *   {@link streamCapacity} events.
+ * - `"restore"`: `runtime.restore` replaced the world while these events
+ *   were unread; they are dropped, like every event of the replaced world.
+ * - `"rewind"`: `runtime.rewind` undid these ticks after the reader saw
+ *   them: what it handed out of them did not happen in the world as it is
+ *   now, unread ones are dropped, and the ticks that run again publish
+ *   their events again, under new ticks. Stop or ignore what the undone
+ *   ones started if it matters.
+ *
+ * A netcode session's reader has reasons of its own (see `EventStreams`).
+ */
+export interface EventsLost<Reason extends string = "unread" | "restore" | "rewind"> {
+  readonly _tag: "EventsLost"
+  readonly from: number
+  readonly to: number
+  readonly reason: Reason
+}
+
+/** How many ticks of events a host reader that is not read keeps (`runtime.events(...)`, and a netcode session's confirmed events); older ones are lost, reported with `reason: "unread"`. */
+export const eventWindow: number = HostReadersInternal.window
+
+/**
+ * One host reader of one event of the simulation, made by
+ * `runtime.events(descriptor)`. Each read hands out what is new since this
+ * reader's previous read, once, oldest tick first; two readers of the same
+ * event each get every event. Records are read-only: they are the world's
+ * values, not copies. Read it between ticks: calling it while a schedule is
+ * running throws.
+ *
+ * - A restore drops what was unread, reported by `lost()` (`"restore"`).
+ * - A rewind undoes the ticks after its checkpoint: `lost()` reports the
+ *   ones this reader saw (`"rewind"`), and the ticks that run again are
+ *   handed out again.
+ * - `close()` lets go of what it holds: it is read no more, and costs the
+ *   runtime nothing.
+ */
+export interface EventReader<Value> {
+  /** Every event published since the previous `take()` (since the reader was made, at first), each handed out once. */
+  readonly take: () => ReadonlyArray<EventRecord<Value>>
+  /**
+   * Events lost since the previous report: `undefined` when none. One
+   * report per call: when several reasons are pending, a `"rewind"` one
+   * comes first, then `"restore"`, then `"unread"`, one on each call.
+   */
+  readonly lost: () => EventsLost | undefined
+  /** Stops this reader: it holds nothing, and `take()` hands out nothing from now on. Closing again does nothing. */
+  readonly close: () => void
 }
 
 /**
@@ -2659,6 +2758,8 @@ const makeValidatedRuntime = <
   }
   /** Events declared as sent by the host (`debug.declareHostEvents`). */
   let hostEvents = new Set<string>()
+  /** Events declared as read by the host (`debug.declareHostReads`). */
+  let hostReads = new Set<string>()
 
   const send = (descriptor: Descriptor<"event", string, any>, value: unknown): void => {
     if (frameOpen) throw openFrameDefect(`runtime.send(${descriptor.name})`)
@@ -2674,7 +2775,24 @@ const makeValidatedRuntime = <
     if (tracing) emit({ type: "runtime.sent", frame: frameCount, tick: published, event: descriptor.name, value })
   }
 
+  /** `runtime.events(...)` readers: copied from the event streams between ticks, before the streams trim. */
+  const hostReaders = HostReadersInternal.make({
+    streams: events,
+    currentTick: () => world.currentTick(),
+    frame: () => frameCount,
+    between: (call) => {
+      if (frameOpen) throw openFrameDefect(call)
+      if (inTick) throw new Error(`${call} was called while a schedule is running: read the events from a system instead`)
+    }
+  })
+
+  const hostEventReader = (descriptor: Descriptor<"event", string, any>): EventReader<unknown> => {
+    if (!eventsByKey.has(descriptor.key)) throw new Error(`runtime.events: ${descriptor.name} is not an event of this runtime's schema`)
+    return hostReaders.make(descriptor.key, descriptor.name)
+  }
+
   const advanceFrame = (): void => {
+    if (hostReaders.active()) hostReaders.pull()
     frameCount += 1
     const boundary = world.advanceFrame()
     if (tracing) emit({ type: "frame", frame: frameCount, tick: world.currentTick() })
@@ -3100,6 +3218,7 @@ const makeValidatedRuntime = <
     // ran before the load finds no record from before it and is lagged, and
     // the saved entities show as added. Checkpoints taken before it stand
     // for a world that no longer leads here.
+    if (hostReaders.active()) hostReaders.pull()
     releaseMarks(0, "restored")
     pendingCommands.length = 0
     pendingOrigins.length = 0
@@ -3131,6 +3250,7 @@ const makeValidatedRuntime = <
     for (const [key, value] of restoredMachines) currentMachines.set(key, value)
     // Locals are not saved: each system starts over from its factory.
     localSlots.forEach(({ slot }, index) => { (slot.context as { local: unknown }).local = rebuiltLocals[index] })
+    if (hostReaders.active()) hostReaders.restored()
     return succeeded
   }
 
@@ -3146,6 +3266,8 @@ const makeValidatedRuntime = <
   interface RuntimeMark {
     readonly owner: object
     readonly world: WorldMark
+    /** How many ticks the runtime had begun when it was taken. */
+    readonly frame: number
     readonly resources: ReadonlyMap<symbol, unknown>
     readonly resourceChangedAt: ReadonlyMap<symbol, number>
     readonly currentMachines: ReadonlyMap<symbol, unknown>
@@ -3222,6 +3344,7 @@ const makeValidatedRuntime = <
     const mark: RuntimeMark = {
       owner: checkpointOwner,
       world: world.takeMark(),
+      frame: frameCount,
       resources: new Map(resources),
       resourceChangedAt: new Map(resourceChangedAt),
       currentMachines: new Map(currentMachines),
@@ -3319,6 +3442,11 @@ const makeValidatedRuntime = <
     for (const command of mark.pendingCommands) pendingCommands.push(command)
     pendingOrigins.length = 0
     for (const origin of mark.pendingOrigins) pendingOrigins.push(origin)
+    // Host readers copy what the undone ticks published before the streams go back.
+    if (hostReaders.active()) {
+      hostReaders.pull()
+      hostReaders.rewound(mark.frame)
+    }
     events.rewind(mark.events, mark.world.tick)
     transitionEvents.rewind(mark.transitionEvents, mark.world.tick)
     relationFailures.rewind(mark.relationFailures, mark.world.tick)
@@ -3378,6 +3506,7 @@ const makeValidatedRuntime = <
     checkpoint: checkpoint as Runtime<S, Services, Resources, Root, Machines>["checkpoint"],
     // Restore failures are typed per service in the interface; the runtime only knows their names.
     rewind: tracedRewind as Runtime<S, Services, Resources, Root, Machines>["rewind"],
+    events: hostEventReader as Runtime<S, Services, Resources, Root, Machines>["events"],
     inspect,
     send: send as Runtime<S, Services, Resources, Root, Machines>["send"]
   }
@@ -3595,6 +3724,9 @@ const makeValidatedRuntime = <
     declareHostEvents(declared) {
       hostEvents = new Set(declared.map((descriptor) => descriptor.name))
     },
+    declareHostReads(declared) {
+      hostReads = new Set(declared.map((descriptor) => descriptor.name))
+    },
     describe: () => DebugInternal.describe({
       schema: options.schema,
       machines: [...new Set(machinesByName.values())],
@@ -3607,6 +3739,7 @@ const makeValidatedRuntime = <
         return typeof report === "function" ? [[name, report.call(value)] as const] : []
       }),
       externallyWrittenEvents: new Set([...externallyWrittenEvents, ...hostEvents]),
+      hostReadEvents: hostReads,
       relationMutations,
       commandUses,
       ranSystems,

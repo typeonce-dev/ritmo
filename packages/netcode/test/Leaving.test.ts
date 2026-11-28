@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { HostClock } from "@typeonce/ritmo"
+import type * as Runtime from "@typeonce/ritmo/Runtime"
 import { MemoryNetworkLink, MemoryVisibility, Netcode } from "@typeonce/ritmo-netcode"
 
 import { Fired, idle, makePeer, pressed, simulate, step, type PlayerInput } from "./game.ts"
@@ -28,7 +29,7 @@ const expectAgreement = (match: Match) => {
 const readers = (match: Match) => {
   const seen = match.peers.map((peer) => ({
     reader: peer.session.events(Fired),
-    confirmed: [] as Array<Netcode.EventRecord<{ readonly seat: number; readonly x: number }>>,
+    confirmed: [] as Array<Runtime.EventRecord<{ readonly seat: number; readonly x: number }>>,
     lost: [] as Array<Netcode.EventsLost>
   }))
   const read = () => {

@@ -1,4 +1,5 @@
 import { Descriptor, Entity, Schema } from "@typeonce/ritmo"
+import type * as Runtime from "@typeonce/ritmo/Runtime"
 import { describe, expect, it } from "tstyche"
 
 const Ping = Descriptor.Event<number>()("Types/Ping")
@@ -59,6 +60,27 @@ describe("host APIs", () => {
     runtime.send(Outside, 1)
     // @ts-expect-error is not assignable to parameter of type
     runtime.send(Ready, true)
+  })
+
+  it("reads only schema events back, as read-only records", () => {
+    const runtime = Game.Runtime.make({ services: Game.Runtime.services() }).value
+    const pings = runtime.events(Ping)
+    expect(pings).type.toBe<Runtime.EventReader<number>>()
+    expect(pings.take()).type.toBe<ReadonlyArray<Runtime.EventRecord<number>>>()
+    expect(pings.lost()).type.toBe<Runtime.EventsLost | undefined>()
+    expect<NonNullable<ReturnType<typeof pings.lost>>["reason"]>().type.toBe<"unread" | "restore" | "rewind">()
+    const Moved = Descriptor.Event<{ x: number }>()("Types/Moved")
+    const Moves = Schema.bind(Schema.fragment({ events: { Moved } }), Schema.defineRoot("MovesTypes"))
+    const moves = Moves.Runtime.make({ services: Moves.Runtime.services() }).value.events(Moved)
+    const [record] = moves.take()
+    // @ts-expect-error Cannot assign to 'x' because it is a read-only property
+    record!.value.x = 1
+    // @ts-expect-error Cannot assign to 'tick' because it is a read-only property
+    record!.tick = 1
+    // @ts-expect-error parameter of type 'Descriptor<"event", "Types/Ping", number>'
+    runtime.events(Outside)
+    // @ts-expect-error parameter of type 'Descriptor<"event", "Types/Ping", number>'
+    runtime.events(Ready)
   })
 
   it("keeps numeric brands, roots, ids, and intents distinct", () => {

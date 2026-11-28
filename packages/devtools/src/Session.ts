@@ -161,6 +161,8 @@ export interface Options<
   }
   /** Events the host publishes with `runtime.send`: written, for the lints (see `Debug.Handle.declareHostEvents`). */
   readonly hostEvents?: ReadonlyArray<Schema.EventDescriptor<S>>
+  /** Events the host reads (`runtime.events`, or a netcode session's `events`): read, for the lints (see `Debug.Handle.declareHostReads`). */
+  readonly hostReads?: ReadonlyArray<Schema.EventDescriptor<S>>
   /**
    * Checked after every frame of every run, in order; the first violation
    * stops the run. Built with `Invariant.fromInspector(Game.Inspector(...))`.
@@ -595,6 +597,7 @@ export const make = <
   const described = options.describe ?? {}
   debug.nameSchedules({ ...described, ...schedules })
   debug.declareHostEvents(options.hostEvents ?? [])
+  debug.declareHostReads(options.hostReads ?? [])
 
   const history: Array<FrameRecord> = []
   let current: FrameRecord = { frame: debug.frame(), events: [] }

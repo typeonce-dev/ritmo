@@ -5,6 +5,7 @@
  * ticked with the input each seat's session recorded.
  */
 import { HostClock } from "@typeonce/ritmo"
+import type * as Runtime from "@typeonce/ritmo/Runtime"
 import { MemoryNetworkLink, Netcode } from "@typeonce/ritmo-netcode"
 
 import { draw, Game, Hit, idle, makeRuntime, playerInput, setup, simulate, step, type GameRuntime, type PlayerInput, type Screen } from "./game.ts"
@@ -16,7 +17,7 @@ export interface Peer {
   /** The input this seat's session recorded, by tick. */
   readonly recorded: Map<number, PlayerInput>
   /** Every hit the host was told of once its tick was confirmed, as a sound would play it: once. */
-  readonly heard: Array<Netcode.EventRecord<HitValue>>
+  readonly heard: Array<Runtime.EventRecord<HitValue>>
   /** Hits on screen as a flash: started when predicted, taken down when withdrawn, by tick. */
   readonly flashes: Map<number, Array<HitValue>>
   /** Ticks before a resync's save that this peer ran on a guess the host's world did not share: their hits are not known here. */
@@ -101,7 +102,7 @@ export const truth = (peers: readonly [Peer, Peer], ticks: number) => {
   if (!runtime.tick(setup).ok) fail("setup", "truth")
   const saved = runtime.snapshot()
   if (!saved.ok || !runtime.restore(JSON.parse(JSON.stringify(saved.value))).ok) fail("start", "truth")
-  const hits: Array<Netcode.EventRecord<HitValue>> = []
+  const hits: Array<Runtime.EventRecord<HitValue>> = []
   for (let tick = 0; tick < ticks; tick++) {
     current = [peers[0].recorded.get(tick) ?? idle, peers[1].recorded.get(tick) ?? idle]
     if (!runtime.tick(simulate).ok) fail("tick", tick)

@@ -56,6 +56,16 @@ describe("Lint.run", () => {
     expect(quiet.data.ok).toBe(true)
   })
 
+  it("counts declared host reads as read", () => {
+    const loud = Lint.run({ runtime: runtime(), schedules: { update: Game.Schedule(Emit) } })
+    expect(loud.text).toContain("declare it (debug.declareHostReads, or hostReads in a Session or lint target)")
+    const quiet = Lint.run({ runtime: runtime(), schedules: { update: Game.Schedule(Emit) }, hostReads: [Ping] })
+    expect(quiet.data.ok).toBe(true)
+    // A host reader alone does not write the event.
+    const unwritten = Lint.run({ runtime: runtime(), schedules: { update: Game.Schedule() }, hostReads: [Ping] })
+    expect(unwritten.text).toContain("warning event-never-written LintTest/Ping: LintTest/Ping is read by the host but no described system emits it")
+  })
+
   it("counts describe-only schedules as readers", () => {
     const report = Lint.run({ runtime: runtime(), schedules: { update: Game.Schedule(Emit) }, describe: { render: Game.Schedule(Read) } })
     expect(report.data.ok).toBe(true)

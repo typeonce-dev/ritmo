@@ -160,6 +160,10 @@ describe("Lint.run", () => {
     expect(Lint.run).type.not.toBeCallableWith({ runtime, schedules: { update }, hostEvents: [Foreign] })
     expect(runtime.debug.declareHostEvents).type.not.toBeCallableWith([Foreign])
     expect(runtime.debug.declareHostEvents).type.toBeCallableWith([Request])
+    expect(Lint.run({ runtime, schedules: { update }, hostReads: [Request] }).data).type.toBe<Lint.Report>()
+    expect(Lint.run).type.not.toBeCallableWith({ runtime, schedules: { update }, hostReads: [Foreign] })
+    expect(runtime.debug.declareHostReads).type.not.toBeCallableWith([Foreign])
+    expect(runtime.debug.declareHostReads).type.toBeCallableWith([Request])
   })
 
   it("requires a runtime made with debug: { hostClock }", () => {

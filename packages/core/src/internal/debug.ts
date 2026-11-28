@@ -291,6 +291,8 @@ export interface DescribeInput {
   /** Findings provided services report through `Debug.serviceLints`, by service name. */
   readonly serviceLints: ReadonlyArray<readonly [string, ReadonlyArray<Debug.ServiceLint>]>
   readonly externallyWrittenEvents: ReadonlySet<string>
+  /** Events the host reads (`debug.declareHostReads`): read, for `event-never-read`. */
+  readonly hostReadEvents: ReadonlySet<string>
   /** Relations commands have tried to relate or reorder, by the queuing systems. */
   readonly relationMutations: ReadonlyMap<string, ReadonlySet<string>>
   /** What each system's applied commands did, as `kind:name`; see `Runtime`. */
@@ -353,6 +355,7 @@ export const describe = (input: DescribeInput): Debug.Description => {
   const events = new Index(eventDescriptors.map((descriptor) => descriptor.name))
   const nextStates = new Map<string, Array<string>>()
   for (const name of input.externallyWrittenEvents) events.write(name, "runtime.send")
+  for (const name of input.hostReadEvents) events.read(name, "the host")
   for (const system of systems) {
     for (const query of system.queries) {
       for (const name of [...query.reads, ...query.optional, ...query.with, ...query.added, ...query.changed, ...anyOfNames(query)]) {
@@ -642,7 +645,7 @@ const queuedWithParents = (machine: Machine.StateMachine.Any, nextStates: Readon
 const fixFor = (code: Debug.Lint["code"], subject: string): string => {
   switch (code) {
     case "event-never-read":
-      return `read ${subject} in a system with Game.System.readEvent, or stop emitting it; if only a render schedule reads it, pass that schedule as describe-only`
+      return `read ${subject} in a system with Game.System.readEvent, or stop emitting it; if only a render schedule reads it, pass that schedule as describe-only; if the host reads it (runtime.events, or a netcode session's events), declare it (debug.declareHostReads, or hostReads in a Session or lint target)`
     case "event-never-written":
       return `emit ${subject} from a system with Game.System.writeEvent, or stop reading it; if the host sends it with runtime.send, declare it (debug.declareHostEvents, or hostEvents in a Session or lint target)`
     case "next-state-never-applied":

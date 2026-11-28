@@ -99,6 +99,8 @@ export interface Streams<T> {
   append(key: symbol, tick: number, values: ReadonlyArray<T>, surviveRestore?: boolean): void
   /** Values for `key` stamped after `since`, oldest first. */
   since(key: symbol, since: number): ReadonlyArray<T>
+  /** Visits each batch for `key` stamped after `since`, oldest first, with whether the host published it (`runtime.send`). */
+  eachBatch(key: symbol, since: number, visit: (values: ReadonlyArray<T>, host: boolean) => void): void
   /**
    * Whether values for `key` stamped after `since` (and after `registeredAt`,
    * when the reader started) were dropped before being read.
@@ -211,6 +213,13 @@ export const make = <T>(capacity: number): Streams<T> => {
         for (let offset = 0; offset < batch.length; offset++) values.push(batch[offset]!)
       }
       return values
+    },
+    eachBatch(key, since, visit) {
+      const log = logs.get(key)
+      if (log === undefined) return
+      for (let index = firstAfter(log.ticks, since); index < log.batches.length; index++) {
+        visit(log.batches[index]!, log.surviveRestore[index]!)
+      }
     },
     lagged(key, since, registeredAt) {
       return Math.max(logs.get(key)?.droppedThrough ?? 0, clearedAt) > Math.max(since, registeredAt)

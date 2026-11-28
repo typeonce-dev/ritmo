@@ -490,6 +490,28 @@ const events: BenchCase = {
   }
 }
 
+const hostEvents: BenchCase = {
+  name: "events/host-reader-10k",
+  description: "Emit 10k events, then take them from a host reader (runtime.events)",
+  setup: () => {
+    const runtime = makeRuntime()
+    const Emit = Game.System("Bench/HostEmit", { events: { ping: Game.System.writeEvent(Ping) } }, ({ events }) =>
+      {
+        for (let index = 0; index < N; index++) events.ping.emit(index)
+      })
+    const pings = runtime.events(Ping)
+    const schedule = Game.Schedule(Emit)
+    let total = 0
+    return {
+      run: () => {
+        if (!runtime.tick(schedule).ok) throw new Error("the emit tick failed")
+        for (const record of pings.take()) total += record.value
+        if (total < 0) throw new Error("unreachable")
+      }
+    }
+  }
+}
+
 const hierarchy: BenchCase = {
   name: "relations/descendants-100x100",
   description: "Traverse descendants of 100 roots with 100 children each",
@@ -783,6 +805,7 @@ export const cases: ReadonlyArray<BenchCase> = [
   longOrdered,
   lookupGet,
   events,
+  hostEvents,
   hierarchy,
   snapshotRoundTrip,
   frame,
