@@ -11,16 +11,16 @@
  */
 
 /** Bumped when a message changes shape; peers on another version fail with `ProtocolMismatch`. */
-export const version = 6
+export const version = 7
 
 /**
  * Why a seat is out of the match: it sent nothing for too long, its link
- * closed, another session took its seat (a reloaded page), or the game told
- * a session to drop it.
+ * closed, another session took its seat (a reloaded page), the game told
+ * a session to drop it, or it said it leaves (`bye`).
  */
-export type Why = "timeout" | "closed" | "restarted" | "dropped"
+export type Why = "timeout" | "closed" | "restarted" | "dropped" | "left"
 
-const whys: ReadonlyArray<unknown> = ["timeout", "closed", "restarted", "dropped"]
+const whys: ReadonlyArray<unknown> = ["timeout", "closed", "restarted", "dropped", "left"]
 
 /** Most inputs one message carries: a peer far behind catches up over several frames. A message with more is malformed. */
 export const maxInputsPerMessage = 64
@@ -202,7 +202,20 @@ export interface Out extends Base {
   readonly tick: number
 }
 
-export type Message = Hello | Sync | Resync | Inputs | Sum | Ping | Pong | Hidden | Gone | Left | Out
+/**
+ * The sender's session (`session` as in {@link Hello}) leaves the match for
+ * good and sends nothing more: the others stop waiting for it at once, as
+ * after a `drop`, with `"left"`. Sent several times in a row, each in a
+ * bundle of its own after the sender's inputs; a peer that heard it passes
+ * it on in its reports (`gone`, with `why: "left"`), which any peer takes
+ * up. Before the match starts, seat 0 forgets the sender's hello.
+ */
+export interface Bye extends Base {
+  readonly k: "bye"
+  readonly session: number
+}
+
+export type Message = Hello | Sync | Resync | Inputs | Sum | Ping | Pong | Hidden | Gone | Left | Out | Bye
 
 /**
  * A bundle's messages, and how many of them were malformed (dropped, the
@@ -379,6 +392,9 @@ const parseOne = (raw: unknown, from: number, bundleEpoch: number, seats: number
       return { k: "hello", from, epoch, session: value["session"] }
     case "resync":
       return { k: "resync", from, epoch }
+    case "bye":
+      if (!isTime(value["session"])) return undefined
+      return { k: "bye", from, epoch, session: value["session"] }
     case "sync": {
       const returned = value["returned"]
       const sessions = value["sessions"]

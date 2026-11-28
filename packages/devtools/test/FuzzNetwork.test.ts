@@ -163,9 +163,10 @@ describe("Fuzz.run over a network", () => {
       if (found.ok || found.error._tag !== "Found") throw new Error(JSON.stringify(found))
       expect(found.error.violation).toMatchObject({ _tag: "SessionFailed", error: { _tag: "Desynced" } })
       expect(found.error.left.length).toBeGreaterThan(0)
-      for (const { seat, frame } of found.error.left) {
+      for (const { seat, frame, how } of found.error.left) {
         expect(seat).toBeLessThan(4)
         expect(frame).toBeLessThan(240)
+        expect(["leave", "close"]).toContain(how)
       }
       // The replay holds the `left` input for a seat from the frame it left on.
       const [first] = found.error.left

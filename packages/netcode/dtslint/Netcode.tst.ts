@@ -42,6 +42,7 @@ const hostClock = HostClock.test()
 declare const link: NetworkLink.NetworkLink
 declare const theLinks: ReadonlyArray<MemoryNetworkLink.MemoryNetworkLink>
 const options = { seats: theSeats, seat: 0, links: [link], hostClock, step }
+declare const channelName: string
 
 describe("Netcode.seats", () => {
   it("infers the input type from the schema", () => {
@@ -222,6 +223,15 @@ describe("WebSocketNetworkLink and WebRtcNetworkLink", () => {
     expect(WebSocketNetworkLink.make(new WebSocket("wss://relay.example.com"))).type.toBe<NetworkLink.NetworkLink>()
   })
 
+  it("share a socket under a prefix the game's own messages never start with", () => {
+    expect(WebSocketNetworkLink.make(new WebSocket("wss://relay.example.com"), { prefix: "n" })).type.toBe<NetworkLink.NetworkLink>()
+    expect(WebSocketNetworkLink.make).type.toBeCallableWith(new WebSocket("wss://relay.example.com"), { prefix: channelName })
+    // @ts-expect-error prefix is a non-empty string that the game's own messages never start with
+    WebSocketNetworkLink.make(new WebSocket("wss://relay.example.com"), { prefix: "" })
+    expect(WebSocketNetworkLink.make).type.not.toBeCallableWith(new WebSocket("wss://relay.example.com"), { prefix: 1 })
+    expect(WebSocketNetworkLink.make).type.not.toBeCallableWith(new WebSocket("wss://relay.example.com"), {})
+  })
+
   it("reject what is not a socket", () => {
     expect(WebSocketNetworkLink.make).type.not.toBeCallableWith({ send: (_: string) => {} })
     expect(WebRtcNetworkLink.make).type.not.toBeCallableWith(new WebSocket("wss://relay.example.com"))
@@ -368,13 +378,22 @@ describe("a seat that leaves", () => {
     expect(session.value.drop).type.not.toBeCallableWith("1")
   })
 
+  it("leaves on purpose, with nothing to pass and nothing back, in both sessions", () => {
+    const rolling = Netcode.rollback(runtime, { ...options, simulate })
+    const stepping = Netcode.lockstep(runtime, { ...options, simulate })
+    if (!rolling.ok || !stepping.ok) return
+    expect(rolling.value.leave()).type.toBe<void>()
+    expect(stepping.value.leave).type.toBe<() => void>()
+    expect(rolling.value.leave).type.not.toBeCallableWith(1)
+  })
+
   it("is named in status().left with why and when, or not at all", () => {
     const session = Netcode.lockstep(runtime, { ...options, simulate })
     if (!session.ok) return
     const left = session.value.status().left
     expect(left).type.toBe<ReadonlyArray<Netcode.Left | undefined>>()
     expect<Netcode.Left>().type.toBe<{ readonly reason: Netcode.LeftReason; readonly lastInput: number; readonly tick: number }>()
-    expect<Netcode.LeftReason>().type.toBe<"timeout" | "closed" | "dropped" | "restarted">()
+    expect<Netcode.LeftReason>().type.toBe<"timeout" | "closed" | "dropped" | "restarted" | "left">()
     // @ts-expect-error Object is possibly 'undefined'
     left[1].tick.toFixed()
   })

@@ -78,6 +78,12 @@
  * Sessions: each session tells itself apart from another of the same seat
  * (a reloaded page) by its `hostClock` reading when it was made, in its
  * hellos and pings; the saves name the session of every seat.
+ *
+ * Leaving on purpose (`leave()`): the session sends its inputs and a `bye`
+ * a few times, then ends. A peer that hears it stops waiting for the seat
+ * at once (step 1, with `"left"`), and its reports pass the word on: a
+ * report that says `"left"` counts from any peer, since the seat said it
+ * itself. The roster then changes as for any seat that is gone.
  */
 import type { HostClock } from "@typeonce/ritmo"
 import type * as Checkpoint from "@typeonce/ritmo/Checkpoint"
@@ -300,6 +306,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
   let lastAdvance = clock.now()
   /** After such a gap, until when a report of this seat is taken as fair. */
   let excusedUntil = -Infinity
+  /** Per seat, the last session that said it leaves (`bye`): nothing more of it counts, its late hellos included. */
+  const byes: Array<number | undefined> = Array.from({ length: count }, () => undefined)
   /** Per seat, the link its messages arrive on (-1: none yet). */
   const linkOf: Array<number> = Array.from({ length: count }, () => -1)
   const linkClosed: Array<boolean> = options.links.map(() => false)
@@ -920,8 +928,8 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       const tick = message.start + index
       if (tick > contiguous[about]!) report.inputs.set(tick, message.inputs[index])
     }
-    // The seat that decides says so, or this peer decides and any playing peer does: stop waiting for it too.
-    if (other === decides || decides === seat) suspect(about, message.why)
+    // The seat that decides says so, or this peer decides and any playing peer does: stop waiting for it too. A seat that said it leaves is gone whoever passes that on.
+    if (other === decides || decides === seat || message.why === "left") suspect(about, message.why)
   }
 
   const sameChange = (one: Wire.Left, other: Wire.Left): boolean =>
@@ -1150,6 +1158,26 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
     applySync(message)
   }
 
+  /** `message.from`'s session leaves for good (`leave()`): stop waiting for it now, rather than after `timeoutMS`. */
+  const heardBye = (message: Wire.Bye): void => {
+    const other = message.from
+    byes[other] = message.session
+    if (asking.get(other)?.session === message.session) asking.delete(other)
+    if (message.session !== sessions[other]) return
+    if (epoch === 0) {
+      // Before the match: seat 0 forgets its hello, so no match starts with a seat that is gone. Another session of the seat can still say hello.
+      if (seat === 0) sessions = sessions.map((known, at) => at === other ? undefined : known)
+      return
+    }
+    if (gone[other] !== undefined) return
+    if (suspected[other] === undefined) suspect(other, "left")
+    else if (suspected[other] !== "left") {
+      // Stopped waiting for it already: the reports say why it is gone now.
+      suspected[other] = "left"
+      reportNow = true
+    }
+  }
+
   const receive = (message: Wire.Message, link: number): void => {
     const other = message.from
     if (other === seat) {
@@ -1165,6 +1193,12 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       if (message.k === "sync") heardSync(message)
       return
     }
+    if (message.k === "bye") {
+      heardBye(message)
+      return
+    }
+    // A session that left asks for nothing: a hello or ping of it that was on its way does not seat it again.
+    if ((message.k === "hello" || message.k === "ping") && message.session === byes[other]) return
     if (epoch > 0 && message.k === "hello") {
       const known = message.session === sessions[other]
       if (gone[other] !== undefined || !known) {
@@ -1639,6 +1673,20 @@ export const make = (mode: Mode, runtime: Driven, options: MakeOptions): Result.
       if (ended !== undefined || epoch === 0) return
       if (isHost()) pendingSync = true
       else wantSync = true
+    },
+    leave: () => {
+      if (ended !== undefined) return
+      // In a match, the inputs the others may lack go first: then the bye, which stops them taking more. Each copy is a bundle of its own, as for a hide: no frame follows.
+      const inMatch = epoch > 0 && out === undefined
+      const bye: Wire.Bye = { k: "bye", from: seat, epoch, session: sessionId }
+      for (let copy = 0; copy < copies; copy++) {
+        if (inMatch) broadcast(inputsMessage())
+        broadcast(bye)
+        flush()
+      }
+      repeats = []
+      inFrame = false
+      end({ _tag: "Disconnected", who: "self", seat, reason: "left", detail: `seat ${seat} left the match (session.leave())` })
     },
     drop: (other) => {
       if (!Number.isSafeInteger(other) || other < 0 || other >= count || other === seat) {

@@ -170,10 +170,11 @@ export interface Network {
   /**
    * Makes up to `seats` seats leave the match for good in each run (a whole
    * number from 1 to the seats' `count - 2`, so two peers always play on):
-   * which ones, and on which frame, are drawn from the run's seed. Such a
-   * seat's page is gone (its link closes and it runs no more), and every
-   * peer still there is told with `session.drop` once the link's latency
-   * passed, as a relay that saw the socket close tells them. From the tick
+   * which ones, on which frame, and how, are drawn from the run's seed. Such
+   * a seat runs no more: about half quit on purpose (`session.leave()`), and
+   * the others' page is gone (its link closes, and every peer still there is
+   * told with `session.drop` once the link's latency passed, as a relay that
+   * saw the socket close tells them). From the tick
    * the peers agree on, the simulation reads the seats' `left` input for it:
    * invariants are checked on the peers still there, and a peer that halts
    * or ends is a `SessionFailed` violation, so a rule of the game that
@@ -254,11 +255,12 @@ export interface Found {
    */
   readonly shrink: { readonly attempts: number; readonly steps: number; readonly fromFrames: number; readonly toFrames: number }
   /**
-   * With `network.leave`: the seats that left in the failing run, and the
-   * frame each one's page was gone from. The replay holds the seats' `left`
-   * input for them from that frame on. Empty otherwise.
+   * With `network.leave`: the seats that left in the failing run, the
+   * frame each one left on, and how (`"leave"`: `session.leave()`;
+   * `"close"`: its page was gone). The replay holds the seats' `left` input
+   * for them from that frame on. Empty otherwise.
    */
-  readonly left: ReadonlyArray<{ readonly seat: number; readonly frame: number }>
+  readonly left: ReadonlyArray<{ readonly seat: number; readonly frame: number; readonly how: "leave" | "close" }>
 }
 
 /** A run failed, but the same input did not fail again: the simulation reads something besides its input. */
@@ -544,7 +546,7 @@ export const run = <
       const drawn: Array<FuzzNetwork.Leave> = []
       for (let left = random.integer(1, network.leave.seats + 1); left > 0; left--) {
         const [seat] = seats.splice(random.integer(0, seats.length), 1)
-        drawn.push({ seat: seat!, frame: random.integer(0, options.frames) })
+        drawn.push({ seat: seat!, frame: random.integer(0, options.frames), how: random.next() < 0.5 ? "leave" : "close" })
       }
       leaves = drawn.sort((one, other) => one.frame - other.frame || one.seat - other.seat)
     }

@@ -55,18 +55,23 @@ export type NetworkViolation =
   | { readonly _tag: "InvariantViolated"; readonly invariant: string; readonly message: string }
   | { readonly _tag: "Defect"; readonly invariant: string | undefined; readonly error: unknown }
 
-/** A seat whose page is gone from `frame` on (0: before the first one). */
+/**
+ * A seat that leaves on `frame` (0: before the first one): its session
+ * leaves on purpose (`"leave"`, `session.leave()`), or its page is gone
+ * (`"close"`: its link closes, and the others are told with `drop`).
+ */
 export interface Leave {
   readonly seat: number
   readonly frame: number
+  readonly how: "leave" | "close"
 }
 
 /**
  * Plays `timeline` (per frame, the seats input's value: every seat's local
  * input) on one peer per seat, then `settle` idle frames. A seat of `leaves`
- * closes its link and runs no more from its frame on; every peer still there
- * is told (`session.drop`) once the link's latency passed, as a relay that
- * saw the socket close tells them.
+ * runs no more from its frame on: it calls `session.leave()`, or closes its
+ * link, and then every peer still there is told (`session.drop`) once the
+ * link's latency passed, as a relay that saw the socket close tells them.
  */
 export const play = (plan: NetworkPlan, timeline: ReadonlyArray<ReadonlyArray<unknown>>, leaves: ReadonlyArray<Leave> = []): NetworkOutcome<NetworkViolation> => {
   const hostClock = HostClock.test()
@@ -121,10 +126,11 @@ export const play = (plan: NetworkPlan, timeline: ReadonlyArray<ReadonlyArray<un
   for (let frame = 0; frame < frames; frame++) {
     for (const leave of leaves) {
       if (leave.frame === frame) {
-        links.value[leave.seat]!.close("the seat left")
+        if (leave.how === "leave") peers[leave.seat]!.session.leave()
+        else links.value[leave.seat]!.close("the seat left")
         gone.add(leave.seat)
       }
-      if (leave.frame + tellAfter === frame) for (const [seat, { session }] of peers.entries()) if (!gone.has(seat)) session.drop(leave.seat)
+      if (leave.how === "close" && leave.frame + tellAfter === frame) for (const [seat, { session }] of peers.entries()) if (!gone.has(seat)) session.drop(leave.seat)
     }
     const values = timeline[frame]?.[0] as ReadonlyArray<unknown> | undefined
     for (const [seat, { session }] of peers.entries()) {
