@@ -32,10 +32,10 @@
 import * as Inspector from "@typeonce/ritmo/Inspector"
 import * as System from "@typeonce/ritmo/System"
 
-import type { EventRecord, EventStreams, EventsLost, Withdrawn } from "../Netcode.ts"
+import { eventWindow as window } from "@typeonce/ritmo/Runtime"
+import type { EventRecord } from "@typeonce/ritmo/Runtime"
 
-/** How many settled ticks a reader's unread confirmed events are kept for. */
-export const window = 1024
+import type { EventStreams, EventsLost, Withdrawn } from "../Netcode.ts"
 
 interface Reader {
   /** The first tick this reader sees: the session's next tick when it was made. */

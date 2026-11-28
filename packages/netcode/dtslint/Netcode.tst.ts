@@ -1,4 +1,5 @@
 import { Clock, Descriptor, FixedLoop, HostClock, Result, Schema } from "@typeonce/ritmo"
+import type * as Runtime from "@typeonce/ritmo/Runtime"
 import { BrowserVisibility, InputCapture } from "@typeonce/ritmo-browser"
 import type * as Snapshot from "@typeonce/ritmo/Snapshot"
 import type { SystemFailure } from "@typeonce/ritmo/System"
@@ -112,8 +113,8 @@ describe("session.events", () => {
   it("reads an event of the runtime's schema, with its value type and the tick", () => {
     const hits = session.value.events(Hit)
     expect(hits).type.toBe<Netcode.EventStreams<{ readonly seat: number; readonly at: { readonly x: number } }>>()
-    expect(hits.confirmed()).type.toBe<ReadonlyArray<Netcode.EventRecord<{ readonly seat: number; readonly at: { readonly x: number } }>>>()
-    expect(hits.predicted()).type.toBe<ReadonlyArray<Netcode.EventRecord<{ readonly seat: number; readonly at: { readonly x: number } }>>>()
+    expect(hits.confirmed()).type.toBe<ReadonlyArray<Runtime.EventRecord<{ readonly seat: number; readonly at: { readonly x: number } }>>>()
+    expect(hits.predicted()).type.toBe<ReadonlyArray<Runtime.EventRecord<{ readonly seat: number; readonly at: { readonly x: number } }>>>()
     expect(hits.withdrawn()).type.toBe<ReadonlyArray<Netcode.Withdrawn>>()
     expect(hits.lost()).type.toBe<Netcode.EventsLost | undefined>()
     const lost = hits.lost()

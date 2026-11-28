@@ -10,6 +10,7 @@
  */
 import { describe, expect, it } from "vitest"
 import { Random } from "@typeonce/ritmo"
+import type * as Runtime from "@typeonce/ritmo/Runtime"
 import type { Netcode } from "@typeonce/ritmo-netcode"
 
 import { Fired, idle, pressed, type PlayerInput } from "./game.ts"
@@ -42,7 +43,7 @@ const leaving = (mode: "rollback" | "lockstep", count: number, seed: number) => 
   // No hitch here outlasts the timeout: a seat silent for longer is counted out and seated again with a save, which `mixed` plays.
   const match = setUpMatch({ mode, count, seed, ...network(random), timeoutMS: random.integer(1200, 2500), left })
   const script: Array<string> = []
-  const seen = match.peers.map((peer) => ({ reader: peer.session.events(Fired), confirmed: [] as Array<Netcode.EventRecord<{ readonly seat: number; readonly x: number }>>, lost: [] as Array<Netcode.EventsLost> }))
+  const seen = match.peers.map((peer) => ({ reader: peer.session.events(Fired), confirmed: [] as Array<Runtime.EventRecord<{ readonly seat: number; readonly x: number }>>, lost: [] as Array<Netcode.EventsLost> }))
   const read = () => {
     for (const [seat, one] of seen.entries()) {
       if (match.departed.has(seat)) continue

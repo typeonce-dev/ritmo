@@ -113,7 +113,6 @@ import type { Schema } from "@typeonce/ritmo/Schema"
 import type * as Snapshot from "@typeonce/ritmo/Snapshot"
 import type * as System from "@typeonce/ritmo/System"
 
-import * as EventsInternal from "./internal/events.ts"
 import * as HaltedInternal from "./internal/halted.ts"
 import * as Internal from "./internal/session.ts"
 import * as SeatsInternal from "./internal/seats.ts"
@@ -402,47 +401,33 @@ export interface Status {
   readonly sent: { readonly messages: number; readonly bytes: number }
 }
 
-/** One event the simulation published, and the session tick that published it. */
-export interface EventRecord<Value> {
-  readonly tick: number
-  readonly value: Value
-}
-
 /** A tick whose events `predicted()` handed out, and a rollback or a resync undid: cancel what they started. */
 export interface Withdrawn {
   readonly tick: number
 }
 
 /**
- * Confirmed events of ticks `from` up to `to` (excluded) that the reader
- * cannot rely on, and why (`reason`).
+ * Confirmed events of ticks `from` up to `to` (excluded) that a reader of
+ * `session.events(...)` cannot rely on, and why (`reason`): the runtime's
+ * `Runtime.EventsLost` report, with the session's reasons.
+ *
+ * - `"unread"`: dropped before the reader read them: the reader did not
+ *   call `confirmed()` for more than `Runtime.eventWindow` ticks, or one
+ *   tick published more than the runtime's `streamCapacity` events.
+ * - `"resync"`: these ticks were handed out as confirmed, then a resync
+ *   ran them again with other events (a peer ahead of the host confirms
+ *   ticks that the host's save makes idle). The new run's events are not
+ *   handed out; undo or ignore what the old ones started if it matters
+ *   (a score sent to a server).
+ * - `"save"`: a save made these ticks final, and this peer cannot tell
+ *   their events as the match ran them: it ran them on a guess of another
+ *   seat's input that the host's world did not share (the host saves its
+ *   world as it ran, guesses included), or it confirmed them and the
+ *   host's world went through them otherwise. What `predicted()` handed
+ *   out of them is withdrawn. The ticks this peer ran as the host did are
+ *   confirmed, and the host's own runs always are.
  */
-export interface EventsLost {
-  readonly _tag: "EventsLost"
-  readonly from: number
-  readonly to: number
-  /**
-   * - `"unread"`: dropped before the reader read them: the reader did not
-   *   call `confirmed()` for more than {@link eventWindow} ticks, or one
-   *   tick published more than the runtime's `streamCapacity` events.
-   * - `"resync"`: these ticks were handed out as confirmed, then a resync
-   *   ran them again with other events (a peer ahead of the host confirms
-   *   ticks that the host's save makes idle). The new run's events are not
-   *   handed out; undo or ignore what the old ones started if it matters
-   *   (a score sent to a server).
-   * - `"save"`: a save made these ticks final, and this peer cannot tell
-   *   their events as the match ran them: it ran them on a guess of another
-   *   seat's input that the host's world did not share (the host saves its
-   *   world as it ran, guesses included), or it confirmed them and the
-   *   host's world went through them otherwise. What `predicted()` handed
-   *   out of them is withdrawn. The ticks this peer ran as the host did are
-   *   confirmed, and the host's own runs always are.
-   */
-  readonly reason: "unread" | "resync" | "save"
-}
-
-/** How many confirmed ticks of events a reader of `session.events(...)` that stopped reading keeps; older ones are {@link EventsLost}. */
-export const eventWindow: number = EventsInternal.window
+export type EventsLost = Runtime.EventsLost<"unread" | "resync" | "save">
 
 /**
  * One host reader of one event of the simulation, made by
@@ -464,6 +449,12 @@ export const eventWindow: number = EventsInternal.window
  * Ticks before the save that this peer never ran are in the save's world,
  * and no reader is told their events. A reader sees the ticks run from when
  * it was made.
+ *
+ * This is the one host reader under a session: the runtime's own
+ * `runtime.events(...)` is for a host that ticks the runtime itself, and
+ * under a rollback session it would report every rollback as lost
+ * (`"rewind"`) and hand the ticks run again out again. Both hand out the
+ * same `Runtime.EventRecord`.
  */
 export interface EventStreams<Value> {
   /**
@@ -473,14 +464,14 @@ export interface EventStreams<Value> {
    * can replace ticks it handed out, which `lost()` reports. A save confirms
    * the ticks before it that this peer ran as the host did.
    */
-  readonly confirmed: () => ReadonlyArray<EventRecord<Value>>
+  readonly confirmed: () => ReadonlyArray<Runtime.EventRecord<Value>>
   /**
    * Events of ticks that may still be rolled back, each run handed out once.
    * A tick waiting in `withdrawn()` is held back until it is read there, so
    * a cancel never undoes the new run. Confirmed ticks are not repeated
    * here: an event first seen confirmed never appears as predicted.
    */
-  readonly predicted: () => ReadonlyArray<EventRecord<Value>>
+  readonly predicted: () => ReadonlyArray<Runtime.EventRecord<Value>>
   /**
    * Ticks whose `predicted()` events a rollback or a resync undid since the
    * previous read: the tick ran again with other events, or not at all.
