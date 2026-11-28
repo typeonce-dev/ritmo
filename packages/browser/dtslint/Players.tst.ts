@@ -116,6 +116,8 @@ describe("Controls.players", () => {
     expect(input.p1.available.gas).type.toBe<boolean>()
     // @ts-expect-error Property 'gas' does not exist
     input.p1.actions.gas
+    expect(pool.rumble("p1", { duration: 200, strong: 1, weak: 0.5 })).type.toBe<Gamepad.RumbleResult>()
+    expect(pool.rumble).type.not.toBeCallableWith("p3", { duration: 200, strong: 1, weak: 0.5 })
     const gasAsButton = Keyboard.actions(host, { gas: ["w"], join: [" "] })
     // @ts-expect-error keys binds gas as a button, but it is an analog action: bind it with analog(...)
     Racers.pool({ keys: gasAsButton })

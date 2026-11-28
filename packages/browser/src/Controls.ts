@@ -99,7 +99,9 @@
  */
 import type * as System from "@typeonce/ritmo/System"
 import * as Debug from "@typeonce/ritmo/Debug"
+import * as Result from "@typeonce/ritmo/Result"
 
+import type * as Gamepad from "./Gamepad.ts"
 import type { ActionState } from "./internal/state.ts"
 import { boundKeys, claim, ownersOf } from "./internal/introspect.ts"
 import type { ReportsBoundKeys } from "./internal/introspect.ts"
@@ -146,6 +148,8 @@ export interface Pads extends System.Consumes<"snapshot"> {
   readonly _tag: "Pads"
   readonly max: number
   snapshot(): ReadonlyArray<DeviceSnapshot<string, string, string> & { readonly id: string | null; readonly connected: boolean }>
+  /** Rumbles the pad at one place of the list. */
+  rumble(place: number, rumble: Gamepad.Rumble): Gamepad.RumbleResult
   dispose(): void
 }
 
@@ -225,6 +229,11 @@ type DevicesOf<R> = { readonly [N in DeviceNames<R>]: SnapshotOf<DeviceNamed<R, 
 /** The `rebind` of each merged device that has one, by device name. */
 type RebindOf<R> = {
   readonly [N in DeviceNames<R> as DeviceNamed<R, N> extends { readonly rebind: unknown } ? N : never]: DeviceNamed<R, N> extends { readonly rebind: infer Rebind } ? Rebind : never
+}
+
+/** The `rumble` of each merged device that has one (a gamepad), by device name. */
+type RumbleOf<R> = {
+  readonly [N in DeviceNames<R> as DeviceNamed<R, N> extends { readonly rumble: unknown } ? N : never]: DeviceNamed<R, N> extends { readonly rumble: infer Rumble } ? Rumble : never
 }
 
 /** The names one entry takes: its own, and its members' for a group. */
@@ -317,6 +326,12 @@ export interface Controls<A extends string, V extends string, R, N extends strin
   snapshot(): Snapshot<A, V, DevicesOf<R>, keyof R & string, N>
   /** Each merged device's `rebind`, for a settings screen; devices without one (touch) are not listed. */
   readonly rebind: RebindOf<R>
+  /**
+   * Each merged device's `rumble` (`Gamepad.actions`), by device name;
+   * devices without motors are not listed. Call it from the host, as
+   * `controls.rumble.gamepad({ duration: 200, strong: 1, weak: 0.5 })`.
+   */
+  readonly rumble: RumbleOf<R>
   /** Disposes every merged device. */
   dispose(): void
 }
@@ -508,9 +523,12 @@ export const actions = <
       for (const { device } of all) claim(device, "a Controls merge")
       let lastUsed: string | null = null
       const rebind: Record<string, (bindings: never) => void> = {}
+      const rumble: Record<string, (rumble: Gamepad.Rumble) => Gamepad.RumbleResult> = {}
       for (const { name, device } of all) {
         const candidate = (device as Device & { readonly rebind?: unknown }).rebind
         if (typeof candidate === "function") rebind[name] = (bindings) => candidate.call(device, bindings)
+        const motors = (device as Device & { readonly rumble?: unknown }).rumble
+        if (typeof motors === "function") rumble[name] = (effect) => motors.call(device, effect) as Gamepad.RumbleResult
       }
       const controls = {
         snapshot() {
@@ -559,6 +577,7 @@ export const actions = <
           return { actions: merged, vectors, analogs, available, devices: snapshots, lastUsed }
         },
         rebind,
+        rumble,
         dispose() {
           for (const { device } of all) device.dispose()
         },
@@ -693,6 +712,29 @@ export interface Pool<A extends string, V extends string, S extends string, R, N
   seat(slot: S, device: SeatDevice<R>): SeatResult
   /** Frees a slot (a pause menu's "Leave", "Continue without P2"); its device goes back to the pool. */
   leave(slot: S): void
+  /**
+   * Rumbles the pad of the player in `slot`, as `Gamepad.Actions.rumble`:
+   * a `Gamepad.pads` entry rumbles that player's own pad (two pads of one
+   * model each get their own motors), a `Gamepad.actions` entry its
+   * followed pad. It fails with `no-pad` for an empty slot, a slot on a
+   * device without motors (a keyboard), or an unplugged pad, and with
+   * `no-motor` when the pad cannot rumble. Call it from the host, reading
+   * the game's events, as `setJoining` and `seat`.
+   *
+   * @example
+   * ```ts
+   * const Actions = Controls.actions({ buttons: ["join"], analogs: ["gas"] })
+   * const Racers = Controls.players(Actions, { slots: ["p1", "p2"], join: "join" })
+   * const pool = Racers.pool({
+   *   keys: Keyboard.actions(window, { join: [" "], gas: Keyboard.analog(["w"]) }),
+   *   pads: Gamepad.pads(window, { join: ["south"], gas: Gamepad.analog(["rightTrigger"]) }, 4)
+   * })
+   * // ---cut---
+   * // p2 crashed this frame:
+   * pool.rumble("p2", { duration: 300, strong: 1, weak: 0.6 })
+   * ```
+   */
+  rumble(slot: S, rumble: Gamepad.Rumble): Gamepad.RumbleResult
   /** Each pooled device's `rebind`, by its pool name (`Gamepad.pads` rebinds every pad). */
   readonly rebind: {
     readonly [K in keyof R as DeviceOf<R[K]> extends { readonly rebind: unknown } ? K : never]: DeviceOf<R[K]> extends { readonly rebind: infer Rebind } ? Rebind : never
@@ -965,6 +1007,16 @@ export const players = <
         leave(slot: string) {
           if (!held.delete(slot)) return
           events.set(slot, "left")
+        },
+        rumble(slot: string, effect: Gamepad.Rumble): Gamepad.RumbleResult {
+          const holder = held.get(slot)
+          const unit = holder === undefined ? undefined : entries.find((entry) => entry.name === holder.device)?.unit
+          if (holder !== undefined && unit !== undefined) {
+            if (isPads(unit)) return unit.rumble(Number(holder.key.slice(holder.key.lastIndexOf("#") + 1)), effect)
+            const motors = (unit as { readonly rumble?: unknown }).rumble
+            if (typeof motors === "function") return motors.call(unit, effect) as Gamepad.RumbleResult
+          }
+          return Result.failure({ _tag: "RumbleFailure", reason: "no-pad" })
         },
         rebind,
         dispose() {

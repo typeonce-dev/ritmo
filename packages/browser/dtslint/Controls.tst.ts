@@ -249,6 +249,15 @@ describe("Controls", () => {
     Controls.actions({ buttons: ["gas"], analogs: ["gas"] })
   })
 
+  it("lists rumble for the merged devices that have motors only", () => {
+    const controls = Actions.merge({ keyboard, gamepad, touch: Actions.lacking(touch, ["pause"]) })
+    expect(controls.rumble.gamepad({ duration: 100, strong: 1, weak: 1 })).type.toBe<Gamepad.RumbleResult>()
+    // @ts-expect-error Property 'keyboard' does not exist
+    controls.rumble.keyboard
+    // @ts-expect-error Property 'touch' does not exist
+    controls.rumble.touch
+  })
+
   it("rejects a name declared as both kinds", () => {
     // @ts-expect-error move is declared as both a button and a vector action: give it one kind
     Controls.actions({ buttons: ["jump", "move"], vectors: ["move"] })
