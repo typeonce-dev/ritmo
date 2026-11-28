@@ -59,6 +59,8 @@ export interface Target<S extends Schema.Any, Root> {
   readonly describe?: Readonly<Record<string, AnySchedule<S, Root>>>
   /** Events the host publishes with `runtime.send` (UI requests, network messages): written, for the lints. */
   readonly hostEvents?: ReadonlyArray<Schema.EventDescriptor<S>>
+  /** Events the host reads (`runtime.events`, or a netcode session's `events`): read, for the lints. */
+  readonly hostReads?: ReadonlyArray<Schema.EventDescriptor<S>>
 }
 
 /** The result of {@link run}: every lint, counts by severity, and the verdict. */
@@ -74,6 +76,7 @@ export interface Report {
 export const run = <S extends Schema.Any, Root>(target: Target<S, Root>): Rendered.Rendered<Report> => {
   target.runtime.debug.nameSchedules({ ...target.describe, ...target.schedules })
   target.runtime.debug.declareHostEvents(target.hostEvents ?? [])
+  target.runtime.debug.declareHostReads(target.hostReads ?? [])
   const lints = target.runtime.debug.describe().lints
   const warnings = lints.filter((lint) => lint.severity === "warning").length
   const report: Report = { lints, warnings, infos: lints.length - warnings, ok: warnings === 0 }

@@ -111,7 +111,7 @@ const usage = [
   "       ritmo-devtools scan <entry> [--json]",
   "       ritmo-devtools keyboard [--url <url>] [--route <file>] [--json]",
   "       ritmo-devtools layout [--url <url>] [--route <file>] [--screenshots <dir>] [--json]",
-  "  lint:   <entry> exports lintTarget: () => { runtime, schedules, describe?, hostEvents? } (see the Lint module)",
+  "  lint:   <entry> exports lintTarget: () => { runtime, schedules, describe?, hostEvents?, hostReads? } (see the Lint module)",
   "  verify: <entry> exports replayTarget: (playback) => { runtime, schedules, hostClock } (see the Verify module)",
   "  scan:   <entry> is the simulation's entry module; every file it imports, node_modules included, is checked for Math, clock, and randomness calls",
   "  keyboard: plays the page at --url (or the working directory served with its Vite config) by keyboard in Chromium; --route is a JSON file of screens",
@@ -129,6 +129,7 @@ const isTarget = (value: unknown): value is Lint.Target<any, any> =>
   && isRecord(value["schedules"])
   && (value["describe"] === undefined || isRecord(value["describe"]))
   && (value["hostEvents"] === undefined || Array.isArray(value["hostEvents"]))
+  && (value["hostReads"] === undefined || Array.isArray(value["hostReads"]))
 
 const main = async (args: ReadonlyArray<string>): Promise<number> => {
   const [command, ...rest] = args

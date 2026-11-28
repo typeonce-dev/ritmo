@@ -410,6 +410,9 @@ describe("describe-only schedules", () => {
     expect(withRender.describe().data.schedules.map((schedule) => schedule.name).sort()).toEqual(["render", "update"])
     // The renderer is shown as needed but not provided, which is not a lint.
     expect(withRender.describe().data.services).toContainEqual({ name: "Dev/Renderer", provided: false })
+
+    const readByHost = Session.make(headless(), { hostClock, schedules: { update }, hostReads: [Hit] })
+    expect(lintCodes(readByHost)).not.toContain("event-never-read")
   })
 })
 
