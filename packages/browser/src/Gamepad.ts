@@ -34,6 +34,15 @@
  * multiplayer, `pads(host, bindings, max)` reads every pad on its own for
  * `Controls.players(...).pool(...)` (`scriptedPads(...)` in tests).
  *
+ * A pedal (gas, brake) or a charge is an analog action: `analog(...)`
+ * reads a trigger's pull from 0 to 1, for `Controls.actions({ analogs })`.
+ *
+ * `rumble(...)` shakes the followed pad (or one place of `pads`, or a
+ * player's pad through the pool's `rumble(slot, ...)`), with the strong and
+ * weak motors in plain numbers, and says whether it was sent: a pad
+ * without motors, or a browser without the vibration API, reports
+ * `no-motor` instead of throwing.
+ *
  * @module Gamepad
  * @docGroup browser
  *
@@ -70,6 +79,7 @@ import type { ActionState } from "./internal/state.ts"
 import type { Vector } from "./internal/vectors.ts"
 import * as ButtonsInternal from "./internal/buttons.ts"
 import { buttonTracker, flattenButtons, idleActions, idleButtons, idleVectors, splitActions } from "./internal/buttons.ts"
+import { idleAnalogs, isAnalogBinding, unit } from "./internal/analogs.ts"
 import { digital, isVectorBinding, longer } from "./internal/vectors.ts"
 import { anyUsed } from "./internal/used.ts"
 
@@ -121,16 +131,29 @@ export interface VectorBinding {
 }
 
 /**
- * Action name to the buttons that trigger it (at least one), or to a
- * {@link vector} binding for a direction such as movement.
+ * An analog action (a pedal, a charge) on the pad, built with
+ * {@link analog}: the buttons whose pull it reads.
  */
-export type Bindings = Readonly<Record<string, Buttons | VectorBinding>>
+export interface AnalogBinding {
+  readonly _tag: "Analog"
+  readonly buttons: Buttons
+}
+
+/**
+ * Action name to the buttons that trigger it (at least one), to a
+ * {@link vector} binding for a direction such as movement, or to an
+ * {@link analog} binding for a value from 0 to 1 such as a pedal.
+ */
+export type Bindings = Readonly<Record<string, Buttons | VectorBinding | AnalogBinding>>
 
 /** The bound button actions: the names bound to buttons. */
-export type ButtonNames<B> = { [K in keyof B]: B[K] extends VectorBinding ? never : K }[keyof B] & string
+export type ButtonNames<B> = { [K in keyof B]: B[K] extends VectorBinding | AnalogBinding ? never : K }[keyof B] & string
 
 /** The bound vector actions: the names bound with {@link vector}. */
 export type VectorNames<B> = { [K in keyof B]: B[K] extends VectorBinding ? K : never }[keyof B] & string
+
+/** The bound analog actions: the names bound with {@link analog}. */
+export type AnalogNames<B> = { [K in keyof B]: B[K] extends AnalogBinding ? K : never }[keyof B] & string
 
 /**
  * Binds a vector action to a stick, to buttons for its four directions, or
@@ -153,16 +176,57 @@ export const vector = (
 ): VectorBinding => ({ _tag: "Vector", ...binding })
 
 /**
- * New buttons for the same actions, for {@link Actions.rebind}: buttons for
- * a button action, a {@link vector} for a vector action. Load saved ones
- * with {@link parseRebinding}.
+ * Binds an analog action (gas and brake pedals, a charge) to buttons: the
+ * snapshot's `analogs` reports the strongest of them, from 0 to 1. A
+ * trigger gives how far it is pulled (a half pull is 0.5), and every other
+ * button 1 while held. Bind the same trigger as a button action too when
+ * the game also needs its press edge; `triggerThreshold` decides only that
+ * button's `held`, never the analog value.
+ *
+ * @example
+ * ```ts
+ * const bindings = {
+ *   gas: Gamepad.analog(["rightTrigger", "south"]),
+ *   brake: Gamepad.analog(["leftTrigger", "west"]),
+ *   steer: Gamepad.vector({ stick: "left" })
+ * } as const
+ * const pad = Gamepad.actions(window, bindings)
+ * const throttle = pad.snapshot().analogs.gas // 0.5 on a half pull, 1 while south is held
+ * ```
  */
-export type Rebinding<B extends Bindings> = { readonly [Action in keyof B]: B[Action] extends VectorBinding ? VectorBinding : Buttons }
+export const analog = (buttons: Buttons): AnalogBinding => ({ _tag: "Analog", buttons })
+
+/**
+ * New buttons for the same actions, for {@link Actions.rebind}: buttons for
+ * a button action, a {@link vector} for a vector action, an {@link analog}
+ * for an analog action. Load saved ones with {@link parseRebinding}.
+ */
+export type Rebinding<B extends Bindings> = {
+  readonly [Action in keyof B]: B[Action] extends VectorBinding ? VectorBinding : B[Action] extends AnalogBinding ? AnalogBinding : Buttons
+}
 
 /** One button's reading, the subset of the browser's `GamepadButton` the module reads. */
 export interface ButtonReading {
   readonly pressed: boolean
   readonly value: number
+}
+
+/**
+ * A pad's dual-rumble motors, the subset of the browser's
+ * `GamepadHapticActuator` {@link Actions.rumble} uses.
+ */
+export interface VibrationActuator {
+  /** The effects the pad plays, where the browser lists them; a list without `"dual-rumble"` means no rumble. */
+  readonly effects?: ReadonlyArray<string>
+  playEffect(
+    type: "dual-rumble",
+    params: { readonly startDelay: number; readonly duration: number; readonly strongMagnitude: number; readonly weakMagnitude: number }
+  ): PromiseLike<unknown>
+}
+
+/** A pad's motor in the older haptics API some browsers still have instead of `vibrationActuator`. */
+export interface HapticActuator {
+  pulse(value: number, duration: number): PromiseLike<unknown>
 }
 
 /** One pad's reading, the subset of the browser's `Gamepad` the module reads. */
@@ -173,6 +237,89 @@ export interface PadReading {
   readonly mapping: string
   readonly buttons: ReadonlyArray<ButtonReading>
   readonly axes: ReadonlyArray<number>
+  /** The motors {@link Actions.rumble} plays, when the browser and the pad have them. */
+  readonly vibrationActuator?: VibrationActuator | null
+  /** The older motors API, used when there is no `vibrationActuator`. */
+  readonly hapticActuators?: ReadonlyArray<HapticActuator> | null
+}
+
+/**
+ * One rumble on a pad's two motors, for {@link Actions.rumble}. Values out
+ * of range are clamped (and a value that is not a finite number reads as
+ * 0), so the rumble the result reports is the one sent.
+ */
+export interface Rumble {
+  /** How long it plays, in milliseconds, from 0 to 5000 (the longest browsers play). */
+  readonly duration: number
+  /** The strong motor (low frequency, the left grip), from 0 to 1. */
+  readonly strong: number
+  /** The weak motor (high frequency, the right grip), from 0 to 1. */
+  readonly weak: number
+}
+
+/**
+ * Why a rumble was not sent: `no-pad` when no pad is connected there (no
+ * pad followed, an unplugged place, an empty slot, or a slot on a device
+ * that is not a pad), `no-motor` when the pad or the browser has no rumble.
+ */
+export interface RumbleFailure {
+  readonly _tag: "RumbleFailure"
+  readonly reason: "no-pad" | "no-motor"
+}
+
+/**
+ * Whether a rumble was sent, with the rumble as clamped: a game can stop
+ * offering a vibration setting to a player whose pad reports `no-motor`.
+ * Sent is not felt: the pad plays it asynchronously, and the module ignores
+ * how that ends (a newer rumble replacing it, the pad unplugged).
+ */
+export type RumbleResult = Result.Result<Rumble, RumbleFailure>
+
+/** A rumble a scripted pad was asked for, for a test to assert on. */
+export interface RumbleRequest {
+  /** How many snapshots the pad had taken when it was asked (its `frames()` then). */
+  readonly frame: number
+  readonly rumble: Rumble
+}
+
+const longestRumble = 5000
+
+/** Clamps a rumble to what the vibration API takes. */
+const clampRumble = (rumble: Rumble): Rumble => ({
+  duration: Number.isFinite(rumble.duration) ? Math.min(longestRumble, Math.max(0, rumble.duration)) : 0,
+  strong: unit(rumble.strong),
+  weak: unit(rumble.weak)
+})
+
+const rumbleFailed = (reason: RumbleFailure["reason"]): RumbleResult => Result.failure({ _tag: "RumbleFailure", reason })
+
+/** Ignores how a rumble's promise ends: a newer rumble or an unplugged pad rejects or resolves it, and neither is the game's error. */
+const settle = (promise: unknown): void => {
+  if (typeof promise === "object" && promise !== null && typeof (promise as PromiseLike<unknown>).then === "function") {
+    ;(promise as PromiseLike<unknown>).then(undefined, () => {})
+  }
+}
+
+/** Plays `rumble` on `pad`'s motors, through `vibrationActuator` or the older `hapticActuators`; never throws. */
+const playRumble = (pad: PadReading | undefined, rumble: Rumble): RumbleResult => {
+  if (pad === undefined) return rumbleFailed("no-pad")
+  const effect = clampRumble(rumble)
+  try {
+    const actuator = pad.vibrationActuator
+    if (actuator !== undefined && actuator !== null && typeof actuator.playEffect === "function") {
+      if (Array.isArray(actuator.effects) && !actuator.effects.includes("dual-rumble")) return rumbleFailed("no-motor")
+      settle(actuator.playEffect("dual-rumble", { startDelay: 0, duration: effect.duration, strongMagnitude: effect.strong, weakMagnitude: effect.weak }))
+      return Result.success(effect)
+    }
+    const motor = pad.hapticActuators?.[0]
+    if (motor !== undefined && typeof motor.pulse === "function") {
+      settle(motor.pulse(Math.max(effect.strong, effect.weak), effect.duration))
+      return Result.success(effect)
+    }
+  } catch {
+    // A browser that throws (a permission policy, a pad going away) has no rumble to give.
+  }
+  return rumbleFailed("no-motor")
 }
 
 /** Where pads are read from, the subset of the browser's `navigator` the module reads. */
@@ -198,6 +345,8 @@ export interface Snapshot<B extends Bindings> {
   readonly actions: { readonly [Action in ButtonNames<B>]: ActionState }
   /** Each vector action's direction, length at most 1, `y` growing down. */
   readonly vectors: { readonly [Action in VectorNames<B>]: Vector }
+  /** Each analog action's value from 0 to 1: the strongest of its buttons (see {@link analog}). */
+  readonly analogs: { readonly [Action in AnalogNames<B>]: number }
   /** Every button's state by name, whatever the bindings. */
   readonly buttons: { readonly [Name in Button]: ActionState }
   /** The left stick's tilt, whatever the bindings. */
@@ -253,6 +402,25 @@ export interface Actions<B extends Bindings> extends System.Consumes<"snapshot">
    * with.
    */
   rebind<const R extends Rebinding<B>>(bindings: R & OnlyActionsOf<R, B>): void
+  /**
+   * Rumbles the followed pad's motors, replacing a rumble still playing (a
+   * rumble of zero strength or duration stops it). Call it from the host,
+   * reading the game's events (a crash, a hit), so the simulation stays
+   * replayable; give players a setting to turn it off. It fails with
+   * `no-pad` while no pad is followed and `no-motor` when the pad or the
+   * browser cannot rumble, and never throws.
+   *
+   * @example
+   * ```ts
+   * const pad = Gamepad.actions(window, { gas: Gamepad.analog(["rightTrigger"]) })
+   * // ---cut---
+   * const sent = pad.rumble({ duration: 200, strong: 1, weak: 0.4 })
+   * if (!sent.ok && sent.error.reason === "no-motor") {
+   *   // hide the vibration setting for this pad
+   * }
+   * ```
+   */
+  rumble(rumble: Rumble): RumbleResult
   /** Stops reading pads and cancels the animation frame. */
   dispose(): void
 }
@@ -273,7 +441,7 @@ const zero: Vector = { x: 0, y: 0 }
  * resource before the first capture.
  */
 export const idle = <const B extends Bindings>(bindings: B): Snapshot<B> => {
-  return { actions: idleActions(bindings), vectors: idleVectors(bindings) as Snapshot<B>["vectors"], buttons: idleButtons(buttonNames), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, used: false, standard: true, connected: false, id: null }
+  return { actions: idleActions(bindings), vectors: idleVectors(bindings) as Snapshot<B>["vectors"], analogs: idleAnalogs(bindings) as Snapshot<B>["analogs"], buttons: idleButtons(buttonNames), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, used: false, standard: true, connected: false, id: null }
 }
 
 const sameVector = (a: Vector, b: Vector): boolean => a.x === b.x && a.y === b.y
@@ -300,21 +468,41 @@ const tracker = <B extends Bindings>(initial: B) => {
       bindings = next
       buttons.rebind(flattenButtons<Button>(next))
     },
-    snapshot(analog: Omit<Snapshot<B>, "actions" | "vectors" | "buttons" | "used">): Snapshot<B> {
+    snapshot(analog: Omit<Snapshot<B>, "actions" | "vectors" | "analogs" | "buttons" | "used">): Snapshot<B> {
       const taken = buttons.take()
       // The actions are fixed at creation; a rebind only changes how each is bound.
       const { actions, held } = splitActions(initial, taken.actions)
       const vectors: Record<string, Vector> = {}
+      const analogs: Record<string, number> = {}
       for (const [name, entry] of Object.entries(initial)) {
+        if (isAnalogBinding(entry)) {
+          analogs[name] = analogValue((bindings[name] as AnalogBinding).buttons, buttons.held, analog)
+          continue
+        }
         if (!isVectorBinding(entry)) continue
         const binding = bindings[name] as VectorBinding
         const pad = digital(held(name, "up"), held(name, "down"), held(name, "left"), held(name, "right"))
         vectors[name] = binding.stick === undefined ? pad : longer(analog[binding.stick], pad)
       }
       const used = anyUsed(taken.buttons) || !sameVector(analog.left, zero) || !sameVector(analog.right, zero)
-      return { actions, vectors, buttons: taken.buttons, ...analog, used } as Snapshot<B>
+      return { actions, vectors, analogs, buttons: taken.buttons, ...analog, used } as Snapshot<B>
     }
   }
+}
+
+/**
+ * An analog action's value: the strongest of its buttons, a trigger by its
+ * pull (1 while held when the pad reports no pull, as a pad without the
+ * standard mapping or a timeline that only presses it), any other button 1
+ * while held.
+ */
+const analogValue = (bound: Buttons, held: ReadonlySet<Button>, pulls: { readonly leftTrigger: number; readonly rightTrigger: number }): number => {
+  let value = 0
+  for (const button of bound) {
+    const pull = button === "leftTrigger" ? pulls.leftTrigger : button === "rightTrigger" ? pulls.rightTrigger : 0
+    value = Math.max(value, pull > 0 ? unit(pull) : held.has(button) ? 1 : 0)
+  }
+  return value
 }
 
 /** Whether the pad's axes are the standard mapping's sticks; any other pad's axes are unknown. */
@@ -340,6 +528,10 @@ const readPads = (host: GamepadHost): ReadonlyArray<PadReading | null> => {
   }
 }
 
+/** The connected pads `host` reads now. */
+const connectedPads = (host: GamepadHost): ReadonlyArray<PadReading> =>
+  readPads(host).filter((pad): pad is PadReading => pad !== null && pad.connected)
+
 /**
  * Starts reading pads from `host`, usually `window`, on every animation
  * frame until `dispose()`. With several pads connected it follows the one
@@ -357,7 +549,7 @@ export const actions = <const B extends Bindings>(host: GamepadHost, bindings: B
 
   const poll = (): void => {
     if (disposed) return
-    const pads = readPads(host).filter((pad): pad is PadReading => pad !== null && pad.connected)
+    const pads = connectedPads(host)
     const current = pads.find((pad) => pad.index === followed)
     // Keep the followed pad while it is in use; otherwise switch to another one being used, or keep the first there is.
     const used = current !== undefined && inUse(current, deadZone, triggerThreshold)
@@ -386,6 +578,11 @@ export const actions = <const B extends Bindings>(host: GamepadHost, bindings: B
       return state.snapshot({ ...analogOf(pad, deadZone), connected: true, id: pad.id })
     },
     rebind: state.rebind,
+    rumble(rumble) {
+      if (disposed || followed === null) return rumbleFailed("no-pad")
+      // The pad as the browser reads it now: its motors belong to this reading.
+      return playRumble(connectedPads(host).find((pad) => pad.index === followed), rumble)
+    },
     dispose() {
       if (disposed) return
       disposed = true
@@ -414,6 +611,14 @@ export interface Pads<B extends Bindings> extends System.Consumes<"snapshot"> {
   snapshot(): ReadonlyArray<Snapshot<B>>
   /** Binds the same actions to new buttons on every pad, as {@link Actions.rebind}. */
   rebind<const R extends Rebinding<B>>(bindings: R & OnlyActionsOf<R, B>): void
+  /**
+   * Rumbles the pad at `place` in the list (from 0, the order of
+   * {@link Pads.snapshot}), as {@link Actions.rumble}: two pads of the same
+   * model each rumble their own motors. A place with no pad connected fails
+   * with `no-pad`. A player pool's `rumble(slot, ...)` finds the place of a
+   * player's pad.
+   */
+  rumble(place: number, rumble: Rumble): RumbleResult
   /** Stops reading pads and cancels the animation frame. */
   dispose(): void
 }
@@ -469,7 +674,7 @@ export const pads = <const B extends Bindings, const N extends number>(host: Gam
 
   const poll = (): void => {
     if (disposed) return
-    const connected = readPads(host).filter((pad): pad is PadReading => pad !== null && pad.connected)
+    const connected = connectedPads(host)
     for (const pad of connected) {
       if (seen.length < limit && !seen.some((entry) => entry.index === pad.index)) {
         seen.push({ index: pad.index, state: tracker(bindings), id: pad.id, reading: null })
@@ -510,6 +715,12 @@ export const pads = <const B extends Bindings, const N extends number>(host: Gam
       // Pads that appear later start with the new bindings too.
       bindings = next as unknown as B
     },
+    rumble(place, rumble) {
+      const entry = disposed ? undefined : seen[place]
+      if (entry === undefined || entry.reading === null) return rumbleFailed("no-pad")
+      // The place's own pad by its browser index, so two pads of one model each get their own motors.
+      return playRumble(connectedPads(host).find((pad) => pad.index === entry.index && pad.id === entry.id), rumble)
+    },
     dispose() {
       if (disposed) return
       disposed = true
@@ -517,6 +728,12 @@ export const pads = <const B extends Bindings, const N extends number>(host: Gam
       for (const entry of seen) entry.state.upAll()
     }
   }
+}
+
+/** Pads driven by timelines instead of a host, built with {@link scriptedPads}. */
+export interface ScriptedPads<B extends Bindings> extends Pads<B> {
+  /** The rumbles the pad at `place` was asked for and played, oldest first, as {@link Scripted.rumbles}. */
+  readonly rumbles: (place: number) => ReadonlyArray<RumbleRequest>
 }
 
 /**
@@ -530,7 +747,7 @@ export const pads = <const B extends Bindings, const N extends number>(host: Gam
  * timeline's first entry, so a pad plugged in later is a timeline that
  * starts later, and an entry with `connected: false` unplugs it.
  */
-export const scriptedPads = <const B extends Bindings>(bindings: B, timelines: ReadonlyArray<Timeline>): Pads<B> => {
+export const scriptedPads = <const B extends Bindings>(bindings: B, timelines: ReadonlyArray<Timeline>): ScriptedPads<B> => {
   const each = timelines.map((timeline) => scripted(bindings, timeline))
   return {
     _tag: "Pads",
@@ -539,6 +756,8 @@ export const scriptedPads = <const B extends Bindings>(bindings: B, timelines: R
     rebind(next) {
       for (const pad of each) pad.rebind(next as never)
     },
+    rumble: (place, rumble) => each[place]?.rumble(rumble) ?? rumbleFailed("no-pad"),
+    rumbles: (place) => each[place]?.rumbles() ?? [],
     dispose() {}
   }
 }
@@ -578,6 +797,12 @@ export type Timeline = ReadonlyArray<TimelineEntry>
 export interface Scripted<B extends Bindings> extends Actions<B> {
   /** Number of snapshots taken so far, which is the next frame index. */
   readonly frames: () => number
+  /**
+   * The rumbles played, oldest first, for a test to assert on. A scripted
+   * pad has motors: `rumble(...)` succeeds while it is connected (and is
+   * recorded here, clamped) and fails with `no-pad` otherwise.
+   */
+  readonly rumbles: () => ReadonlyArray<RumbleRequest>
 }
 
 /**
@@ -598,6 +823,7 @@ export const scripted = <const B extends Bindings>(bindings: B, timeline: Timeli
   }
   const first = timeline.reduce((earliest, entry) => Math.min(earliest, entry.frame), Number.POSITIVE_INFINITY)
   const resting = { left: zero, right: zero, leftTrigger: 0, rightTrigger: 0 }
+  const rumbles: Array<RumbleRequest> = []
   let analog = resting
   let connected = false
   let frame = 0
@@ -630,8 +856,15 @@ export const scripted = <const B extends Bindings>(bindings: B, timeline: Timeli
       return state.snapshot({ ...analog, standard: true, connected, id: connected ? "scripted" : null })
     },
     rebind: state.rebind,
+    rumble(rumble) {
+      if (!connected) return rumbleFailed("no-pad")
+      const played = clampRumble(rumble)
+      rumbles.push({ frame, rumble: played })
+      return Result.success(played)
+    },
     dispose() {},
-    frames: () => frame
+    frames: () => frame,
+    rumbles: () => [...rumbles]
   }
 }
 
@@ -647,7 +880,7 @@ export interface Recording<B extends Bindings> extends Actions<B> {
  */
 export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B> => {
   const entries: Array<TimelineEntry> = []
-  let previous: Omit<Snapshot<B>, "actions" | "vectors" | "id" | "used" | "standard"> = { buttons: idleButtons(buttonNames), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, connected: false }
+  let previous: Omit<Snapshot<B>, "actions" | "vectors" | "analogs" | "id" | "used" | "standard"> = { buttons: idleButtons(buttonNames), left: zero, right: zero, leftTrigger: 0, rightTrigger: 0, connected: false }
   let frame = 0
   return {
     snapshot() {
@@ -672,6 +905,7 @@ export const recording = <B extends Bindings>(actions: Actions<B>): Recording<B>
       return snapshot
     },
     rebind: (bindings) => actions.rebind(bindings),
+    rumble: (rumble) => actions.rumble(rumble),
     dispose: () => actions.dispose(),
     timeline: () => [...entries]
   }
@@ -756,7 +990,8 @@ export type InvalidRebinding = ButtonsInternal.InvalidRebinding
  * buttons for `bindings`: an object with exactly the same action names, each
  * mapped to a non-empty array of button names (for a vector action, an
  * object with an optional `stick` and buttons for all four directions or
- * none, as `Gamepad.vector` saves). Pass the result to
+ * none, as `Gamepad.vector` saves; for an analog action, `{ buttons }`, as
+ * `Gamepad.analog` saves). Pass the result to
  * {@link Actions.rebind}; on failure, keep the defaults.
  *
  * @example

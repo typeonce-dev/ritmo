@@ -108,3 +108,49 @@ describe("Gamepad.pads", () => {
     Gamepad.pads(host, { jump: ["south"] }, count)
   })
 })
+
+describe("Gamepad.analog", () => {
+  it("types analog actions apart from buttons and vectors", () => {
+    const input = Gamepad.actions(host, { gas: Gamepad.analog(["rightTrigger", "south"]), jump: ["south"] })
+    expect(input.snapshot().analogs).type.toBe<{ readonly gas: number }>()
+    expect(Gamepad.idle({ gas: Gamepad.analog(["rightTrigger"]) }).analogs.gas).type.toBe<number>()
+    expect(Gamepad.analog(["leftTrigger"])).type.toBe<Gamepad.AnalogBinding>()
+    // @ts-expect-error Property 'gas' does not exist
+    input.snapshot().actions.gas
+    // @ts-expect-error Property 'jump' does not exist
+    input.snapshot().analogs.jump
+    // @ts-expect-error Type '"pedal"' is not assignable to type
+    Gamepad.analog(["pedal"])
+    // @ts-expect-error Source has 0 element(s) but target requires 1
+    Gamepad.analog([])
+  })
+
+  it("rebinds an analog action only to an analog binding", () => {
+    const input = Gamepad.actions(host, { gas: Gamepad.analog(["rightTrigger"]), jump: ["south"] })
+    expect(input.rebind).type.toBeCallableWith({ gas: Gamepad.analog(["leftTrigger"]), jump: ["east"] })
+    expect(input.rebind).type.not.toBeCallableWith({ gas: ["leftTrigger"], jump: ["east"] })
+    expect(input.rebind).type.not.toBeCallableWith({ gas: Gamepad.vector({ stick: "left" }), jump: ["east"] })
+  })
+})
+
+describe("Gamepad rumble", () => {
+  it("rumbles the followed pad, a place of pads, or a scripted pad, and says whether it was sent", () => {
+    const input = Gamepad.actions(host, { jump: ["south"] })
+    expect(input.rumble({ duration: 200, strong: 1, weak: 0.5 })).type.toBe<Gamepad.RumbleResult>()
+    expect(input.rumble).type.not.toBeCallableWith({ duration: 200 })
+    expect(input.rumble).type.not.toBeCallableWith({ duration: 200, strong: 1, weak: 0.5, type: "trigger-rumble" })
+    const result = input.rumble({ duration: 200, strong: 1, weak: 0.5 })
+    if (result.ok) expect(result.value).type.toBe<Gamepad.Rumble>()
+    else expect(result.error.reason).type.toBe<"no-pad" | "no-motor">()
+    const pads = Gamepad.pads(host, { jump: ["south"] }, 4)
+    expect(pads.rumble(0, { duration: 100, strong: 0, weak: 1 })).type.toBe<Gamepad.RumbleResult>()
+    expect(pads.rumble).type.not.toBeCallableWith({ duration: 100, strong: 0, weak: 1 })
+    const scripted = Gamepad.scripted({ jump: ["south"] }, [])
+    expect(scripted.rumbles()).type.toBe<ReadonlyArray<Gamepad.RumbleRequest>>()
+    expect(Gamepad.scriptedPads({ jump: ["south"] }, [[]]).rumbles(0)).type.toBe<ReadonlyArray<Gamepad.RumbleRequest>>()
+  })
+
+  it("reads a browser window as a host with motors", () => {
+    expect(Gamepad.actions).type.toBeCallableWith(window, { jump: ["south"] })
+  })
+})

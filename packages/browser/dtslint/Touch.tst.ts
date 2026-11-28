@@ -31,7 +31,7 @@ describe("Touch", () => {
   })
 
   it("has no single stick: each one is a vector by name", () => {
-    // @ts-expect-error Property 'stick' does not exist on type 'Snapshot<"dash", "move" | "aim">'
+    // @ts-expect-error Property 'stick' does not exist on type 'Snapshot<"dash", "move" | "aim"
     touch.snapshot().stick
     // @ts-expect-error Property 'stick' does not exist on type 'View<"dash", "move" | "aim", never>'
     touch.view().stick
@@ -124,5 +124,28 @@ describe("Touch in Controls", () => {
     input.vectors.aim.active
     // @ts-expect-error keyboard has no action aim
     Twin.merge({ keyboard, touch })
+  })
+})
+
+describe("Touch pedals", () => {
+  it("reports the buttons named in analogs as analog actions", () => {
+    const pedals = Touch.actions(target, blurHost, ({ width, height }) => ({
+      sticks: { steer: { region: { left: 0, top: 0, width: width / 2, height }, radius: 56 } },
+      buttons: { gas: { center: { x: width - 60, y: height - 80 }, radius: 40 }, pause: { center: { x: width - 30, y: 30 }, radius: 20 } }
+    }), { analogs: ["gas"] })
+    expect(pedals).type.toBe<Touch.Actions<"gas" | "pause", "steer", never, "gas">>()
+    expect(pedals.snapshot().analogs).type.toBe<{ readonly gas: number }>()
+    expect(pedals.view().buttons.gas.held).type.toBe<boolean>()
+    expect(Touch.idle({ buttons: ["gas", "pause"], sticks: [], analogs: ["gas"] })).type.toBe<Touch.Snapshot<"pause", never, "gas">>()
+    expect(Touch.scripted({ buttons: ["gas"], sticks: [], analogs: ["gas"] }, [{ frame: 0, press: ["gas"] }]).snapshot().analogs.gas).type.toBe<number>()
+    // @ts-expect-error Property 'gas' does not exist
+    pedals.snapshot().actions.gas
+    // @ts-expect-error Type '"brake"' is not assignable to type '"gas" | "pause"'
+    Touch.actions(target, blurHost, () => ({ sticks: {}, buttons: { gas: { center: { x: 0, y: 0 }, radius: 1 }, pause: { center: { x: 0, y: 0 }, radius: 1 } } }), { analogs: ["brake"] })
+    // @ts-expect-error Type '"brake"' is not assignable to type '"gas"'
+    Touch.idle({ buttons: ["gas"], sticks: [], analogs: ["brake"] })
+
+    const Driving = Controls.actions({ buttons: ["pause"], vectors: ["steer"], analogs: ["gas"] })
+    expect(Driving.merge({ touch: pedals }).snapshot().analogs.gas).type.toBe<number>()
   })
 })

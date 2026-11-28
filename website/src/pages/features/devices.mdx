@@ -184,6 +184,44 @@ player had bound. See [Replays that become tests](/features/replays/) and
 
 </Claim>
 
+<Claim title="Half a trigger is half the throttle">
+
+An analog action is a value from 0 to 1. A trigger gives how far it is
+pulled, a key or a touch pedal gives 1 while held, and the merge keeps the
+highest. A pad can rumble back, and says when it cannot.
+
+```ts twoslash title="drive.ts"
+import { Controls, Gamepad, Keyboard } from "@typeonce/ritmo-browser"
+declare const accelerate: (throttle: number) => void
+declare const crashed: boolean
+// ---cut---
+const Actions = Controls.actions({
+  buttons: ["pause"],
+  vectors: ["steer"],
+  analogs: ["gas"] // [!code highlight]
+})
+
+const controls = Actions.merge({
+  keyboard: Keyboard.actions(window, {
+    gas: Keyboard.analog(["w"]),
+    steer: Keyboard.vector({ up: ["i"], down: ["k"], left: ["a"], right: ["d"] }),
+    pause: ["Escape"]
+  }),
+  gamepad: Gamepad.actions(window, {
+    gas: Gamepad.analog(["rightTrigger"]), // [!code highlight]
+    steer: Gamepad.vector({ stick: "left" }),
+    pause: ["start"]
+  })
+})
+
+// 0.5 on a half pull, 1 while W is held
+accelerate(controls.snapshot().analogs.gas)
+
+if (crashed) controls.rumble.gamepad({ duration: 300, strong: 1, weak: 0.5 })
+```
+
+</Claim>
+
 <Claim title="Pads, keys, and touch behave the way players expect">
 
 The details every game would otherwise rewrite, and usually get wrong:

@@ -1,6 +1,7 @@
 import * as Result from "@typeonce/ritmo/Result"
 
 import type { ActionState } from "./state.ts"
+import { isAnalogBinding } from "./analogs.ts"
 import { directionName, directions, isVectorBinding, zero } from "./vectors.ts"
 import type { Direction, Vector } from "./vectors.ts"
 
@@ -108,10 +109,10 @@ export const idleButtons = <Button extends string>(buttonNames: ReadonlyArray<Bu
   return buttons
 }
 
-/** Every button action of `bindings` idle (vector actions are in {@link idleVectors}). */
+/** Every button action of `bindings` idle (vector and analog actions are in {@link idleVectors} and `idleAnalogs`). */
 export const idleActions = <B extends object>(bindings: B): Record<keyof B, ActionState> => {
   const actions = {} as Record<keyof B, ActionState>
-  for (const [name, entry] of Object.entries(bindings)) if (!isVectorBinding(entry)) actions[name as keyof B] = idleState
+  for (const [name, entry] of Object.entries(bindings)) if (!isVectorBinding(entry) && !isAnalogBinding(entry)) actions[name as keyof B] = idleState
   return actions
 }
 
@@ -134,6 +135,8 @@ interface DigitalVector<Button extends string> {
 /**
  * Each action's buttons for the button tracker, with the digital part of
  * every vector action split into its four directions (`move.up`, ...).
+ * Analog actions are left out: they read the buttons' state directly, as a
+ * level with no edges.
  */
 export const flattenButtons = <Button extends string>(bindings: object): Record<string, readonly [Button, ...Array<Button>]> => {
   const flat: Record<string, readonly [Button, ...Array<Button>]> = {}
@@ -145,7 +148,7 @@ export const flattenButtons = <Button extends string>(bindings: object): Record<
       for (const direction of directions) {
         flat[directionName(name, direction)] = (vector[direction] ?? []) as unknown as readonly [Button, ...Array<Button>]
       }
-    } else flat[name] = entry as readonly [Button, ...Array<Button>]
+    } else if (!isAnalogBinding(entry)) flat[name] = entry as readonly [Button, ...Array<Button>]
   }
   return flat
 }
@@ -156,7 +159,7 @@ export const splitActions = (
   taken: Readonly<Record<string, ActionState>>
 ): { readonly actions: Record<string, ActionState>; readonly held: (vector: string, direction: Direction) => boolean } => {
   const actions: Record<string, ActionState> = {}
-  for (const [name, entry] of Object.entries(bindings)) if (!isVectorBinding(entry)) actions[name] = taken[name]!
+  for (const [name, entry] of Object.entries(bindings)) if (!isVectorBinding(entry) && !isAnalogBinding(entry)) actions[name] = taken[name]!
   return { actions, held: (vector, direction) => taken[directionName(vector, direction)]?.held === true }
 }
 
@@ -170,7 +173,8 @@ export interface InvalidRebinding {
 /**
  * Validates `data` as new buttons for exactly the actions of `bindings`:
  * an object with the same action names, each a non-empty array of button
- * names.
+ * names (`{ buttons }` for an analog action, a vector object for a vector
+ * action).
  */
 export const parseButtonRebinding = <Button extends string>(
   buttonNames: ReadonlyArray<Button>,
@@ -215,6 +219,13 @@ export const parseButtonRebinding = <Button extends string>(
         }
       } else if (vector["stick"] === undefined) return invalid(name, "expected a stick or buttons for up, down, left, and right")
       rebinding[name] = vector
+      continue
+    }
+    if (isAnalogBinding((bindings as Readonly<Record<string, unknown>>)[name])) {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) return invalid(name, "expected { buttons } for an analog action")
+      const buttons = buttonsAt((value as Readonly<Record<string, unknown>>)["buttons"], `${name}.buttons`)
+      if (!buttons.ok) return buttons
+      rebinding[name] = { _tag: "Analog", buttons: buttons.value }
       continue
     }
     const buttons = buttonsAt(value, name)

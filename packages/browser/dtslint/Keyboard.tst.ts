@@ -135,3 +135,19 @@ describe("Keyboard.parseRebinding", () => {
     Keyboard.vector({ up: ["w"], down: ["s"], left: ["a"] })
   })
 })
+
+describe("Keyboard.analog", () => {
+  it("types analog actions apart from buttons, and names them in timelines", () => {
+    const bindings = { gas: Keyboard.analog(["w", Keyboard.code("ArrowUp")]), jump: [" "] } as const
+    const input = Keyboard.actions(host, bindings)
+    expect(input.snapshot().analogs).type.toBe<{ readonly gas: number }>()
+    expect(Keyboard.analog(["w"])).type.toBe<Keyboard.AnalogBinding>()
+    expect<Keyboard.TimelineName<typeof bindings>>().type.toBe<"gas" | "jump">()
+    expect(input.rebind).type.toBeCallableWith({ gas: Keyboard.analog(["g"]), jump: [" "] })
+    expect(input.rebind).type.not.toBeCallableWith({ gas: ["g"], jump: [" "] })
+    // @ts-expect-error Property 'gas' does not exist
+    input.snapshot().actions.gas
+    // @ts-expect-error Source has 0 element(s) but target requires 1
+    Keyboard.analog([])
+  })
+})

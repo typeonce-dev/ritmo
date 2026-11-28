@@ -105,4 +105,21 @@ describe("Controls.players", () => {
     expect(Players.random).type.not.toBeCallableWith(random, 2, { devices, seats: { p1: "mouse" } })
     expect(Players.random).type.not.toBeCallableWith(random, 2, { devices, seats: { p3: "left" } })
   })
+
+  it("carries analog actions into every slot", () => {
+    const Driving = Controls.actions({ buttons: ["join"], analogs: ["gas"] })
+    const Racers = Controls.players(Driving, { slots: ["p1", "p2"], join: "join" })
+    const pedals = { gas: Gamepad.analog(["rightTrigger"]), join: ["south"] } as const
+    const pool = Racers.pool({ pads: Gamepad.pads(host, pedals, 2), keys: Keyboard.actions(host, { gas: Keyboard.analog(["w"]), join: [" "] }) })
+    const input = pool.snapshot()
+    expect(input.p1.analogs.gas).type.toBe<number>()
+    expect(input.p1.available.gas).type.toBe<boolean>()
+    // @ts-expect-error Property 'gas' does not exist
+    input.p1.actions.gas
+    expect(pool.rumble("p1", { duration: 200, strong: 1, weak: 0.5 })).type.toBe<Gamepad.RumbleResult>()
+    expect(pool.rumble).type.not.toBeCallableWith("p3", { duration: 200, strong: 1, weak: 0.5 })
+    const gasAsButton = Keyboard.actions(host, { gas: ["w"], join: [" "] })
+    // @ts-expect-error keys binds gas as a button, but it is an analog action: bind it with analog(...)
+    Racers.pool({ keys: gasAsButton })
+  })
 })

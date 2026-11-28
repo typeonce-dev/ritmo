@@ -208,6 +208,56 @@ describe("Controls", () => {
     expect(Moving.merge({ keyboard: Moving.lacking(noMove, ["move"]), gamepad: pad }).snapshot().available.move).type.toBe<boolean>()
   })
 
+  it("declares analog actions next to buttons and vectors, and checks each device binds each with its kind", () => {
+    const Driving = Controls.actions({ buttons: ["pause"], vectors: ["steer"], analogs: ["gas"] })
+    const keys = Keyboard.actions(host, { gas: Keyboard.analog(["w"]), steer: Keyboard.vector({ up: ["i"], down: ["k"], left: ["a"], right: ["d"] }), pause: ["Escape"] })
+    const pad = Gamepad.actions(host, { gas: Gamepad.analog(["rightTrigger"]), steer: Gamepad.vector({ stick: "left" }), pause: ["start"] })
+    const controls = Driving.merge({ keyboard: keys, gamepad: pad })
+    const input = controls.snapshot()
+    expect(Driving.analogs).type.toBe<ReadonlyArray<"gas">>()
+    expect(input.analogs).type.toBe<{ readonly gas: number }>()
+    expect(input.available.gas).type.toBe<boolean>()
+    expect(input.devices.gamepad.analogs.gas).type.toBe<number>()
+    expect(controls.rebind.gamepad).type.toBeCallableWith({ gas: Gamepad.analog(["leftTrigger"]), steer: Gamepad.vector({ stick: "right" }), pause: ["start"] })
+    expect(controls.rebind.gamepad).type.not.toBeCallableWith({ gas: ["leftTrigger"], steer: Gamepad.vector({ stick: "right" }), pause: ["start"] })
+    expect(Driving.idle({ keyboard: Keyboard.idle({ gas: Keyboard.analog(["w"]) }) }).analogs.gas).type.toBe<number>()
+    // @ts-expect-error Property 'gas' does not exist
+    input.actions.gas
+    // @ts-expect-error Property 'brake' does not exist
+    input.analogs.brake
+
+    const gasAsButton = Gamepad.actions(host, { gas: ["rightTrigger"], steer: Gamepad.vector({ stick: "left" }), pause: ["start"] })
+    // @ts-expect-error gamepad binds gas as a button, but it is an analog action: bind it with analog(...)
+    Driving.merge({ keyboard: keys, gamepad: gasAsButton })
+    const gasAsVector = Gamepad.actions(host, { gas: Gamepad.vector({ stick: "right" }), steer: Gamepad.vector({ stick: "left" }), pause: ["start"] })
+    // @ts-expect-error gamepad binds gas as a vector, but it is an analog action: bind it with analog(...)
+    Driving.merge({ keyboard: keys, gamepad: gasAsVector })
+    const pauseAsAnalog = Keyboard.actions(host, { gas: Keyboard.analog(["w"]), steer: Keyboard.vector({ up: ["i"], down: ["k"], left: ["a"], right: ["d"] }), pause: Keyboard.analog(["Escape"]) })
+    // @ts-expect-error keyboard binds pause as an analog, but it is a button action: bind it to keys or buttons
+    Driving.merge({ keyboard: pauseAsAnalog, gamepad: pad })
+    const steerAsAnalog = Gamepad.actions(host, { gas: Gamepad.analog(["rightTrigger"]), steer: Gamepad.analog(["leftTrigger"]), pause: ["start"] })
+    // @ts-expect-error gamepad binds steer as an analog, but it is a vector action: bind it with vector(...)
+    Driving.merge({ keyboard: keys, gamepad: steerAsAnalog })
+    const typo = Gamepad.actions(host, { gsa: Gamepad.analog(["rightTrigger"]), steer: Gamepad.vector({ stick: "left" }), pause: ["start"] })
+    // @ts-expect-error gamepad binds gsa, which is not one of the actions
+    Driving.merge({ keyboard: keys, gamepad: typo })
+    const noGas = Gamepad.actions(host, { steer: Gamepad.vector({ stick: "left" }), pause: ["start"] })
+    // @ts-expect-error gamepad has no action gas: bind it on gamepad, or pass lacking(gamepad, [...]) from the action set
+    Driving.merge({ keyboard: keys, gamepad: noGas })
+    expect(Driving.merge({ keyboard: keys, gamepad: Driving.lacking(noGas, ["gas"]) }).snapshot().available.gas).type.toBe<boolean>()
+    // @ts-expect-error gas is declared as an analog action and as another kind: give it one kind
+    Controls.actions({ buttons: ["gas"], analogs: ["gas"] })
+  })
+
+  it("lists rumble for the merged devices that have motors only", () => {
+    const controls = Actions.merge({ keyboard, gamepad, touch: Actions.lacking(touch, ["pause"]) })
+    expect(controls.rumble.gamepad({ duration: 100, strong: 1, weak: 1 })).type.toBe<Gamepad.RumbleResult>()
+    // @ts-expect-error Property 'keyboard' does not exist
+    controls.rumble.keyboard
+    // @ts-expect-error Property 'touch' does not exist
+    controls.rumble.touch
+  })
+
   it("rejects a name declared as both kinds", () => {
     // @ts-expect-error move is declared as both a button and a vector action: give it one kind
     Controls.actions({ buttons: ["jump", "move"], vectors: ["move"] })
