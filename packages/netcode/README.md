@@ -128,16 +128,22 @@ The announcement carries the inputs the others still need, goes out several time
 - `"stall"`: the others wait for the hidden seat's input, as for a slow one (rollback runs `maxRollback` ticks on guesses, then stalls), and it goes on from where it stopped when it shows again.
 - `"resync-on-return"`: the others play on with idle input for the hidden seat after its last sent input. When it shows again, the host sends a save and it restores it, as in `resync()`; until then its `advance` is `Waiting`. The host (the lowest seat playing: seat 0 until it leaves) is never played around, since every save is its world: while it is hidden, the others wait for it.
 
-The bound: a hidden seat's silence counts only after `afterMS`, so a seat that hides and never returns (the tab was closed) is out of the match at most `afterMS + timeoutMS` after it hid: from then on the simulation reads `seats.left` for it, and `status().left` names it. If its page does show again later, a save seats it again. Every peer passes the same `afterMS` and `then`; without `hidden`, a hidden peer is silent and is counted out after `timeoutMS`. The session unsubscribes from the visibility once it ends. On return, `FixedLoop` drops the hidden time beyond `maxFrameSeconds` and `maxStepsPerFrame`, so the loop does not burst through the missed frames. Pausing a single-player game on a hidden tab is the game's own policy (read `BrowserVisibility` in host code).
+The bound: a hidden seat's silence counts only after `afterMS`, so a seat that hides and never returns (the tab was closed) is out of the match at most `afterMS + timeoutMS` after it hid: from then on the simulation reads `seats.left` for it, and `status().left` names it. If its page does show again later, a save seats it again. Every peer passes the same `afterMS` and `then`; without `hidden`, a hidden peer is silent and is counted out after `timeoutMS`. The session unsubscribes from the visibility once it ends, or leaves (`session.leave()`). On return, `FixedLoop` drops the hidden time beyond `maxFrameSeconds` and `maxStepsPerFrame`, so the loop does not burst through the missed frames. Pausing a single-player game on a hidden tab is the game's own policy (read `BrowserVisibility` in host code).
 
 ## Seats that leave
 
-A match outlives the seats that leave it. A seat is out of the match once it sent nothing for `timeoutMS` (5000 by default), once the link that carried it closed (one link per peer), or once the game tells a session that its transport saw the seat go:
+A match outlives the seats that leave it. A seat is out of the match once it sent nothing for `timeoutMS` (5000 by default), once the link that carried it closed (one link per peer), once the game tells a session that its transport saw the seat go, or once its own session leaves:
 
 ```ts
 // A relay sees a socket close long before timeoutMS: tell the session.
 room.onPlayerGone((seat) => session.drop(seat))
+
+// The player quits the race and goes back to the lobby, on a socket the lobby keeps.
+loop.stop()
+session.leave()
 ```
+
+`session.leave()` tells the other peers at once (its last inputs, then that it leaves, a few times against loss), and they count the seat out with `reason: "left"` about one round trip later, the host too, with no `timeoutMS` to wait. A peer that missed it hears it from the others. The session then ends: every later `advance` fails with `Disconnected` (`who: "self"`, `reason: "left"`), a `FixedLoop` driven by `update` stops, and the session unsubscribes from the `hidden` visibility. It closes no link, since the socket may be the lobby's. A second call does nothing. Before the match starts it ends the session too, and seat 0 forgets its hello: the match waits for a new session of that seat, which is the lobby's to start or call off.
 
 One peer that knows is enough, since it tells the others: a relay can tell every page, and in a mesh the peer whose channel closed learns it from its own link. The peers still playing then agree on the seat's last input and go on, with no save and no restart:
 
@@ -152,7 +158,7 @@ const seats = Netcode.seats(PlayerInput, {
 if (inputs[car.seat].gone) { ... }
 
 // In host code, for the HUD ("Ada left"):
-session.status().left[seat] // undefined, or { reason: "timeout" | "closed" | "dropped" | "restarted", lastInput, tick }
+session.status().left[seat] // undefined, or { reason: "timeout" | "closed" | "dropped" | "restarted" | "left", lastInput, tick }
 ```
 
 - **Every peer agrees on the tick.** Each peer stops taking the seat's inputs and reports the last one it has. The seat's own inputs end at the furthest one any of them received (`lastInput`), and from `tick` on, the same on every peer, the simulation reads `seats.left` for it. That is a value in the simulation's input like any other, so what the game does with it is rewound, replayed and checksummed with the rest.
@@ -160,7 +166,7 @@ session.status().left[seat] // undefined, or { reason: "timeout" | "closed" | "d
 - **No seat is special.** The host is the lowest seat still playing. When seat 0 leaves, the next seat answers `resync()`, seats the sessions that come back, and decides who else is out.
 - **How long the others wait.** They run `maxRollback` ticks on guesses, then stall (`status().waiting` names the seat) until they agree it is gone: `timeoutMS` for a seat that went silent, about one round trip after a `drop` or a closed link.
 - **Coming back.** A seat that left gets its seat back with a save, as a hidden seat does: when its session reaches the others again (the same page, over a link the game reconnected), or when a new session says hello for the seat (the page reloaded: build the runtime and the session again, with the same `seat`). From that save's tick the simulation reads its real input again. Until the save arrives its `advance` is `Waiting` and `status().left` names its own seat; without one for `timeoutMS`, it ends with `Disconnected`.
-- **When a session ends.** With `Disconnected`, whose `who` says which message to show. `"others"`: everyone else left, and `seat` is the last other seat that was in the match (`reason` is why it left). `"self"`: this session is the one out, and `seat` is its own: every link closed (`"closed"`), another page took its seat (`"restarted"`), or the others went on without it and no save seated it again. A match of two therefore ends as before when the other seat leaves: after `timeoutMS`, or at once on `drop`. What changed for two: a page that reloads within `timeoutMS` gets its seat back instead of ending both.
+- **When a session ends.** With `Disconnected`, whose `who` says which message to show. `"others"`: everyone else left, and `seat` is the last other seat that was in the match (`reason` is why it left). `"self"`: this session is the one out, and `seat` is its own: it left (`"left"`, after `leave()`), every link closed (`"closed"`), another page took its seat (`"restarted"`), or the others went on without it and no save seated it again. A match of two therefore ends as before when the other seat leaves: after `timeoutMS`, or at once on `drop`. What changed for two: a page that reloads within `timeoutMS` gets its seat back instead of ending both.
 - **Before the match starts, nothing times out.** A match begins once every seat said hello; a seat that never does (a tab closed while the game loads) leaves every session `Waiting`, and `drop` does nothing there, since there is no match to play on. What to do about a seat that never arrives is the lobby's job: end those sessions and start a match with the seats that are there.
 
 The seat that decides is the lowest one playing, and its word counts over a higher seat's. So a seat dropped by mistake while it still reaches the others is put out and seated again a moment later, and a `drop` of the host counts only once no playing peer hears it: until then the session that called it is the one put out, and seated again. A page that froze for longer than `timeoutMS` (a suspended laptop, a debugger) is counted out like any silent seat, the host too, and seated again when it wakes: a session knows from its own clock that it was the silent one. In a mesh, when the channel between two peers closes, one of them is out for good, since no save could bring it back to a peer it cannot reach: its session ends.

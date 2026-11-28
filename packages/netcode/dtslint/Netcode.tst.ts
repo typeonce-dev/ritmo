@@ -378,13 +378,22 @@ describe("a seat that leaves", () => {
     expect(session.value.drop).type.not.toBeCallableWith("1")
   })
 
+  it("leaves on purpose, with nothing to pass and nothing back, in both sessions", () => {
+    const rolling = Netcode.rollback(runtime, { ...options, simulate })
+    const stepping = Netcode.lockstep(runtime, { ...options, simulate })
+    if (!rolling.ok || !stepping.ok) return
+    expect(rolling.value.leave()).type.toBe<void>()
+    expect(stepping.value.leave).type.toBe<() => void>()
+    expect(rolling.value.leave).type.not.toBeCallableWith(1)
+  })
+
   it("is named in status().left with why and when, or not at all", () => {
     const session = Netcode.lockstep(runtime, { ...options, simulate })
     if (!session.ok) return
     const left = session.value.status().left
     expect(left).type.toBe<ReadonlyArray<Netcode.Left | undefined>>()
     expect<Netcode.Left>().type.toBe<{ readonly reason: Netcode.LeftReason; readonly lastInput: number; readonly tick: number }>()
-    expect<Netcode.LeftReason>().type.toBe<"timeout" | "closed" | "dropped" | "restarted">()
+    expect<Netcode.LeftReason>().type.toBe<"timeout" | "closed" | "dropped" | "restarted" | "left">()
     // @ts-expect-error Object is possibly 'undefined'
     left[1].tick.toFixed()
   })

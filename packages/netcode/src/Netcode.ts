@@ -40,7 +40,8 @@
  * reloaded page). A session ends with {@link Disconnected} only when it is
  * the last one in the match, or out of it (its `who` says which). Before
  * the match starts nothing times out: a seat that never says hello is the
- * lobby's to handle.
+ * lobby's to handle. A page that quits the match on purpose (back to the
+ * lobby) calls `session.leave()`: the others count it out at once.
  *
  * Every `checksumEvery` ticks, peers compare `runtime.checksum()` of a
  * confirmed tick (one every seat's real input reached). A mismatch is a bug
@@ -268,8 +269,9 @@ export interface SyncFailed {
  * - `"dropped"`: the game told a session it was gone (`session.drop`).
  * - `"restarted"`: another session said hello for it (its page reloaded).
  *   That session is given the seat with the next save.
+ * - `"left"`: its session left on purpose (`session.leave()`).
  */
-export type LeftReason = "timeout" | "closed" | "dropped" | "restarted"
+export type LeftReason = "timeout" | "closed" | "dropped" | "restarted" | "left"
 
 /**
  * A seat that left the match, in `status().left`. Every peer in the match
@@ -301,7 +303,7 @@ export interface Left {
  *   without a seat that leaves (`status().left`), and ends this way only
  *   for the last peer in it.
  * - `"self"`: this session is the one out, and `seat` is its own. `reason`
- *   is `"closed"` when every one of its links closed; `"restarted"` when
+ *   is `"left"` after `session.leave()`; `"closed"` when every one of its links closed; `"restarted"` when
  *   another session of its seat took its place (a reloaded page, another
  *   tab); otherwise why the others went on without it, with no save that
  *   seated it again within `timeoutMS` (it could not reach them, or they
@@ -542,6 +544,41 @@ export interface Session<Input, TickError, Events extends Descriptor.Descriptor<
    */
   readonly drop: (seat: number) => void
   /**
+   * This seat leaves the match on purpose: the player quit the race, the
+   * page goes back to the lobby. The session tells the other peers at once
+   * (its last inputs, then that it leaves, several times against loss) and
+   * ends: every later `advance` fails with `Disconnected` (`who: "self"`,
+   * `reason: "left"`), so a `FixedLoop` driven by `update` stops with it,
+   * and the session unsubscribes from the `hidden` option's visibility.
+   * The others count the seat out as after a `drop`, with `reason: "left"`
+   * (`status().left`), without waiting `timeoutMS`, and play on; when it
+   * was the host, the next seat hosts. The last other seat in the match
+   * ends with `Disconnected` (`who: "others"`).
+   *
+   * Before the match starts, it ends this session too, and seat 0 forgets
+   * its hello: the match waits for a new session of the seat, which is the
+   * lobby's to start or call off. Does nothing once the session ended.
+   *
+   * It sends nothing after it returns and closes no link: the links are the
+   * game's (close a socket the lobby does not share). Use `drop` for
+   * another seat the transport saw go.
+   *
+   * @example
+   * ```ts
+   * declare const session: Netcode.Session<{ readonly dx: number }, never>
+   * declare const loop: FixedLoop.Driver
+   * declare const showLobby: () => void
+   * // ---cut---
+   * // The player pressed "Back to lobby": the others see the seat leave now, not after timeoutMS.
+   * const quit = (): void => {
+   *   loop.stop()
+   *   session.leave()
+   *   showLobby()
+   * }
+   * ```
+   */
+  readonly leave: () => void
+  /**
    * How fast this peer should run, for `FixedLoop`'s `rate`: below 1 while
    * it runs ahead of the others, so peers stay within reach of each other.
    */
@@ -626,7 +663,8 @@ export interface Options<Input> {
   /**
    * Announces to the other peers when this page hides, so they apply a
    * policy (and show it in `status().hidden`) instead of timing out. The
-   * session unsubscribes from `visibility` once it ends. Without it, a
+   * session unsubscribes from `visibility` once it ends (`leave()` ends it
+   * on purpose). Without it, a
    * hidden peer is silent, and the others play on without it after
    * `timeoutMS`.
    */
