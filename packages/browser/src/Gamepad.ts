@@ -34,6 +34,9 @@
  * multiplayer, `pads(host, bindings, max)` reads every pad on its own for
  * `Controls.players(...).pool(...)` (`scriptedPads(...)` in tests).
  *
+ * A pedal (gas, brake) or a charge is an analog action: `analog(...)`
+ * reads a trigger's pull from 0 to 1, for `Controls.actions({ analogs })`.
+ *
  * `rumble(...)` shakes the followed pad (or one place of `pads`, or a
  * player's pad through the pool's `rumble(slot, ...)`), with the strong and
  * weak motors in plain numbers, and says whether it was sent: a pad
